@@ -354,7 +354,9 @@ export default function AthleteDetailPage() {
             const elapsed = (Date.now() - startTime) / 1000
             const rate = e.loaded / elapsed
             const remaining = (e.total - e.loaded) / rate
-            setVideoEta(prev => ({ ...prev, [sessionId]: remaining < 5 ? 'Almost done…' : remaining < 60 ? `~${Math.ceil(remaining)}s remaining` : `~${Math.ceil(remaining / 60)}min remaining` }))
+            const mbps = (rate / (1024 * 1024)).toFixed(1)
+            const timeStr = remaining < 5 ? 'Almost done…' : remaining < 60 ? `~${Math.ceil(remaining)}s left` : `~${Math.ceil(remaining / 60)}min left`
+            setVideoEta(prev => ({ ...prev, [sessionId]: `${mbps} MB/s · ${timeStr}` }))
           }
           xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) resolve()
@@ -424,8 +426,8 @@ export default function AthleteDetailPage() {
       <header style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100 }}>
         {/* Top row: back + athlete name */}
         <div style={{ maxWidth: maxW, margin: '0 auto', padding: `0 ${p}`, height: 52, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Link href="/dashboard" style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
-            <Icon name="arrow-left" size={16} /> {!isMobile && 'Dashboard'}
+          <Link href="/dashboard" style={{ color: 'var(--text)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, flexShrink: 0, padding: '6px 10px', borderRadius: 8, background: 'var(--bg)', border: '1.5px solid var(--border)' }}>
+            <Icon name="arrow-left" size={18} /> {!isMobile && 'Dashboard'}
           </Link>
           {athlete && (
             <>

@@ -23,7 +23,7 @@ type Props = {
 }
 
 const EVENT_TYPE_COLOR: Record<string, string> = {
-  session:  '#2563eb',
+  session:  '#16a34a',
   homework: '#d97706',
   goal:     '#7c3aed',
   reminder: '#ea580c',
@@ -32,7 +32,7 @@ const EVENT_TYPE_COLOR: Record<string, string> = {
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
   session:  'Session',
-  homework: 'Homework',
+  homework: 'Homework / Task',
   goal:     'Goal',
   reminder: 'Reminder',
   other:    'Other',
@@ -160,9 +160,9 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
               onClick={() => setSelectedDate(isSelected ? null : dateStr)}
               style={{
                 minHeight: 52,
-                border: `1.5px solid ${isSelected ? 'var(--primary)' : isToday ? 'var(--primary)' : 'var(--border)'}`,
+                border: `1.5px solid ${isSelected ? '#0d9488' : isToday ? 'var(--primary)' : 'var(--border)'}`,
                 borderRadius: 8,
-                background: isSelected ? 'var(--primary-light)' : isToday ? '#f0f9ff' : 'var(--card)',
+                background: isSelected ? '#f0fdfa' : isToday ? '#f0f9ff' : 'var(--card)',
                 cursor: 'pointer',
                 padding: '6px 4px 4px',
                 display: 'flex',
@@ -175,7 +175,7 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
               <span style={{
                 fontSize: 13,
                 fontWeight: isToday ? 900 : isSelected ? 700 : 500,
-                color: (isToday && !isSelected) ? '#fff' : isToday ? 'var(--primary)' : isSelected ? 'var(--primary)' : 'var(--text)',
+                color: (isToday && !isSelected) ? '#fff' : isToday ? 'var(--primary)' : isSelected ? '#0d9488' : 'var(--text)',
                 width: 24,
                 height: 24,
                 display: 'flex',

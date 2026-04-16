@@ -65,7 +65,7 @@ export async function GET() {
     // NOTE: Do NOT select athletes.last_sign_in_at (it doesn't exist in your DB).
     const { data, error } = await admin
       .from('athletes')
-      .select('id, first_name, last_name, email, athlete_user_id, invited_at')
+      .select('id, first_name, last_name, email, athlete_user_id, invited_at, first_login_at')
       .eq('coach_id', user.id)
       .order('created_at', { ascending: false })
 
@@ -75,7 +75,9 @@ export async function GET() {
 
     const athletes = (data ?? []).map((a: any) => ({
       ...a,
-      status: a.athlete_user_id ? 'ACTIVE' : 'INVITED',
+      // INVITED = invite sent but athlete hasn't logged in yet
+      // ACTIVE = athlete has visited their portal at least once
+      status: a.first_login_at ? 'ACTIVE' : (a.athlete_user_id ? 'INVITED' : 'INVITED'),
     }))
 
     return NextResponse.json({ athletes })

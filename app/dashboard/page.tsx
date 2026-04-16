@@ -181,6 +181,121 @@ function JoinToast({ data, onDismiss }: { data: JoinToastData; onDismiss: () => 
   )
 }
 
+// ── Settings Tab ─────────────────────────────────────────────────
+function SettingsTab({ coachName, coachSport, inviteCode, codeEditing, codeDraft, codeSaving, codeMsg, setCodeDraft, setCodeEditing, setCodeMsg, saveCode, onNameChange, logout }: {
+  coachName: string; coachSport: string; inviteCode: string | null
+  codeEditing: boolean; codeDraft: string; codeSaving: boolean; codeMsg: string
+  setCodeDraft: (v: string) => void; setCodeEditing: (v: boolean) => void; setCodeMsg: (v: string) => void
+  saveCode: () => void; onNameChange: (f: string, l: string, s: string) => void; logout: () => void
+}) {
+  const [profileForm, setProfileForm] = useState(() => {
+    const parts = coachName.trim().split(' ')
+    return { first_name: parts[0] ?? '', last_name: parts.slice(1).join(' ') ?? '', sport: coachSport }
+  })
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileMsg, setProfileMsg] = useState('')
+
+  const saveProfile = async () => {
+    if (!profileForm.first_name.trim() || !profileForm.last_name.trim()) {
+      setProfileMsg('First and last name are required.'); return
+    }
+    setProfileSaving(true); setProfileMsg('')
+    try {
+      const res = await fetch('/api/coach-profile', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileForm),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error)
+      onNameChange(json.first_name, json.last_name, json.sport ?? '')
+      setProfileMsg('Profile updated!')
+      setTimeout(() => setProfileMsg(''), 3000)
+    } catch (e: any) { setProfileMsg(e?.message ?? 'Failed') }
+    finally { setProfileSaving(false) }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 560 }}>
+      <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Settings</h2>
+
+      {/* ── Profile ── */}
+      <div className="card" style={{ padding: 26 }}>
+        <div className="section-title" style={{ marginBottom: 4 }}>Your Profile</div>
+        <div className="section-sub" style={{ marginBottom: 18 }}>How you appear to athletes and in session reports.</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label className="label">First name</label>
+              <input className="input" value={profileForm.first_name} onChange={e => setProfileForm(f => ({ ...f, first_name: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Last name</label>
+              <input className="input" value={profileForm.last_name} onChange={e => setProfileForm(f => ({ ...f, last_name: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <label className="label">Sport / discipline (optional)</label>
+            <input className="input" placeholder="e.g. Soccer, Swimming, Athletics" value={profileForm.sport} onChange={e => setProfileForm(f => ({ ...f, sport: e.target.value }))} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving} style={{ minWidth: 120 }}>
+              {profileSaving ? 'Saving…' : 'Save profile'}
+            </button>
+            {profileMsg && (
+              <span style={{ fontSize: 13, fontWeight: 600, color: profileMsg.includes('updated') ? 'var(--success)' : 'var(--danger)' }}>
+                {profileMsg}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Invite Code ── */}
+      <div className="card" style={{ padding: 26 }}>
+        <div className="section-title" style={{ marginBottom: 6 }}>Athlete Invite Code</div>
+        <div className="section-sub" style={{ marginBottom: 18 }}>Share this so athletes can join your roster during sign-up.</div>
+        {inviteCode && !codeEditing ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <div style={{ flex: 1, padding: '12px 16px', background: 'var(--coach-light)', border: '2px solid var(--coach-color)', borderRadius: 10, fontFamily: 'monospace', fontSize: 18, fontWeight: 900, color: 'var(--coach-color)', letterSpacing: 1 }}>{inviteCode}</div>
+            <button onClick={() => { setCodeDraft(inviteCode); setCodeEditing(true); setCodeMsg('') }} className="btn btn-ghost" title="Edit"><Icon name="edit" size={14} /></button>
+            <button onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!') }} className="btn btn-ghost" title="Copy"><Icon name="copy" size={14} /></button>
+          </div>
+        ) : (
+          <div style={{ marginBottom: 14 }}>
+            <label className="label">Invite code</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input className="input" value={codeDraft} onChange={e => setCodeDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} placeholder="coachsmith4821" style={{ fontFamily: 'monospace', fontWeight: 700 }} />
+              <button className="btn btn-primary" onClick={saveCode} disabled={codeSaving}>{codeSaving ? '…' : 'Save'}</button>
+              {codeEditing && <button className="btn btn-ghost" onClick={() => { setCodeEditing(false); setCodeMsg('') }}>Cancel</button>}
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>Letters, numbers, hyphens, underscores · 4–32 chars</p>
+          </div>
+        )}
+        {codeMsg && <p style={{ fontSize: 13, fontWeight: 600, color: codeMsg.includes('Copied') || codeMsg.includes('updated') ? 'var(--success)' : 'var(--danger)' }}>{codeMsg}</p>}
+        <div className="divider" />
+        <div className="section-title" style={{ fontSize: 15, marginBottom: 10 }}>How athletes join</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: 'var(--text-2)' }}>
+          {[['Invite via email', 'Use "Add Athlete" on the Athletes tab.'], ['Share your code', 'Athletes enter it at sign-up to auto-join your roster.']].map(([t, d], i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ background: 'var(--primary)', color: '#fff', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{i + 1}</span>
+              <span><strong>{t}</strong> — {d}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Account ── */}
+      <div className="card" style={{ padding: 18 }}>
+        <div className="section-title" style={{ fontSize: 15, marginBottom: 4 }}>Account</div>
+        <div className="section-sub" style={{ marginBottom: 14 }}>Signed in as {coachName}</div>
+        <button onClick={logout} className="btn btn-ghost" style={{ gap: 6, fontSize: 13, color: 'var(--danger)' }}>
+          <Icon name="signout" size={14} /> Sign Out
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const supabase = createSupabaseBrowserClient()
@@ -258,6 +373,7 @@ export default function DashboardPage() {
   const [addEventModal, setAddEventModal] = useState<{ date: string } | null>(null)
   const [eventForm, setEventForm] = useState({ title: '', description: '', event_type: 'session', event_time: '' })
   const [eventSaving, setEventSaving] = useState(false)
+  const [alsoAddToCoach, setAlsoAddToCoach] = useState(false)
 
   // Today's events for home tab
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
@@ -455,27 +571,39 @@ export default function DashboardPage() {
     if (!addEventModal || !eventForm.title.trim()) return
     setEventSaving(true)
     try {
-      const body: Record<string, any> = {
+      const base = {
         title: eventForm.title, description: eventForm.description || null,
         event_type: eventForm.event_type, event_date: addEventModal.date,
         event_time: eventForm.event_time || null,
       }
+      const body: Record<string, any> = { ...base }
       if (calMode === 'athlete') body.athlete_id = calTargetId
       else if (calMode === 'group') body.group_id = calTargetId
+
       const res = await fetch('/api/calendar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (res.ok) {
-        setAddEventModal(null)
-        setEventForm({ title: '', description: '', event_type: 'session', event_time: '' })
-        await fetchCalendar(calMode, calTargetId, calMonth)
-        const label = calMode === 'group' ? 'Event added for group' : 'Event added to calendar'
-        showToast(`✓ ${label}`)
-      } else {
+      if (!res.ok) {
         const json = await res.json().catch(() => ({}))
         showToast(json?.error ?? 'Failed to save event', 'error')
+        return
       }
+
+      // Optionally also add the same event to coach's personal calendar
+      if (alsoAddToCoach && (calMode === 'athlete' || calMode === 'group')) {
+        await fetch('/api/calendar', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(base), // no athlete_id/group_id = personal event
+        })
+      }
+
+      setAddEventModal(null)
+      setEventForm({ title: '', description: '', event_type: 'session', event_time: '' })
+      setAlsoAddToCoach(false)
+      await fetchCalendar(calMode, calTargetId, calMonth)
+      const label = calMode === 'group' ? 'Event added for group' : 'Event added to calendar'
+      showToast(`✓ ${label}${alsoAddToCoach ? ' + your calendar' : ''}`)
     } catch {
       showToast('Failed to save event', 'error')
     } finally { setEventSaving(false) }
@@ -1096,55 +1224,24 @@ export default function DashboardPage() {
 
           {/* ════ SETTINGS TAB ════ */}
           {tab === 'settings' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 560 }}>
-              <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Settings</h2>
-              <div className="card" style={{ padding: 26 }}>
-                <div className="section-title" style={{ marginBottom: 6 }}>Your Invite Code</div>
-                <div className="section-sub" style={{ marginBottom: 18 }}>Share this so athletes can join your database during sign-up.</div>
-                {inviteCode && !codeEditing ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                    <div style={{ flex: 1, padding: '12px 16px', background: 'var(--coach-light)', border: '2px solid var(--coach-color)', borderRadius: 10, fontFamily: 'monospace', fontSize: 18, fontWeight: 900, color: 'var(--coach-color)', letterSpacing: 1 }}>{inviteCode}</div>
-                    <button onClick={() => { setCodeDraft(inviteCode); setCodeEditing(true); setCodeMsg('') }} className="btn btn-ghost" title="Edit" style={{ gap: 5, fontSize: 12 }}>
-                      <Icon name="edit" size={14} />
-                    </button>
-                    <button onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!') }} className="btn btn-ghost" title="Copy" style={{ gap: 5, fontSize: 12 }}>
-                      <Icon name="copy" size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ marginBottom: 14 }}>
-                    <label className="label">Invite code</label>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input className="input" value={codeDraft} onChange={e => setCodeDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} placeholder="coachsmith4821" style={{ fontFamily: 'monospace', fontWeight: 700 }} />
-                      <button className="btn btn-primary" onClick={saveCode} disabled={codeSaving}>{codeSaving ? '…' : 'Save'}</button>
-                      {codeEditing && <button className="btn btn-ghost" onClick={() => { setCodeEditing(false); setCodeMsg('') }}>Cancel</button>}
-                    </div>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>Letters, numbers, hyphens, underscores · 4–32 chars</p>
-                  </div>
-                )}
-                {codeMsg && <p style={{ fontSize: 13, fontWeight: 600, color: codeMsg.includes('Copied') || codeMsg.includes('updated') ? 'var(--success)' : 'var(--danger)' }}>{codeMsg}</p>}
-                <div className="divider" />
-                <div className="section-title" style={{ fontSize: 15, marginBottom: 10 }}>How athletes join</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: 'var(--text-2)' }}>
-                  {[
-                    ['Invite via email', 'Use "Add Athlete" on the Athletes tab — they get an email to set a password.'],
-                    ['Share your invite code', 'Athletes enter it at sign-up or from their portal to auto-join your roster.'],
-                  ].map(([title, desc], i) => (
-                    <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                      <span style={{ background: 'var(--primary)', color: '#fff', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{i + 1}</span>
-                      <span><strong>{title}</strong> — {desc}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="card" style={{ padding: 18 }}>
-                <div className="section-title" style={{ fontSize: 15, marginBottom: 4 }}>Account</div>
-                <div className="section-sub" style={{ marginBottom: 14 }}>{coachName}{coachSport ? ` · ${coachSport}` : ''}</div>
-                <button onClick={logout} className="btn btn-ghost" style={{ gap: 6, fontSize: 13 }}>
-                  <Icon name="signout" size={14} /> Sign Out
-                </button>
-              </div>
-            </div>
+            <SettingsTab
+              coachName={coachName}
+              coachSport={coachSport}
+              inviteCode={inviteCode}
+              codeEditing={codeEditing}
+              codeDraft={codeDraft}
+              codeSaving={codeSaving}
+              codeMsg={codeMsg}
+              setCodeDraft={setCodeDraft}
+              setCodeEditing={setCodeEditing}
+              setCodeMsg={setCodeMsg}
+              saveCode={saveCode}
+              onNameChange={(first, last, sport) => {
+                setCoachName(`${first} ${last}`.trim())
+                setCoachSport(sport)
+              }}
+              logout={logout}
+            />
           )}
         </div>
       </main>
@@ -1253,9 +1350,16 @@ export default function DashboardPage() {
                   This event will be added to all {groups.find(g => g.id === calTargetId)?.member_count ?? 0} athletes in this group.
                 </div>
               )}
+              {(calMode === 'athlete' || calMode === 'group') && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, padding: '10px 12px', background: alsoAddToCoach ? '#f0f9ff' : 'var(--bg)', border: `1.5px solid ${alsoAddToCoach ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 8 }}>
+                  <input type="checkbox" checked={alsoAddToCoach} onChange={e => setAlsoAddToCoach(e.target.checked)} style={{ width: 15, height: 15, accentColor: 'var(--primary)' }} />
+                  <span style={{ fontWeight: alsoAddToCoach ? 700 : 400 }}>Also add to my personal calendar</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>prevents double-booking</span>
+                </label>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-              <button className="btn btn-ghost" onClick={() => setAddEventModal(null)} style={{ flex: 1 }}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setAddEventModal(null); setAlsoAddToCoach(false) }} style={{ flex: 1 }}>Cancel</button>
               <button className="btn btn-primary btn-lg" onClick={saveEvent} disabled={eventSaving || !eventForm.title.trim()} style={{ flex: 2 }}>
                 {eventSaving ? 'Saving…' : calMode === 'group' ? 'Add for Group' : 'Add to Calendar'}
               </button>
