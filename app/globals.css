@@ -1,0 +1,309 @@
+@import "tailwindcss";
+
+/* ─── Design tokens — CoachVoice ─────────────────────────────── */
+:root {
+  /* Surfaces */
+  --bg:           #e8eff9;
+  --card:         #ffffff;
+  --border:       #d4e0f0;
+  --border-soft:  #edf3fb;
+
+  /* Primary — Coaching Blue */
+  --primary:      #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light:#eff6ff;
+
+  /* Coach — Deep Navy (authority, expertise) */
+  --coach-color:  #0f2042;
+  --coach-light:  #eaf0fb;
+
+  /* Athlete — Teal Blue (energy, distinct from primary) */
+  --athlete-color:#0891b2;
+  --athlete-light:#ecfeff;
+
+  /* Semantic */
+  --danger:       #dc2626;
+  --danger-light: #fef2f2;
+  --warning:      #d97706;
+  --warning-light:#fffbeb;
+  --success:      #16a34a;
+  --success-light:#f0fdf4;
+
+  /* Typography */
+  --text:         #0a1628;
+  --text-2:       #4a5568;
+  --text-muted:   #7a90b0;
+
+  /* Shape */
+  --radius:       12px;
+  --radius-sm:    8px;
+  --radius-lg:    18px;
+
+  /* Shadows */
+  --shadow-sm:    0 1px 3px 0 rgb(15 32 66 / .07), 0 1px 2px -1px rgb(15 32 66 / .06);
+  --shadow:       0 4px 12px -1px rgb(15 32 66 / .11), 0 2px 4px -2px rgb(15 32 66 / .08);
+  --shadow-lg:    0 10px 28px -3px rgb(15 32 66 / .13), 0 4px 8px -4px rgb(15 32 66 / .10);
+}
+
+/* ─── Base ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans, 'Inter', system-ui, -apple-system, sans-serif);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Cards ──────────────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.card-lg {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+/* ─── Buttons ────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgb(37 99 235 / .35);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+  border-color: var(--border);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--border-soft); color: var(--text); }
+
+.btn-danger {
+  background: var(--danger-light);
+  color: var(--danger);
+  border-color: #fca5a5;
+}
+.btn-danger:hover:not(:disabled) { background: #fee2e2; }
+
+.btn-coach {
+  background: var(--coach-color);
+  color: #fff;
+  border-color: var(--coach-color);
+}
+.btn-coach:hover:not(:disabled) {
+  background: #162d5a;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgb(15 32 66 / .30);
+}
+
+.btn-athlete {
+  background: var(--athlete-color);
+  color: #fff;
+  border-color: var(--athlete-color);
+}
+.btn-athlete:hover:not(:disabled) {
+  background: #0e7490;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgb(8 145 178 / .35);
+}
+
+.btn-lg {
+  padding: 13px 26px;
+  font-size: 16px;
+  border-radius: var(--radius);
+}
+
+/* ─── Inputs ─────────────────────────────────────────────────── */
+.input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  background: var(--card);
+  color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+.input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgb(37 99 235 / .13);
+}
+.input::placeholder { color: var(--text-muted); }
+textarea.input { resize: vertical; min-height: 90px; }
+
+.label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+
+/* ─── Badges ─────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.badge-active   { background: var(--success-light); color: var(--success);      border: 1px solid #bbf7d0; }
+.badge-invited  { background: var(--warning-light); color: var(--warning);      border: 1px solid #fde68a; }
+.badge-coach    { background: var(--coach-light);   color: var(--coach-color);  border: 1px solid #c7d8f0; }
+.badge-athlete  { background: var(--athlete-light); color: var(--athlete-color);border: 1px solid #a5f3fc; }
+.badge-session  { background: var(--primary-light); color: var(--primary);      border: 1px solid #bfdbfe; }
+.badge-homework { background: #fefce8; color: #854d0e; border: 1px solid #fef08a; }
+.badge-goal     { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.badge-reminder { background: var(--primary-light); color: var(--primary-dark); border: 1px solid #bfdbfe; }
+.badge-other    { background: var(--border); color: var(--text-2); border: 1px solid var(--border); }
+
+/* ─── Divider / Typography ───────────────────────────────────── */
+.divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+.section-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+.section-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ─── Mic meter ──────────────────────────────────────────────── */
+.mic-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.mic-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 80ms linear;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ─── Animations ─────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.fade-in { animation: fadeIn 0.22s ease both; }
+
+@keyframes pulse-ring {
+  0%   { transform: scale(1);   opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.recording-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  position: relative;
+  display: inline-block;
+}
+.recording-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: pulse-ring 1.2s ease-out infinite;
+}
+
+/* ─── Toast notifications ────────────────────────────────────── */
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateX(28px); }
+}
+@keyframes toastProgress {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
+/* ─── PWA / Mobile ───────────────────────────────────────────── */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+/* Safe area insets for notched phones */
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Native feel on iOS */
+input, textarea, select, button {
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: manipulation;
+}
+
+/* No tap flash */
+* { -webkit-tap-highlight-color: transparent; }
+
+/* Touch feedback */
+.btn:active { opacity: 0.80; transform: scale(0.97); }
+
+/* Mobile tap targets + iOS zoom prevention */
+@media (max-width: 767px) {
+  .btn   { min-height: 44px; }
+  .input { min-height: 44px; font-size: 16px; }
+  select.input { font-size: 16px; }
+}
+
+/* Hide scrollbars on mobile */
+@media (max-width: 767px) {
+  ::-webkit-scrollbar { display: none; }
+  * { -ms-overflow-style: none; scrollbar-width: none; }
+}

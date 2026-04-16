@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"EXIT:$?\")",
+      "Read(//c/Users/pennywise/.claude/projects/C--Users-pennywise-coach-voice-mvp/memory//**)",
+      "Read(//c/Users/pennywise/.claude/projects/C--Users-pennywise-coach-voice-mvp/memory/**)",
+      "Bash(npx tsc:*)",
+      "Bash(npx next:*)",
+      "Bash(netstat -ano)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(npm install:*)",
+      "Bash(npm list:*)",
+      "Bash(xargs wc:*)",
+      "Bash(find /c/Users/pennywise/coach-voice-mvp -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec grep -l \"email\\\\|notification\\\\|nodemailer\\\\|sendgrid\\\\|resend\\\\|mailgun\" {} \\\\;)",
+      "Bash(start \"\" \"C:\\\\Users\\\\pennywise\\\\coach-voice-mvp\\\\.env.local\")",
+      "Bash(npm run:*)",
+      "Bash(npx vercel:*)",
+      "Bash(gh auth:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)"
+    ]
+  }
+}
