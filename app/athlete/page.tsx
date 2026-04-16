@@ -53,6 +53,14 @@ export default function AthletePage() {
   const router = useRouter()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
 
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
   const [tab, setTab] = useState<Tab>('sessions')
   const [loading, setLoading] = useState(true)
   const [athleteName, setAthleteName] = useState('')
@@ -474,17 +482,27 @@ export default function AthletePage() {
         )}
 
         {/* Stats bar */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: isMobile ? 10 : 14, marginBottom: 20 }}>
           {[
             { label: 'Sessions shared', value: sessions.length, icon: '📋' },
             { label: 'My notes', value: notes.length, icon: '📝' },
             { label: 'Most recent', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—', icon: '📅' },
-          ].map((s) => (
-            <div key={s.label} className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
-              <span style={{ fontSize: 24 }}>{s.icon}</span>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 900 }}>{s.value}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{s.label}</div>
+          ].map((s, idx) => (
+            <div
+              key={s.label}
+              className="card"
+              style={{
+                padding: isMobile ? '12px 14px' : '16px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: isMobile ? 10 : 14,
+                gridColumn: isMobile && idx === 2 ? 'span 2' : undefined,
+              }}
+            >
+              <span style={{ fontSize: isMobile ? 20 : 24, flexShrink: 0 }}>{s.icon}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.value}</div>
+                <div style={{ fontSize: isMobile ? 11 : 12, color: 'var(--text-muted)' }}>{s.label}</div>
               </div>
             </div>
           ))}
@@ -812,55 +830,58 @@ export default function AthletePage() {
 
         {/* ─── Tab: All Notes ─── */}
         {tab === 'notes' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20 }}>
+          <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: isMobile ? 'column' : undefined, gridTemplateColumns: isMobile ? undefined : '220px 1fr', gap: isMobile ? 12 : 20 }}>
             {/* Filter sidebar */}
             <div className="card" style={{ padding: 16, height: 'fit-content' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }}>Filter by session</div>
-              <button
-                onClick={() => setNoteFilter(null)}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  padding: '9px 12px',
-                  borderRadius: 8,
-                  border: `1.5px solid ${!noteFilter ? 'var(--athlete-color)' : 'var(--border)'}`,
-                  background: !noteFilter ? 'var(--athlete-light)' : 'transparent',
-                  color: !noteFilter ? 'var(--athlete-color)' : 'var(--text)',
-                  fontWeight: !noteFilter ? 700 : 400,
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  marginBottom: 6,
-                }}
-              >
-                All notes ({notes.length})
-              </button>
-              {sessions.map((s) => {
-                const count = notes.filter((n) => n.session_id === s.id).length
-                if (count === 0) return null
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => setNoteFilter(s.id)}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: 8,
-                      border: `1.5px solid ${noteFilter === s.id ? 'var(--athlete-color)' : 'var(--border)'}`,
-                      background: noteFilter === s.id ? 'var(--athlete-light)' : 'transparent',
-                      color: noteFilter === s.id ? 'var(--athlete-color)' : 'var(--text)',
-                      fontWeight: noteFilter === s.id ? 700 : 400,
-                      fontSize: 13,
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      marginBottom: 4,
-                    }}
-                  >
-                    {s.session_name ?? 'Session'} ({count})
-                  </button>
-                )
-              })}
+              {!isMobile && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }}>Filter by session</div>}
+              {isMobile && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Filter by session</div>}
+              <div style={isMobile ? { display: 'flex', flexWrap: 'wrap', gap: 6 } : undefined}>
+                <button
+                  onClick={() => setNoteFilter(null)}
+                  style={{
+                    display: isMobile ? 'inline-block' : 'block',
+                    width: isMobile ? 'auto' : '100%',
+                    padding: isMobile ? '6px 12px' : '9px 12px',
+                    borderRadius: 8,
+                    border: `1.5px solid ${!noteFilter ? 'var(--athlete-color)' : 'var(--border)'}`,
+                    background: !noteFilter ? 'var(--athlete-light)' : 'transparent',
+                    color: !noteFilter ? 'var(--athlete-color)' : 'var(--text)',
+                    fontWeight: !noteFilter ? 700 : 400,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    marginBottom: isMobile ? 0 : 6,
+                  }}
+                >
+                  All notes ({notes.length})
+                </button>
+                {sessions.map((s) => {
+                  const count = notes.filter((n) => n.session_id === s.id).length
+                  if (count === 0) return null
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => setNoteFilter(s.id)}
+                      style={{
+                        display: isMobile ? 'inline-block' : 'block',
+                        width: isMobile ? 'auto' : '100%',
+                        padding: isMobile ? '6px 12px' : '9px 12px',
+                        borderRadius: 8,
+                        border: `1.5px solid ${noteFilter === s.id ? 'var(--athlete-color)' : 'var(--border)'}`,
+                        background: noteFilter === s.id ? 'var(--athlete-light)' : 'transparent',
+                        color: noteFilter === s.id ? 'var(--athlete-color)' : 'var(--text)',
+                        fontWeight: noteFilter === s.id ? 700 : 400,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        marginBottom: isMobile ? 0 : 4,
+                      }}
+                    >
+                      {s.session_name ?? 'Session'} ({count})
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             {/* Notes list */}

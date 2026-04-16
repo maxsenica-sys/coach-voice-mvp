@@ -59,6 +59,14 @@ function fmtDateDivider(iso: string) {
 export default function MessagingPanel({ athletes, unreadCounts, preselectedAthleteId, onUnreadChange }: Props) {
   const supabase = createSupabaseBrowserClient()
 
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
   const [selectedId, setSelectedId] = useState<string | null>(preselectedAthleteId ?? null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loadingMsgs, setLoadingMsgs] = useState(false)
@@ -249,13 +257,21 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
     messagesWithDividers.push({ type: 'msg', msg })
   }
 
+  // On mobile: show list when no athlete selected, show chat when one is selected
+  const showList = !isMobile || !selectedId
+  const showChat = !isMobile || !!selectedId
+
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', height: '100%', minHeight: 0, overflow: 'hidden' }}>
       {/* ── Athlete list ── */}
       <div style={{
-        width: 260, flexShrink: 0, borderRight: '1px solid var(--border)',
-        display: 'flex', flexDirection: 'column', background: 'var(--card)',
+        width: isMobile ? '100%' : 260,
+        flexShrink: 0,
+        borderRight: isMobile ? 'none' : '1px solid var(--border)',
+        display: showList ? 'flex' : 'none',
+        flexDirection: 'column',
+        background: 'var(--card)',
       }}>
         <div style={{ padding: '14px 14px 10px', borderBottom: '1px solid var(--border-soft)' }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Messages</div>
@@ -280,7 +296,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
             return (
               <button
                 key={a.id}
-                onClick={() => setSelectedId(a.id)}
+                onClick={() => { setSelectedId(a.id) }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   width: '100%', padding: '11px 14px', border: 'none',
@@ -321,7 +337,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
       </div>
 
       {/* ── Chat panel ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#f8fafc' }}>
+      <div style={{ flex: 1, display: showChat ? 'flex' : 'none', flexDirection: 'column', minWidth: 0, background: '#f8fafc' }}>
         {!selectedAthlete ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: 'var(--text-muted)' }}>
             <div style={{ fontSize: 40 }}>💬</div>
@@ -332,20 +348,29 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
             {/* Chat header */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 12,
-              padding: '12px 20px', background: 'var(--card)',
+              padding: '12px 16px', background: 'var(--card)',
               borderBottom: '1px solid var(--border)', flexShrink: 0,
             }}>
+              {isMobile && (
+                <button
+                  onClick={() => setSelectedId(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 22, padding: '0 4px 0 0', lineHeight: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}
+                  aria-label="Back to athlete list"
+                >
+                  ‹
+                </button>
+              )}
               <div style={{
                 width: 38, height: 38, borderRadius: '50%',
                 background: 'var(--coach-color)', color: '#fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 14, fontWeight: 700,
+                fontSize: 14, fontWeight: 700, flexShrink: 0,
               }}>
                 {initials(selectedAthlete)}
               </div>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700 }}>{selectedAthlete.first_name} {selectedAthlete.last_name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{selectedAthlete.email}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedAthlete.first_name} {selectedAthlete.last_name}</div>
+                {!isMobile && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{selectedAthlete.email}</div>}
               </div>
             </div>
 
