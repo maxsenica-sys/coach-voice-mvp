@@ -76,13 +76,13 @@ export async function POST(
     await admin.from('calendar_events').delete().eq('athlete_id', athleteId)
 
     // 5. Wellness check-ins (if table exists)
-    await admin.from('wellness_checkins').delete().eq('athlete_id', athleteId).catch(() => null)
+    await Promise.resolve(admin.from('wellness_checkins').delete().eq('athlete_id', athleteId)).catch(() => null)
 
     // 6. Messages (if table exists)
-    await admin.from('messages').delete().eq('athlete_id', athleteId).catch(() => null)
+    await Promise.resolve(admin.from('messages').delete().eq('athlete_id', athleteId)).catch(() => null)
 
     // 7. Caretakers (if table exists)
-    await admin.from('athlete_caretakers').delete().eq('athlete_id', athleteId).catch(() => null)
+    await Promise.resolve(admin.from('athlete_caretakers').delete().eq('athlete_id', athleteId)).catch(() => null)
 
     // 8. Delete athlete row
     const { error: delErr } = await admin
