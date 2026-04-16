@@ -89,12 +89,13 @@ export default function AthletePage() {
   // Calendar
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
   const [calLoading, setCalLoading] = useState(false)
-  const [calMonth] = useState(() => {
+  const [calMonth, setCalMonth] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
   const [addEventModal, setAddEventModal] = useState<string | null>(null) // date string
   const [eventForm, setEventForm] = useState({ title: '', description: '', event_type: 'reminder', event_time: '' })
   const [eventSaving, setEventSaving] = useState(false)
+  const [calSaveMsg, setCalSaveMsg] = useState('')
 
   // Videos
   const [sessionVideos, setSessionVideos] = useState<Record<string, SessionVideo[]>>({})
@@ -128,24 +129,27 @@ export default function AthletePage() {
 
         setUserId(user.id)
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role, first_name, last_name, sport')
-          .eq('id', user.id)
-          .single()
+        // Fetch profile, athlete record, sessions, and notes all in parallel
+        const [
+          { data: profile },
+          { data: athRecord },
+          { data: sessData },
+          notesRes,
+        ] = await Promise.all([
+          supabase.from('profiles').select('role, first_name, last_name, sport').eq('id', user.id).single(),
+          supabase.from('athletes').select('id, first_name, last_name').eq('athlete_user_id', user.id).maybeSingle(),
+          supabase.from('sessions')
+            .select('id, session_name, title, summary, transcript, shared_with_athlete, created_at, sport_context')
+            .eq('shared_with_athlete', true)
+            .order('created_at', { ascending: false }),
+          fetch('/api/athlete-notes', { cache: 'no-store' }),
+        ])
+
+        if (cancelled) return
 
         if (profile?.role === 'coach') { router.push('/dashboard'); return }
 
         setSport(profile?.sport ?? '')
-
-        // Resolve athlete record
-        const { data: athRecord } = await supabase
-          .from('athletes')
-          .select('id, first_name, last_name')
-          .eq('athlete_user_id', user.id)
-          .single()
-
-        if (cancelled) return
 
         if (athRecord) {
           setAthleteId(athRecord.id)
@@ -159,17 +163,8 @@ export default function AthletePage() {
           setError('no-athlete-record')
         }
 
-        // Load sessions (only shared)
-        const { data: sessData } = await supabase
-          .from('sessions')
-          .select('id, session_name, title, summary, transcript, shared_with_athlete, created_at, sport_context')
-          .eq('shared_with_athlete', true)
-          .order('created_at', { ascending: false })
+        setSessions((sessData ?? []) as SessionRow[])
 
-        if (!cancelled) setSessions((sessData ?? []) as SessionRow[])
-
-        // Load all athlete notes
-        const notesRes = await fetch('/api/athlete-notes', { cache: 'no-store' })
         const notesJson = await notesRes.json().catch(() => ({}))
         if (!cancelled) setNotes(notesJson.notes ?? [])
 
@@ -369,6 +364,7 @@ export default function AthletePage() {
   const saveCalendarEvent = async () => {
     if (!addEventModal || !eventForm.title.trim() || !athleteId) return
     setEventSaving(true)
+    setCalSaveMsg('')
     try {
       const res = await fetch('/api/calendar', {
         method: 'POST',
@@ -387,7 +383,14 @@ export default function AthletePage() {
         setCalEvents((prev) => [...prev, json.event])
         setAddEventModal(null)
         setEventForm({ title: '', description: '', event_type: 'reminder', event_time: '' })
+        setCalSaveMsg('Event added!')
+        setTimeout(() => setCalSaveMsg(''), 3000)
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setCalSaveMsg(json?.error ?? 'Failed to save event')
       }
+    } catch {
+      setCalSaveMsg('Failed to save event')
     } finally {
       setEventSaving(false)
     }
@@ -770,11 +773,24 @@ export default function AthletePage() {
         {/* ─── Tab: Calendar ─── */}
         {tab === 'calendar' && (
           <div className="card" style={{ padding: 24 }}>
-            <div style={{ marginBottom: 20 }}>
-              <div className="section-title">My Calendar</div>
-              <div className="section-sub">
-                Coach-scheduled events (in blue/coloured) plus your own personal entries. Coaches only see what they've added.
+            <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div className="section-title">My Calendar</div>
+                <div className="section-sub">
+                  Coach-scheduled events (in blue/coloured) plus your own personal entries. Coaches only see what they've added.
+                </div>
               </div>
+              {calSaveMsg && (
+                <div style={{
+                  fontSize: 13, fontWeight: 700,
+                  color: calSaveMsg.includes('Failed') ? 'var(--danger)' : 'var(--success)',
+                  background: calSaveMsg.includes('Failed') ? 'var(--danger-light)' : 'var(--success-light)',
+                  border: `1px solid ${calSaveMsg.includes('Failed') ? 'var(--danger)' : 'var(--success)'}`,
+                  borderRadius: 8, padding: '6px 12px',
+                }}>
+                  {calSaveMsg.includes('Failed') ? '' : '✓ '}{calSaveMsg}
+                </div>
+              )}
             </div>
             {calLoading ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>Loading calendar…</div>
@@ -786,6 +802,7 @@ export default function AthletePage() {
                 role="athlete"
                 onAddEvent={(date) => setAddEventModal(date)}
                 onDeleteEvent={deleteCalEvent}
+                onMonthChange={m => setCalMonth(m)}
               />
             )}
 

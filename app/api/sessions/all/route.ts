@@ -38,7 +38,6 @@ export async function GET(req: NextRequest) {
       id,
       session_name,
       summary,
-      transcript,
       shared_with_athlete,
       sport_context,
       created_at,
