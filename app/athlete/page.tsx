@@ -156,6 +156,8 @@ export default function AthletePage() {
           const first = profile?.first_name ?? athRecord.first_name ?? ''
           const last = profile?.last_name ?? athRecord.last_name ?? ''
           setAthleteName(`${first} ${last}`.trim() || (user.email ?? 'Athlete'))
+          // Mark this athlete as ACTIVE on their first portal visit
+          fetch('/api/athlete/activate', { method: 'POST' }).catch(() => {})
         } else {
           const first = profile?.first_name ?? ''
           const last = profile?.last_name ?? ''

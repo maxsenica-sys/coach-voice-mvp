@@ -30,12 +30,14 @@ async function makeQuickSummary(transcript: string) {
   if (!key) return null
 
   const prompt = `
-You are a sports coach assistant. Create a short "quick scan" summary of this coaching transcript.
+You are a sports coach assistant. Summarise this coaching session in 2–5 bullet points.
 
-Rules:
-- 2–5 bullet points max
-- Keep it concise (aim < 350 characters total if possible)
-- Focus on: key outcomes, key coaching cues, key issues/injuries, and next actions.
+Critical rules:
+- ONLY include points about things that actually happened or were explicitly mentioned
+- Do NOT write empty categories, "N/A", "None", or placeholder text
+- Each bullet must be specific and factual — skip any category with nothing to say
+- Total output under 300 characters if possible
+- Start each bullet with •
 
 Transcript:
 ${transcript}
