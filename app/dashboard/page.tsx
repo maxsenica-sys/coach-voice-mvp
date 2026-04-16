@@ -93,6 +93,38 @@ function Avatar({ initials, size = 38, bg = 'var(--coach-color)' }: { initials: 
   )
 }
 
+// ── Simple Toast (success / error) ───────────────────────────────
+interface SimpleToastData { id: string; message: string; type: 'success' | 'error' }
+
+function SimpleToast({ data, onDismiss }: { data: SimpleToastData; onDismiss: () => void }) {
+  const [leaving, setLeaving] = useState(false)
+  const dismiss = () => { setLeaving(true); setTimeout(onDismiss, 320) }
+  useEffect(() => { const t = setTimeout(dismiss, 4000); return () => clearTimeout(t) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const isSuccess = data.type === 'success'
+  return (
+    <div style={{
+      background: isSuccess ? 'var(--success)' : 'var(--danger)',
+      color: '#fff',
+      borderRadius: 12,
+      overflow: 'hidden',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+      animation: leaving ? 'toastOut 0.32s ease forwards' : 'toastIn 0.35s ease',
+      minWidth: 240,
+      maxWidth: 340,
+      width: '100%',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
+        <span style={{ fontSize: 16 }}>{isSuccess ? '✓' : '✕'}</span>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{data.message}</span>
+        <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+      </div>
+      <div style={{ height: 3, background: 'rgba(255,255,255,0.2)' }}>
+        <div style={{ height: '100%', background: 'rgba(255,255,255,0.6)', animation: 'toastProgress 4s linear forwards' }} />
+      </div>
+    </div>
+  )
+}
+
 // ── Join Toast ───────────────────────────────────────────────────
 interface JoinToastData { toastId: string; athlete: Athlete }
 
@@ -203,6 +235,13 @@ export default function DashboardPage() {
   const [joinToasts, setJoinToasts] = useState<JoinToastData[]>([])
   const athletesRef = useRef<Athlete[]>([])
   const [coachUserId, setCoachUserId] = useState<string | null>(null)
+
+  // Simple toasts (success/error)
+  const [simpleToasts, setSimpleToasts] = useState<SimpleToastData[]>([])
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    const id = `${Date.now()}-${Math.random()}`
+    setSimpleToasts(prev => [...prev, { id, message, type }])
+  }
 
   const [quickSessionOpen, setQuickSessionOpen] = useState(false)
   const [quickSessionAthleteId, setQuickSessionAthleteId] = useState<string | undefined>()
@@ -431,7 +470,14 @@ export default function DashboardPage() {
         setAddEventModal(null)
         setEventForm({ title: '', description: '', event_type: 'session', event_time: '' })
         await fetchCalendar(calMode, calTargetId, calMonth)
+        const label = calMode === 'group' ? 'Event added for group' : 'Event added to calendar'
+        showToast(`✓ ${label}`)
+      } else {
+        const json = await res.json().catch(() => ({}))
+        showToast(json?.error ?? 'Failed to save event', 'error')
       }
+    } catch {
+      showToast('Failed to save event', 'error')
     } finally { setEventSaving(false) }
   }
 
@@ -1243,7 +1289,7 @@ export default function DashboardPage() {
       )}
 
       {/* ════════ JOIN TOASTS ════════ */}
-      {joinToasts.length > 0 && (
+      {(joinToasts.length > 0 || simpleToasts.length > 0) && (
         <div style={{
           position: 'fixed',
           bottom: isMobile ? 'calc(env(safe-area-inset-bottom) + 72px)' : 24,
@@ -1255,6 +1301,13 @@ export default function DashboardPage() {
           gap: 10,
           alignItems: 'flex-end',
         }}>
+          {simpleToasts.map(t => (
+            <SimpleToast
+              key={t.id}
+              data={t}
+              onDismiss={() => setSimpleToasts(prev => prev.filter(x => x.id !== t.id))}
+            />
+          ))}
           {joinToasts.map(t => (
             <JoinToast
               key={t.toastId}

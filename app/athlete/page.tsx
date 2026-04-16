@@ -95,6 +95,7 @@ export default function AthletePage() {
   const [addEventModal, setAddEventModal] = useState<string | null>(null) // date string
   const [eventForm, setEventForm] = useState({ title: '', description: '', event_type: 'reminder', event_time: '' })
   const [eventSaving, setEventSaving] = useState(false)
+  const [calSaveMsg, setCalSaveMsg] = useState('')
 
   // Videos
   const [sessionVideos, setSessionVideos] = useState<Record<string, SessionVideo[]>>({})
@@ -363,6 +364,7 @@ export default function AthletePage() {
   const saveCalendarEvent = async () => {
     if (!addEventModal || !eventForm.title.trim() || !athleteId) return
     setEventSaving(true)
+    setCalSaveMsg('')
     try {
       const res = await fetch('/api/calendar', {
         method: 'POST',
@@ -381,7 +383,14 @@ export default function AthletePage() {
         setCalEvents((prev) => [...prev, json.event])
         setAddEventModal(null)
         setEventForm({ title: '', description: '', event_type: 'reminder', event_time: '' })
+        setCalSaveMsg('Event added!')
+        setTimeout(() => setCalSaveMsg(''), 3000)
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setCalSaveMsg(json?.error ?? 'Failed to save event')
       }
+    } catch {
+      setCalSaveMsg('Failed to save event')
     } finally {
       setEventSaving(false)
     }
@@ -764,11 +773,24 @@ export default function AthletePage() {
         {/* ─── Tab: Calendar ─── */}
         {tab === 'calendar' && (
           <div className="card" style={{ padding: 24 }}>
-            <div style={{ marginBottom: 20 }}>
-              <div className="section-title">My Calendar</div>
-              <div className="section-sub">
-                Coach-scheduled events (in blue/coloured) plus your own personal entries. Coaches only see what they've added.
+            <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div className="section-title">My Calendar</div>
+                <div className="section-sub">
+                  Coach-scheduled events (in blue/coloured) plus your own personal entries. Coaches only see what they've added.
+                </div>
               </div>
+              {calSaveMsg && (
+                <div style={{
+                  fontSize: 13, fontWeight: 700,
+                  color: calSaveMsg.includes('Failed') ? 'var(--danger)' : 'var(--success)',
+                  background: calSaveMsg.includes('Failed') ? 'var(--danger-light)' : 'var(--success-light)',
+                  border: `1px solid ${calSaveMsg.includes('Failed') ? 'var(--danger)' : 'var(--success)'}`,
+                  borderRadius: 8, padding: '6px 12px',
+                }}>
+                  {calSaveMsg.includes('Failed') ? '' : '✓ '}{calSaveMsg}
+                </div>
+              )}
             </div>
             {calLoading ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>Loading calendar…</div>
