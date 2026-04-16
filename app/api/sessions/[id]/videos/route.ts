@@ -68,7 +68,12 @@ export async function GET(
   return attach(NextResponse.json({ videos: withUrls }), cookiesToSet)
 }
 
-/** POST /api/sessions/[id]/videos — upload a video file */
+/** POST /api/sessions/[id]/videos
+ * Two modes:
+ *  1. JSON body { path, file_name, mime_type } — register a file already uploaded
+ *     directly to Supabase via a signed upload URL (fast path, no double-transfer)
+ *  2. FormData with 'file' field — legacy server-side upload (fallback)
+ */
 export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
@@ -92,6 +97,42 @@ export async function POST(
     return attach(NextResponse.json({ error: 'Session not found or access denied.' }, { status: 403 }), cookiesToSet)
   }
 
+  const contentType = req.headers.get('content-type') ?? ''
+
+  // ── Mode 1: Register a directly-uploaded file ──────────────────
+  if (contentType.includes('application/json')) {
+    const body = await req.json().catch(() => ({}))
+    const { path: storagePath, file_name, mime_type } = body
+
+    if (!storagePath) {
+      return attach(NextResponse.json({ error: 'path is required.' }, { status: 400 }), cookiesToSet)
+    }
+
+    const { data: videoRow, error: insertErr } = await admin
+      .from('session_videos')
+      .insert({
+        session_id: sessionId,
+        storage_path: storagePath,
+        file_name: file_name ?? null,
+        mime_type: mime_type ?? 'video/mp4',
+        uploaded_by: user.id,
+      })
+      .select('id, session_id, storage_path, file_name, annotations, created_at')
+      .single()
+
+    if (insertErr) {
+      return attach(NextResponse.json({ error: insertErr.message }, { status: 500 }), cookiesToSet)
+    }
+
+    const { data: signed } = await admin.storage.from(BUCKET).createSignedUrl(storagePath, 60 * 60)
+
+    return attach(
+      NextResponse.json({ video: { ...videoRow, signedUrl: signed?.signedUrl ?? null } }, { status: 201 }),
+      cookiesToSet,
+    )
+  }
+
+  // ── Mode 2: Legacy server-side upload via FormData ─────────────
   const formData = await req.formData()
   const file = formData.get('file')
 

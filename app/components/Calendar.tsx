@@ -18,6 +18,7 @@ type Props = {
   role: 'coach' | 'athlete'
   onAddEvent?: (date: string) => void
   onDeleteEvent?: (id: string) => void
+  onMonthChange?: (monthStr: string) => void
   loading?: boolean
 }
 
@@ -61,28 +62,34 @@ function formatTime(time: string | null | undefined) {
   return `${hour}:${String(m).padStart(2, '0')}${period}`
 }
 
-export default function Calendar({ events, role, onAddEvent, onDeleteEvent, loading }: Props) {
+export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMonthChange, loading }: Props) {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
+  const toMonthStr = (y: number, m: number) =>
+    `${y}-${String(m + 1).padStart(2, '0')}`
+
   const prevMonth = () => {
-    if (month === 0) { setYear(y => y - 1); setMonth(11) }
-    else setMonth(m => m - 1)
-    setSelectedDate(null)
+    const newYear = month === 0 ? year - 1 : year
+    const newMonth = month === 0 ? 11 : month - 1
+    setYear(newYear); setMonth(newMonth); setSelectedDate(null)
+    onMonthChange?.(toMonthStr(newYear, newMonth))
   }
 
   const nextMonth = () => {
-    if (month === 11) { setYear(y => y + 1); setMonth(0) }
-    else setMonth(m => m + 1)
-    setSelectedDate(null)
+    const newYear = month === 11 ? year + 1 : year
+    const newMonth = month === 11 ? 0 : month + 1
+    setYear(newYear); setMonth(newMonth); setSelectedDate(null)
+    onMonthChange?.(toMonthStr(newYear, newMonth))
   }
 
   const goToday = () => {
     setYear(today.getFullYear())
     setMonth(today.getMonth())
     setSelectedDate(null)
+    onMonthChange?.(toMonthStr(today.getFullYear(), today.getMonth()))
   }
 
   // Index events by date

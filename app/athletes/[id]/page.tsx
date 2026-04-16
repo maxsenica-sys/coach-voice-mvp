@@ -328,27 +328,67 @@ export default function AthleteDetailPage() {
 
   const handleVideoUpload = (file: File, sessionId: string) => {
     setVideoProgress(prev => ({ ...prev, [sessionId]: 0 }))
-    setVideoEta(prev => ({ ...prev, [sessionId]: 'Calculating…' }))
-    const startTime = Date.now()
-    const fd = new FormData(); fd.append('file', file)
-    const xhr = new XMLHttpRequest()
-    xhr.upload.onprogress = e => {
-      if (!e.lengthComputable) return
-      const pct = Math.round((e.loaded / e.total) * 100)
-      setVideoProgress(prev => ({ ...prev, [sessionId]: pct }))
-      const elapsed = (Date.now() - startTime) / 1000
-      const rate = e.loaded / elapsed; const remaining = (e.total - e.loaded) / rate
-      setVideoEta(prev => ({ ...prev, [sessionId]: remaining < 5 ? 'Almost done…' : remaining < 60 ? `~${Math.ceil(remaining)}s remaining` : `~${Math.ceil(remaining / 60)}min remaining` }))
+    setVideoEta(prev => ({ ...prev, [sessionId]: 'Preparing…' }))
+
+    const doUpload = async () => {
+      try {
+        // Step 1: get a signed upload URL from our server (fast — no file transfer)
+        const urlRes = await fetch(
+          `/api/sessions/${sessionId}/videos/upload-url?` +
+          new URLSearchParams({ file_name: file.name, mime_type: file.type || 'video/mp4' })
+        )
+        if (!urlRes.ok) {
+          const j = await urlRes.json().catch(() => ({}))
+          throw new Error(j?.error ?? 'Failed to prepare upload')
+        }
+        const { signedUrl, path } = await urlRes.json()
+
+        // Step 2: upload directly to Supabase (browser → Supabase, no Next.js middleman)
+        const startTime = Date.now()
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.upload.onprogress = e => {
+            if (!e.lengthComputable) return
+            const pct = Math.round((e.loaded / e.total) * 100)
+            setVideoProgress(prev => ({ ...prev, [sessionId]: pct }))
+            const elapsed = (Date.now() - startTime) / 1000
+            const rate = e.loaded / elapsed
+            const remaining = (e.total - e.loaded) / rate
+            setVideoEta(prev => ({ ...prev, [sessionId]: remaining < 5 ? 'Almost done…' : remaining < 60 ? `~${Math.ceil(remaining)}s remaining` : `~${Math.ceil(remaining / 60)}min remaining` }))
+          }
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve()
+            else reject(new Error(`Upload failed (${xhr.status})`))
+          }
+          xhr.onerror = () => reject(new Error('Upload failed — check your connection.'))
+          xhr.open('POST', signedUrl)
+          const fd = new FormData()
+          fd.append('cacheControl', '3600')
+          fd.append('', file)
+          xhr.send(fd)
+        })
+
+        // Step 3: register the video row in our database
+        const regRes = await fetch(`/api/sessions/${sessionId}/videos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path, file_name: file.name, mime_type: file.type || 'video/mp4' }),
+        })
+        if (!regRes.ok) {
+          const j = await regRes.json().catch(() => ({}))
+          throw new Error(j?.error ?? 'Video uploaded but failed to save record')
+        }
+        const { video } = await regRes.json()
+        setSessionVideos(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), video] }))
+      } catch (err: any) {
+        setPageError(err?.message ?? 'Upload failed')
+      } finally {
+        setVideoProgress(prev => ({ ...prev, [sessionId]: null }))
+        setVideoEta(prev => ({ ...prev, [sessionId]: '' }))
+      }
     }
-    xhr.onload = () => {
-      setVideoProgress(prev => ({ ...prev, [sessionId]: null })); setVideoEta(prev => ({ ...prev, [sessionId]: '' }))
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try { const { video } = JSON.parse(xhr.responseText); setSessionVideos(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), video] })) }
-        catch { setPageError('Upload succeeded but response was unreadable.') }
-      } else { try { setPageError(JSON.parse(xhr.responseText)?.error ?? `Upload failed (${xhr.status})`) } catch { setPageError(`Upload failed (${xhr.status})`) } }
-    }
-    xhr.onerror = () => { setVideoProgress(prev => ({ ...prev, [sessionId]: null })); setPageError('Upload failed — check your connection.') }
-    xhr.open('POST', `/api/sessions/${sessionId}/videos`); xhr.send(fd)
+
+    void doUpload()
   }
 
   const saveAnnotations = async (sessionId: string, videoId: string, annotations: AnnotationStroke[]) => {

@@ -89,7 +89,7 @@ export default function AthletePage() {
   // Calendar
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
   const [calLoading, setCalLoading] = useState(false)
-  const [calMonth] = useState(() => {
+  const [calMonth, setCalMonth] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
   const [addEventModal, setAddEventModal] = useState<string | null>(null) // date string
@@ -128,24 +128,27 @@ export default function AthletePage() {
 
         setUserId(user.id)
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role, first_name, last_name, sport')
-          .eq('id', user.id)
-          .single()
+        // Fetch profile, athlete record, sessions, and notes all in parallel
+        const [
+          { data: profile },
+          { data: athRecord },
+          { data: sessData },
+          notesRes,
+        ] = await Promise.all([
+          supabase.from('profiles').select('role, first_name, last_name, sport').eq('id', user.id).single(),
+          supabase.from('athletes').select('id, first_name, last_name').eq('athlete_user_id', user.id).maybeSingle(),
+          supabase.from('sessions')
+            .select('id, session_name, title, summary, transcript, shared_with_athlete, created_at, sport_context')
+            .eq('shared_with_athlete', true)
+            .order('created_at', { ascending: false }),
+          fetch('/api/athlete-notes', { cache: 'no-store' }),
+        ])
+
+        if (cancelled) return
 
         if (profile?.role === 'coach') { router.push('/dashboard'); return }
 
         setSport(profile?.sport ?? '')
-
-        // Resolve athlete record
-        const { data: athRecord } = await supabase
-          .from('athletes')
-          .select('id, first_name, last_name')
-          .eq('athlete_user_id', user.id)
-          .single()
-
-        if (cancelled) return
 
         if (athRecord) {
           setAthleteId(athRecord.id)
@@ -159,17 +162,8 @@ export default function AthletePage() {
           setError('no-athlete-record')
         }
 
-        // Load sessions (only shared)
-        const { data: sessData } = await supabase
-          .from('sessions')
-          .select('id, session_name, title, summary, transcript, shared_with_athlete, created_at, sport_context')
-          .eq('shared_with_athlete', true)
-          .order('created_at', { ascending: false })
+        setSessions((sessData ?? []) as SessionRow[])
 
-        if (!cancelled) setSessions((sessData ?? []) as SessionRow[])
-
-        // Load all athlete notes
-        const notesRes = await fetch('/api/athlete-notes', { cache: 'no-store' })
         const notesJson = await notesRes.json().catch(() => ({}))
         if (!cancelled) setNotes(notesJson.notes ?? [])
 
@@ -786,6 +780,7 @@ export default function AthletePage() {
                 role="athlete"
                 onAddEvent={(date) => setAddEventModal(date)}
                 onDeleteEvent={deleteCalEvent}
+                onMonthChange={m => setCalMonth(m)}
               />
             )}
 

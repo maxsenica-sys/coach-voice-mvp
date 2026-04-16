@@ -21,7 +21,7 @@ interface Group {
 }
 interface Session {
   id: string; session_name: string | null; summary: string | null
-  transcript: string; shared_with_athlete: boolean; created_at: string
+  shared_with_athlete: boolean; created_at: string
   athlete_id: string; athletes?: { id: string; first_name: string; last_name: string; email: string }
 }
 
@@ -1029,7 +1029,7 @@ export default function DashboardPage() {
                   </div>
                   {calLoading
                     ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 30 }}>Loading…</div>
-                    : <Calendar events={calEvents} role="coach" onAddEvent={date => setAddEventModal({ date })} onDeleteEvent={deleteEvent} />
+                    : <Calendar events={calEvents} role="coach" onAddEvent={date => setAddEventModal({ date })} onDeleteEvent={deleteEvent} onMonthChange={m => setCalMonth(m)} />
                   }
                 </div>
               </div>
