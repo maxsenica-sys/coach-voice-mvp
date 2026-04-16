@@ -105,7 +105,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     setTranscribing(true)
     try {
       const fd = new FormData()
-      fd.append('audio', blob, 'recording.webm')
+      fd.append('file', new File([blob], 'recording.webm', { type: 'audio/webm' }))
 
       const selectedAthlete = athletes.find((a) => a.id === athleteId)
       // Could pass sport here if we had it on athlete — left as default for now

@@ -363,7 +363,7 @@ export default function AthleteDetailPage() {
   }
 
   const toggleVideoShare = async (sessionId: string, videoId: string, current: boolean) => {
-    await fetch(`/api/sessions/${sessionId}/videos`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ video_id: videoId, shared_with_athlete: !current }) })
+    await fetch(`/api/sessions/${sessionId}/videos?video_id=${videoId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shared_with_athlete: !current }) })
     setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).map(v => v.id === videoId ? { ...v, shared_with_athlete: !current } as any : v) }))
   }
 
