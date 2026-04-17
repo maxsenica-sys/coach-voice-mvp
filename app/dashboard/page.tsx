@@ -61,12 +61,12 @@ const NAV_ITEMS: { key: Tab; icon: string; label: string }[] = [
   { key: 'messages', icon: 'messages', label: 'Messages' },
   { key: 'settings', icon: 'settings', label: 'Settings' },
 ]
+// FAB is rendered as the center slot — 2 items each side
 const BOTTOM_NAV: { key: Tab; icon: string; label: string }[] = [
   { key: 'home',     icon: 'home',     label: 'Home'     },
   { key: 'athletes', icon: 'athletes', label: 'Athletes' },
-  { key: 'sessions', icon: 'sessions', label: 'Sessions' },
-  { key: 'messages', icon: 'messages', label: 'Messages' },
   { key: 'calendar', icon: 'calendar', label: 'Calendar' },
+  { key: 'settings', icon: 'settings', label: 'Settings' },
 ]
 
 // ── Sidebar item style ───────────────────────────────────────────
@@ -761,12 +761,17 @@ export default function DashboardPage() {
               </div>
               <span style={{ fontWeight: 900, fontSize: 17, letterSpacing: -0.3, color: '#fff' }}>CoachVoice</span>
             </div>
-            <button
-              onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
-              style={{ padding: '7px 14px', fontSize: 13, gap: 6, fontWeight: 800, background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '0 2px 10px rgb(99 102 241 / .4)' }}
-            >
-              <Icon name="mic" size={14} /> Record
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {totalUnreadAll > 0 && (
+                <button onClick={() => setTab('messages')} style={{ position: 'relative', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
+                  <Icon name="messages" size={16} />
+                  <span style={{ position: 'absolute', top: -4, right: -4, background: 'var(--energy)', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>{totalUnreadAll}</span>
+                </button>
+              )}
+              <button onClick={() => setTab('settings')} style={{ background: tab === 'settings' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
+                <Icon name="settings" size={16} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -1280,40 +1285,85 @@ export default function DashboardPage() {
       {isMobile && (
         <nav style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
-          background: 'rgba(255,255,255,0.92)',
+          background: 'rgba(255,255,255,0.94)',
           backdropFilter: 'blur(20px)',
           borderTop: '1px solid var(--border)',
-          display: 'flex', alignItems: 'stretch',
+          display: 'flex', alignItems: 'flex-end',
           paddingBottom: 'max(env(safe-area-inset-bottom), 8px)',
         }}>
-          {BOTTOM_NAV.map(item => {
-            const unread = item.key === 'messages' ? totalUnreadAll : 0
+          {/* Left 2 items */}
+          {BOTTOM_NAV.slice(0, 2).map(item => {
             const active = tab === item.key
             return (
               <button key={item.key} onClick={() => setTab(item.key)} style={{
                 flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', gap: 'clamp(2px, 0.8vw, 4px)',
-                padding: 'clamp(10px, 2.5vh, 16px) 0',
+                justifyContent: 'center', gap: 3,
+                padding: 'clamp(10px, 2.5vh, 14px) 0 8px',
                 border: 'none', background: 'none', cursor: 'pointer',
                 position: 'relative', transition: 'all 0.15s ease',
               }}>
                 <div style={{
-                  width: 42, height: 32, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 40, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: active ? 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)' : 'transparent',
                   transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
-                  transform: active ? 'scale(1.05)' : 'scale(1)',
+                  transform: active ? 'scale(1.08)' : 'scale(1)',
                   boxShadow: active ? '0 3px 12px rgb(99 102 241 / .35)' : 'none',
                 }}>
                   <div style={{ color: active ? '#fff' : 'var(--text-muted)' }}>
-                    <Icon name={item.icon} size={Math.round(typeof window !== 'undefined' ? Math.min(22, Math.max(17, window.innerWidth * 0.052)) : 20)} />
+                    <Icon name={item.icon} size={19} />
                   </div>
                 </div>
-                {unread > 0 && (
-                  <span style={{ position: 'absolute', top: 'clamp(5px, 1.5vh, 10px)', right: '50%', transform: 'translateX(14px)', background: 'var(--energy)', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
-                    {unread}
-                  </span>
-                )}
-                <span style={{ fontSize: 'clamp(9px, 2.2vw, 11px)', fontWeight: active ? 800 : 500, lineHeight: 1, color: active ? 'var(--primary)' : 'var(--text-muted)' }}>{item.label}</span>
+                <span style={{ fontSize: 10, fontWeight: active ? 800 : 500, lineHeight: 1, color: active ? 'var(--primary)' : 'var(--text-muted)' }}>{item.label}</span>
+              </button>
+            )
+          })}
+
+          {/* Center FAB slot */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 8, position: 'relative' }}>
+            <button
+              onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
+              style={{
+                width: 60, height: 60,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)',
+                border: '4px solid rgba(255,255,255,0.94)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 6px 24px rgb(99 102 241 / .55)',
+                position: 'absolute',
+                bottom: 'calc(50% + 4px)',
+                transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
+                color: '#fff',
+              }}
+            >
+              <Icon name="mic" size={26} strokeWidth={2.5} />
+            </button>
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--primary)', lineHeight: 1, marginTop: 2, paddingTop: 'clamp(10px, 2.5vh, 14px)' }}>Record</span>
+          </div>
+
+          {/* Right 2 items */}
+          {BOTTOM_NAV.slice(2).map(item => {
+            const active = tab === item.key
+            return (
+              <button key={item.key} onClick={() => setTab(item.key)} style={{
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 3,
+                padding: 'clamp(10px, 2.5vh, 14px) 0 8px',
+                border: 'none', background: 'none', cursor: 'pointer',
+                position: 'relative', transition: 'all 0.15s ease',
+              }}>
+                <div style={{
+                  width: 40, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: active ? 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)' : 'transparent',
+                  transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
+                  transform: active ? 'scale(1.08)' : 'scale(1)',
+                  boxShadow: active ? '0 3px 12px rgb(99 102 241 / .35)' : 'none',
+                }}>
+                  <div style={{ color: active ? '#fff' : 'var(--text-muted)' }}>
+                    <Icon name={item.icon} size={19} />
+                  </div>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: active ? 800 : 500, lineHeight: 1, color: active ? 'var(--primary)' : 'var(--text-muted)' }}>{item.label}</span>
               </button>
             )
           })}

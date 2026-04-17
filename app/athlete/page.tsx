@@ -385,12 +385,12 @@ export default function AthletePage() {
         }),
       })
       if (res.ok) {
-        const json = await res.json()
-        setCalEvents((prev) => [...prev, json.event])
         setAddEventModal(null)
         setEventForm({ title: '', description: '', event_type: 'reminder', event_time: '' })
         setCalSaveMsg('Event added!')
         setTimeout(() => setCalSaveMsg(''), 3000)
+        // Refetch from DB so the calendar grid updates immediately
+        await fetchCalendar(calMonth)
       } else {
         const json = await res.json().catch(() => ({}))
         setCalSaveMsg(json?.error ?? 'Failed to save event')
