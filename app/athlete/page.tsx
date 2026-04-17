@@ -364,7 +364,11 @@ export default function AthletePage() {
 
   // ── Calendar event ─────────────────────────────────────────
   const saveCalendarEvent = async () => {
-    if (!addEventModal || !eventForm.title.trim() || !athleteId) return
+    if (!addEventModal || !eventForm.title.trim()) return
+    if (!athleteId) {
+      setCalSaveMsg('You need to join a coach before adding calendar events.')
+      return
+    }
     setEventSaving(true)
     setCalSaveMsg('')
     try {
@@ -447,97 +451,111 @@ export default function AthletePage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       {/* Header */}
-      <header style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100 }}>
+      <header style={{
+        background: 'linear-gradient(135deg, #0f172a 0%, #0c4a6e 60%, #0369a1 100%)',
+        position: 'sticky', top: 0, zIndex: 100,
+        boxShadow: '0 4px 20px rgb(3 105 161 / .25)',
+      }}>
         <div style={{ maxWidth: 1000, margin: '0 auto', padding: '0 20px', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 20 }}>🎙️</span>
-            <span style={{ fontWeight: 900, fontSize: 17, letterSpacing: -0.3 }}>CoachVoice</span>
-            <span className="badge badge-athlete" style={{ fontSize: 11 }}>Athlete Portal</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, var(--athlete-color) 0%, #0284c7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgb(14 165 233 / .4)', fontSize: 16 }}>🎙️</div>
+            <span style={{ fontWeight: 900, fontSize: 17, letterSpacing: -0.3, color: '#fff' }}>CoachVoice</span>
+            <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(14,165,233,0.25)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(14,165,233,0.4)', letterSpacing: 0.5, textTransform: 'uppercase' }}>Athlete</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 14, color: 'var(--text-2)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{athleteName}</span>
-            {sport && <span className="badge badge-session">{sport}</span>}
-            <button className="btn btn-ghost" onClick={logout} style={{ padding: '6px 14px' }}>Log out</button>
+            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{athleteName}</span>
+            {sport && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>{sport}</span>}
+            <button onClick={logout} style={{ padding: '5px 12px', fontSize: 12, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, cursor: 'pointer', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>Log out</button>
           </div>
         </div>
       </header>
 
-      <main style={{ maxWidth: 1000, margin: '0 auto', padding: '28px 20px' }}>
+      <main style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '16px' : '28px 20px' }}>
         {/* No athlete record — show join form */}
         {error === 'no-athlete-record' && (
-          <div className="card" style={{ padding: 28, marginBottom: 24, borderColor: '#fde68a' }}>
-            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6 }}>Connect to your coach</div>
-            <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 16 }}>
-              Your account isn't linked to a coach yet. Enter your coach's invite code below to join their database, or wait for them to invite you by email.
+          <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 16, padding: 24, marginBottom: 20 }}>
+            <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 6, color: '#92400e' }}>🔗 Connect to your coach</div>
+            <p style={{ fontSize: 14, color: '#78350f', marginBottom: 16, margin: '0 0 16px' }}>
+              Your account isn't linked to a coach yet. Enter your coach's invite code below to get started.
             </p>
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <input
                 className="input"
                 placeholder="Coach invite code (e.g. smithjohn4821)"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toLowerCase().trim())}
-                style={{ maxWidth: 280, fontFamily: 'monospace' }}
+                style={{ maxWidth: 280, fontFamily: 'monospace', fontWeight: 700 }}
               />
-              <button className="btn btn-athlete" onClick={joinCoach} disabled={joinLoading || !joinCode.trim()}>
-                {joinLoading ? 'Joining…' : 'Join →'}
+              <button className="btn btn-energy" onClick={joinCoach} disabled={joinLoading || !joinCode.trim()}>
+                {joinLoading ? 'Joining…' : 'Join Team →'}
               </button>
             </div>
             {joinMsg && <p style={{ marginTop: 10, fontSize: 13, color: joinMsg.includes('Success') ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{joinMsg}</p>}
           </div>
         )}
 
-        {/* Stats bar */}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: isMobile ? 10 : 14, marginBottom: 20 }}>
-          {[
-            { label: 'Sessions shared', value: sessions.length, icon: '📋' },
-            { label: 'My notes', value: notes.length, icon: '📝' },
-            { label: 'Most recent', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—', icon: '📅' },
-          ].map((s, idx) => (
-            <div
-              key={s.label}
-              className="card"
-              style={{
-                padding: isMobile ? '12px 14px' : '16px 20px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: isMobile ? 10 : 14,
-                gridColumn: isMobile && idx === 2 ? 'span 2' : undefined,
-              }}
-            >
-              <span style={{ fontSize: isMobile ? 20 : 24, flexShrink: 0 }}>{s.icon}</span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.value}</div>
-                <div style={{ fontSize: isMobile ? 11 : 12, color: 'var(--text-muted)' }}>{s.label}</div>
-              </div>
+        {/* Hero welcome + stats */}
+        <div style={{
+          background: 'linear-gradient(135deg, #0c4a6e 0%, #0369a1 50%, #0ea5e9 100%)',
+          borderRadius: 18, padding: isMobile ? '18px 16px' : '22px 24px',
+          marginBottom: 20, position: 'relative', overflow: 'hidden',
+          boxShadow: '0 8px 32px rgb(14 165 233 / .2)',
+        }}>
+          <div style={{ position: 'absolute', top: '-30%', right: '-5%', width: 180, height: 180, background: 'radial-gradient(circle, rgb(56 189 248 / .3) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
+          <div style={{ position: 'relative' }}>
+            <div style={{ fontSize: isMobile ? 13 : 14, color: 'rgba(255,255,255,0.6)', fontWeight: 700, marginBottom: 2 }}>Welcome back,</div>
+            <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 900, color: '#fff', letterSpacing: -0.5, marginBottom: 14, lineHeight: 1.1 }}>
+              {athleteName.split(' ')[0]} 🔥
             </div>
-          ))}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              {[
+                { label: 'Sessions', value: sessions.length },
+                { label: 'My Notes', value: notes.length },
+                { label: 'Last Session', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—' },
+              ].map((s, idx) => (
+                <div key={s.label} style={{
+                  background: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: isMobile ? '10px 10px' : '12px 14px',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  gridColumn: isMobile && idx === 2 ? 'span 3' : undefined,
+                }}>
+                  <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: -0.5 }}>{s.value}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 3, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 2, marginBottom: 24, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 4, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: isMobile ? 4 : 6, marginBottom: 20, flexWrap: 'wrap' }}>
           {([
-            { key: 'sessions',  label: '📋 Sessions' },
-            { key: 'messages',  label: '💬 Messages' },
-            { key: 'wellness',  label: '💚 Wellness' },
-            { key: 'calendar',  label: '📅 Calendar' },
-            { key: 'notes',     label: '📝 My Notes' },
-          ] as { key: Tab; label: string }[]).map((t) => (
+            { key: 'sessions',  label: 'Sessions',  emoji: '📋' },
+            { key: 'messages',  label: 'Messages',  emoji: '💬' },
+            { key: 'wellness',  label: 'Wellness',  emoji: '💚' },
+            { key: 'calendar',  label: 'Calendar',  emoji: '📅' },
+            { key: 'notes',     label: 'My Notes',  emoji: '📝' },
+          ] as { key: Tab; label: string; emoji: string }[]).map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               style={{
-                padding: '8px 18px',
-                borderRadius: 7,
-                border: 'none',
-                background: tab === t.key ? 'var(--athlete-color)' : 'transparent',
+                padding: isMobile ? '8px 12px' : '9px 18px',
+                borderRadius: 999,
+                border: tab === t.key ? 'none' : '1px solid var(--border)',
+                background: tab === t.key
+                  ? 'linear-gradient(135deg, var(--athlete-color) 0%, #0284c7 100%)'
+                  : 'var(--card)',
                 color: tab === t.key ? '#fff' : 'var(--text-2)',
-                fontWeight: tab === t.key ? 700 : 500,
-                fontSize: 14,
+                fontWeight: tab === t.key ? 800 : 600,
+                fontSize: isMobile ? 13 : 14,
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                transition: 'all 0.18s cubic-bezier(.34,1.56,.64,1)',
+                boxShadow: tab === t.key ? '0 3px 12px rgb(14 165 233 / .35)' : 'var(--shadow-sm)',
+                display: 'flex', alignItems: 'center', gap: 5,
+                transform: tab === t.key ? 'scale(1.02)' : 'scale(1)',
               }}
             >
-              {t.label}
+              <span style={{ fontSize: 14 }}>{t.emoji}</span> {t.label}
             </button>
           ))}
         </div>
@@ -546,11 +564,11 @@ export default function AthletePage() {
         {tab === 'sessions' && (
           <div>
             {sessions.length === 0 ? (
-              <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>No sessions yet</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-                  Your coach will share sessions with you here after each training.
+              <div style={{ background: 'linear-gradient(135deg, var(--primary-light) 0%, #e0f2fe 100%)', border: '1px solid var(--border)', borderRadius: 18, padding: 40, textAlign: 'center' }}>
+                <div style={{ fontSize: 48, marginBottom: 14 }}>📋</div>
+                <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8, color: 'var(--text)' }}>No sessions yet</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 14, maxWidth: 300, margin: '0 auto' }}>
+                  Your coach will share sessions with you here after each training. Keep grinding! 💪
                 </div>
               </div>
             ) : (
@@ -579,20 +597,22 @@ export default function AthletePage() {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--athlete-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
-                            📋
+                          <div style={{ width: 44, height: 44, borderRadius: 12, background: isOpen ? 'linear-gradient(135deg, var(--athlete-color) 0%, #0284c7 100%)' : 'var(--athlete-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0, transition: 'all 0.2s ease', boxShadow: isOpen ? '0 4px 12px rgb(14 165 233 / .3)' : 'none' }}>
+                            🎙️
                           </div>
                           <div>
-                            <div style={{ fontWeight: 700, fontSize: 15 }}>{s.session_name ?? s.title ?? 'Session'}</div>
+                            <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{s.session_name ?? s.title ?? 'Session'}</div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                               {fmtDateTime(s.created_at)}
                               {s.sport_context ? ` · ${s.sport_context}` : ''}
-                              {sNotes.length > 0 && ` · 📝 ${sNotes.length} note${sNotes.length !== 1 ? 's' : ''}`}
-                              {sVideos.length > 0 && ` · 🎬 ${sVideos.length} video${sVideos.length !== 1 ? 's' : ''}`}
+                              {sNotes.length > 0 && ` · 📝 ${sNotes.length}`}
+                              {sVideos.length > 0 && ` · 🎬 ${sVideos.length}`}
                             </div>
                           </div>
                         </div>
-                        <span style={{ color: 'var(--text-muted)', fontSize: 18 }}>{isOpen ? '▲' : '▼'}</span>
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: isOpen ? 'var(--primary)' : 'var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
+                          <span style={{ color: isOpen ? '#fff' : 'var(--text-muted)', fontSize: 13, fontWeight: 900, lineHeight: 1 }}>{isOpen ? '▲' : '▼'}</span>
+                        </div>
                       </button>
 
                       {/* Session body */}
@@ -601,10 +621,10 @@ export default function AthletePage() {
                           {/* Coach summary */}
                           {s.summary && (
                             <div style={{ marginTop: 16 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                                Coach Summary
+                              <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--athlete-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                🎯 Coach Summary
                               </div>
-                              <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text)', whiteSpace: 'pre-wrap', background: 'var(--border-soft)', padding: '14px 16px', borderRadius: 10 }}>
+                              <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text)', whiteSpace: 'pre-wrap', background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)', padding: '14px 16px', borderRadius: 12, border: '1px solid #bae6fd' }}>
                                 {s.summary}
                               </div>
                             </div>
@@ -1006,8 +1026,13 @@ export default function AthletePage() {
                 <textarea className="input" rows={2} value={eventForm.description} onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })} />
               </div>
             </div>
+            {calSaveMsg && (
+              <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: calSaveMsg.includes('added') ? 'var(--success-light)' : 'var(--danger-light)', color: calSaveMsg.includes('added') ? 'var(--success)' : 'var(--danger)', fontSize: 13, fontWeight: 600 }}>
+                {calSaveMsg}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-              <button className="btn btn-ghost" onClick={() => setAddEventModal(null)} style={{ flex: 1 }}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setAddEventModal(null); setCalSaveMsg('') }} style={{ flex: 1 }}>Cancel</button>
               <button className="btn btn-athlete btn-lg" onClick={saveCalendarEvent} disabled={eventSaving || !eventForm.title.trim()} style={{ flex: 2 }}>
                 {eventSaving ? 'Saving…' : 'Add event'}
               </button>
