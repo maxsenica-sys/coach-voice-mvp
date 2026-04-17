@@ -343,7 +343,9 @@ export default function AthleteDetailPage() {
         }
         const { signedUrl, path } = await urlRes.json()
 
-        // Step 2: upload directly to Supabase (browser → Supabase, no Next.js middleman)
+        // Step 2: upload directly to Supabase via PUT (browser → Supabase, no Next.js middleman)
+        // PUT with direct file body is the correct method for Supabase signed upload URLs —
+        // it skips multipart parsing overhead and is significantly faster than POST + FormData.
         const startTime = Date.now()
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest()
@@ -363,11 +365,10 @@ export default function AthleteDetailPage() {
             else reject(new Error(`Upload failed (${xhr.status})`))
           }
           xhr.onerror = () => reject(new Error('Upload failed — check your connection.'))
-          xhr.open('POST', signedUrl)
-          const fd = new FormData()
-          fd.append('cacheControl', '3600')
-          fd.append('', file)
-          xhr.send(fd)
+          xhr.open('PUT', signedUrl)
+          xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
+          xhr.setRequestHeader('x-upsert', 'false')
+          xhr.send(file)
         })
 
         // Step 3: register the video row in our database

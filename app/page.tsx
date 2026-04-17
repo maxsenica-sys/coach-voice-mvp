@@ -51,7 +51,7 @@ export default function Home() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 50%, #1d4ed8 100%)',
+      background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 40%, #312e81 70%, #6366f1 100%)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -76,8 +76,8 @@ export default function Home() {
           <h1 style={{ color: '#fff', fontSize: 28, fontWeight: 900, margin: 0, letterSpacing: -0.5 }}>
             CoachVoice
           </h1>
-          <p style={{ color: 'rgba(255,255,255,0.7)', marginTop: 6, fontSize: 14 }}>
-            AI-powered coaching, simplified.
+          <p style={{ color: 'rgba(255,255,255,0.65)', marginTop: 6, fontSize: 14, fontWeight: 500 }}>
+            Level up your game. 🔥
           </p>
         </div>
 

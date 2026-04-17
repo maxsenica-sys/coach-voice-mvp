@@ -664,28 +664,55 @@ export default function DashboardPage() {
       {/* ════════ DESKTOP SIDEBAR ════════ */}
       {!isMobile && (
         <nav style={{
-          width: 220, minWidth: 220, background: 'var(--card)', borderRight: '1px solid var(--border)',
+          width: 220, minWidth: 220,
+          background: 'linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%)',
           display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', zIndex: 100,
         }}>
           {/* Logo */}
-          <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ padding: '22px 18px 18px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--coach-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', flexShrink: 0 }}>
-                <Icon name="mic" size={17} strokeWidth={2.5} />
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 12px rgb(99 102 241 / .4)' }}>
+                <Icon name="mic" size={18} strokeWidth={2.5} />
               </div>
               <div>
-                <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: -0.3, lineHeight: 1.1 }}>CoachVoice</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Coach Portal</div>
+                <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: -0.3, lineHeight: 1.1, color: '#fff' }}>CoachVoice</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', letterSpacing: 0.5 }}>COACH PORTAL</div>
               </div>
             </div>
           </div>
 
+          {/* Record button */}
+          <div style={{ padding: '0 12px 12px' }}>
+            <button
+              onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                padding: '11px 12px', fontSize: 14, fontWeight: 800,
+                background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)',
+                color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer',
+                boxShadow: '0 4px 16px rgb(99 102 241 / .5)',
+                transition: 'all 0.18s ease',
+              }}
+            >
+              <Icon name="mic" size={15} /> Record Session
+            </button>
+          </div>
+
           {/* Nav items */}
-          <div style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ flex: 1, padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
             {NAV_ITEMS.map(item => {
               const unread = item.key === 'messages' ? totalUnreadAll : 0
+              const active = tab === item.key
               return (
-                <button key={item.key} onClick={() => setTab(item.key)} style={sideItem(tab === item.key)}>
+                <button key={item.key} onClick={() => setTab(item.key)} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '9px 12px', borderRadius: 9, border: 'none', width: '100%',
+                  background: active ? 'rgba(99,102,241,0.25)' : 'transparent',
+                  color: active ? '#fff' : 'rgba(255,255,255,0.55)',
+                  fontWeight: active ? 700 : 500, fontSize: 13,
+                  cursor: 'pointer', textAlign: 'left' as const, transition: 'all 0.12s',
+                  borderLeft: active ? '3px solid var(--primary)' : '3px solid transparent',
+                }}>
                   <Icon name={item.icon} size={17} />
                   <span style={{ flex: 1 }}>{item.label}</span>
                   {unread > 0 && (
@@ -696,27 +723,18 @@ export default function DashboardPage() {
                 </button>
               )
             })}
-            <div style={{ marginTop: 10 }}>
-              <button
-                onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
-                className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', gap: 8, padding: '11px 12px', fontSize: 14 }}
-              >
-                <Icon name="mic" size={15} /> Record Session
-              </button>
-            </div>
           </div>
 
           {/* Coach info */}
-          <div style={{ padding: '14px', borderTop: '1px solid var(--border)' }}>
+          <div style={{ padding: '14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <Avatar initials={coachInitials} size={34} bg="var(--coach-color)" />
+              <Avatar initials={coachInitials} size={34} bg="linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)" />
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{coachName}</div>
-                {coachSport && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{coachSport}</div>}
+                <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#fff' }}>{coachName}</div>
+                {coachSport && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{coachSport}</div>}
               </div>
             </div>
-            <button onClick={logout} className="btn btn-ghost" style={{ width: '100%', fontSize: 13, padding: 8, justifyContent: 'center', gap: 6 }}>
+            <button onClick={logout} style={{ width: '100%', fontSize: 13, padding: '8px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'rgba(255,255,255,0.55)', transition: 'all 0.12s' }}>
               <Icon name="signout" size={13} /> Sign Out
             </button>
           </div>
@@ -733,20 +751,19 @@ export default function DashboardPage() {
         {isMobile && (
           <div style={{
             position: 'sticky', top: 0, zIndex: 100,
-            background: 'var(--card)', borderBottom: '1px solid var(--border)',
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '0 16px', height: 56,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--coach-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
-                <Icon name="mic" size={14} strokeWidth={2.5} />
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgb(99 102 241 / .4)' }}>
+                <Icon name="mic" size={15} strokeWidth={2.5} />
               </div>
-              <span style={{ fontWeight: 900, fontSize: 16, letterSpacing: -0.3 }}>CoachVoice</span>
+              <span style={{ fontWeight: 900, fontSize: 17, letterSpacing: -0.3, color: '#fff' }}>CoachVoice</span>
             </div>
             <button
               onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
-              className="btn btn-primary"
-              style={{ padding: '7px 14px', fontSize: 13, gap: 6 }}
+              style={{ padding: '7px 14px', fontSize: 13, gap: 6, fontWeight: 800, background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '0 2px 10px rgb(99 102 241 / .4)' }}
             >
               <Icon name="mic" size={14} /> Record
             </button>
@@ -759,37 +776,50 @@ export default function DashboardPage() {
           {tab === 'home' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-              {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                <div>
-                  <h1 style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, margin: 0, letterSpacing: -0.5 }}>
-                    {greeting}{firstName ? `, ${firstName}` : ''}
-                  </h1>
-                  <p style={{ margin: '3px 0 0', color: 'var(--text-muted)', fontSize: 14 }}>
-                    {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-                  </p>
+              {/* Hero header */}
+              <div style={{
+                background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%)',
+                borderRadius: 18, padding: isMobile ? '20px 18px' : '24px 28px',
+                position: 'relative', overflow: 'hidden',
+                boxShadow: '0 8px 32px rgb(99 102 241 / .2)',
+              }}>
+                {/* Background glow */}
+                <div style={{ position: 'absolute', top: '-40%', right: '-5%', width: 220, height: 220, background: 'radial-gradient(circle, rgb(99 102 241 / .3) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', bottom: '-30%', left: '10%', width: 160, height: 160, background: 'radial-gradient(circle, rgb(14 165 233 / .2) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, position: 'relative' }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                      {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                    </div>
+                    <h1 style={{ fontSize: isMobile ? 22 : 28, fontWeight: 900, margin: 0, letterSpacing: -0.5, color: '#fff', lineHeight: 1.1 }}>
+                      {greeting}{firstName ? `, ${firstName}` : ''} 👋
+                    </h1>
+                    <p style={{ margin: '8px 0 0', color: 'rgba(255,255,255,0.55)', fontSize: 14 }}>
+                      {athletes.length > 0 ? `You have ${athletes.length} athlete${athletes.length !== 1 ? 's' : ''} on your roster.` : 'Ready to start coaching?'}
+                    </p>
+                  </div>
+                  {!isMobile && (
+                    <button
+                      onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
+                      style={{ padding: '12px 22px', fontSize: 15, gap: 8, fontWeight: 800, background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '0 4px 20px rgb(99 102 241 / .5)', flexShrink: 0, transition: 'all 0.18s ease' }}
+                    >
+                      <Icon name="mic" size={17} /> Record Session
+                    </button>
+                  )}
                 </div>
-                {!isMobile && (
-                  <button
-                    onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
-                    className="btn btn-primary btn-lg"
-                    style={{ gap: 8, flexShrink: 0 }}
-                  >
-                    <Icon name="mic" size={17} /> Record Session
-                  </button>
-                )}
               </div>
 
               {/* Stats strip */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
                 {[
-                  { label: 'Athletes',         value: athletes.length,       accent: 'var(--primary)' },
-                  { label: 'Sessions this week', value: thisWeek.length,      accent: 'var(--coach-color)' },
-                  { label: 'Unread messages',   value: totalUnreadAll,        accent: totalUnreadAll > 0 ? '#d97706' : 'var(--text-muted)' },
+                  { label: 'Athletes',          value: athletes.length,    color: 'var(--primary)',    bg: 'var(--primary-light)',   emoji: '👤' },
+                  { label: 'Sessions this week', value: thisWeek.length,   color: '#8b5cf6',           bg: '#f5f3ff',                emoji: '🎙️' },
+                  { label: 'Unread',             value: totalUnreadAll,    color: totalUnreadAll > 0 ? 'var(--energy)' : 'var(--text-muted)', bg: totalUnreadAll > 0 ? 'var(--energy-light)' : 'var(--border-soft)', emoji: '💬' },
                 ].map(stat => (
-                  <div key={stat.label} className="card" style={{ padding: '14px 16px' }}>
-                    <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900, color: stat.accent, lineHeight: 1, letterSpacing: -1 }}>{stat.value}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.3 }}>{stat.label}</div>
+                  <div key={stat.label} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 14px 12px', boxShadow: 'var(--shadow-sm)', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: stat.color, borderRadius: '14px 14px 0 0' }} />
+                    <div style={{ fontSize: isMobile ? 26 : 32, fontWeight: 900, color: stat.color, lineHeight: 1, letterSpacing: -1 }}>{stat.value}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.3, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{stat.label}</div>
                   </div>
                 ))}
               </div>
@@ -1250,9 +1280,11 @@ export default function DashboardPage() {
       {isMobile && (
         <nav style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
-          background: 'var(--card)', borderTop: '1px solid var(--border)',
+          background: 'rgba(255,255,255,0.92)',
+          backdropFilter: 'blur(20px)',
+          borderTop: '1px solid var(--border)',
           display: 'flex', alignItems: 'stretch',
-          paddingBottom: 'max(env(safe-area-inset-bottom), 12px)',
+          paddingBottom: 'max(env(safe-area-inset-bottom), 8px)',
         }}>
           {BOTTOM_NAV.map(item => {
             const unread = item.key === 'messages' ? totalUnreadAll : 0
@@ -1260,19 +1292,28 @@ export default function DashboardPage() {
             return (
               <button key={item.key} onClick={() => setTab(item.key)} style={{
                 flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', gap: 'clamp(2px, 0.8vw, 5px)',
-                padding: 'clamp(13px, 3vh, 20px) 0',
+                justifyContent: 'center', gap: 'clamp(2px, 0.8vw, 4px)',
+                padding: 'clamp(10px, 2.5vh, 16px) 0',
                 border: 'none', background: 'none', cursor: 'pointer',
-                color: active ? 'var(--primary)' : 'var(--text-muted)',
-                position: 'relative',
+                position: 'relative', transition: 'all 0.15s ease',
               }}>
-                <Icon name={item.icon} size={Math.round(typeof window !== 'undefined' ? Math.min(24, Math.max(18, window.innerWidth * 0.055)) : 22)} />
+                <div style={{
+                  width: 42, height: 32, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: active ? 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)' : 'transparent',
+                  transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
+                  transform: active ? 'scale(1.05)' : 'scale(1)',
+                  boxShadow: active ? '0 3px 12px rgb(99 102 241 / .35)' : 'none',
+                }}>
+                  <div style={{ color: active ? '#fff' : 'var(--text-muted)' }}>
+                    <Icon name={item.icon} size={Math.round(typeof window !== 'undefined' ? Math.min(22, Math.max(17, window.innerWidth * 0.052)) : 20)} />
+                  </div>
+                </div>
                 {unread > 0 && (
-                  <span style={{ position: 'absolute', top: 'clamp(7px, 2vh, 12px)', right: '50%', transform: 'translateX(10px)', background: 'var(--primary)', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
+                  <span style={{ position: 'absolute', top: 'clamp(5px, 1.5vh, 10px)', right: '50%', transform: 'translateX(14px)', background: 'var(--energy)', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
                     {unread}
                   </span>
                 )}
-                <span style={{ fontSize: 'clamp(9px, 2.4vw, 11px)', fontWeight: active ? 700 : 400, lineHeight: 1 }}>{item.label}</span>
+                <span style={{ fontSize: 'clamp(9px, 2.2vw, 11px)', fontWeight: active ? 800 : 500, lineHeight: 1, color: active ? 'var(--primary)' : 'var(--text-muted)' }}>{item.label}</span>
               </button>
             )
           })}
