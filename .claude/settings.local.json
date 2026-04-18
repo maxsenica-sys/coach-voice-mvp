@@ -23,7 +23,11 @@
       "Bash(curl -s https://api.github.com/user)",
       "Bash(git remote:*)",
       "Bash(git branch:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(wc -l /c/Users/pennywise/coach-voice-mvp/.claude/worktrees/quirky-pascal/app/api/**/route.ts)",
+      "Bash(grep -A 5 \"type CookieToSet\\\\|type CookieLike\" /c/Users/pennywise/coach-voice-mvp/.claude/worktrees/quirky-pascal/app/api/**/route.ts)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\pennywise\\\\coach-voice-mvp\\\\.claude\\\\worktrees\\\\quirky-pascal\\\\app\\\\api\\\\share\\\\clip\\\\[videoId]\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\pennywise\\\\coach-voice-mvp\\\\.claude\\\\worktrees\\\\quirky-pascal\\\\app\\\\share\\\\clip\\\\[videoId]\")"
     ]
   }
 }

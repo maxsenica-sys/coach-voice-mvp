@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { WELLNESS_METRICS, metricColor, scoreLabel, type MetricKey } from '@/lib/wellness-config'
+import { fmtShortDate as fmtDate } from '@/lib/date-utils'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Checkin {
@@ -19,39 +21,7 @@ interface Props {
   athleteId: string
 }
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-type MetricKey = 'energy' | 'mood' | 'sleep_q' | 'soreness' | 'stress'
-type MetricConfig = { key: MetricKey; label: string; color: string; icon: string; inverted?: boolean }
-
-const METRICS: MetricConfig[] = [
-  { key: 'energy',   label: 'Energy',  color: '#10b981', icon: '⚡' },
-  { key: 'mood',     label: 'Mood',    color: '#3b82f6', icon: '😊' },
-  { key: 'sleep_q',  label: 'Sleep',   color: '#8b5cf6', icon: '😴' },
-  { key: 'soreness', label: 'Soreness',color: '#f59e0b', icon: '💪', inverted: true },
-  { key: 'stress',   label: 'Stress',  color: '#ef4444', icon: '🧠', inverted: true },
-]
-
-function metricColor(key: MetricKey, score: number | null) {
-  const cfg = METRICS.find((m) => m.key === key)!
-  if (score === null) return '#94a3b8'
-  const val = cfg.inverted ? 6 - score : score
-  if (val >= 4) return '#10b981'
-  if (val >= 3) return '#f59e0b'
-  return '#ef4444'
-}
-
-function scoreLabel(key: MetricKey, score: number | null) {
-  if (score === null) return '—'
-  const cfg = METRICS.find((m) => m.key === key)!
-  const val = cfg.inverted ? 6 - score : score
-  if (val >= 4) return 'Good'
-  if (val >= 3) return 'OK'
-  return 'Low'
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' })
-}
+const METRICS = WELLNESS_METRICS
 
 // ─── SVG Line Chart ───────────────────────────────────────────────────────────
 function LineChart({ checkins, activeMetrics }: { checkins: Checkin[], activeMetrics: Set<MetricKey> }) {

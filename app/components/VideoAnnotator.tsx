@@ -16,6 +16,8 @@ type Props = {
   initialAnnotations?: AnnotationStroke[]
   onAnnotationsChange?: (strokes: AnnotationStroke[]) => void
   readOnly?: boolean
+  sessionId?: string
+  videoId?: string
 }
 
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#ffffff', '#000000']
@@ -31,7 +33,7 @@ function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
-export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAnnotationsChange, readOnly = false }: Props) {
+export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAnnotationsChange, readOnly = false, sessionId, videoId }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -45,6 +47,7 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
   const [strokeWidth, setStrokeWidth] = useState(4)
   const [duration, setDuration] = useState(-1)
   const [videoDimensions, setVideoDimensions] = useState({ w: 0, h: 0 })
+  const [shareCopied, setShareCopied] = useState(false)
 
   // Sync strokes to parent when changed
   const strokesRef = useRef(strokes)
@@ -195,6 +198,16 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
     notifyChange([])
   }
 
+  const copyShareLink = () => {
+    if (!sessionId || !videoId) return
+    const t = Math.round(videoRef.current?.currentTime ?? 0)
+    const url = `${window.location.origin}/share/clip/${videoId}?session=${sessionId}&t=${t}`
+    navigator.clipboard.writeText(url).then(() => {
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2500)
+    })
+  }
+
   return (
     <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* Video + canvas overlay */}
@@ -275,6 +288,16 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
             <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>
               {strokes.length} annotation{strokes.length !== 1 ? 's' : ''}
             </span>
+            {sessionId && videoId && (
+              <button
+                className="btn btn-ghost"
+                onClick={copyShareLink}
+                style={{ gap: 5, fontSize: 12, color: shareCopied ? 'var(--success)' : undefined }}
+                title="Copy link to current clip timestamp"
+              >
+                🔗 {shareCopied ? 'Copied!' : 'Share clip'}
+              </button>
+            )}
           </div>
 
           {drawMode && (

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+import { fmtTime, fmtDateDivider } from '@/lib/date-utils'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Athlete {
@@ -35,24 +36,6 @@ interface Props {
 
 function initials(a: Athlete) {
   return `${a.first_name?.[0] ?? ''}${a.last_name?.[0] ?? ''}`.toUpperCase()
-}
-
-function fmtTime(iso: string) {
-  const d = new Date(iso)
-  const now = new Date()
-  const isToday = d.toDateString() === now.toDateString()
-  if (isToday) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
-}
-
-function fmtDateDivider(iso: string) {
-  const d = new Date(iso)
-  const now = new Date()
-  const isToday = d.toDateString() === now.toDateString()
-  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1)
-  if (isToday) return 'Today'
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────

@@ -10,6 +10,13 @@ import WellnessGraph from '@/app/components/WellnessGraph'
 interface Athlete {
   id: string; first_name: string; last_name: string
   email: string; status?: string
+  photo_signed_url?: string | null
+  photo_url?: string | null
+  position?: string | null
+  height_cm?: number | null
+  sport_metrics?: Record<string, string>
+  goals?: string | null
+  custom_fields?: { label: string; value: string }[]
 }
 interface Session {
   id: string; session_name: string | null; summary: string | null
@@ -211,6 +218,21 @@ export default function AthleteDetailPage() {
   const [videoProgress, setVideoProgress] = useState<Record<string, number | null>>({})
   const [videoEta, setVideoEta] = useState<Record<string, string>>({})
 
+  // Profile editing
+  const [showProfile, setShowProfile] = useState(false)
+  const [profileForm, setProfileForm] = useState({
+    first_name: '', last_name: '', position: '', height_cm: '',
+    goals: '', sport_metrics: {} as Record<string, string>,
+    custom_fields: [] as { label: string; value: string }[],
+  })
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileMsg, setProfileMsg] = useState('')
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [metricKey, setMetricKey] = useState('')
+  const [metricVal, setMetricVal] = useState('')
+  const [customLabel, setCustomLabel] = useState('')
+  const [customVal, setCustomVal] = useState('')
+
   const load = async () => {
     if (!athleteId) return
     setLoading(true); setPageError(null)
@@ -224,6 +246,15 @@ export default function AthleteDetailPage() {
       if (!aRes.ok) throw new Error((await aRes.json().catch(() => ({}))).error ?? 'Failed to load athlete')
       const { athlete: a } = await aRes.json()
       setAthlete(a); setAutoMonthlyReport(a.auto_monthly_report ?? false)
+      setProfileForm({
+        first_name: a.first_name ?? '',
+        last_name: a.last_name ?? '',
+        position: a.position ?? '',
+        height_cm: a.height_cm != null ? String(a.height_cm) : '',
+        goals: a.goals ?? '',
+        sport_metrics: a.sport_metrics ?? {},
+        custom_fields: a.custom_fields ?? [],
+      })
       const sRes = await fetch(`/api/sessions?athlete_id=${encodeURIComponent(athleteId)}`)
       if (!sRes.ok) throw new Error((await sRes.json().catch(() => ({}))).error ?? 'Failed to load sessions')
       const { sessions: s } = await sRes.json()
@@ -410,6 +441,60 @@ export default function AthleteDetailPage() {
     setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).map(v => v.id === videoId ? { ...v, shared_with_athlete: !current } as any : v) }))
   }
 
+  const saveProfile = async () => {
+    setProfileSaving(true); setProfileMsg('')
+    try {
+      const body: any = {
+        first_name: profileForm.first_name.trim(),
+        last_name: profileForm.last_name.trim(),
+        position: profileForm.position.trim() || null,
+        height_cm: profileForm.height_cm ? parseFloat(profileForm.height_cm) : null,
+        goals: profileForm.goals.trim() || null,
+        sport_metrics: profileForm.sport_metrics,
+        custom_fields: profileForm.custom_fields,
+      }
+      const res = await fetch(`/api/athletes/${athleteId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Save failed')
+      const { athlete: updated } = await res.json()
+      setAthlete(prev => prev ? { ...prev, ...updated } : prev)
+      setProfileMsg('Saved!')
+      setTimeout(() => setProfileMsg(''), 3000)
+    } catch (e: any) { setProfileMsg(e?.message ?? 'Failed') }
+    finally { setProfileSaving(false) }
+  }
+
+  const uploadPhoto = async (file: File) => {
+    setPhotoUploading(true)
+    try {
+      // 1. Get signed upload URL
+      const urlRes = await fetch(`/api/athletes/${athleteId}/photo`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileType: file.type }),
+      })
+      if (!urlRes.ok) throw new Error('Failed to get upload URL')
+      const { uploadUrl, storagePath } = await urlRes.json()
+
+      // 2. Upload to storage
+      const uploadRes = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+      if (!uploadRes.ok) throw new Error('Upload failed')
+
+      // 3. Save photo_url to athlete record
+      const patchRes = await fetch(`/api/athletes/${athleteId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photo_url: storagePath }),
+      })
+      if (!patchRes.ok) throw new Error('Failed to save photo reference')
+
+      // 4. Reload athlete to get new signed URL
+      const reloadRes = await fetch(`/api/athletes/${athleteId}`)
+      const { athlete: a } = await reloadRes.json()
+      setAthlete(prev => prev ? { ...prev, photo_signed_url: a.photo_signed_url, photo_url: a.photo_url } : prev)
+    } catch (e: any) { setProfileMsg(e?.message ?? 'Photo upload failed') }
+    finally { setPhotoUploading(false) }
+  }
+
   // ── Render ────────────────────────────────────────────────────
   if (loading) return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -433,9 +518,13 @@ export default function AthleteDetailPage() {
           {athlete && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--coach-color)', color: '#fff', fontWeight: 900, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {(athlete.first_name?.[0] ?? '?').toUpperCase()}
-                </div>
+                {athlete.photo_signed_url ? (
+                  <img src={athlete.photo_signed_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid var(--border)' }} />
+                ) : (
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--coach-color)', color: '#fff', fontWeight: 900, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {(athlete.first_name?.[0] ?? '?').toUpperCase()}
+                  </div>
+                )}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{athlete.first_name} {athlete.last_name}</div>
                   {!isMobile && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: -1 }}>{athlete.email}</div>}
@@ -445,6 +534,9 @@ export default function AthleteDetailPage() {
               {/* Desktop action buttons inline */}
               {!isMobile && (
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button className={`btn ${showProfile ? 'btn-primary' : 'btn-ghost'}`} style={{ fontSize: 12, padding: '6px 12px', gap: 5 }} onClick={() => setShowProfile(v => !v)}>
+                    <Icon name="users" size={13} /> Profile
+                  </button>
                   <Link href="/dashboard" className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px', gap: 5 }}>
                     <Icon name="messages" size={13} /> Message
                   </Link>
@@ -463,6 +555,9 @@ export default function AthleteDetailPage() {
         {/* Mobile action strip */}
         {isMobile && athlete && (
           <div style={{ borderTop: '1px solid var(--border)', display: 'flex', overflowX: 'auto', padding: '8px 12px', gap: 8, WebkitOverflowScrolling: 'touch' as any }}>
+            <button className={`btn ${showProfile ? 'btn-primary' : 'btn-ghost'}`} style={{ fontSize: 12, padding: '6px 12px', gap: 5, flexShrink: 0 }} onClick={() => setShowProfile(v => !v)}>
+              <Icon name="users" size={13} /> Profile
+            </button>
             <Link href="/dashboard" className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px', gap: 5, flexShrink: 0 }}>
               <Icon name="messages" size={13} /> Message
             </Link>
@@ -480,6 +575,106 @@ export default function AthleteDetailPage() {
         {pageError && pageError !== 'no-athlete-record' && (
           <div style={{ background: 'var(--danger-light)', border: '1px solid #fca5a5', borderRadius: 10, padding: 14, color: 'var(--danger)', fontWeight: 600, marginBottom: 20 }}>
             {pageError}
+          </div>
+        )}
+
+        {/* ── Athlete Profile Panel ── */}
+        {athlete && showProfile && (
+          <div className="card" style={{ padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+            <div className="section-title" style={{ marginBottom: 16 }}>Athlete Profile</div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', gap: 20, alignItems: 'start' }}>
+              {/* Photo */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 96, height: 96, borderRadius: '50%', background: 'var(--border)', overflow: 'hidden', border: '3px solid var(--border)', position: 'relative' }}>
+                  {athlete.photo_signed_url
+                    ? <img src={athlete.photo_signed_url} alt="profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--coach-color)', color: '#fff', fontWeight: 900, fontSize: 34 }}>{(athlete.first_name?.[0] ?? '?').toUpperCase()}</div>
+                  }
+                  {photoUploading && (
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }}>
+                      <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>…</span>
+                    </div>
+                  )}
+                </div>
+                <label style={{ cursor: 'pointer' }}>
+                  <span className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>
+                    {photoUploading ? 'Uploading…' : 'Change photo'}
+                  </span>
+                  <input type="file" accept="image/*" style={{ display: 'none' }} disabled={photoUploading} onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f) }} />
+                </label>
+              </div>
+
+              {/* Fields */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label className="label">First name</label>
+                    <input className="input" value={profileForm.first_name} onChange={e => setProfileForm(f => ({ ...f, first_name: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="label">Last name</label>
+                    <input className="input" value={profileForm.last_name} onChange={e => setProfileForm(f => ({ ...f, last_name: e.target.value }))} />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label className="label">Position / Role</label>
+                    <input className="input" placeholder="e.g. Striker, Setter, Sprinter" value={profileForm.position} onChange={e => setProfileForm(f => ({ ...f, position: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="label">Height (cm)</label>
+                    <input className="input" type="number" placeholder="e.g. 183" value={profileForm.height_cm} onChange={e => setProfileForm(f => ({ ...f, height_cm: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Personal Goals</label>
+                  <textarea className="input" rows={3} placeholder="Athlete's current goals and targets…" value={profileForm.goals} onChange={e => setProfileForm(f => ({ ...f, goals: e.target.value }))} />
+                </div>
+
+                {/* Sport-specific metrics */}
+                <div>
+                  <label className="label">Sport Metrics</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                    {Object.entries(profileForm.sport_metrics).map(([k, v]) => (
+                      <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', minWidth: 100, padding: '6px 10px', background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)' }}>{k}</span>
+                        <input className="input" style={{ flex: 1, fontSize: 13 }} value={v} onChange={e => setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [k]: e.target.value } }))} />
+                        <button onClick={() => setProfileForm(f => { const m = { ...f.sport_metrics }; delete m[k]; return { ...f, sport_metrics: m } })} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 18, padding: '0 4px', flexShrink: 0 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="input" style={{ flex: 1, fontSize: 12 }} placeholder="Metric (e.g. 40m Sprint)" value={metricKey} onChange={e => setMetricKey(e.target.value)} />
+                    <input className="input" style={{ flex: 1, fontSize: 12 }} placeholder="Value (e.g. 5.2s)" value={metricVal} onChange={e => setMetricVal(e.target.value)} />
+                    <button className="btn btn-ghost" style={{ fontSize: 12, flexShrink: 0 }} onClick={() => { if (!metricKey.trim()) return; setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [metricKey.trim()]: metricVal.trim() } })); setMetricKey(''); setMetricVal('') }}>+ Add</button>
+                  </div>
+                </div>
+
+                {/* Custom fields */}
+                <div>
+                  <label className="label">Custom Fields</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                    {profileForm.custom_fields.map((cf, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input className="input" style={{ flex: 1, fontSize: 12, fontWeight: 700 }} value={cf.label} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} />
+                        <input className="input" style={{ flex: 2, fontSize: 13 }} value={cf.value} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, value: e.target.value } : x) }))} />
+                        <button onClick={() => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.filter((_, j) => j !== i) }))} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 18, padding: '0 4px', flexShrink: 0 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="input" style={{ flex: 1, fontSize: 12 }} placeholder="Label (e.g. Club)" value={customLabel} onChange={e => setCustomLabel(e.target.value)} />
+                    <input className="input" style={{ flex: 2, fontSize: 12 }} placeholder="Value (e.g. City FC)" value={customVal} onChange={e => setCustomVal(e.target.value)} />
+                    <button className="btn btn-ghost" style={{ fontSize: 12, flexShrink: 0 }} onClick={() => { if (!customLabel.trim()) return; setProfileForm(f => ({ ...f, custom_fields: [...f.custom_fields, { label: customLabel.trim(), value: customVal.trim() }] })); setCustomLabel(''); setCustomVal('') }}>+ Add</button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                  <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save Profile'}</button>
+                  {profileMsg && <span style={{ fontSize: 13, fontWeight: 600, color: profileMsg.includes('Saved') ? 'var(--success)' : 'var(--danger)' }}>{profileMsg}</span>}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -680,7 +875,7 @@ export default function AthleteDetailPage() {
                                     </div>
                                   </div>
                                   <div style={{ padding: 14 }}>
-                                    <VideoAnnotator videoUrl={v.signedUrl} initialAnnotations={v.annotations ?? []} onAnnotationsChange={strokes => saveAnnotations(s.id, v.id, strokes)} />
+                                    <VideoAnnotator videoUrl={v.signedUrl} initialAnnotations={v.annotations ?? []} onAnnotationsChange={strokes => saveAnnotations(s.id, v.id, strokes)} sessionId={s.id} videoId={v.id} />
                                   </div>
                                 </div>
                               ))}
