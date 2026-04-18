@@ -51,43 +51,59 @@ export default function Home() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 40%, #312e81 70%, #6366f1 100%)',
+      background: 'linear-gradient(160deg, #1A0E06 0%, #2C1810 35%, #1E1208 65%, #120C06 100%)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       padding: 24,
+      position: 'relative',
+      overflow: 'hidden',
     }}>
-      <div style={{ width: '100%', maxWidth: 420 }}>
+      {/* Subtle warm glow accents */}
+      <div style={{ position: 'absolute', top: '10%', right: '10%', width: 400, height: 400, background: 'radial-gradient(circle, rgba(245,158,11,.08) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: '15%', left: '5%', width: 300, height: 300, background: 'radial-gradient(circle, rgba(91,99,245,.07) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
+
+      <div style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 1 }}>
+
         {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          {/* Notebook icon */}
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 56,
-            height: 56,
-            background: 'rgba(255,255,255,0.15)',
-            borderRadius: 16,
+            width: 60,
+            height: 60,
+            background: 'linear-gradient(135deg, rgba(245,158,11,.25) 0%, rgba(91,99,245,.25) 100%)',
+            borderRadius: 18,
             marginBottom: 14,
+            border: '1px solid rgba(245,158,11,.3)',
             backdropFilter: 'blur(8px)',
           }}>
-            <span style={{ fontSize: 28 }}>🎙️</span>
+            <span style={{ fontSize: 30 }}>📖</span>
           </div>
-          <h1 style={{ color: '#fff', fontSize: 28, fontWeight: 900, margin: 0, letterSpacing: -0.5 }}>
+          <h1 style={{ color: '#F5ECD7', fontSize: 28, fontWeight: 800, margin: 0, letterSpacing: -0.4 }}>
             CoachVoice
           </h1>
-          <p style={{ color: 'rgba(255,255,255,0.65)', marginTop: 6, fontSize: 14, fontWeight: 500 }}>
-            Level up your game. 🔥
+          <p style={{ color: 'rgba(245,236,215,0.5)', marginTop: 6, fontSize: 13, fontWeight: 500, fontStyle: 'italic' }}>
+            Your private training journal
           </p>
         </div>
 
         {/* Card */}
-        <div className="card-lg" style={{ padding: 32 }}>
+        <div style={{
+          background: 'rgba(253,250,245,0.96)',
+          border: '1px solid rgba(221,213,198,.6)',
+          borderRadius: 20,
+          padding: 32,
+          boxShadow: '0 20px 60px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.3)',
+          backdropFilter: 'blur(12px)',
+        }}>
           {mode === 'forgot' ? (
             <>
-              <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 6 }}>Reset password</h2>
-              <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 24 }}>
-                We'll send a link to your inbox.
+              <h2 style={{ fontSize: 19, fontWeight: 800, marginBottom: 6, color: 'var(--text)' }}>Reset password</h2>
+              <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 24 }}>
+                We'll send a reset link to your inbox.
               </p>
               <label className="label">Email address</label>
               <input
@@ -97,9 +113,10 @@ export default function Home() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={handleKey}
+                style={{ marginBottom: 4 }}
               />
               {message && (
-                <p style={{ marginTop: 12, fontSize: 13, color: message.includes('sent') ? 'var(--success)' : 'var(--danger)' }}>
+                <p style={{ marginTop: 10, fontSize: 13, color: message.includes('sent') ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
                   {message}
                 </p>
               )}
@@ -116,19 +133,19 @@ export default function Home() {
                 onClick={() => { setMode('login'); setMessage('') }}
                 style={{ width: '100%', marginTop: 10 }}
               >
-                ← Back to login
+                ← Back to sign in
               </button>
             </>
           ) : (
             <>
-              <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 6 }}>Welcome back</h2>
-              <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 24 }}>
-                Sign in to your account.
+              <h2 style={{ fontSize: 19, fontWeight: 800, marginBottom: 4, color: 'var(--text)' }}>Welcome back</h2>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 24 }}>
+                Sign in to open your journal.
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                  <label className="label">Email address</label>
+                  <label className="label">Email</label>
                   <input
                     className="input"
                     type="email"
@@ -154,7 +171,7 @@ export default function Home() {
               </div>
 
               {message && (
-                <p style={{ marginTop: 12, fontSize: 13, color: 'var(--danger)' }}>{message}</p>
+                <p style={{ marginTop: 10, fontSize: 13, color: 'var(--danger)', fontWeight: 600 }}>{message}</p>
               )}
 
               <button
@@ -163,7 +180,7 @@ export default function Home() {
                 disabled={loading}
                 style={{ width: '100%', marginTop: 20 }}
               >
-                {loading ? 'Signing in…' : 'Sign in'}
+                {loading ? 'Signing in…' : 'Open my journal →'}
               </button>
 
               <button
@@ -174,7 +191,7 @@ export default function Home() {
                 Forgot password?
               </button>
 
-              <div className="divider" style={{ margin: '20px 0' }} />
+              <div className="divider" style={{ margin: '18px 0' }} />
 
               <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--text-2)' }}>
                 New to CoachVoice?{' '}
@@ -186,7 +203,7 @@ export default function Home() {
           )}
         </div>
 
-        <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 20 }}>
+        <p style={{ textAlign: 'center', color: 'rgba(245,236,215,0.3)', fontSize: 12, marginTop: 20 }}>
           © 2025 CoachVoice. All rights reserved.
         </p>
       </div>

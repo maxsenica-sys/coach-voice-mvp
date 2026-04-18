@@ -1,10 +1,105 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
-import { ALL_SPORTS, SPORTS_BY_CATEGORY } from '@/lib/sports'
+import { ALL_SPORTS } from '@/lib/sports'
+
+// ── Sport Wheel Picker ───────────────────────────────────────────
+const ITEM_H = 48
+const VISIBLE = 5
+const CONTAINER_H = ITEM_H * VISIBLE
+
+function SportWheelPicker({
+  sports,
+  value,
+  onChange,
+}: {
+  sports: string[]
+  value: string
+  onChange: (s: string) => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Scroll to selected value on mount / value change from outside
+  useEffect(() => {
+    const idx = sports.indexOf(value)
+    if (idx >= 0 && containerRef.current) {
+      containerRef.current.scrollTop = idx * ITEM_H
+    }
+  }, [sports, value])
+
+  const handleScroll = useCallback(() => {
+    if (scrollTimer.current) clearTimeout(scrollTimer.current)
+    scrollTimer.current = setTimeout(() => {
+      if (!containerRef.current) return
+      const idx = Math.round(containerRef.current.scrollTop / ITEM_H)
+      const sport = sports[Math.min(Math.max(0, idx), sports.length - 1)]
+      if (sport && sport !== value) onChange(sport)
+    }, 80)
+  }, [sports, value, onChange])
+
+  return (
+    <div className="wheel-picker-container" style={{ height: CONTAINER_H }}>
+      {/* Centre highlight band */}
+      <div style={{
+        position: 'absolute',
+        top: ITEM_H * 2, left: 8, right: 8,
+        height: ITEM_H,
+        background: 'var(--primary-light)',
+        borderRadius: 10,
+        border: '1.5px solid var(--primary)',
+        pointerEvents: 'none',
+        zIndex: 1,
+      }} />
+      {/* Top fade */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: ITEM_H * 2,
+        background: 'linear-gradient(to bottom, var(--card) 20%, transparent 100%)',
+        pointerEvents: 'none', zIndex: 2,
+      }} />
+      {/* Bottom fade */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, height: ITEM_H * 2,
+        background: 'linear-gradient(to top, var(--card) 20%, transparent 100%)',
+        pointerEvents: 'none', zIndex: 2,
+      }} />
+      {/* Scroll area */}
+      <div
+        ref={containerRef}
+        className="wheel-picker-scroll"
+        style={{ height: CONTAINER_H }}
+        onScroll={handleScroll}
+      >
+        {/* Top spacer: 2 empty rows */}
+        <div style={{ height: ITEM_H * 2 }} />
+        {sports.map((s) => (
+          <div
+            key={s}
+            className="wheel-picker-item"
+            style={{
+              height: ITEM_H,
+              fontSize: value === s ? 15 : 13,
+              fontWeight: value === s ? 700 : 400,
+              color: value === s ? 'var(--primary)' : 'var(--text-2)',
+            }}
+            onClick={() => {
+              onChange(s)
+              const idx = sports.indexOf(s)
+              containerRef.current?.scrollTo({ top: idx * ITEM_H, behavior: 'smooth' })
+            }}
+          >
+            {s}
+          </div>
+        ))}
+        {/* Bottom spacer: 2 empty rows */}
+        <div style={{ height: ITEM_H * 2 }} />
+      </div>
+    </div>
+  )
+}
 
 type Role = 'coach' | 'athlete'
 
@@ -60,6 +155,9 @@ const GOALS_OPTIONS_COACH = [
   'Manage a large athlete roster',
 ]
 
+// Sorted alphabetical sports list for wheel picker
+const SORTED_SPORTS = [...ALL_SPORTS].sort((a, b) => a.localeCompare(b))
+
 export default function SignupPage() {
   const router = useRouter()
   const supabase = createSupabaseBrowserClient()
@@ -88,9 +186,13 @@ export default function SignupPage() {
     setForm((prev) => ({ ...prev, [key]: val }))
   }
 
-  const filteredSports = sportSearch.trim()
-    ? ALL_SPORTS.filter((s) => s.toLowerCase().includes(sportSearch.toLowerCase()))
-    : ALL_SPORTS
+  // Wheel picker shows filtered (or all) sports
+  const wheelSports = useMemo(
+    () => sportSearch.trim()
+      ? SORTED_SPORTS.filter((s) => s.toLowerCase().includes(sportSearch.toLowerCase()))
+      : SORTED_SPORTS,
+    [sportSearch]
+  )
 
   // ─── Validation per step ───────────────────────────────────
 
@@ -344,66 +446,60 @@ export default function SignupPage() {
               <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>
                 {form.role === 'coach' ? 'What sport do you coach?' : 'What sport do you play?'}
               </h2>
-              <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 20 }}>
-                This helps the AI understand sport-specific terminology.
+              <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 16 }}>
+                Scroll to your sport — or search to jump straight to it.
               </p>
 
+              {/* Search filter */}
               <input
                 className="input"
                 type="text"
-                placeholder="Search sports…"
+                placeholder="Filter sports…"
                 value={sportSearch}
-                onChange={(e) => setSportSearch(e.target.value)}
+                onChange={(e) => {
+                  setSportSearch(e.target.value)
+                  // Auto-select first match when filtering
+                  const q = e.target.value.trim().toLowerCase()
+                  if (q) {
+                    const match = SORTED_SPORTS.find(s => s.toLowerCase().includes(q))
+                    if (match) set('sport', match)
+                  }
+                }}
                 style={{ marginBottom: 12 }}
-                autoFocus
               />
 
+              {/* Selected badge */}
               {form.sport && (
                 <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  background: 'var(--primary-light)',
-                  border: '1.5px solid var(--primary)',
-                  borderRadius: 999,
-                  padding: '5px 14px',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: 'var(--primary)',
-                  marginBottom: 12,
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  background: 'var(--primary-light)', border: '1.5px solid var(--primary)',
+                  borderRadius: 999, padding: '4px 14px', fontSize: 13, fontWeight: 700,
+                  color: 'var(--primary)', marginBottom: 12,
                 }}>
                   ✓ {form.sport}
-                  <button onClick={() => set('sport', '')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+                  <button
+                    onClick={() => { set('sport', ''); setSportSearch('') }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, padding: 0 }}
+                  >×</button>
                 </div>
               )}
 
-              <div style={{
-                maxHeight: 280,
-                overflowY: 'auto',
-                border: '1px solid var(--border)',
-                borderRadius: 10,
-              }}>
-                {sportSearch.trim() ? (
-                  filteredSports.length === 0 ? (
-                    <div style={{ padding: 16, color: 'var(--text-muted)', fontSize: 14 }}>No sports match that search.</div>
-                  ) : (
-                    filteredSports.map((sport) => (
-                      <SportOption key={sport} sport={sport} selected={form.sport === sport} onSelect={() => { set('sport', sport); setSportSearch('') }} />
-                    ))
-                  )
-                ) : (
-                  Object.entries(SPORTS_BY_CATEGORY).map(([cat, sports]) => (
-                    <div key={cat}>
-                      <div style={{ padding: '8px 14px 4px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--border-soft)' }}>
-                        {cat}
-                      </div>
-                      {sports.map((sport) => (
-                        <SportOption key={sport} sport={sport} selected={form.sport === sport} onSelect={() => { set('sport', sport); setSportSearch('') }} />
-                      ))}
-                    </div>
-                  ))
-                )}
-              </div>
+              {/* Wheel picker */}
+              {wheelSports.length === 0 ? (
+                <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
+                  No sports match that search.
+                </div>
+              ) : (
+                <SportWheelPicker
+                  sports={wheelSports}
+                  value={form.sport || wheelSports[0]}
+                  onChange={(s) => set('sport', s)}
+                />
+              )}
+
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 10 }}>
+                Scroll the wheel · tap to select · {wheelSports.length} sports available
+              </p>
             </div>
           )}
 
@@ -548,26 +644,3 @@ export default function SignupPage() {
   )
 }
 
-function SportOption({ sport, selected, onSelect }: { sport: string; selected: boolean; onSelect: () => void }) {
-  return (
-    <button
-      onClick={onSelect}
-      style={{
-        display: 'block',
-        width: '100%',
-        padding: '9px 14px',
-        border: 'none',
-        background: selected ? 'var(--primary-light)' : 'transparent',
-        color: selected ? 'var(--primary)' : 'var(--text)',
-        fontWeight: selected ? 700 : 400,
-        fontSize: 14,
-        cursor: 'pointer',
-        textAlign: 'left',
-        borderBottom: '1px solid var(--border-soft)',
-        transition: 'background 0.1s ease',
-      }}
-    >
-      {selected ? '✓ ' : ''}{sport}
-    </button>
-  )
-}
