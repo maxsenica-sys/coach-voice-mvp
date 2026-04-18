@@ -1,59 +1,59 @@
 @import "tailwindcss";
 
-/* ─── Design tokens — CoachVoice (Energetic Edition) ─────────── */
+/* ─── Design tokens — CoachVoice (Athletic Journal Edition) ────── */
 :root {
-  /* Surfaces */
-  --bg:           #f2f0fb;
-  --card:         #ffffff;
-  --border:       #e4e0f8;
-  --border-soft:  #f0eeff;
+  /* Surfaces — warm bone / parchment */
+  --bg:           #F4EFE6;
+  --card:         #FDFAF5;
+  --border:       #DDD5C6;
+  --border-soft:  #EAE4D9;
 
-  /* Primary — Electric Indigo */
-  --primary:      #6366f1;
-  --primary-dark: #4f46e5;
-  --primary-light:#eef2ff;
+  /* Primary — rich indigo (coach identity) */
+  --primary:      #5B63F5;
+  --primary-dark: #4248D6;
+  --primary-light:#EEEEFF;
 
-  /* Coach — Deep Slate (authority, expertise) */
-  --coach-color:  #0f172a;
-  --coach-light:  #f1f5f9;
+  /* Coach — deep espresso (authority, warmth) */
+  --coach-color:  #1C1208;
+  --coach-light:  #F0EAE0;
 
-  /* Athlete — Vivid Cyan (speed, fresh energy) */
-  --athlete-color:#0ea5e9;
-  --athlete-light:#e0f2fe;
+  /* Athlete — vivid sky (energy, speed) */
+  --athlete-color:#0EA5E9;
+  --athlete-light:#E0F2FE;
 
-  /* Accent — Electric Lime (achievement, sport energy) */
-  --accent:       #84cc16;
-  --accent-dark:  #65a30d;
-  --accent-light: #f7fee7;
+  /* Accent — electric lime (achievement) */
+  --accent:       #84CC16;
+  --accent-dark:  #65A30D;
+  --accent-light: #F7FEE7;
 
-  /* Energy — Amber (highlights, streaks, motivation) */
-  --energy:       #f59e0b;
-  --energy-light: #fef3c7;
+  /* Energy — warm amber (motivation) */
+  --energy:       #F59E0B;
+  --energy-light: #FEF3C7;
 
   /* Semantic */
-  --danger:       #ef4444;
-  --danger-light: #fef2f2;
-  --warning:      #f59e0b;
-  --warning-light:#fffbeb;
-  --success:      #10b981;
-  --success-light:#ecfdf5;
+  --danger:       #EF4444;
+  --danger-light: #FEF2F2;
+  --warning:      #F59E0B;
+  --warning-light:#FFFBEB;
+  --success:      #10B981;
+  --success-light:#ECFDF5;
 
-  /* Typography */
-  --text:         #0a0f1e;
-  --text-2:       #475569;
-  --text-muted:   #94a3b8;
+  /* Typography — warm, personal */
+  --text:         #1A120A;
+  --text-2:       #5C4E42;
+  --text-muted:   #9C8C7C;
 
-  /* Shape */
-  --radius:       14px;
-  --radius-sm:    10px;
+  /* Shape — softened for journal feel */
+  --radius:       13px;
+  --radius-sm:    9px;
   --radius-lg:    20px;
   --radius-xl:    28px;
 
-  /* Shadows — more depth for energy */
-  --shadow-sm:    0 1px 4px 0 rgb(99 102 241 / .07), 0 1px 2px -1px rgb(99 102 241 / .06);
-  --shadow:       0 4px 16px -2px rgb(99 102 241 / .14), 0 2px 6px -2px rgb(99 102 241 / .10);
-  --shadow-lg:    0 12px 32px -4px rgb(99 102 241 / .18), 0 4px 10px -4px rgb(99 102 241 / .12);
-  --shadow-glow:  0 0 20px rgb(99 102 241 / .25);
+  /* Shadows — warm-tinted depth */
+  --shadow-sm:    0 1px 4px 0 rgb(92 78 66 / .09), 0 1px 2px -1px rgb(92 78 66 / .07);
+  --shadow:       0 4px 16px -2px rgb(92 78 66 / .13), 0 2px 6px -2px rgb(92 78 66 / .09);
+  --shadow-lg:    0 12px 32px -4px rgb(92 78 66 / .16), 0 4px 10px -4px rgb(92 78 66 / .11);
+  --shadow-glow:  0 0 20px rgb(91 99 245 / .20);
 }
 
 /* ─── Base ───────────────────────────────────────────────────── */
@@ -62,8 +62,8 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-geist-sans, 'Inter', system-ui, -apple-system, sans-serif);
-  line-height: 1.5;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif);
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -82,7 +82,7 @@ body {
   box-shadow: var(--shadow);
 }
 
-/* Sport card — colored left accent bar */
+/* Sport card — warm left accent bar */
 .card-sport {
   background: var(--card);
   border: 1px solid var(--border);
@@ -93,10 +93,28 @@ body {
 
 /* Gradient card header */
 .card-header-gradient {
-  background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 100%);
   color: #fff;
   border-radius: var(--radius) var(--radius) 0 0;
   padding: 16px 20px;
+}
+
+/* ─── Journal / diary card ───────────────────────────────────── */
+.card-journal {
+  background: #FEFAF2;
+  border: 1px solid #DDD0B8;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgb(92 78 66 / .10);
+  position: relative;
+}
+.card-journal::before {
+  content: '';
+  position: absolute;
+  left: 36px;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: rgba(245, 158, 11, .25);
+  border-radius: 1px;
 }
 
 /* ─── Buttons ────────────────────────────────────────────────── */
@@ -114,7 +132,7 @@ body {
   transition: all 0.18s cubic-bezier(.34,1.56,.64,1);
   white-space: nowrap;
   text-decoration: none;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.015em;
 }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -122,15 +140,13 @@ body {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 8px rgb(99 102 241 / .30);
+  box-shadow: 0 2px 8px rgb(91 99 245 / .30);
 }
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 6px 20px rgb(99 102 241 / .45);
+  box-shadow: 0 6px 20px rgb(91 99 245 / .40);
 }
-.btn-primary:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
-}
+.btn-primary:active:not(:disabled) { transform: translateY(0) scale(0.98); }
 
 .btn-ghost {
   background: transparent;
@@ -147,48 +163,48 @@ body {
 .btn-danger {
   background: var(--danger-light);
   color: var(--danger);
-  border-color: #fca5a5;
+  border-color: #FCA5A5;
 }
-.btn-danger:hover:not(:disabled) { background: #fee2e2; }
+.btn-danger:hover:not(:disabled) { background: #FEE2E2; }
 
 .btn-coach {
-  background: linear-gradient(135deg, #1e293b 0%, var(--coach-color) 100%);
+  background: linear-gradient(135deg, #2A1A0E 0%, var(--coach-color) 100%);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 8px rgb(15 23 42 / .25);
+  box-shadow: 0 2px 8px rgb(28 18 8 / .30);
 }
 .btn-coach:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 6px 20px rgb(15 23 42 / .35);
+  box-shadow: 0 6px 20px rgb(28 18 8 / .40);
 }
 
 .btn-athlete {
-  background: linear-gradient(135deg, var(--athlete-color) 0%, #0284c7 100%);
+  background: linear-gradient(135deg, var(--athlete-color) 0%, #0284C7 100%);
   color: #fff;
   border-color: transparent;
   box-shadow: 0 2px 8px rgb(14 165 233 / .30);
 }
 .btn-athlete:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 6px 20px rgb(14 165 233 / .45);
+  box-shadow: 0 6px 20px rgb(14 165 233 / .40);
 }
 
 .btn-energy {
-  background: linear-gradient(135deg, var(--energy) 0%, #d97706 100%);
+  background: linear-gradient(135deg, var(--energy) 0%, #D97706 100%);
   color: #fff;
   border-color: transparent;
   box-shadow: 0 2px 8px rgb(245 158 11 / .30);
 }
 .btn-energy:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 6px 20px rgb(245 158 11 / .45);
+  box-shadow: 0 6px 20px rgb(245 158 11 / .40);
 }
 
 .btn-lg {
   padding: 13px 28px;
   font-size: 16px;
   border-radius: var(--radius);
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
 }
 
 /* ─── Inputs ─────────────────────────────────────────────────── */
@@ -200,23 +216,25 @@ body {
   font-size: 14px;
   background: var(--card);
   color: var(--text);
+  font-family: inherit;
   transition: border-color 0.15s, box-shadow 0.15s;
   outline: none;
 }
 .input:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgb(99 102 241 / .15);
+  box-shadow: 0 0 0 3px rgb(91 99 245 / .14);
 }
 .input::placeholder { color: var(--text-muted); }
-textarea.input { resize: vertical; min-height: 90px; }
+textarea.input { resize: vertical; min-height: 80px; }
 
 .label {
   display: block;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-2);
-  margin-bottom: 6px;
-  letter-spacing: 0.01em;
+  margin-bottom: 5px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 /* ─── Badges ─────────────────────────────────────────────────── */
@@ -228,27 +246,27 @@ textarea.input { resize: vertical; min-height: 90px; }
   font-weight: 800;
   padding: 3px 10px;
   border-radius: 999px;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.badge-active   { background: var(--success-light); color: var(--success);      border: 1px solid #a7f3d0; }
-.badge-invited  { background: var(--warning-light); color: var(--warning);      border: 1px solid #fde68a; }
-.badge-coach    { background: #f1f5f9;              color: var(--coach-color);  border: 1px solid #cbd5e1; }
-.badge-athlete  { background: var(--athlete-light); color: var(--athlete-color);border: 1px solid #bae6fd; }
-.badge-session  { background: var(--primary-light); color: var(--primary);      border: 1px solid #c7d2fe; }
-.badge-homework { background: #fefce8; color: #854d0e; border: 1px solid #fef08a; }
-.badge-goal     { background: var(--accent-light); color: var(--accent-dark); border: 1px solid #bef264; }
-.badge-reminder { background: var(--primary-light); color: var(--primary-dark); border: 1px solid #c7d2fe; }
-.badge-other    { background: var(--border); color: var(--text-2); border: 1px solid var(--border); }
+.badge-active   { background: var(--success-light); color: var(--success);       border: 1px solid #A7F3D0; }
+.badge-invited  { background: var(--warning-light); color: #B45309;               border: 1px solid #FDE68A; }
+.badge-coach    { background: var(--coach-light);   color: var(--coach-color);   border: 1px solid #D9CFC4; }
+.badge-athlete  { background: var(--athlete-light); color: var(--athlete-color); border: 1px solid #BAE6FD; }
+.badge-session  { background: var(--primary-light); color: var(--primary);       border: 1px solid #C7D2FE; }
+.badge-homework { background: #FEFCE8; color: #854D0E; border: 1px solid #FEF08A; }
+.badge-goal     { background: var(--accent-light); color: var(--accent-dark); border: 1px solid #BEF264; }
+.badge-reminder { background: var(--primary-light); color: var(--primary-dark); border: 1px solid #C7D2FE; }
+.badge-other    { background: var(--border-soft); color: var(--text-2); border: 1px solid var(--border); }
 
 /* ─── Divider / Typography ───────────────────────────────────── */
 .divider { height: 1px; background: var(--border); margin: 20px 0; }
 
 .section-title {
-  font-size: 18px;
-  font-weight: 900;
+  font-size: 17px;
+  font-weight: 800;
   color: var(--text);
-  letter-spacing: -0.4px;
+  letter-spacing: -0.3px;
 }
 .section-sub {
   font-size: 13px;
@@ -256,9 +274,20 @@ textarea.input { resize: vertical; min-height: 90px; }
   margin-top: 2px;
 }
 
+/* ─── Quote strip ────────────────────────────────────────────── */
+.quote-strip {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0 8px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
 /* ─── Gradient text ──────────────────────────────────────────── */
 .gradient-text {
-  background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 60%, var(--athlete-color) 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 60%, var(--athlete-color) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -273,28 +302,35 @@ textarea.input { resize: vertical; min-height: 90px; }
   box-shadow: var(--shadow-sm);
   position: relative;
   overflow: hidden;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+  border-color: var(--primary);
 }
 .stat-card::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 3px;
-  background: linear-gradient(90deg, var(--primary), #8b5cf6);
+  background: linear-gradient(90deg, var(--primary), #8B5CF6);
   border-radius: var(--radius) var(--radius) 0 0;
 }
 .stat-number {
-  font-size: 32px;
-  font-weight: 900;
+  font-size: 30px;
+  font-weight: 800;
   letter-spacing: -1px;
   line-height: 1;
   color: var(--text);
 }
 .stat-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   margin-top: 4px;
 }
 
@@ -320,19 +356,19 @@ textarea.input { resize: vertical; min-height: 90px; }
   color: var(--text);
 }
 .nav-pill.active {
-  background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 100%);
   color: #fff;
-  box-shadow: 0 3px 12px rgb(99 102 241 / .35);
+  box-shadow: 0 3px 12px rgb(91 99 245 / .30);
 }
 .nav-pill.active-athlete {
-  background: linear-gradient(135deg, var(--athlete-color) 0%, #0284c7 100%);
+  background: linear-gradient(135deg, var(--athlete-color) 0%, #0284C7 100%);
   color: #fff;
-  box-shadow: 0 3px 12px rgb(14 165 233 / .35);
+  box-shadow: 0 3px 12px rgb(14 165 233 / .30);
 }
 
 /* ─── Hero gradient bar ──────────────────────────────────────── */
 .hero-bar {
-  background: linear-gradient(135deg, var(--coach-color) 0%, #1e293b 50%, #312e81 100%);
+  background: linear-gradient(135deg, #1A120A 0%, #2C1A0E 50%, #3D1F0A 100%);
   color: #fff;
   position: relative;
   overflow: hidden;
@@ -340,11 +376,9 @@ textarea.input { resize: vertical; min-height: 90px; }
 .hero-bar::after {
   content: '';
   position: absolute;
-  top: -50%;
-  right: -10%;
-  width: 300px;
-  height: 300px;
-  background: radial-gradient(circle, rgb(99 102 241 / .20) 0%, transparent 70%);
+  top: -50%; right: -10%;
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgb(91 99 245 / .18) 0%, transparent 70%);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -359,7 +393,7 @@ textarea.input { resize: vertical; min-height: 90px; }
 .mic-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--primary), #8b5cf6);
+  background: linear-gradient(90deg, var(--primary), #8B5CF6);
   transition: width 80ms linear;
 }
 
@@ -396,16 +430,15 @@ textarea.input { resize: vertical; min-height: 90px; }
 .recording-dot {
   width: 10px; height: 10px;
   border-radius: 50%;
-  background: #ef4444;
+  background: #EF4444;
   position: relative;
   display: inline-block;
 }
 .recording-dot::after {
   content: '';
-  position: absolute;
-  inset: 0;
+  position: absolute; inset: 0;
   border-radius: 50%;
-  background: #ef4444;
+  background: #EF4444;
   animation: pulse-ring 1.2s ease-out infinite;
 }
 
@@ -442,6 +475,7 @@ input, textarea, select, button {
   -webkit-appearance: none;
   appearance: none;
   touch-action: manipulation;
+  font-family: inherit;
 }
 
 /* No tap flash */
@@ -465,13 +499,13 @@ input, textarea, select, button {
 
 /* ─── Gradient backgrounds ───────────────────────────────────── */
 .bg-gradient-sport {
-  background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 50%, var(--athlete-color) 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 50%, var(--athlete-color) 100%);
 }
 .bg-gradient-coach {
-  background: linear-gradient(135deg, var(--coach-color) 0%, #1e293b 50%, #312e81 100%);
+  background: linear-gradient(135deg, #1A120A 0%, #2C1A0E 50%, #1C1208 100%);
 }
 .bg-gradient-athlete {
-  background: linear-gradient(135deg, #0284c7 0%, var(--athlete-color) 50%, #38bdf8 100%);
+  background: linear-gradient(135deg, #0284C7 0%, var(--athlete-color) 50%, #38BDF8 100%);
 }
 
 /* ─── Progress bar ───────────────────────────────────────────── */
@@ -484,7 +518,7 @@ input, textarea, select, button {
 .progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--primary), #8b5cf6);
+  background: linear-gradient(90deg, var(--primary), #8B5CF6);
   transition: width 0.3s ease;
 }
 
@@ -499,4 +533,32 @@ input, textarea, select, button {
   font-size: 18px;
   background: var(--primary-light);
   border: 1px solid var(--border);
+}
+
+/* ─── Wheel picker (sport selection) ────────────────────────── */
+.wheel-picker-container {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--border);
+  background: var(--card);
+}
+.wheel-picker-scroll {
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.wheel-picker-scroll::-webkit-scrollbar { display: none; }
+.wheel-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: center;
+  cursor: pointer;
+  transition: color 0.1s ease, font-weight 0.1s ease;
+  user-select: none;
+  text-align: center;
+  padding: 0 16px;
 }

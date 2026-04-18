@@ -7,6 +7,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
 import MessagingPanel from '@/app/components/MessagingPanel'
+import { getDailyQuote } from '@/lib/quotes'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -309,6 +310,13 @@ export default function DashboardPage() {
   }, [])
 
   const [tab, setTab] = useState<Tab>('home')
+  const mainRef = useRef<HTMLElement>(null)
+
+  // Scroll to top whenever tab changes
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+  }, [tab])
+
   const [coachName, setCoachName] = useState('')
   const [coachInitials, setCoachInitials] = useState('')
   const [coachSport, setCoachSport] = useState('')
@@ -742,10 +750,10 @@ export default function DashboardPage() {
       )}
 
       {/* ════════ MAIN CONTENT ════════ */}
-      <main style={{
+      <main ref={mainRef} style={{
         flex: 1, overflowY: 'auto',
         maxHeight: isMobile ? 'calc(100dvh - 60px)' : '100vh',
-        paddingBottom: isMobile ? 'max(90px, calc(70px + env(safe-area-inset-bottom)))' : 0,
+        paddingBottom: isMobile ? 'max(100px, calc(80px + env(safe-area-inset-bottom)))' : 0,
       }}>
         {/* Mobile top bar */}
         {isMobile && (
@@ -814,18 +822,35 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Stats strip */}
+              {/* Daily quote */}
+              <p className="quote-strip" style={{ marginTop: -8 }}>
+                "{getDailyQuote('coach')}"
+              </p>
+
+              {/* Stats strip — all cards are clickable */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-                {[
-                  { label: 'Athletes',          value: athletes.length,    color: 'var(--primary)',    bg: 'var(--primary-light)',   emoji: '👤' },
-                  { label: 'Sessions this week', value: thisWeek.length,   color: '#8b5cf6',           bg: '#f5f3ff',                emoji: '🎙️' },
-                  { label: 'Unread',             value: totalUnreadAll,    color: totalUnreadAll > 0 ? 'var(--energy)' : 'var(--text-muted)', bg: totalUnreadAll > 0 ? 'var(--energy-light)' : 'var(--border-soft)', emoji: '💬' },
-                ].map(stat => (
-                  <div key={stat.label} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 14px 12px', boxShadow: 'var(--shadow-sm)', position: 'relative', overflow: 'hidden' }}>
+                {([
+                  { label: 'Athletes',          value: athletes.length,    color: 'var(--primary)',    tab: 'athletes' as Tab },
+                  { label: 'Sessions this week', value: thisWeek.length,   color: '#8b5cf6',           tab: 'calendar' as Tab },
+                  { label: 'Unread',             value: totalUnreadAll,    color: totalUnreadAll > 0 ? 'var(--energy)' : 'var(--text-muted)', tab: 'messages' as Tab },
+                ] as { label: string; value: number; color: string; tab: Tab }[]).map(stat => (
+                  <button
+                    key={stat.label}
+                    onClick={() => setTab(stat.tab)}
+                    style={{
+                      background: 'var(--card)', border: '1px solid var(--border)',
+                      borderRadius: 14, padding: '14px 14px 12px',
+                      boxShadow: 'var(--shadow-sm)', position: 'relative', overflow: 'hidden',
+                      cursor: 'pointer', textAlign: 'left',
+                      transition: 'all 0.18s ease',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow)' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}
+                  >
                     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: stat.color, borderRadius: '14px 14px 0 0' }} />
-                    <div style={{ fontSize: isMobile ? 26 : 32, fontWeight: 900, color: stat.color, lineHeight: 1, letterSpacing: -1 }}>{stat.value}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.3, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{stat.label}</div>
-                  </div>
+                    <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 800, color: stat.color, lineHeight: 1, letterSpacing: -1 }}>{stat.value}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.3, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{stat.label}</div>
+                  </button>
                 ))}
               </div>
 
@@ -1285,11 +1310,11 @@ export default function DashboardPage() {
       {isMobile && (
         <nav style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
-          background: 'rgba(255,255,255,0.94)',
+          background: 'rgba(253,250,245,0.96)',
           backdropFilter: 'blur(20px)',
           borderTop: '1px solid var(--border)',
           display: 'flex', alignItems: 'flex-end',
-          paddingBottom: 'max(env(safe-area-inset-bottom), 8px)',
+          paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 6px), 20px)',
         }}>
           {/* Left 2 items */}
           {BOTTOM_NAV.slice(0, 2).map(item => {

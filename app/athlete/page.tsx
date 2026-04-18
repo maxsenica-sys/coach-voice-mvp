@@ -6,6 +6,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator from '@/app/components/VideoAnnotator'
 import WellnessSubmit from '@/app/components/WellnessSubmit'
+import { getDailyQuote } from '@/lib/quotes'
 
 type Tab = 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -62,6 +63,13 @@ export default function AthletePage() {
   }, [])
 
   const [tab, setTab] = useState<Tab>('sessions')
+  const mainRef = useRef<HTMLElement>(null)
+
+  // Scroll to top whenever tab changes
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+  }, [tab])
+
   const [loading, setLoading] = useState(true)
   const [athleteName, setAthleteName] = useState('')
   const [athleteId, setAthleteId] = useState<string | null>(null)
@@ -470,7 +478,7 @@ export default function AthletePage() {
         </div>
       </header>
 
-      <main style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '16px' : '28px 20px' }}>
+      <main ref={mainRef} style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '16px' : '28px 20px', overflowY: 'auto' }}>
         {/* No athlete record — show join form */}
         {error === 'no-athlete-record' && (
           <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 16, padding: 24, marginBottom: 20 }}>
@@ -794,6 +802,10 @@ export default function AthletePage() {
 
         {/* ─── Tab: Calendar ─── */}
         {tab === 'calendar' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Daily quote */}
+            <p className="quote-strip">"{getDailyQuote('athlete')}"</p>
+
           <div className="card" style={{ padding: 24 }}>
             <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
@@ -864,6 +876,7 @@ export default function AthletePage() {
                 </div>
               </div>
             )}
+          </div>
           </div>
         )}
 
