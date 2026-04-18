@@ -11,19 +11,21 @@ ALTER TABLE athletes
   ADD COLUMN IF NOT EXISTS goals            TEXT,
   ADD COLUMN IF NOT EXISTS custom_fields    JSONB DEFAULT '[]';
 
--- Create storage bucket for athlete profile photos (if it doesn't exist).
--- NOTE: Run the INSERT below only once; it will error if the bucket already exists.
+-- Create storage bucket for athlete profile photos (skip if already exists).
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('athlete-photos', 'athlete-photos', false)
 ON CONFLICT (id) DO NOTHING;
 
--- Allow coaches to upload/read photos for their athletes.
-CREATE POLICY IF NOT EXISTS "coach_upload_athlete_photo"
+-- Drop and recreate policies so this script is idempotent.
+DROP POLICY IF EXISTS "coach_upload_athlete_photo" ON storage.objects;
+DROP POLICY IF EXISTS "coach_read_athlete_photo"   ON storage.objects;
+
+CREATE POLICY "coach_upload_athlete_photo"
   ON storage.objects FOR INSERT
   TO authenticated
   WITH CHECK (bucket_id = 'athlete-photos');
 
-CREATE POLICY IF NOT EXISTS "coach_read_athlete_photo"
+CREATE POLICY "coach_read_athlete_photo"
   ON storage.objects FOR SELECT
   TO authenticated
   USING (bucket_id = 'athlete-photos');
