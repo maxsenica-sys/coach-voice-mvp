@@ -1,46 +1,7 @@
 // app/api/notes/route.ts
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-
-type CookieLike = { name: string; value: string }
-
-async function createRouteClient() {
-  const cookieStore: any = await cookies()
-
-  const safeGetAll = (): CookieLike[] => {
-    if (typeof cookieStore.getAll === 'function') {
-      const all = cookieStore.getAll()
-      return (all ?? []).map((c: any) => ({ name: c.name, value: c.value }))
-    }
-
-    const names = ['sb-access-token', 'sb-refresh-token', 'sb-auth-token', 'supabase-auth-token']
-    const found: CookieLike[] = []
-    for (const name of names) {
-      const c = cookieStore.get?.(name)
-      if (c?.value) found.push({ name, value: c.value })
-    }
-    return found
-  }
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return safeGetAll()
-        },
-        setAll(cookiesToSet: any[]) {
-          cookiesToSet.forEach(({ name, value, options }: any) => {
-            cookieStore.set?.(name, value, options)
-          })
-        },
-      },
-    },
-  )
-}
 
 // GET /api/notes?athlete_id=...
 export async function GET(req: Request) {

@@ -1,52 +1,7 @@
 // app/api/athletes/route.ts
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-
-type CookieLike = { name: string; value: string }
-
-async function createRouteClient() {
-  const cookieStore: any = await cookies()
-
-  // Next.js cookie store methods differ slightly across versions/build modes.
-  // Supabase SSR needs getAll() + setAll(). We support both:
-  // - cookieStore.getAll() if present
-  // - fallback: build list from known Supabase cookie names using cookieStore.get()
-  const safeGetAll = (): CookieLike[] => {
-    if (typeof cookieStore.getAll === 'function') {
-      const all = cookieStore.getAll()
-      // Normalize to {name,value}
-      return (all ?? []).map((c: any) => ({ name: c.name, value: c.value }))
-    }
-
-    const names = ['sb-access-token', 'sb-refresh-token', 'sb-auth-token', 'supabase-auth-token']
-    const found: CookieLike[] = []
-    for (const name of names) {
-      const c = cookieStore.get?.(name)
-      if (c?.value) found.push({ name, value: c.value })
-    }
-    return found
-  }
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return safeGetAll()
-        },
-        setAll(cookiesToSet: any[]) {
-          // In route handlers, cookies are mutable.
-          cookiesToSet.forEach(({ name, value, options }: any) => {
-            cookieStore.set?.(name, value, options)
-          })
-        },
-      },
-    },
-  )
-}
 
 // GET /api/athletes
 export async function GET() {

@@ -1,28 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-
-async function createRouteClient() {
-  const cookieStore: any = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          if (typeof cookieStore.getAll === 'function') {
-            return (cookieStore.getAll() ?? []).map((c: any) => ({ name: c.name, value: c.value }))
-          }
-          return []
-        },
-        setAll(list: any[]) {
-          list.forEach(({ name, value, options }: any) => cookieStore.set?.(name, value, options))
-        },
-      },
-    }
-  )
-}
 
 export async function POST(
   _request: Request,

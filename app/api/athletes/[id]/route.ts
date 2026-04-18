@@ -1,45 +1,7 @@
 // app/api/athletes/[id]/route.ts
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { NextResponse } from 'next/server'
-
-type CookieLike = { name: string; value: string }
-
-async function createRouteClient() {
-  const cookieStore: any = await cookies()
-
-  const safeGetAll = (): CookieLike[] => {
-    if (typeof cookieStore.getAll === 'function') {
-      const all = cookieStore.getAll()
-      return (all ?? []).map((c: any) => ({ name: c.name, value: c.value }))
-    }
-
-    const names = ['sb-access-token', 'sb-refresh-token', 'sb-auth-token', 'supabase-auth-token']
-    const found: CookieLike[] = []
-    for (const name of names) {
-      const c = cookieStore.get?.(name)
-      if (c?.value) found.push({ name, value: c.value })
-    }
-    return found
-  }
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return safeGetAll()
-        },
-        setAll(cookiesToSet: any[]) {
-          cookiesToSet.forEach(({ name, value, options }: any) => {
-            cookieStore.set?.(name, value, options)
-          })
-        },
-      },
-    },
-  )
-}
+import { NextRequest, NextResponse } from 'next/server'
+import { createRouteClient } from '@/lib/supabase-route'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 // GET /api/athletes/[id]
 export async function GET(
@@ -48,26 +10,30 @@ export async function GET(
 ) {
   try {
     const supabase = await createRouteClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await ctx.params
+    const admin = createSupabaseAdminClient()
 
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from('athletes')
-      .select('id, first_name, last_name, email, athlete_user_id, invited_at, created_at')
+      .select('id, first_name, last_name, email, athlete_user_id, invited_at, created_at, photo_url, position, height_cm, sport_metrics, goals, custom_fields')
       .eq('id', id)
       .eq('coach_id', user.id)
       .single()
 
     if (error || !data) {
       return NextResponse.json({ error: 'Athlete not found' }, { status: 404 })
+    }
+
+    // Generate signed URL for photo if present
+    let photoSignedUrl: string | null = null
+    if (data.photo_url) {
+      const { data: signed } = await admin.storage
+        .from('athlete-photos')
+        .createSignedUrl(data.photo_url, 3600)
+      photoSignedUrl = signed?.signedUrl ?? null
     }
 
     return NextResponse.json({
@@ -79,9 +45,58 @@ export async function GET(
         invited_at: data.invited_at,
         created_at: data.created_at,
         status: data.athlete_user_id ? 'ACTIVE' : 'INVITED',
+        photo_url: data.photo_url,
+        photo_signed_url: photoSignedUrl,
+        position: data.position ?? null,
+        height_cm: data.height_cm ?? null,
+        sport_metrics: data.sport_metrics ?? {},
+        goals: data.goals ?? null,
+        custom_fields: data.custom_fields ?? [],
       },
     })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
   }
 }
+
+// PATCH /api/athletes/[id] — update rich profile fields
+export async function PATCH(
+  req: NextRequest,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await createRouteClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { id } = await ctx.params
+    const body = await req.json().catch(() => ({}))
+
+    const allowed = ['first_name', 'last_name', 'position', 'height_cm', 'sport_metrics', 'goals', 'custom_fields', 'photo_url']
+    const updates: Record<string, any> = {}
+    for (const key of allowed) {
+      if (key in body) updates[key] = body[key]
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
+    }
+
+    const admin = createSupabaseAdminClient()
+    const { data, error } = await admin
+      .from('athletes')
+      .update(updates)
+      .eq('id', id)
+      .eq('coach_id', user.id)
+      .select('id, first_name, last_name, position, height_cm, sport_metrics, goals, custom_fields, photo_url')
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ athlete: data })
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+  }
+}
+
+// POST /api/athletes/[id]/photo — get upload URL for profile photo
+// (handled via /api/athletes/[id]/photo/route.ts)

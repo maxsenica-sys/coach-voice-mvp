@@ -7,6 +7,7 @@ import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator from '@/app/components/VideoAnnotator'
 import WellnessSubmit from '@/app/components/WellnessSubmit'
 import { getDailyQuote } from '@/lib/quotes'
+import { fmtDate, fmtDateTime } from '@/lib/date-utils'
 
 type Tab = 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -38,16 +39,6 @@ type SessionVideo = {
   annotations: any[]
   created_at: string
   signedUrl: string | null
-}
-
-function fmtDate(v: string | null) {
-  if (!v) return '—'
-  return new Date(v).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })
-}
-
-function fmtDateTime(v: string | null) {
-  if (!v) return '—'
-  return new Date(v).toLocaleString(undefined, { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 export default function AthletePage() {
