@@ -36,7 +36,8 @@ function monthRange(month: string | null): { from: string; to: string } | null {
   if (!month) return null
   const [year, mon] = month.split('-').map(Number)
   const from = `${year}-${String(mon).padStart(2, '0')}-01`
-  const to   = `${year}-${String(mon).padStart(2, '0')}-31`
+  const lastDay = new Date(year, mon, 0).getDate()
+  const to   = `${year}-${String(mon).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
   return { from, to }
 }
 

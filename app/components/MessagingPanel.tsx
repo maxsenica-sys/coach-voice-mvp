@@ -74,6 +74,8 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   const mediaRecRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<BlobPart[]>([])
   const streamRef = useRef<MediaStream | null>(null)
+  const onUnreadChangeRef = useRef(onUnreadChange)
+  useEffect(() => { onUnreadChangeRef.current = onUnreadChange }, [onUnreadChange])
 
   // Fetch coach identity once on mount
   useEffect(() => {
@@ -108,7 +110,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
       // Clear unread for this athlete
       setLocalUnread((prev) => {
         const next = { ...prev, [athleteId]: 0 }
-        onUnreadChange?.(next)
+        onUnreadChangeRef.current?.(next)
         return next
       })
     } catch {
@@ -116,7 +118,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
     } finally {
       setLoadingMsgs(false)
     }
-  }, [onUnreadChange])
+  }, [])
 
   useEffect(() => {
     if (!selectedId) return

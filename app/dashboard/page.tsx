@@ -633,6 +633,10 @@ function DashboardPageInner() {
     } finally { setLoadingSessions(false) }
   }
 
+  const handleUnreadChange = useCallback((counts: Record<string, number>) => {
+    setUnreadCounts(counts)
+  }, [])
+
   const fetchCalendar = useCallback(async (mode: CalMode, targetId: string, month: string) => {
     // Don't fetch athlete/group calendars until a target is selected
     if ((mode === 'athlete' || mode === 'group') && !targetId) {
@@ -1468,7 +1472,7 @@ function DashboardPageInner() {
                 athletes={athletes}
                 unreadCounts={unreadCounts}
                 preselectedAthleteId={msgPreselectedId}
-                onUnreadChange={(counts) => setUnreadCounts(counts)}
+                onUnreadChange={handleUnreadChange}
               />
             </div>
           )}
