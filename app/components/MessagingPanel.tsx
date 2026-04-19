@@ -40,7 +40,9 @@ function initials(a: Athlete) {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function MessagingPanel({ athletes, unreadCounts, preselectedAthleteId, onUnreadChange }: Props) {
-  const supabase = createSupabaseBrowserClient()
+  // FIX 7: stable supabase client — prevent Realtime channel thrash on re-render
+  const supabaseRef = useRef(createSupabaseBrowserClient())
+  const supabase = supabaseRef.current
 
   const [isMobile, setIsMobile] = useState(false)
   useEffect(() => {
@@ -61,6 +63,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   const [recordingAudio, setRecordingAudio] = useState(false)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [msgError, setMsgError] = useState<string | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -82,8 +85,14 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   // Load messages when athlete selected
   const loadMessages = useCallback(async (athleteId: string) => {
     setLoadingMsgs(true)
+    setMsgError(null)
     try {
       const res = await fetch(`/api/messages?athlete_id=${athleteId}`)
+      // FIX 6: handle non-ok responses instead of silently showing empty chat
+      if (!res.ok) {
+        setMsgError('Could not load messages. Try again.')
+        return
+      }
       const json = await res.json()
       setMessages(json.messages ?? [])
       // Clear unread for this athlete
@@ -92,6 +101,8 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
         onUnreadChange?.(next)
         return next
       })
+    } catch {
+      setMsgError('Could not load messages. Try again.')
     } finally {
       setLoadingMsgs(false)
     }
@@ -125,6 +136,13 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
           if (prev.some((m) => m.id === msg.id)) return prev
           return [...prev, msg]
         })
+        // FIX 8: increment unread badge for athletes not currently in view
+        if (msg.athlete_id !== selectedId) {
+          setLocalUnread((prev) => ({
+            ...prev,
+            [msg.athlete_id]: (prev[msg.athlete_id] ?? 0) + 1,
+          }))
+        }
       })
       .subscribe()
 
@@ -171,12 +189,15 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
       const { error: upErr } = await supabase.storage.from('messages-media').upload(path, file)
       if (upErr) { alert('Upload failed: ' + upErr.message); return }
 
-      const { data: { publicUrl } } = supabase.storage.from('messages-media').getPublicUrl(path)
+      // FIX 2: messages-media is a private bucket — use signed URL (1h TTL) instead of getPublicUrl
+      const { data: signedData, error: signErr } = await supabase.storage.from('messages-media').createSignedUrl(path, 3600)
+      if (signErr || !signedData?.signedUrl) { alert('Failed to get media URL'); return }
+      const mediaUrl = signedData.signedUrl
 
       const res = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ athlete_id: selectedId, content: null, msg_type: msgType, media_url: publicUrl, media_name: file.name }),
+        body: JSON.stringify({ athlete_id: selectedId, content: null, msg_type: msgType, media_url: mediaUrl, media_name: file.name }),
       })
       const json = await res.json().catch(() => ({}))
       if (res.ok && json.message) {
@@ -201,7 +222,14 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   // Audio recording
   const startAudio = async () => {
     chunksRef.current = []
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    // FIX 5: wrap in try/catch so mic denial doesn't cause unhandled rejection
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch {
+      setMsgError('Microphone access denied. Please allow microphone access and try again.')
+      return
+    }
     streamRef.current = stream
     const rec = new MediaRecorder(stream)
     mediaRecRef.current = rec
@@ -329,7 +357,8 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                     minWidth: 18, height: 18, fontSize: 11, fontWeight: 700,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px',
                   }}>
-                    {unread}
+                    {/* FIX 4: cap badge at 10+ */}
+                    {unread > 10 ? '10+' : unread}
                   </div>
                 )}
               </button>
@@ -381,7 +410,13 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
               {loadingMsgs && (
                 <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 20 }}>Loading…</div>
               )}
-              {!loadingMsgs && messages.length === 0 && (
+              {/* FIX 6: show error state instead of empty chat on fetch failure */}
+              {!loadingMsgs && msgError && (
+                <div style={{ textAlign: 'center', color: '#ef4444', fontSize: 13, padding: 40 }}>
+                  {msgError}
+                </div>
+              )}
+              {!loadingMsgs && !msgError && messages.length === 0 && (
                 <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 40 }}>
                   No messages yet. Say hello!
                 </div>

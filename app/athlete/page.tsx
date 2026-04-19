@@ -653,7 +653,16 @@ export default function AthletePage() {
                                     key={v.id}
                                     videoUrl={v.signedUrl}
                                     initialAnnotations={v.annotations ?? []}
-                                    readOnly
+                                    sessionId={v.session_id}
+                                    videoId={v.id}
+                                    onAnnotationsChange={async (strokes) => {
+                                      // FIX 3: athletes can now annotate; save via PATCH endpoint
+                                      await fetch(`/api/sessions/${v.session_id}/videos?video_id=${v.id}`, {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ annotations: strokes }),
+                                      })
+                                    }}
                                   />
                                 ))}
                               </div>

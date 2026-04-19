@@ -740,6 +740,21 @@ function DashboardPageInner() {
       setEventForm({ title: '', description: '', event_type: 'session', event_time: '' })
       setAlsoAddToCoach(false)
       await fetchCalendar(calMode, calTargetId, calMonth)
+
+      // FIX 1: also refresh homeWeekEvents so new events appear on the Home wheel without page reload
+      try {
+        const today = new Date()
+        const homeMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+        const homeRes = await fetch(`/api/calendar?mode=personal&month=${homeMonth}`, { cache: 'no-store' })
+        const homeJson = await homeRes.json().catch(() => ({}))
+        if (homeRes.ok) {
+          const todayStr = today.toISOString().slice(0, 10)
+          const allEvs: CalendarEvent[] = homeJson.events ?? []
+          setTodayEvents(allEvs.filter((e: CalendarEvent) => e.event_date === todayStr))
+          setHomeWeekEvents(allEvs)
+        }
+      } catch { /* non-fatal */ }
+
       const label = calMode === 'group' ? 'Event added for group' : 'Event added to calendar'
       showToast(`✓ ${label}${alsoAddToCoach ? ' + your calendar' : ''}`)
     } catch {
