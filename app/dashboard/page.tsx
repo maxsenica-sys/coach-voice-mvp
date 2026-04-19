@@ -182,16 +182,125 @@ function JoinToast({ data, onDismiss }: { data: JoinToastData; onDismiss: () => 
   )
 }
 
+// ── Sports list for scroll wheel picker ─────────────────────────
+const SPORTS_LIST = [
+  'Archery','Athletics (Track & Field)','Australian Rules Football','Badminton','Baseball',
+  'Basketball','Beach Volleyball','Boxing','Canoeing','Chess','Cricket',
+  'Cross Country Running','Cycling','Darts','Diving','Equestrian','Fencing',
+  'Field Hockey','Figure Skating','Football (American)','Football (Soccer)',
+  'Freestyle Skiing','Golf','Gymnastics','Handball','Ice Hockey','Judo','Karate',
+  'Kayaking','Lacrosse','Marathon Running','Mixed Martial Arts','Modern Pentathlon',
+  'Motorcycling','Mountain Biking','Netball','Orienteering','Paddle Tennis','Padel',
+  'Powerlifting','Racquetball','Rock Climbing','Rowing','Rugby League','Rugby Union',
+  'Sailing','Shooting','Skateboarding','Ski Jumping','Skiing (Alpine)',
+  'Skiing (Cross Country)','Snooker','Snowboarding','Softball','Speed Skating',
+  'Squash','Surf Lifesaving','Surfing','Swimming','Synchronized Swimming',
+  'Table Tennis','Taekwondo','Tennis','Triathlon','Volleyball','Water Polo',
+  'Weightlifting','Wrestling','Yoga',
+]
+
+// ── Sport Scroll Wheel Picker ─────────────────────────────────────
+function SportWheelPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const filtered = SPORTS_LIST.filter(s => s.toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="input"
+        style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+      >
+        <span style={{ color: value ? 'var(--text)' : 'var(--text-muted)' }}>{value || 'Select sport…'}</span>
+        <span style={{ fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: 'var(--shadow)', marginTop: 4, overflow: 'hidden' }}>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-soft)' }}>
+            <input className="input" style={{ fontSize: 12, padding: '6px 10px' }} placeholder="Search sports…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
+          </div>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            <button type="button" onClick={() => { onChange(''); setOpen(false); setSearch('') }} style={{ width: '100%', padding: '9px 12px', border: 'none', background: !value ? 'var(--primary-light)' : 'transparent', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: 'var(--text-muted)' }}>
+              — None —
+            </button>
+            {filtered.map(s => (
+              <button key={s} type="button" onClick={() => { onChange(s); setOpen(false); setSearch('') }}
+                style={{ width: '100%', padding: '9px 12px', border: 'none', background: value === s ? 'var(--primary-light)' : 'transparent', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: value === s ? 'var(--primary)' : 'var(--text)', fontWeight: value === s ? 700 : 400 }}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Home tab weekly day wheel ─────────────────────────────────────
+const HOME_DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+function WeekDayWheel({ selectedDay, onSelect, calEvents }: { selectedDay: string | null; onSelect: (d: string) => void; calEvents: CalendarEvent[] }) {
+  const today = new Date()
+  const todayStr = today.toISOString().slice(0, 10)
+  // Build Sun–Sat of current week
+  const startOfWeek = new Date(today)
+  startOfWeek.setDate(today.getDate() - today.getDay())
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(startOfWeek)
+    d.setDate(startOfWeek.getDate() + i)
+    return { dateStr: d.toISOString().slice(0, 10), dow: d.getDay(), dayNum: d.getDate() }
+  })
+
+  const eventsByDate: Record<string, boolean> = {}
+  calEvents.forEach(e => { eventsByDate[e.event_date] = true })
+
+  return (
+    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }}>
+      {days.map(({ dateStr, dow, dayNum }) => {
+        const isToday = dateStr === todayStr
+        const isSelected = dateStr === selectedDay
+        const hasEv = !!eventsByDate[dateStr]
+        return (
+          <button
+            key={dateStr}
+            onClick={() => onSelect(isSelected ? '' : dateStr)}
+            style={{
+              flexShrink: 0, width: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              padding: '7px 2px 6px', borderRadius: 12,
+              border: isSelected ? '2px solid #0d9488' : isToday ? '2px solid var(--primary)' : '2px solid transparent',
+              background: isSelected ? '#f0fdfa' : isToday ? 'var(--primary-light)' : 'var(--card)',
+              cursor: 'pointer', transition: 'all 0.12s',
+              boxShadow: isSelected || isToday ? 'var(--shadow-sm)' : 'none',
+            }}
+          >
+            <span style={{ fontSize: 9, fontWeight: 700, color: isSelected ? '#0d9488' : isToday ? 'var(--primary)' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {HOME_DAY_LABELS[dow]}
+            </span>
+            <span style={{ fontSize: 15, fontWeight: isToday || isSelected ? 900 : 600, color: isSelected ? '#0d9488' : isToday ? 'var(--primary)' : 'var(--text)', lineHeight: 1 }}>
+              {dayNum}
+            </span>
+            <div style={{ height: 5 }}>
+              {hasEv && <div style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? '#0d9488' : 'var(--primary)' }} />}
+            </div>
+          </button>
+        )
+      })}
+      <style>{`div::-webkit-scrollbar{display:none}`}</style>
+    </div>
+  )
+}
+
 // ── Settings Tab ─────────────────────────────────────────────────
-function SettingsTab({ coachName, coachSport, inviteCode, codeEditing, codeDraft, codeSaving, codeMsg, setCodeDraft, setCodeEditing, setCodeMsg, saveCode, onNameChange, logout }: {
-  coachName: string; coachSport: string; inviteCode: string | null
+function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditing, codeDraft, codeSaving, codeMsg, setCodeDraft, setCodeEditing, setCodeMsg, saveCode, onNameChange, logout }: {
+  coachName: string; coachSport: string; coachEmail: string; inviteCode: string | null
   codeEditing: boolean; codeDraft: string; codeSaving: boolean; codeMsg: string
   setCodeDraft: (v: string) => void; setCodeEditing: (v: boolean) => void; setCodeMsg: (v: string) => void
-  saveCode: () => void; onNameChange: (f: string, l: string, s: string) => void; logout: () => void
+  saveCode: () => void; onNameChange: (f: string, l: string, s: string, e?: string) => void; logout: () => void
 }) {
   const [profileForm, setProfileForm] = useState(() => {
     const parts = coachName.trim().split(' ')
-    return { first_name: parts[0] ?? '', last_name: parts.slice(1).join(' ') ?? '', sport: coachSport }
+    return { first_name: parts[0] ?? '', last_name: parts.slice(1).join(' ') ?? '', sport: coachSport, email: coachEmail }
   })
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMsg, setProfileMsg] = useState('')
@@ -204,11 +313,11 @@ function SettingsTab({ coachName, coachSport, inviteCode, codeEditing, codeDraft
     try {
       const res = await fetch('/api/coach-profile', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profileForm),
+        body: JSON.stringify({ first_name: profileForm.first_name, last_name: profileForm.last_name, sport: profileForm.sport, email: profileForm.email }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error)
-      onNameChange(json.first_name, json.last_name, json.sport ?? '')
+      onNameChange(json.first_name, json.last_name, json.sport ?? '', profileForm.email)
       setProfileMsg('Profile updated!')
       setTimeout(() => setProfileMsg(''), 3000)
     } catch (e: any) { setProfileMsg(e?.message ?? 'Failed') }
@@ -235,8 +344,13 @@ function SettingsTab({ coachName, coachSport, inviteCode, codeEditing, codeDraft
             </div>
           </div>
           <div>
+            <label className="label">Email address</label>
+            <input className="input" type="email" value={profileForm.email} onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))} />
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginBottom: 0 }}>Changing email updates your login credentials.</p>
+          </div>
+          <div>
             <label className="label">Sport / discipline (optional)</label>
-            <input className="input" placeholder="e.g. Soccer, Swimming, Athletics" value={profileForm.sport} onChange={e => setProfileForm(f => ({ ...f, sport: e.target.value }))} />
+            <SportWheelPicker value={profileForm.sport} onChange={v => setProfileForm(f => ({ ...f, sport: v }))} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving} style={{ minWidth: 120 }}>
@@ -320,6 +434,7 @@ export default function DashboardPage() {
   const [coachName, setCoachName] = useState('')
   const [coachInitials, setCoachInitials] = useState('')
   const [coachSport, setCoachSport] = useState('')
+  const [coachEmail, setCoachEmail] = useState('')
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [codeEditing, setCodeEditing] = useState(false)
   const [codeDraft, setCodeDraft] = useState('')
@@ -385,6 +500,8 @@ export default function DashboardPage() {
 
   // Today's events for home tab
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
+  const [homeWeekEvents, setHomeWeekEvents] = useState<CalendarEvent[]>([])
+  const [homeSelectedDay, setHomeSelectedDay] = useState<string | null>(null)
 
   useEffect(() => {
     const boot = async () => {
@@ -405,19 +522,22 @@ export default function DashboardPage() {
       setCoachUserId(user.id)
       setCoachName(name); setCoachInitials(initials)
       setCoachSport(profile?.sport ?? '')
+      setCoachEmail(user.email ?? '')
       setInviteCode(profile?.invite_code ?? null)
       if (profile?.invite_code) setCodeDraft(profile.invite_code)
 
       await Promise.all([fetchAthletes(), fetchGroups(), fetchAllSessions(), fetchUnreadCounts()])
 
-      // Fetch today's events
+      // Fetch today's events and this week's events for home wheel
       const today = new Date()
       const month = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
       const res = await fetch(`/api/calendar?mode=personal&month=${month}`, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       if (res.ok) {
         const todayStr = today.toISOString().slice(0, 10)
-        setTodayEvents((json.events ?? []).filter((e: CalendarEvent) => e.event_date === todayStr))
+        const allEvs: CalendarEvent[] = json.events ?? []
+        setTodayEvents(allEvs.filter((e: CalendarEvent) => e.event_date === todayStr))
+        setHomeWeekEvents(allEvs)
       }
     }
     void boot()
@@ -770,12 +890,14 @@ export default function DashboardPage() {
               <span style={{ fontWeight: 900, fontSize: 17, letterSpacing: -0.3, color: '#fff' }}>CoachVoice</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {totalUnreadAll > 0 && (
-                <button onClick={() => setTab('messages')} style={{ position: 'relative', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
-                  <Icon name="messages" size={16} />
-                  <span style={{ position: 'absolute', top: -4, right: -4, background: 'var(--energy)', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>{totalUnreadAll}</span>
-                </button>
-              )}
+              <button onClick={() => setTab('messages')} style={{ position: 'relative', background: tab === 'messages' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
+                <Icon name="messages" size={16} />
+                {totalUnreadAll > 0 && (
+                  <span style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
+                    {totalUnreadAll > 10 ? '10+' : totalUnreadAll}
+                  </span>
+                )}
+              </button>
               <button onClick={() => setTab('settings')} style={{ background: tab === 'settings' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
                 <Icon name="settings" size={16} />
               </button>
@@ -789,37 +911,75 @@ export default function DashboardPage() {
           {tab === 'home' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-              {/* Hero header */}
+              {/* Hero header — compact */}
               <div style={{
                 background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%)',
-                borderRadius: 18, padding: isMobile ? '20px 18px' : '24px 28px',
+                borderRadius: 18, padding: isMobile ? '14px 16px' : '18px 24px',
                 position: 'relative', overflow: 'hidden',
                 boxShadow: '0 8px 32px rgb(99 102 241 / .2)',
               }}>
                 {/* Background glow */}
-                <div style={{ position: 'absolute', top: '-40%', right: '-5%', width: 220, height: 220, background: 'radial-gradient(circle, rgb(99 102 241 / .3) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
-                <div style={{ position: 'absolute', bottom: '-30%', left: '10%', width: 160, height: 160, background: 'radial-gradient(circle, rgb(14 165 233 / .2) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', top: '-40%', right: '-5%', width: 180, height: 180, background: 'radial-gradient(circle, rgb(99 102 241 / .3) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', bottom: '-30%', left: '10%', width: 120, height: 120, background: 'radial-gradient(circle, rgb(14 165 233 / .2) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, position: 'relative' }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
                       {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
                     </div>
-                    <h1 style={{ fontSize: isMobile ? 22 : 28, fontWeight: 900, margin: 0, letterSpacing: -0.5, color: '#fff', lineHeight: 1.1 }}>
+                    <h1 style={{ fontSize: isMobile ? 19 : 24, fontWeight: 900, margin: 0, letterSpacing: -0.5, color: '#fff', lineHeight: 1.15 }}>
                       {greeting}{firstName ? `, ${firstName}` : ''} 👋
                     </h1>
-                    <p style={{ margin: '8px 0 0', color: 'rgba(255,255,255,0.55)', fontSize: 14 }}>
-                      {athletes.length > 0 ? `You have ${athletes.length} athlete${athletes.length !== 1 ? 's' : ''} on your roster.` : 'Ready to start coaching?'}
+                    <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>
+                      {athletes.length > 0 ? `${athletes.length} athlete${athletes.length !== 1 ? 's' : ''} on roster` : 'Ready to start coaching?'}
                     </p>
                   </div>
-                  {!isMobile && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    {/* Message icon with unread badge */}
                     <button
-                      onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
-                      style={{ padding: '12px 22px', fontSize: 15, gap: 8, fontWeight: 800, background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '0 4px 20px rgb(99 102 241 / .5)', flexShrink: 0, transition: 'all 0.18s ease' }}
+                      onClick={() => setTab('messages')}
+                      style={{ position: 'relative', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', transition: 'all 0.15s' }}
+                      title="Messages"
                     >
-                      <Icon name="mic" size={17} /> Record Session
+                      <Icon name="messages" size={17} />
+                      {totalUnreadAll > 0 && (
+                        <span style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
+                          {totalUnreadAll > 10 ? '10+' : totalUnreadAll}
+                        </span>
+                      )}
                     </button>
-                  )}
+                    {!isMobile && (
+                      <button
+                        onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
+                        style={{ padding: '9px 16px', fontSize: 13, gap: 6, fontWeight: 800, background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '0 4px 20px rgb(99 102 241 / .5)', transition: 'all 0.18s ease' }}
+                      >
+                        <Icon name="mic" size={15} /> Record
+                      </button>
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              {/* Weekly day wheel */}
+              <div className="card" style={{ padding: '12px 14px' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8 }}>This week</div>
+                <WeekDayWheel selectedDay={homeSelectedDay} onSelect={setHomeSelectedDay} calEvents={homeWeekEvents} />
+                {homeSelectedDay && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-soft)' }}>
+                    {(homeWeekEvents.filter(e => e.event_date === homeSelectedDay)).length === 0 ? (
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '6px 0' }}>No events on this day</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {homeWeekEvents.filter(e => e.event_date === homeSelectedDay).map(ev => (
+                          <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--primary-light)', borderRadius: 8, border: '1px solid #bfdbfe' }}>
+                            <div style={{ width: 3, height: 24, borderRadius: 2, background: 'var(--primary)', flexShrink: 0 }} />
+                            <span style={{ fontWeight: 700, fontSize: 12 }}>{ev.title}</span>
+                            {ev.event_time && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{ev.event_time}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Daily quote */}
@@ -1287,6 +1447,7 @@ export default function DashboardPage() {
             <SettingsTab
               coachName={coachName}
               coachSport={coachSport}
+              coachEmail={coachEmail}
               inviteCode={inviteCode}
               codeEditing={codeEditing}
               codeDraft={codeDraft}
@@ -1296,9 +1457,10 @@ export default function DashboardPage() {
               setCodeEditing={setCodeEditing}
               setCodeMsg={setCodeMsg}
               saveCode={saveCode}
-              onNameChange={(first, last, sport) => {
+              onNameChange={(first, last, sport, email) => {
                 setCoachName(`${first} ${last}`.trim())
                 setCoachSport(sport)
+                if (email) setCoachEmail(email)
               }}
               logout={logout}
             />

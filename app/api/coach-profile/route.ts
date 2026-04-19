@@ -55,12 +55,20 @@ export async function PATCH(req: NextRequest) {
   const first_name = String(body?.first_name ?? '').trim()
   const last_name = String(body?.last_name ?? '').trim()
   const sport = String(body?.sport ?? '').trim()
+  const newEmail = String(body?.email ?? '').trim()
 
   if (!first_name || !last_name) {
     return attach(NextResponse.json({ error: 'First and last name are required.' }, { status: 400 }), cookiesToSet)
   }
 
   const admin = createSupabaseAdminClient()
+
+  // Update email if changed
+  if (newEmail && newEmail !== user.email) {
+    const { error: emailErr } = await admin.auth.admin.updateUserById(user.id, { email: newEmail })
+    if (emailErr) return attach(NextResponse.json({ error: emailErr.message }, { status: 400 }), cookiesToSet)
+  }
+
   const { error } = await admin
     .from('profiles')
     .update({ first_name, last_name, sport: sport || null })
