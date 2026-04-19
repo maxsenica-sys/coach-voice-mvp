@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback, Suspense } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
@@ -239,54 +239,101 @@ function SportWheelPicker({ value, onChange }: { value: string; onChange: (v: st
 }
 
 // ── Home tab weekly day wheel ─────────────────────────────────────
-const HOME_DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-function WeekDayWheel({ selectedDay, onSelect, calEvents }: { selectedDay: string | null; onSelect: (d: string) => void; calEvents: CalendarEvent[] }) {
-  const today = new Date()
-  const todayStr = today.toISOString().slice(0, 10)
-  // Build Sun–Sat of current week
-  const startOfWeek = new Date(today)
-  startOfWeek.setDate(today.getDate() - today.getDay())
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(startOfWeek)
-    d.setDate(startOfWeek.getDate() + i)
-    return { dateStr: d.toISOString().slice(0, 10), dow: d.getDay(), dayNum: d.getDate() }
-  })
+function WeekDayWheel({ selectedDay, onSelect, calEvents }: {
+  selectedDay: string | null
+  onSelect: (d: string) => void
+  calEvents: CalendarEvent[]
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const snapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+  const ITEM_W = 44
+  const GAP = 6
 
-  const eventsByDate: Record<string, boolean> = {}
-  calEvents.forEach(e => { eventsByDate[e.event_date] = true })
+  // Generate days: 30 before today + today + 30 after = 61 days
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
+  const days = Array.from({ length: 61 }, (_, i) => {
+    const d = new Date(today)
+    d.setDate(today.getDate() - 30 + i)
+    const str = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    return { str, dow: d.getDay(), dayNum: d.getDate(), label: DAY_LABELS[d.getDay()] }
+  })
+  const todayIndex = 30 // always index 30
+
+  const eventDates = useMemo(() => new Set(calEvents.map(e => e.event_date)), [calEvents])
+
+  const scrollToIndex = (index: number, smooth = true) => {
+    if (!scrollRef.current) return
+    const containerW = scrollRef.current.clientWidth
+    const offset = index * (ITEM_W + GAP) - containerW / 2 + ITEM_W / 2
+    scrollRef.current.scrollTo({ left: Math.max(0, offset), behavior: smooth ? 'smooth' : 'instant' })
+  }
+
+  // Scroll to today on mount
+  useEffect(() => {
+    requestAnimationFrame(() => scrollToIndex(todayIndex, false))
+  }, [])
+
+  // Auto-snap back to today after 2s of inactivity
+  const handleScroll = () => {
+    if (snapTimerRef.current) clearTimeout(snapTimerRef.current)
+    snapTimerRef.current = setTimeout(() => {
+      scrollToIndex(todayIndex, true)
+      onSelect(todayStr)
+    }, 2000)
+  }
 
   return (
-    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }}>
-      {days.map(({ dateStr, dow, dayNum }) => {
-        const isToday = dateStr === todayStr
-        const isSelected = dateStr === selectedDay
-        const hasEv = !!eventsByDate[dateStr]
-        return (
-          <button
-            key={dateStr}
-            onClick={() => onSelect(isSelected ? '' : dateStr)}
-            style={{
-              flexShrink: 0, width: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-              padding: '7px 2px 6px', borderRadius: 12,
-              border: isSelected ? '2px solid #0d9488' : isToday ? '2px solid var(--primary)' : '2px solid transparent',
-              background: isSelected ? '#f0fdfa' : isToday ? 'var(--primary-light)' : 'var(--card)',
-              cursor: 'pointer', transition: 'all 0.12s',
-              boxShadow: isSelected || isToday ? 'var(--shadow-sm)' : 'none',
-            }}
-          >
-            <span style={{ fontSize: 9, fontWeight: 700, color: isSelected ? '#0d9488' : isToday ? 'var(--primary)' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              {HOME_DAY_LABELS[dow]}
-            </span>
-            <span style={{ fontSize: 15, fontWeight: isToday || isSelected ? 900 : 600, color: isSelected ? '#0d9488' : isToday ? 'var(--primary)' : 'var(--text)', lineHeight: 1 }}>
-              {dayNum}
-            </span>
-            <div style={{ height: 5 }}>
-              {hasEv && <div style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? '#0d9488' : 'var(--primary)' }} />}
-            </div>
-          </button>
-        )
-      })}
-      <style>{`div::-webkit-scrollbar{display:none}`}</style>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {/* Left arrow */}
+      <button
+        onClick={() => scrollRef.current?.scrollBy({ left: -(ITEM_W + GAP) * 3, behavior: 'smooth' })}
+        style={{ flexShrink: 0, width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--text-2)' }}
+      >‹</button>
+
+      {/* Scrollable day strip */}
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        style={{ flex: 1, display: 'flex', gap: GAP, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 2 }}
+      >
+        {days.map(({ str, label, dayNum }) => {
+          const isToday = str === todayStr
+          const isSelected = str === selectedDay
+          const hasEvent = eventDates.has(str)
+          return (
+            <button
+              key={str}
+              onClick={() => onSelect(isSelected ? '' : str)}
+              style={{
+                flexShrink: 0,
+                width: ITEM_W,
+                padding: '6px 0',
+                borderRadius: 10,
+                border: isToday ? '2px solid var(--primary)' : '1px solid var(--border)',
+                background: isSelected ? 'var(--primary)' : isToday ? 'var(--primary-light, #eef2ff)' : 'var(--card)',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <span style={{ fontSize: 10, fontWeight: 600, color: isSelected ? '#fff' : isToday ? 'var(--primary)' : 'var(--text-muted)', textTransform: 'uppercase' }}>{label}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: isSelected ? '#fff' : isToday ? 'var(--primary)' : 'var(--text)' }}>{dayNum}</span>
+              {hasEvent && <div style={{ width: 4, height: 4, borderRadius: '50%', background: isSelected ? '#fff' : 'var(--primary)' }} />}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Right arrow */}
+      <button
+        onClick={() => scrollRef.current?.scrollBy({ left: (ITEM_W + GAP) * 3, behavior: 'smooth' })}
+        style={{ flexShrink: 0, width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--text-2)' }}
+      >›</button>
     </div>
   )
 }
@@ -936,52 +983,11 @@ function DashboardPageInner() {
           {tab === 'home' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-              {/* Hero header — compact */}
-              <div style={{
-                background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%)',
-                borderRadius: 18, padding: isMobile ? '14px 16px' : '18px 24px',
-                position: 'relative', overflow: 'hidden',
-                boxShadow: '0 8px 32px rgb(99 102 241 / .2)',
-              }}>
-                {/* Background glow */}
-                <div style={{ position: 'absolute', top: '-40%', right: '-5%', width: 180, height: 180, background: 'radial-gradient(circle, rgb(99 102 241 / .3) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
-                <div style={{ position: 'absolute', bottom: '-30%', left: '10%', width: 120, height: 120, background: 'radial-gradient(circle, rgb(14 165 233 / .2) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, position: 'relative' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
-                      {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-                    </div>
-                    <h1 style={{ fontSize: isMobile ? 19 : 24, fontWeight: 900, margin: 0, letterSpacing: -0.5, color: '#fff', lineHeight: 1.15 }}>
-                      {greeting}{firstName ? `, ${firstName}` : ''} 👋
-                    </h1>
-                    <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>
-                      {athletes.length > 0 ? `${athletes.length} athlete${athletes.length !== 1 ? 's' : ''} on roster` : 'Ready to start coaching?'}
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                    {/* Message icon with unread badge */}
-                    <button
-                      onClick={() => setTab('messages')}
-                      style={{ position: 'relative', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', transition: 'all 0.15s' }}
-                      title="Messages"
-                    >
-                      <Icon name="messages" size={17} />
-                      {totalUnreadAll > 0 && (
-                        <span style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
-                          {totalUnreadAll > 10 ? '10+' : totalUnreadAll}
-                        </span>
-                      )}
-                    </button>
-                    {!isMobile && (
-                      <button
-                        onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
-                        style={{ padding: '9px 16px', fontSize: 13, gap: 6, fontWeight: 800, background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '0 4px 20px rgb(99 102 241 / .5)', transition: 'all 0.18s ease' }}
-                      >
-                        <Icon name="mic" size={15} /> Record
-                      </button>
-                    )}
-                  </div>
-                </div>
+              {/* Hero header — flat greeting */}
+              <div style={{ paddingBottom: 4 }}>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                  {greeting}{firstName ? `, ${firstName}` : ''} 👋
+                </p>
               </div>
 
               {/* Weekly day wheel */}
@@ -1008,22 +1014,22 @@ function DashboardPageInner() {
               </div>
 
               {/* Daily quote */}
-              <p className="quote-strip" style={{ marginTop: -8 }}>
-                "{getDailyQuote('coach')}"
+              <p className="quote-strip" style={{ marginTop: 4 }}>
+                {getDailyQuote('coach')}
               </p>
 
               {/* Stats strip — all cards are clickable */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
                 {([
-                  { label: 'Athletes',          value: athletes.length,    color: 'var(--primary)',    tab: 'athletes' as Tab },
-                  { label: 'Sessions this week', value: thisWeek.length,   color: '#8b5cf6',           tab: 'calendar' as Tab },
-                  { label: 'Unread',             value: totalUnreadAll,    color: totalUnreadAll > 0 ? 'var(--energy)' : 'var(--text-muted)', tab: 'messages' as Tab },
-                ] as { label: string; value: number; color: string; tab: Tab }[]).map(stat => (
+                  { label: 'Athletes',           value: athletes.length,  color: '#059669', bg: '#ECFDF5', tab: 'athletes' as Tab },
+                  { label: 'Sessions this week', value: thisWeek.length,  color: '#7C3AED', bg: '#F5F3FF', tab: 'calendar' as Tab },
+                  { label: 'Unread',             value: totalUnreadAll,   color: '#D97706', bg: '#FFFBEB', tab: 'messages' as Tab },
+                ] as { label: string; value: number; color: string; bg: string; tab: Tab }[]).map(stat => (
                   <button
                     key={stat.label}
                     onClick={() => setTab(stat.tab)}
                     style={{
-                      background: 'var(--card)', border: '1px solid var(--border)',
+                      background: stat.bg, border: '1px solid var(--border)',
                       borderRadius: 14, padding: '14px 14px 12px',
                       boxShadow: 'var(--shadow-sm)', position: 'relative', overflow: 'hidden',
                       cursor: 'pointer', textAlign: 'left',
@@ -1457,7 +1463,7 @@ function DashboardPageInner() {
 
           {/* ════ MESSAGES TAB ════ */}
           {tab === 'messages' && (
-            <div style={{ margin: isMobile ? '-16px' : '-28px', height: isMobile ? 'calc(100dvh - 120px)' : 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ margin: isMobile ? '-16px' : '-28px', height: isMobile ? 'calc(100dvh - 136px)' : 'calc(100% + 56px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <MessagingPanel
                 athletes={athletes}
                 unreadCounts={unreadCounts}

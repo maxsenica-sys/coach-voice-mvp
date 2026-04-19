@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 
 export type CalendarEvent = {
   id: string
@@ -39,7 +39,6 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
 }
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 function daysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate()
@@ -65,137 +64,6 @@ function formatTime(time: string | null | undefined) {
   return `${hour}:${String(m).padStart(2, '0')}${period}`
 }
 
-// ── Scroll-wheel date strip ──────────────────────────────────────────
-function DateStrip({
-  year, month, selectedDate, todayStr, eventsByDate,
-  onSelectDate, onMonthChange,
-}: {
-  year: number
-  month: number
-  selectedDate: string | null
-  todayStr: string
-  eventsByDate: Record<string, CalendarEvent[]>
-  onSelectDate: (d: string) => void
-  onMonthChange: (y: number, m: number) => void
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const days = daysInMonth(year, month)
-
-  // Scroll selected/today into view on mount and when month changes
-  useEffect(() => {
-    const container = scrollRef.current
-    if (!container) return
-    const target = selectedDate ?? todayStr
-    const [ty, tm, td] = target.split('-').map(Number)
-    if (ty === year && tm - 1 === month) {
-      // find index of that day in the strip
-      const idx = td - 1
-      const itemW = 56 + 6 // item width + gap
-      const scrollTo = idx * itemW - container.clientWidth / 2 + itemW / 2
-      container.scrollTo({ left: Math.max(0, scrollTo), behavior: 'smooth' })
-    }
-  }, [year, month, selectedDate, todayStr])
-
-  return (
-    <div>
-      {/* Month header with prev/next */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 10,
-      }}>
-        <button
-          onClick={() => {
-            const ny = month === 0 ? year - 1 : year
-            const nm = month === 0 ? 11 : month - 1
-            onMonthChange(ny, nm)
-          }}
-          style={{ width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >‹</button>
-        <span style={{ fontWeight: 800, fontSize: 16 }}>{formatMonthYear(year, month)}</span>
-        <button
-          onClick={() => {
-            const ny = month === 11 ? year + 1 : year
-            const nm = month === 11 ? 0 : month + 1
-            onMonthChange(ny, nm)
-          }}
-          style={{ width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >›</button>
-      </div>
-
-      {/* Horizontal scrollable day strip */}
-      <div
-        ref={scrollRef}
-        style={{
-          display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8,
-          scrollbarWidth: 'none', msOverflowStyle: 'none',
-          WebkitOverflowScrolling: 'touch',
-        }}
-      >
-        {Array.from({ length: days }, (_, i) => {
-          const day = i + 1
-          const dateStr = toDateStr(year, month, day)
-          const dow = new Date(year, month, day).getDay()
-          const isToday = dateStr === todayStr
-          const isSelected = dateStr === selectedDate
-          const hasEvents = (eventsByDate[dateStr]?.length ?? 0) > 0
-          const dotColors = (eventsByDate[dateStr] ?? [])
-            .slice(0, 3)
-            .map(e => EVENT_TYPE_COLOR[e.event_type] ?? '#64748b')
-
-          return (
-            <button
-              key={dateStr}
-              onClick={() => onSelectDate(isSelected ? '' : dateStr)}
-              style={{
-                flexShrink: 0,
-                width: 52,
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                padding: '8px 4px 7px',
-                borderRadius: 14,
-                border: isSelected
-                  ? '2px solid #0d9488'
-                  : isToday
-                    ? '2px solid var(--primary)'
-                    : '2px solid transparent',
-                background: isSelected
-                  ? '#f0fdfa'
-                  : isToday
-                    ? 'var(--primary-light)'
-                    : 'var(--card)',
-                cursor: 'pointer',
-                transition: 'all 0.12s ease',
-                boxShadow: isSelected || isToday ? 'var(--shadow-sm)' : 'none',
-              }}
-            >
-              <span style={{ fontSize: 10, fontWeight: 700, color: isSelected ? '#0d9488' : isToday ? 'var(--primary)' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                {DAY_LABELS[dow]}
-              </span>
-              <span style={{
-                fontSize: 17, fontWeight: isToday || isSelected ? 900 : 600,
-                color: isSelected ? '#0d9488' : isToday ? 'var(--primary)' : 'var(--text)',
-                lineHeight: 1,
-              }}>
-                {day}
-              </span>
-              {/* Event dots */}
-              {hasEvents ? (
-                <div style={{ display: 'flex', gap: 2, height: 6, alignItems: 'center' }}>
-                  {dotColors.map((c, i) => (
-                    <div key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: c }} />
-                  ))}
-                </div>
-              ) : (
-                <div style={{ height: 6 }} />
-              )}
-            </button>
-          )
-        })}
-      </div>
-      <style>{`div::-webkit-scrollbar{display:none}`}</style>
-    </div>
-  )
-}
-
 export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMonthChange, loading }: Props) {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -203,7 +71,6 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
   const [selectedDate, setSelectedDate] = useState<string | null>(
     toDateStr(today.getFullYear(), today.getMonth(), today.getDate())
   )
-  const [view, setView] = useState<'strip' | 'grid'>('strip')
 
   const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate())
 
@@ -212,7 +79,6 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
 
   const handleMonthChange = (y: number, m: number) => {
     setYear(y); setMonth(m)
-    // Keep the same day-of-month if it exists in the new month, else clear
     if (selectedDate) {
       const [, , dd] = selectedDate.split('-').map(Number)
       const daysInNew = daysInMonth(y, m)
@@ -229,139 +95,105 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
     setSelectedDate(dateStr || null)
   }
 
-  // Index events by date
-  const eventsByDate = useCallback(() => {
+  // Index events by date — useMemo so it recomputes only when events change
+  const eventsByDate = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {}
     for (const ev of events) {
       if (!map[ev.event_date]) map[ev.event_date] = []
       map[ev.event_date].push(ev)
     }
     return map
-  }, [events])()
+  }, [events])
 
   const selectedEvents = selectedDate ? (eventsByDate[selectedDate] ?? []) : []
 
-  // Grid-only helpers
+  // Grid helpers
   const days = daysInMonth(year, month)
   const firstDay = firstDayOfMonth(year, month)
   const totalCells = Math.ceil((firstDay + days) / 7) * 7
 
   return (
     <div style={{ fontFamily: 'inherit' }}>
-      {/* View toggle */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-        <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-          {(['strip', 'grid'] as const).map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              style={{
-                padding: '5px 12px', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
-                background: view === v ? 'var(--primary)' : 'transparent',
-                color: view === v ? '#fff' : 'var(--text-muted)',
-                textTransform: 'capitalize',
-              }}
-            >
-              {v === 'strip' ? 'Day Strip' : 'Month Grid'}
-            </button>
-          ))}
+      {/* Month grid header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => handleMonthChange(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1)}
+            style={{ width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >‹</button>
+          <span style={{ fontSize: 16, fontWeight: 800, minWidth: 160, textAlign: 'center' }}>
+            {formatMonthYear(year, month)}
+          </span>
+          <button
+            onClick={() => handleMonthChange(month === 11 ? year + 1 : year, month === 11 ? 0 : month + 1)}
+            style={{ width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >›</button>
         </div>
+        <button
+          onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDate(todayStr); onMonthChange?.(toMonthStr(today.getFullYear(), today.getMonth())) }}
+          style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+        >
+          Today
+        </button>
       </div>
 
-      {view === 'strip' ? (
-        <DateStrip
-          year={year}
-          month={month}
-          selectedDate={selectedDate}
-          todayStr={todayStr}
-          eventsByDate={eventsByDate}
-          onSelectDate={handleSelectDate}
-          onMonthChange={handleMonthChange}
-        />
-      ) : (
-        <>
-          {/* Month grid header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button
-                onClick={() => handleMonthChange(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1)}
-                style={{ width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >‹</button>
-              <span style={{ fontSize: 16, fontWeight: 800, minWidth: 160, textAlign: 'center' }}>
-                {formatMonthYear(year, month)}
-              </span>
-              <button
-                onClick={() => handleMonthChange(month === 11 ? year + 1 : year, month === 11 ? 0 : month + 1)}
-                style={{ width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >›</button>
-            </div>
+      {/* Day-of-week headers */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
+        {DAY_LABELS.map((d) => (
+          <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', padding: '4px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{d}</div>
+        ))}
+      </div>
+
+      {/* Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+        {Array.from({ length: totalCells }).map((_, i) => {
+          const dayNum = i - firstDay + 1
+          const isValid = dayNum >= 1 && dayNum <= days
+          if (!isValid) return <div key={i} />
+
+          const dateStr = toDateStr(year, month, dayNum)
+          const dayEvents = eventsByDate[dateStr] ?? []
+          const isToday = dateStr === todayStr
+          const isSelected = dateStr === selectedDate
+          const hasEvents = dayEvents.length > 0
+
+          return (
             <button
-              onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDate(todayStr); onMonthChange?.(toMonthStr(today.getFullYear(), today.getMonth())) }}
-              style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+              key={dateStr}
+              onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+              style={{
+                minHeight: 52,
+                border: `1.5px solid ${isSelected ? '#0d9488' : isToday ? 'var(--primary)' : 'var(--border)'}`,
+                borderRadius: 8,
+                background: isSelected ? '#f0fdfa' : isToday ? '#f0f9ff' : 'var(--card)',
+                cursor: 'pointer', padding: '6px 4px 4px',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                transition: 'all 0.1s ease',
+              }}
             >
-              Today
+              <span style={{
+                fontSize: 13,
+                fontWeight: isToday ? 900 : isSelected ? 700 : 500,
+                color: (isToday && !isSelected) ? '#fff' : isToday ? 'var(--primary)' : isSelected ? '#0d9488' : 'var(--text)',
+                width: 24, height: 24,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: '50%',
+                background: isToday && !isSelected ? 'var(--primary)' : 'transparent',
+              }}>
+                {dayNum}
+              </span>
+              {hasEvents && (
+                <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 40 }}>
+                  {dayEvents.slice(0, 3).map((ev) => (
+                    <div key={ev.id} style={{ width: 6, height: 6, borderRadius: '50%', background: EVENT_TYPE_COLOR[ev.event_type] ?? '#64748b', opacity: ev.created_by_role === 'athlete' ? 0.7 : 1 }} />
+                  ))}
+                  {dayEvents.length > 3 && <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700 }}>+{dayEvents.length - 3}</span>}
+                </div>
+              )}
             </button>
-          </div>
-
-          {/* Day-of-week headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
-            {DAY_LABELS.map((d) => (
-              <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', padding: '4px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{d}</div>
-            ))}
-          </div>
-
-          {/* Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
-            {Array.from({ length: totalCells }).map((_, i) => {
-              const dayNum = i - firstDay + 1
-              const isValid = dayNum >= 1 && dayNum <= days
-              if (!isValid) return <div key={i} />
-
-              const dateStr = toDateStr(year, month, dayNum)
-              const dayEvents = eventsByDate[dateStr] ?? []
-              const isToday = dateStr === todayStr
-              const isSelected = dateStr === selectedDate
-              const hasEvents = dayEvents.length > 0
-
-              return (
-                <button
-                  key={dateStr}
-                  onClick={() => setSelectedDate(isSelected ? null : dateStr)}
-                  style={{
-                    minHeight: 52,
-                    border: `1.5px solid ${isSelected ? '#0d9488' : isToday ? 'var(--primary)' : 'var(--border)'}`,
-                    borderRadius: 8,
-                    background: isSelected ? '#f0fdfa' : isToday ? '#f0f9ff' : 'var(--card)',
-                    cursor: 'pointer', padding: '6px 4px 4px',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                    transition: 'all 0.1s ease',
-                  }}
-                >
-                  <span style={{
-                    fontSize: 13,
-                    fontWeight: isToday ? 900 : isSelected ? 700 : 500,
-                    color: (isToday && !isSelected) ? '#fff' : isToday ? 'var(--primary)' : isSelected ? '#0d9488' : 'var(--text)',
-                    width: 24, height: 24,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: '50%',
-                    background: isToday && !isSelected ? 'var(--primary)' : 'transparent',
-                  }}>
-                    {dayNum}
-                  </span>
-                  {hasEvents && (
-                    <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 40 }}>
-                      {dayEvents.slice(0, 3).map((ev) => (
-                        <div key={ev.id} style={{ width: 6, height: 6, borderRadius: '50%', background: EVENT_TYPE_COLOR[ev.event_type] ?? '#64748b', opacity: ev.created_by_role === 'athlete' ? 0.7 : 1 }} />
-                      ))}
-                      {dayEvents.length > 3 && <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700 }}>+{dayEvents.length - 3}</span>}
-                    </div>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </>
-      )}
+          )
+        })}
+      </div>
 
       {/* Selected day events */}
       {selectedDate && (
