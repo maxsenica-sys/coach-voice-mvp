@@ -65,12 +65,22 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [msgError, setMsgError] = useState<string | null>(null)
 
+  const [coachId, setCoachId] = useState<string | null>(null)
+
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const unreadChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const mediaRecRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<BlobPart[]>([])
   const streamRef = useRef<MediaStream | null>(null)
+
+  // Fetch coach identity once on mount
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCoachId(user.id)
+    })
+  }, [supabase])
 
   const selectedAthlete = athletes.find((a) => a.id === selectedId) ?? null
 
@@ -136,8 +146,29 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
           if (prev.some((m) => m.id === msg.id)) return prev
           return [...prev, msg]
         })
-        // FIX 8: increment unread badge for athletes not currently in view
-        if (msg.athlete_id !== selectedId) {
+      })
+      .subscribe()
+
+    channelRef.current = channel
+    return () => { channel.unsubscribe() }
+  }, [selectedId, supabase])
+
+  // Second channel: listen to ALL new messages for this coach — used solely for badge counting
+  useEffect(() => {
+    if (!coachId) return
+    unreadChannelRef.current?.unsubscribe()
+
+    const unreadChannel = supabase
+      .channel('all-messages-unread')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `coach_id=eq.${coachId}`,
+      }, (payload) => {
+        const msg = payload.new as { athlete_id: string; sender_role: string }
+        // Only count inbound athlete messages for athletes not currently open
+        if (msg.sender_role === 'athlete' && msg.athlete_id !== selectedId) {
           setLocalUnread((prev) => ({
             ...prev,
             [msg.athlete_id]: (prev[msg.athlete_id] ?? 0) + 1,
@@ -146,9 +177,9 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
       })
       .subscribe()
 
-    channelRef.current = channel
-    return () => { channel.unsubscribe() }
-  }, [selectedId, supabase])
+    unreadChannelRef.current = unreadChannel
+    return () => { unreadChannel.unsubscribe() }
+  }, [coachId, selectedId, supabase])
 
   // Send text message
   const sendText = async () => {

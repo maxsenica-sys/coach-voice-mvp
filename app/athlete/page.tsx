@@ -256,10 +256,12 @@ export default function AthletePage() {
     const path = `athlete/${athleteId}/${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('messages-media').upload(path, file)
     if (error) { alert('Upload failed: ' + error.message); return }
-    const { data: { publicUrl } } = supabase.storage.from('messages-media').getPublicUrl(path)
+    const { data: signedData, error: signErr } = await supabase.storage.from('messages-media').createSignedUrl(path, 3600)
+    if (signErr || !signedData?.signedUrl) { alert('Could not get media URL'); return }
+    const mediaUrl = signedData.signedUrl
     const res = await fetch('/api/messages', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ athlete_id: athleteId, content: null, msg_type: msgType, media_url: publicUrl, media_name: file.name }),
+      body: JSON.stringify({ athlete_id: athleteId, content: null, msg_type: msgType, media_url: mediaUrl, media_name: file.name }),
     })
     const j = await res.json()
     if (res.ok && j.message) setMessages((prev) => [...prev, j.message])
