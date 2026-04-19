@@ -18,7 +18,7 @@ export async function GET(
 
     const { data, error } = await admin
       .from('athletes')
-      .select('id, first_name, last_name, email, athlete_user_id, invited_at, created_at, photo_url, position, height_cm, sport, sport_metrics, goals, custom_fields, auto_monthly_report')
+      .select('id, first_name, last_name, email, athlete_user_id, invited_at, created_at, photo_url, position, height_cm, height, sport, sport_metrics, goals, custom_fields, auto_monthly_report')
       .eq('id', id)
       .eq('coach_id', user.id)
       .single()
@@ -49,9 +49,12 @@ export async function GET(
         photo_signed_url: photoSignedUrl,
         position: data.position ?? null,
         height_cm: data.height_cm ?? null,
+        height: data.height ?? null,
+        sport: data.sport ?? null,
         sport_metrics: data.sport_metrics ?? {},
         goals: data.goals ?? null,
         custom_fields: data.custom_fields ?? [],
+        auto_monthly_report: data.auto_monthly_report ?? false,
       },
     })
   } catch (e: any) {
@@ -72,7 +75,7 @@ export async function PATCH(
     const { id } = await ctx.params
     const body = await req.json().catch(() => ({}))
 
-    const allowed = ['first_name', 'last_name', 'position', 'height_cm', 'sport', 'sport_metrics', 'goals', 'custom_fields', 'photo_url', 'auto_monthly_report']
+    const allowed = ['first_name', 'last_name', 'position', 'height_cm', 'height', 'sport', 'sport_metrics', 'goals', 'custom_fields', 'photo_url', 'auto_monthly_report']
     const updates: Record<string, any> = {}
     for (const key of allowed) {
       if (key in body) updates[key] = body[key]
@@ -88,7 +91,7 @@ export async function PATCH(
       .update(updates)
       .eq('id', id)
       .eq('coach_id', user.id)
-      .select('id, first_name, last_name, position, height_cm, sport, sport_metrics, goals, custom_fields, photo_url, auto_monthly_report')
+      .select('id, first_name, last_name, position, height_cm, height, sport, sport_metrics, goals, custom_fields, photo_url, auto_monthly_report')
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

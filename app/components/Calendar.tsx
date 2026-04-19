@@ -211,7 +211,17 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
     `${y}-${String(m + 1).padStart(2, '0')}`
 
   const handleMonthChange = (y: number, m: number) => {
-    setYear(y); setMonth(m); setSelectedDate(null)
+    setYear(y); setMonth(m)
+    // Keep the same day-of-month if it exists in the new month, else clear
+    if (selectedDate) {
+      const [, , dd] = selectedDate.split('-').map(Number)
+      const daysInNew = daysInMonth(y, m)
+      if (dd <= daysInNew) {
+        setSelectedDate(toDateStr(y, m, dd))
+      } else {
+        setSelectedDate(null)
+      }
+    }
     onMonthChange?.(toMonthStr(y, m))
   }
 

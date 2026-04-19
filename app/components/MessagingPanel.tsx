@@ -139,12 +139,24 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
     const content = text.trim()
     setText('')
     try {
-      await fetch('/api/messages', {
+      const res = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ athlete_id: selectedId, content, msg_type: 'text' }),
       })
-    } catch {}
+      const json = await res.json().catch(() => ({}))
+      if (res.ok && json.message) {
+        // Optimistic update — add to local state immediately
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === json.message.id)) return prev
+          return [...prev, json.message]
+        })
+      } else if (!res.ok) {
+        console.error('[MessagingPanel] send failed:', json?.error)
+      }
+    } catch (e) {
+      console.error('[MessagingPanel] send error:', e)
+    }
     setSending(false)
   }
 
@@ -161,11 +173,18 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
 
       const { data: { publicUrl } } = supabase.storage.from('messages-media').getPublicUrl(path)
 
-      await fetch('/api/messages', {
+      const res = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ athlete_id: selectedId, content: null, msg_type: msgType, media_url: publicUrl, media_name: file.name }),
       })
+      const json = await res.json().catch(() => ({}))
+      if (res.ok && json.message) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === json.message.id)) return prev
+          return [...prev, json.message]
+        })
+      }
     } finally {
       setMediaUploading(false)
     }

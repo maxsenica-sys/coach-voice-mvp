@@ -56,11 +56,20 @@ export async function GET(
   const { id: sessionId } = await ctx.params
   const admin = createSupabaseAdminClient()
 
-  const { data: videos, error } = await admin
+  // Determine user role to decide which videos to show
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const isAthlete = profile?.role === 'athlete'
+
+  let q = admin
     .from('session_videos')
-    .select('id, session_id, storage_path, file_name, mime_type, annotations, created_at')
+    .select('id, session_id, storage_path, file_name, mime_type, annotations, shared_with_athlete, share_note, created_at')
     .eq('session_id', sessionId)
     .order('created_at', { ascending: true })
+
+  // Athletes only see videos explicitly shared with them
+  if (isAthlete) q = (q as any).eq('shared_with_athlete', true)
+
+  const { data: videos, error } = await q
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 

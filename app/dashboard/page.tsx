@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useRef, useState, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
@@ -411,8 +411,9 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
   )
 }
 
-export default function DashboardPage() {
+function DashboardPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createSupabaseBrowserClient()
 
   const [isMobile, setIsMobile] = useState(false)
@@ -423,7 +424,10 @@ export default function DashboardPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const [tab, setTab] = useState<Tab>('home')
+  // Read ?tab= and ?athlete= from URL to support deep linking (e.g. from athlete profile Message button)
+  const urlTab = searchParams.get('tab') as Tab | null
+  const urlAthlete = searchParams.get('athlete')
+  const [tab, setTab] = useState<Tab>(urlTab ?? 'home')
   const mainRef = useRef<HTMLElement>(null)
 
   // Scroll to top whenever tab changes
@@ -464,7 +468,7 @@ export default function DashboardPage() {
   const [sessionsAthleteFilter, setSessionsAthleteFilter] = useState('')
 
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
-  const [msgPreselectedId, setMsgPreselectedId] = useState<string | null>(null)
+  const [msgPreselectedId, setMsgPreselectedId] = useState<string | null>(urlAthlete ?? null)
 
   const [deleteConfirmAthlete, setDeleteConfirmAthlete] = useState<Athlete | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -583,6 +587,11 @@ export default function DashboardPage() {
   }
 
   const fetchCalendar = useCallback(async (mode: CalMode, targetId: string, month: string) => {
+    // Don't fetch athlete/group calendars until a target is selected
+    if ((mode === 'athlete' || mode === 'group') && !targetId) {
+      setCalEvents([])
+      return
+    }
     setCalLoading(true)
     try {
       const p = new URLSearchParams({ month })
@@ -592,6 +601,7 @@ export default function DashboardPage() {
       const res = await fetch(`/api/calendar?${p}`, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       if (res.ok) setCalEvents(json.events ?? [])
+      else console.error('[Calendar fetch]', json?.error)
     } finally { setCalLoading(false) }
   }, [])
 
@@ -1711,5 +1721,13 @@ export default function DashboardPage() {
         />
       )}
     </div>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ color: 'var(--text-muted)' }}>Loading…</div></div>}>
+      <DashboardPageInner />
+    </Suspense>
   )
 }

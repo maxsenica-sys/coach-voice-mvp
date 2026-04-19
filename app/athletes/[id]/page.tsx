@@ -60,6 +60,7 @@ interface Athlete {
   photo_url?: string | null
   position?: string | null
   height_cm?: number | null
+  height?: string | null
   sport?: string | null
   sport_metrics?: Record<string, string>
   goals?: string | null
@@ -268,7 +269,7 @@ export default function AthleteDetailPage() {
   // Profile editing
   const [showProfile, setShowProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({
-    first_name: '', last_name: '', position: '', height_cm: '',
+    first_name: '', last_name: '', position: '', height: '',
     sport: '',
     goals: '', sport_metrics: {} as Record<string, string>,
     custom_fields: [] as { label: string; value: string }[],
@@ -298,7 +299,7 @@ export default function AthleteDetailPage() {
         first_name: a.first_name ?? '',
         last_name: a.last_name ?? '',
         position: a.position ?? '',
-        height_cm: a.height_cm != null ? String(a.height_cm) : '',
+        height: a.height ?? (a.height_cm != null ? String(a.height_cm) + 'cm' : ''),
         sport: a.sport ?? '',
         goals: a.goals ?? '',
         sport_metrics: a.sport_metrics ?? {},
@@ -497,7 +498,7 @@ export default function AthleteDetailPage() {
         first_name: profileForm.first_name.trim(),
         last_name: profileForm.last_name.trim(),
         position: profileForm.position.trim() || null,
-        height_cm: profileForm.height_cm ? parseFloat(profileForm.height_cm) : null,
+        height: profileForm.height.trim() || null,
         sport: profileForm.sport.trim() || null,
         goals: profileForm.goals.trim() || null,
         sport_metrics: profileForm.sport_metrics,
@@ -587,7 +588,7 @@ export default function AthleteDetailPage() {
                   <button className={`btn ${showProfile ? 'btn-primary' : 'btn-ghost'}`} style={{ fontSize: 12, padding: '6px 12px', gap: 5 }} onClick={() => setShowProfile(v => !v)}>
                     <Icon name="users" size={13} /> Profile
                   </button>
-                  <Link href="/dashboard" className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px', gap: 5 }}>
+                  <Link href={`/dashboard?tab=messages&athlete=${athleteId}`} className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px', gap: 5 }}>
                     <Icon name="messages" size={13} /> Message
                   </Link>
                   <button className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px', gap: 5 }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
@@ -676,8 +677,8 @@ export default function AthleteDetailPage() {
                     <input className="input" placeholder="e.g. Striker, Setter, Sprinter" value={profileForm.position} onChange={e => setProfileForm(f => ({ ...f, position: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="label">Height (cm)</label>
-                    <input className="input" type="number" placeholder="e.g. 183" value={profileForm.height_cm} onChange={e => setProfileForm(f => ({ ...f, height_cm: e.target.value }))} />
+                    <label className="label">Height</label>
+                    <input className="input" type="text" placeholder={`e.g. 6'2" or 188cm`} value={profileForm.height} onChange={e => setProfileForm(f => ({ ...f, height: e.target.value }))} />
                   </div>
                 </div>
                 <div>
