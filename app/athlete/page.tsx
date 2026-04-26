@@ -453,20 +453,20 @@ export default function AthletePage() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       {/* Header */}
       <header style={{
-        background: 'linear-gradient(135deg, #0f172a 0%, #0c4a6e 60%, #0369a1 100%)',
+        background: 'linear-gradient(135deg, #1F2421 0%, #4F6B4B 70%, #6F8E6B 100%)',
         position: 'sticky', top: 0, zIndex: 100,
-        boxShadow: '0 4px 20px rgb(3 105 161 / .25)',
+        boxShadow: '0 4px 20px rgb(31 36 33 / .25)',
       }}>
         <div style={{ maxWidth: 1000, margin: '0 auto', padding: '0 20px', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, var(--athlete-color) 0%, #0284c7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgb(14 165 233 / .4)', fontSize: 16 }}>🎙️</div>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, #6F8E6B 0%, #4F6B4B 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgb(111 142 107 / .4)', fontSize: 16 }}>🎙️</div>
             <span style={{ fontWeight: 900, fontSize: 17, letterSpacing: -0.3, color: '#fff' }}>CoachVoice</span>
-            <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(14,165,233,0.25)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(14,165,233,0.4)', letterSpacing: 0.5, textTransform: 'uppercase' }}>Athlete</span>
+            <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.2)', letterSpacing: 0.5, textTransform: 'uppercase' }}>Athlete</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{athleteName}</span>
+            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{athleteName}</span>
             {sport && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>{sport}</span>}
-            <button onClick={logout} style={{ padding: '5px 12px', fontSize: 12, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, cursor: 'pointer', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>Log out</button>
+            <button onClick={logout} style={{ padding: '5px 12px', fontSize: 12, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, cursor: 'pointer', color: 'rgba(255,255,255,0.75)', fontWeight: 600 }}>Log out</button>
           </div>
         </div>
       </header>
@@ -497,16 +497,16 @@ export default function AthletePage() {
 
         {/* Hero welcome + stats */}
         <div style={{
-          background: 'linear-gradient(135deg, #0c4a6e 0%, #0369a1 50%, #0ea5e9 100%)',
+          background: 'linear-gradient(135deg, #4F6B4B 0%, #6F8E6B 50%, #8EA887 100%)',
           borderRadius: 18, padding: isMobile ? '18px 16px' : '22px 24px',
           marginBottom: 20, position: 'relative', overflow: 'hidden',
-          boxShadow: '0 8px 32px rgb(14 165 233 / .2)',
+          boxShadow: '0 8px 32px rgb(111 142 107 / .2)',
         }}>
-          <div style={{ position: 'absolute', top: '-30%', right: '-5%', width: 180, height: 180, background: 'radial-gradient(circle, rgb(56 189 248 / .3) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', top: '-30%', right: '-5%', width: 180, height: 180, background: 'radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
           <div style={{ position: 'relative' }}>
-            <div style={{ fontSize: isMobile ? 13 : 14, color: 'rgba(255,255,255,0.6)', fontWeight: 700, marginBottom: 2 }}>Welcome back,</div>
-            <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 900, color: '#fff', letterSpacing: -0.5, marginBottom: 14, lineHeight: 1.1 }}>
-              {athleteName.split(' ')[0]} 🔥
+            <div style={{ fontSize: isMobile ? 13 : 14, color: 'rgba(255,255,255,0.65)', fontWeight: 700, marginBottom: 2 }}>Welcome back,</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: isMobile ? 24 : 30, fontWeight: 500, color: '#fff', letterSpacing: -0.5, marginBottom: 14, lineHeight: 1.1 }}>
+              {athleteName.split(' ')[0]}.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
               {[
@@ -540,23 +540,23 @@ export default function AthletePage() {
               key={t.key}
               onClick={() => setTab(t.key)}
               style={{
-                padding: isMobile ? '8px 12px' : '9px 18px',
+                padding: isMobile ? '7px 12px' : '8px 16px',
                 borderRadius: 999,
                 border: tab === t.key ? 'none' : '1px solid var(--border)',
                 background: tab === t.key
-                  ? 'linear-gradient(135deg, var(--athlete-color) 0%, #0284c7 100%)'
+                  ? 'linear-gradient(135deg, #6F8E6B 0%, #4F6B4B 100%)'
                   : 'var(--card)',
                 color: tab === t.key ? '#fff' : 'var(--text-2)',
                 fontWeight: tab === t.key ? 800 : 600,
-                fontSize: isMobile ? 13 : 14,
+                fontSize: isMobile ? 12 : 13,
                 cursor: 'pointer',
                 transition: 'all 0.18s cubic-bezier(.34,1.56,.64,1)',
-                boxShadow: tab === t.key ? '0 3px 12px rgb(14 165 233 / .35)' : 'var(--shadow-sm)',
+                boxShadow: tab === t.key ? '0 3px 12px rgb(111 142 107 / .30)' : 'var(--shadow-sm)',
                 display: 'flex', alignItems: 'center', gap: 5,
                 transform: tab === t.key ? 'scale(1.02)' : 'scale(1)',
               }}
             >
-              <span style={{ fontSize: 14 }}>{t.emoji}</span> {t.label}
+              {t.label}
             </button>
           ))}
         </div>
@@ -598,7 +598,7 @@ export default function AthletePage() {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                          <div style={{ width: 44, height: 44, borderRadius: 12, background: isOpen ? 'linear-gradient(135deg, var(--athlete-color) 0%, #0284c7 100%)' : 'var(--athlete-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0, transition: 'all 0.2s ease', boxShadow: isOpen ? '0 4px 12px rgb(14 165 233 / .3)' : 'none' }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 12, background: isOpen ? 'linear-gradient(135deg, #6F8E6B 0%, #4F6B4B 100%)' : 'var(--athlete-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0, transition: 'all 0.2s ease', boxShadow: isOpen ? '0 4px 12px rgb(111 142 107 / .3)' : 'none' }}>
                             🎙️
                           </div>
                           <div>
@@ -611,8 +611,8 @@ export default function AthletePage() {
                             </div>
                           </div>
                         </div>
-                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: isOpen ? 'var(--primary)' : 'var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
-                          <span style={{ color: isOpen ? '#fff' : 'var(--text-muted)', fontSize: 13, fontWeight: 900, lineHeight: 1 }}>{isOpen ? '▲' : '▼'}</span>
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: isOpen ? '#6F8E6B' : 'var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
+                          <span style={{ color: isOpen ? '#fff' : 'var(--text-muted)', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>{isOpen ? '▲' : '▼'}</span>
                         </div>
                       </button>
 
@@ -622,10 +622,11 @@ export default function AthletePage() {
                           {/* Coach summary */}
                           {s.summary && (
                             <div style={{ marginTop: 16 }}>
-                              <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--athlete-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
-                                🎯 Coach Summary
+                              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--coach-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--coach-color)', display: 'inline-block' }} />
+                                Coach Summary
                               </div>
-                              <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text)', whiteSpace: 'pre-wrap', background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)', padding: '14px 16px', borderRadius: 12, border: '1px solid #bae6fd' }}>
+                              <div className="coach-summary" style={{ whiteSpace: 'pre-wrap' }}>
                                 {s.summary}
                               </div>
                             </div>
@@ -1104,7 +1105,7 @@ function NoteCard({
           </div>
         </>
       ) : (
-        <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{note.content}</div>
+        <div className="note-content">{note.content}</div>
       )}
     </div>
   )

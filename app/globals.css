@@ -1,59 +1,65 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;1,400;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
-/* ─── Design tokens — CoachVoice (Athletic Journal Edition) ────── */
+/* ─── Design tokens — CoachVoice · Letter Edition ──────────────── */
 :root {
-  /* Surfaces — warm bone / parchment */
-  --bg:           #F4EFE6;
-  --card:         #FDFAF5;
-  --border:       #DDD5C6;
-  --border-soft:  #EAE4D9;
+  /* Surfaces — ivory / parchment */
+  --bg:           #FBF8F3;
+  --card:         #FFFFFF;
+  --border:       #E3DED2;
+  --border-soft:  #EFEAE0;
 
-  /* Primary — rich indigo (coach identity) */
-  --primary:      #5B63F5;
-  --primary-dark: #4248D6;
-  --primary-light:#EEEEFF;
+  /* Primary — sage green (general interactive) */
+  --primary:      #6F8E6B;
+  --primary-dark: #4F6B4B;
+  --primary-light:#E6ECDF;
 
-  /* Coach — deep espresso (authority, warmth) */
-  --coach-color:  #1C1208;
-  --coach-light:  #F0EAE0;
+  /* Coach — warm rust / stamp */
+  --coach-color:  #B55C3E;
+  --coach-light:  #F4DED3;
 
-  /* Athlete — vivid sky (energy, speed) */
-  --athlete-color:#0EA5E9;
-  --athlete-light:#E0F2FE;
+  /* Athlete — sage (mirrors primary) */
+  --athlete-color:#6F8E6B;
+  --athlete-light:#E6ECDF;
 
-  /* Accent — electric lime (achievement) */
-  --accent:       #84CC16;
-  --accent-dark:  #65A30D;
-  --accent-light: #F7FEE7;
+  /* Accent — sage deep */
+  --accent:       #6F8E6B;
+  --accent-dark:  #4F6B4B;
+  --accent-light: #E6ECDF;
 
-  /* Energy — warm amber (motivation) */
-  --energy:       #F59E0B;
-  --energy-light: #FEF3C7;
+  /* Energy — warm amber */
+  --energy:       #B8883A;
+  --energy-light: #F6E9CC;
 
   /* Semantic */
-  --danger:       #EF4444;
-  --danger-light: #FEF2F2;
-  --warning:      #F59E0B;
-  --warning-light:#FFFBEB;
-  --success:      #10B981;
-  --success-light:#ECFDF5;
+  --danger:       #B0473A;
+  --danger-light: #F4DED3;
+  --warning:      #B8883A;
+  --warning-light:#F6E9CC;
+  --success:      #5D8257;
+  --success-light:#E6ECDF;
 
-  /* Typography — warm, personal */
-  --text:         #1A120A;
-  --text-2:       #5C4E42;
-  --text-muted:   #9C8C7C;
+  /* Typography */
+  --text:         #1F2421;
+  --text-2:       #5D6661;
+  --text-muted:   #9BA29B;
 
-  /* Shape — softened for journal feel */
+  /* Fonts */
+  --font-display: 'Newsreader', 'Georgia', serif;
+  --font-sans:    'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Shape */
   --radius:       13px;
   --radius-sm:    9px;
   --radius-lg:    20px;
   --radius-xl:    28px;
 
   /* Shadows — warm-tinted depth */
-  --shadow-sm:    0 1px 4px 0 rgb(92 78 66 / .09), 0 1px 2px -1px rgb(92 78 66 / .07);
-  --shadow:       0 4px 16px -2px rgb(92 78 66 / .13), 0 2px 6px -2px rgb(92 78 66 / .09);
-  --shadow-lg:    0 12px 32px -4px rgb(92 78 66 / .16), 0 4px 10px -4px rgb(92 78 66 / .11);
-  --shadow-glow:  0 0 20px rgb(91 99 245 / .20);
+  --shadow-sm:    0 1px 4px 0 rgb(95 102 97 / .09), 0 1px 2px -1px rgb(95 102 97 / .07);
+  --shadow:       0 4px 16px -2px rgb(95 102 97 / .13), 0 2px 6px -2px rgb(95 102 97 / .09);
+  --shadow-lg:    0 12px 32px -4px rgb(95 102 97 / .16), 0 4px 10px -4px rgb(95 102 97 / .11);
+  --shadow-glow:  0 0 20px rgb(111 142 107 / .22);
 }
 
 /* ─── Base ───────────────────────────────────────────────────── */
@@ -62,10 +68,18 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-jakarta, 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif);
+  font-family: var(--font-sans);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+/* Display serif — used for headings, coach summaries */
+.font-display {
+  font-family: var(--font-display);
+}
+.font-mono {
+  font-family: var(--font-mono);
 }
 
 /* ─── Cards ──────────────────────────────────────────────────── */
@@ -94,7 +108,7 @@ body {
 
 /* Gradient card header */
 .card-header-gradient {
-  background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   color: #fff;
   border-radius: var(--radius) var(--radius) 0 0;
   padding: 16px 20px;
@@ -116,6 +130,25 @@ body {
   width: 1px;
   background: rgba(245, 158, 11, .25);
   border-radius: 1px;
+}
+
+/* ─── Coach summary block ────────────────────────────────────── */
+.coach-summary {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+  background: var(--coach-light);
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #EBCBBC;
+}
+
+/* ─── Note content ───────────────────────────────────────────── */
+.note-content {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 
 /* ─── Buttons ────────────────────────────────────────────────── */
@@ -141,11 +174,11 @@ body {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 8px rgb(91 99 245 / .30);
+  box-shadow: 0 2px 8px rgb(111 142 107 / .30);
 }
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 6px 20px rgb(91 99 245 / .40);
+  box-shadow: 0 6px 20px rgb(111 142 107 / .40);
 }
 .btn-primary:active:not(:disabled) { transform: translateY(0) scale(0.98); }
 
@@ -164,41 +197,41 @@ body {
 .btn-danger {
   background: var(--danger-light);
   color: var(--danger);
-  border-color: #FCA5A5;
+  border-color: #EBCBBC;
 }
-.btn-danger:hover:not(:disabled) { background: #FEE2E2; }
+.btn-danger:hover:not(:disabled) { background: #EDCFC5; }
 
 .btn-coach {
-  background: linear-gradient(135deg, #2A1A0E 0%, var(--coach-color) 100%);
+  background: linear-gradient(135deg, #9A4930 0%, var(--coach-color) 100%);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 8px rgb(28 18 8 / .30);
+  box-shadow: 0 2px 8px rgb(181 92 62 / .30);
 }
 .btn-coach:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 6px 20px rgb(28 18 8 / .40);
+  box-shadow: 0 6px 20px rgb(181 92 62 / .40);
 }
 
 .btn-athlete {
-  background: linear-gradient(135deg, var(--athlete-color) 0%, #0284C7 100%);
+  background: linear-gradient(135deg, var(--athlete-color) 0%, var(--primary-dark) 100%);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 8px rgb(14 165 233 / .30);
+  box-shadow: 0 2px 8px rgb(111 142 107 / .30);
 }
 .btn-athlete:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 6px 20px rgb(14 165 233 / .40);
+  box-shadow: 0 6px 20px rgb(111 142 107 / .40);
 }
 
 .btn-energy {
-  background: linear-gradient(135deg, var(--energy) 0%, #D97706 100%);
+  background: linear-gradient(135deg, var(--energy) 0%, #9A6820 100%);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 8px rgb(245 158 11 / .30);
+  box-shadow: 0 2px 8px rgb(184 136 58 / .30);
 }
 .btn-energy:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 6px 20px rgb(245 158 11 / .40);
+  box-shadow: 0 6px 20px rgb(184 136 58 / .40);
 }
 
 .btn-lg {
@@ -223,7 +256,7 @@ body {
 }
 .input:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgb(91 99 245 / .14);
+  box-shadow: 0 0 0 3px rgb(111 142 107 / .14);
 }
 .input::placeholder { color: var(--text-muted); }
 textarea.input { resize: vertical; min-height: 80px; }
@@ -250,14 +283,14 @@ textarea.input { resize: vertical; min-height: 80px; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.badge-active   { background: var(--success-light); color: var(--success);       border: 1px solid #A7F3D0; }
-.badge-invited  { background: var(--warning-light); color: #B45309;               border: 1px solid #FDE68A; }
-.badge-coach    { background: var(--coach-light);   color: var(--coach-color);   border: 1px solid #D9CFC4; }
-.badge-athlete  { background: var(--athlete-light); color: var(--athlete-color); border: 1px solid #BAE6FD; }
-.badge-session  { background: var(--primary-light); color: var(--primary);       border: 1px solid #C7D2FE; }
-.badge-homework { background: #FEFCE8; color: #854D0E; border: 1px solid #FEF08A; }
-.badge-goal     { background: var(--accent-light); color: var(--accent-dark); border: 1px solid #BEF264; }
-.badge-reminder { background: var(--primary-light); color: var(--primary-dark); border: 1px solid #C7D2FE; }
+.badge-active   { background: var(--success-light); color: var(--success);       border: 1px solid #CBD7C0; }
+.badge-invited  { background: var(--warning-light); color: #8B6621;               border: 1px solid #E4CE9A; }
+.badge-coach    { background: var(--coach-light);   color: var(--coach-color);   border: 1px solid #EBCBBC; }
+.badge-athlete  { background: var(--athlete-light); color: var(--athlete-color); border: 1px solid #CBD7C0; }
+.badge-session  { background: var(--primary-light); color: var(--primary);       border: 1px solid #CBD7C0; }
+.badge-homework { background: var(--warning-light); color: #8B6621;               border: 1px solid #E4CE9A; }
+.badge-goal     { background: var(--accent-light);  color: var(--accent-dark);   border: 1px solid #CBD7C0; }
+.badge-reminder { background: var(--primary-light); color: var(--primary-dark);  border: 1px solid #CBD7C0; }
 .badge-other    { background: var(--border-soft); color: var(--text-2); border: 1px solid var(--border); }
 
 /* ─── Divider / Typography ───────────────────────────────────── */
@@ -289,7 +322,7 @@ textarea.input { resize: vertical; min-height: 80px; }
 
 /* ─── Gradient text ──────────────────────────────────────────── */
 .gradient-text {
-  background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 60%, var(--athlete-color) 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 60%, var(--coach-color) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -317,7 +350,7 @@ textarea.input { resize: vertical; min-height: 80px; }
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 3px;
-  background: linear-gradient(90deg, var(--primary), #8B5CF6);
+  background: linear-gradient(90deg, var(--primary), var(--primary-dark));
   border-radius: var(--radius) var(--radius) 0 0;
 }
 .stat-number {
@@ -344,33 +377,35 @@ textarea.input { resize: vertical; min-height: 80px; }
   gap: 6px;
   padding: 8px 16px;
   border-radius: 999px;
-  border: none;
+  border: 1px solid var(--border);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.18s cubic-bezier(.34,1.56,.64,1);
   white-space: nowrap;
   color: var(--text-2);
-  background: transparent;
+  background: var(--card);
 }
 .nav-pill:hover {
   background: var(--border-soft);
   color: var(--text);
 }
 .nav-pill.active {
-  background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   color: #fff;
-  box-shadow: 0 3px 12px rgb(91 99 245 / .30);
+  border-color: transparent;
+  box-shadow: 0 3px 12px rgb(111 142 107 / .30);
 }
 .nav-pill.active-athlete {
-  background: linear-gradient(135deg, var(--athlete-color) 0%, #0284C7 100%);
+  background: linear-gradient(135deg, var(--athlete-color) 0%, var(--primary-dark) 100%);
   color: #fff;
-  box-shadow: 0 3px 12px rgb(14 165 233 / .30);
+  border-color: transparent;
+  box-shadow: 0 3px 12px rgb(111 142 107 / .30);
 }
 
 /* ─── Hero gradient bar ──────────────────────────────────────── */
 .hero-bar {
-  background: linear-gradient(135deg, #1A120A 0%, #2C1A0E 50%, #3D1F0A 100%);
+  background: linear-gradient(135deg, #1F2421 0%, #4F6B4B 60%, #6F8E6B 100%);
   color: #fff;
   position: relative;
   overflow: hidden;
@@ -380,7 +415,7 @@ textarea.input { resize: vertical; min-height: 80px; }
   position: absolute;
   top: -50%; right: -10%;
   width: 300px; height: 300px;
-  background: radial-gradient(circle, rgb(91 99 245 / .18) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -395,7 +430,7 @@ textarea.input { resize: vertical; min-height: 80px; }
 .mic-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--primary), #8B5CF6);
+  background: linear-gradient(90deg, var(--primary), var(--primary-dark));
   transition: width 80ms linear;
 }
 
@@ -501,13 +536,13 @@ input, textarea, select, button {
 
 /* ─── Gradient backgrounds ───────────────────────────────────── */
 .bg-gradient-sport {
-  background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 50%, var(--athlete-color) 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 50%, var(--coach-color) 100%);
 }
 .bg-gradient-coach {
-  background: linear-gradient(135deg, #1A120A 0%, #2C1A0E 50%, #1C1208 100%);
+  background: linear-gradient(135deg, #1F2421 0%, #4F6B4B 50%, #6F8E6B 100%);
 }
 .bg-gradient-athlete {
-  background: linear-gradient(135deg, #0284C7 0%, var(--athlete-color) 50%, #38BDF8 100%);
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--athlete-color) 50%, #8EA887 100%);
 }
 
 /* ─── Progress bar ───────────────────────────────────────────── */
@@ -520,7 +555,7 @@ input, textarea, select, button {
 .progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--primary), #8B5CF6);
+  background: linear-gradient(90deg, var(--primary), var(--primary-dark));
   transition: width 0.3s ease;
 }
 

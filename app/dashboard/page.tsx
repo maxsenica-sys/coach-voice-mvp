@@ -869,13 +869,13 @@ function DashboardPageInner() {
       {!isMobile && (
         <nav style={{
           width: 220, minWidth: 220,
-          background: 'linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%)',
+          background: 'linear-gradient(180deg, #1F2421 0%, #3a4f38 100%)',
           display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', zIndex: 100,
         }}>
           {/* Logo */}
           <div style={{ padding: '22px 18px 18px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 12px rgb(99 102 241 / .4)' }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 12px rgb(111 142 107 / .4)' }}>
                 <Icon name="mic" size={18} strokeWidth={2.5} />
               </div>
               <div>
@@ -892,9 +892,9 @@ function DashboardPageInner() {
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 padding: '11px 12px', fontSize: 14, fontWeight: 800,
-                background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)',
+                background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
                 color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer',
-                boxShadow: '0 4px 16px rgb(99 102 241 / .5)',
+                boxShadow: '0 4px 16px rgb(111 142 107 / .4)',
                 transition: 'all 0.18s ease',
               }}
             >
@@ -911,7 +911,7 @@ function DashboardPageInner() {
                 <button key={item.key} onClick={() => setTab(item.key)} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '9px 12px', borderRadius: 9, border: 'none', width: '100%',
-                  background: active ? 'rgba(99,102,241,0.25)' : 'transparent',
+                  background: active ? 'rgba(111,142,107,0.25)' : 'transparent',
                   color: active ? '#fff' : 'rgba(255,255,255,0.55)',
                   fontWeight: active ? 700 : 500, fontSize: 13,
                   cursor: 'pointer', textAlign: 'left' as const, transition: 'all 0.12s',
@@ -932,7 +932,7 @@ function DashboardPageInner() {
           {/* Coach info */}
           <div style={{ padding: '14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <Avatar initials={coachInitials} size={34} bg="linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)" />
+              <Avatar initials={coachInitials} size={34} bg="linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)" />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#fff' }}>{coachName}</div>
                 {coachSport && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{coachSport}</div>}
@@ -955,12 +955,12 @@ function DashboardPageInner() {
         {isMobile && (
           <div style={{
             position: 'sticky', top: 0, zIndex: 100,
-            background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+            background: 'linear-gradient(135deg, #1F2421 0%, #4F6B4B 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '0 16px', height: 56,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgb(99 102 241 / .4)' }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgb(111 142 107 / .35)' }}>
                 <Icon name="mic" size={15} strokeWidth={2.5} />
               </div>
               <span style={{ fontWeight: 900, fontSize: 17, letterSpacing: -0.3, color: '#fff' }}>CoachVoice</span>
@@ -1526,10 +1526,10 @@ function DashboardPageInner() {
               }}>
                 <div style={{
                   width: 40, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: active ? 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)' : 'transparent',
+                  background: active ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)' : 'transparent',
                   transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
                   transform: active ? 'scale(1.08)' : 'scale(1)',
-                  boxShadow: active ? '0 3px 12px rgb(99 102 241 / .35)' : 'none',
+                  boxShadow: active ? '0 3px 12px rgb(111 142 107 / .30)' : 'none',
                 }}>
                   <div style={{ color: active ? '#fff' : 'var(--text-muted)' }}>
                     <Icon name={item.icon} size={19} />
@@ -1547,11 +1547,11 @@ function DashboardPageInner() {
               style={{
                 width: 60, height: 60,
                 borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)',
+                background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
                 border: '4px solid rgba(255,255,255,0.94)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer',
-                boxShadow: '0 6px 24px rgb(99 102 241 / .55)',
+                boxShadow: '0 6px 24px rgb(111 142 107 / .45)',
                 position: 'absolute',
                 bottom: 'calc(50% + 4px)',
                 transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
@@ -1576,10 +1576,10 @@ function DashboardPageInner() {
               }}>
                 <div style={{
                   width: 40, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: active ? 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)' : 'transparent',
+                  background: active ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)' : 'transparent',
                   transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
                   transform: active ? 'scale(1.08)' : 'scale(1)',
-                  boxShadow: active ? '0 3px 12px rgb(99 102 241 / .35)' : 'none',
+                  boxShadow: active ? '0 3px 12px rgb(111 142 107 / .30)' : 'none',
                 }}>
                   <div style={{ color: active ? '#fff' : 'var(--text-muted)' }}>
                     <Icon name={item.icon} size={19} />
