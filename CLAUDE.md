@@ -56,3 +56,53 @@ switches to the Edge runtime which has no FormData file support.
   Calendar, VideoAnnotator) unless the task is specifically a bug fix in that component
 - Always run `npx tsc --noEmit` before committing
 - Push directly to `main` (no branches or PRs)
+
+---
+
+## ⚠️ MANDATORY: Pre-commit code review checklist
+
+Before committing **any** edit, run through this checklist for every file touched.
+These are the bug classes that have already caused production issues.
+
+### 1. fetch() error handling
+Every `fetch()` call that reads a response MUST check `res.ok` before using the data.
+```ts
+// ❌ WRONG — non-2xx silently produces empty/undefined data
+const json = await res.json().catch(() => ({}))
+if (json.text) setTranscript(json.text)
+
+// ✅ CORRECT — throw on failure so the catch block surfaces the error
+const json = await res.json().catch(() => ({}))
+if (!res.ok) throw new Error(json.error ?? 'Request failed')
+if (json.text) setTranscript(json.text)
+```
+**Applies to:** all `fetch` calls in QuickSessionModal, athlete/page, athletes/[id]/page, MessagingPanel.
+
+### 2. Empty/null state in UI
+When rendering a list or dropdown from async data, always handle the empty case visibly.
+Never render an empty `<select>` — show a message explaining why it's empty and what to do.
+
+### 3. Infinite fetch / stale closure loops
+`useEffect` with fetch inside must list all dependencies correctly.
+Callbacks passed as dependencies should be wrapped in `useRef` (not `useCallback`) when
+they would otherwise cause the effect to re-fire on every render.
+Known past incident: `onUnreadChange` in MessagingPanel caused infinite polling loop.
+
+### 4. MediaRecorder MIME type
+See "Protected recording call sites" above. Never hardcode `'audio/webm'` as the mimeType
+argument to `new MediaRecorder(...)` or `new Blob(...)` or `new File(...)`.
+
+### 5. Calendar date arithmetic
+`new Date(year, month - 1, 32)` is the correct pattern for finding last day of a month.
+`new Date(year, month, 0)` also works. Never use hardcoded day counts (28/30/31).
+Known past incident: 30-day months caused `NaN` date in monthRange.
+
+### 6. TypeScript narrowing
+After any async call, re-check nullability before using the result.
+If a value is `T | null`, narrow it before passing to a function expecting `T`.
+
+### Review agent instruction
+**After every implementation task**, before writing the commit message, re-read each modified
+file from top to bottom and verify all 6 checklist items above. Log any issues found and fix
+them before committing. Do not skip this even for "small" changes — the silent fetch bug in
+QuickSessionModal was introduced alongside a "small" MIME fix.
