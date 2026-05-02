@@ -501,6 +501,7 @@ function DashboardPageInner() {
   const [addMsg, setAddMsg] = useState('')
   const [addLoading, setAddLoading] = useState(false)
   const [showAddAthlete, setShowAddAthlete] = useState(false)
+  const [onboardStep, setOnboardStep] = useState({ code: false, athlete: false, session: false })
 
   const [groups, setGroups] = useState<Group[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
@@ -685,6 +686,10 @@ function DashboardPageInner() {
   useEffect(() => {
     if (tab === 'calendar') fetchCalendar(calMode, calTargetId, calMonth)
   }, [tab, calMode, calTargetId, calMonth, fetchCalendar])
+
+  useEffect(() => {
+    setOnboardStep(prev => ({ ...prev, code: !!inviteCode }))
+  }, [inviteCode])
 
   const saveCode = async () => {
     setCodeSaving(true); setCodeMsg('')
@@ -1242,17 +1247,96 @@ function DashboardPageInner() {
                   </div>
                 )}
 
-                {/* Empty state */}
-                {athletes.length === 0 && !loadingAthletes && (
-                  <div className="card" style={{ padding: '32px 24px', textAlign: 'center' }}>
-                    <div style={{ color: '#9BA29B', marginBottom: 4 }}><Icon name="athletes" size={32} /></div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>No athletes yet</div>
-                    <div style={{ fontSize: 13, color: '#9BA29B', marginBottom: 16 }}>Add your first athlete to get started</div>
-                    <button className="btn btn-coach" onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ gap: 6 }}>
-                      <Icon name="plus" size={14} /> Add Athlete
-                    </button>
-                  </div>
-                )}
+                {/* Onboarding flow (empty state) */}
+                {athletes.length === 0 && !loadingAthletes && (() => {
+                  const completedCount = onboardStep.code ? 1 : 0
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      {/* Header */}
+                      <div>
+                        <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 28, letterSpacing: -0.6, fontStyle: 'italic', color: '#1F2421' }}>
+                          You're all set up.
+                        </h2>
+                        <p style={{ margin: '6px 0 0', fontSize: 13, color: '#5D6661' }}>
+                          Complete these steps to get started with your first athlete.
+                        </p>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: completedCount > 0 ? 'var(--primary)' : '#9BA29B', marginTop: 6, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                          {completedCount} of 3 complete
+                        </div>
+                      </div>
+
+                      {/* Step 1 — Set invite code */}
+                      <div style={{ background: '#FFFFFF', border: `1px solid ${onboardStep.code ? '#CBD7C0' : '#E3DED2'}`, borderLeft: `4px solid ${onboardStep.code ? 'var(--primary)' : '#E3DED2'}`, borderRadius: 14, padding: 16, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: onboardStep.code ? 'var(--primary)' : '#EFEAE0', color: onboardStep.code ? '#fff' : '#5D6661', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                          {onboardStep.code ? '✓' : '1'}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: '#1F2421', marginBottom: 3 }}>Set your invite code</div>
+                          <div style={{ fontSize: 13, color: '#5D6661', marginBottom: 10 }}>Athletes enter this code when signing up to join your roster automatically.</div>
+                          {onboardStep.code ? (
+                            <div style={{ fontFamily: 'monospace', fontSize: 16, fontWeight: 900, color: 'var(--primary)', background: 'var(--primary-light)', borderRadius: 8, padding: '6px 12px', display: 'inline-block', letterSpacing: 1 }}>{inviteCode}</div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <input
+                                className="input"
+                                value={codeDraft}
+                                onChange={e => setCodeDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                                placeholder="coachsmith4821"
+                                style={{ fontFamily: 'monospace', fontWeight: 700, maxWidth: 200 }}
+                              />
+                              <button className="btn btn-primary" onClick={saveCode} disabled={codeSaving || !codeDraft.trim()}>
+                                {codeSaving ? '…' : 'Save'}
+                              </button>
+                            </div>
+                          )}
+                          {codeMsg && <div style={{ fontSize: 12, color: codeMsg.includes('updated') || codeMsg.includes('Copied') ? 'var(--success)' : 'var(--danger)', marginTop: 6, fontWeight: 600 }}>{codeMsg}</div>}
+                        </div>
+                      </div>
+
+                      {/* Step 2 — Add first athlete */}
+                      <div style={{ background: '#FFFFFF', border: '1px solid #E3DED2', borderLeft: '4px solid #E3DED2', borderRadius: 14, padding: 16, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#EFEAE0', color: '#5D6661', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>2</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: '#1F2421', marginBottom: 3 }}>Add your first athlete</div>
+                          <div style={{ fontSize: 13, color: '#5D6661', marginBottom: 10 }}>Invite them by email — they'll get a link to set up their account.</div>
+                          <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6 }}>
+                            <Icon name="plus" size={14} /> Add Athlete →
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Step 3 — Record first session */}
+                      <div style={{ background: '#FFFFFF', border: '1px solid #E3DED2', borderLeft: '4px solid #E3DED2', borderRadius: 14, padding: 16, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#EFEAE0', color: '#5D6661', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>3</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: '#1F2421', marginBottom: 3 }}>Record your first session</div>
+                          <div style={{ fontSize: 13, color: '#5D6661', marginBottom: 10 }}>After a training session, hit record and speak your notes. AI transcribes and summarises.</div>
+                          <button className="btn btn-primary" onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }} style={{ gap: 6 }}>
+                            <Icon name="mic" size={14} /> Record Session →
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Share card — only if invite code is set */}
+                      {inviteCode && (
+                        <div style={{ background: '#1F2421', color: '#FBF8F3', borderRadius: 14, padding: '16px 20px' }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Share this with your athletes</div>
+                          <div style={{ fontFamily: 'monospace', fontSize: 24, fontWeight: 900, letterSpacing: 2, marginBottom: 14, color: '#FBF8F3' }}>{inviteCode}</div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <button
+                              className="btn"
+                              onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!'); setTimeout(() => setCodeMsg(''), 2000) }}
+                              style={{ background: 'rgba(255,255,255,0.12)', color: '#FBF8F3', border: '1px solid rgba(255,255,255,0.18)', gap: 6 }}
+                            >
+                              <Icon name="copy" size={13} /> Copy code
+                            </button>
+                            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Or go to Athletes tab to invite by email</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
               </div>
             )

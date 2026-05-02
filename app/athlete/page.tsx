@@ -79,6 +79,8 @@ export default function AthletePage() {
   const [athleteName, setAthleteName] = useState('')
   const [athleteId, setAthleteId] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
+  const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null)
+  const [todayWellness, setTodayWellness] = useState<Record<string, any> | null>(null)
   const [sport, setSport] = useState('')
   const [error, setError] = useState('')
 
@@ -141,6 +143,8 @@ export default function AthletePage() {
         if (cancelled) return
 
         setUserId(user.id)
+        const onboardKey = `cv_onboarded_${user.id}`
+        setHasOnboarded(localStorage.getItem(onboardKey) === 'true')
 
         // Fetch profile, athlete record, sessions, and notes all in parallel
         const [
@@ -208,6 +212,19 @@ export default function AthletePage() {
   useEffect(() => {
     if (tab === 'calendar' && athleteId) fetchCalendar(calMonth)
   }, [tab, athleteId, calMonth, fetchCalendar])
+
+  // ── Today's wellness ──────────────────────────────────────
+  useEffect(() => {
+    if (!athleteId) return
+    const today = new Date().toISOString().split('T')[0]
+    fetch(`/api/wellness?athlete_id=${athleteId}&days=1`)
+      .then(r => r.json())
+      .then(j => {
+        const entry = (j.checkins ?? []).find((c: any) => c.check_date === today) ?? null
+        setTodayWellness(entry)
+      })
+      .catch(() => {})
+  }, [athleteId])
 
   // ── Load messages ─────────────────────────────────────────
   useEffect(() => {
@@ -463,6 +480,54 @@ export default function AthletePage() {
     )
   }
 
+  // ── First-login onboarding ─────────────────────────────────
+  if (hasOnboarded === false && sessions.length === 0) {
+    const onboardFirstName = athleteName.split(' ')[0] || 'Athlete'
+    const onboardDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()
+    const dismissOnboarding = () => {
+      if (userId) localStorage.setItem(`cv_onboarded_${userId}`, 'true')
+      setHasOnboarded(true)
+    }
+    return (
+      <div className="bg-grain" style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 20px' }}>
+        <div style={{ width: '100%', maxWidth: 440 }}>
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#9BA29B', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, fontFamily: 'monospace' }}>{onboardDate}</div>
+            <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 34, letterSpacing: -0.8, lineHeight: 1.1, color: '#1F2421' }}>
+              Welcome to CoachVoice,<br/>
+              <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{onboardFirstName}.</span>
+            </h1>
+            <p style={{ margin: '12px 0 0', fontSize: 14, color: '#5D6661', lineHeight: 1.6, maxWidth: 340 }}>
+              Your coach has set up your training profile. Here's how to get started.
+            </p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 28 }}>
+            {[
+              { icon: '🏃', title: 'Check in daily', desc: 'Your coach tracks your energy, mood, sleep, soreness and stress. Takes 10 seconds.' },
+              { icon: '📋', title: 'View your sessions', desc: 'After each session, your coach will share notes and feedback here.' },
+              { icon: '💬', title: 'Message your coach', desc: "Ask questions, share how you're feeling, stay connected." },
+            ].map((step, i) => (
+              <div key={i} style={{ background: '#FFFFFF', border: '1px solid #E3DED2', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: '#F4F1EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{step.icon}</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1F2421', marginBottom: 4 }}>{step.title}</div>
+                  <div style={{ fontSize: 13, color: '#5D6661', lineHeight: 1.55 }}>{step.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            className="btn btn-primary btn-lg"
+            style={{ width: '100%', fontSize: 16, padding: '14px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={dismissOnboarding}
+          >
+            Let's go →
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-grain" style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       {/* Header */}
@@ -573,6 +638,61 @@ export default function AthletePage() {
                 {sessions.length} session{sessions.length !== 1 ? 's' : ''} from your coach
               </p>
             </div>
+
+            {/* Wellness check-in card */}
+            {athleteId && (
+              todayWellness ? (
+                <div style={{ background: 'var(--primary-light)', border: '1px solid #CBD7C0', borderRadius: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--primary)', marginBottom: 10 }}>✓ Check-in complete</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                    {([
+                      { key: 'energy', label: 'Energy' },
+                      { key: 'mood', label: 'Mood' },
+                      { key: 'sleep_q', label: 'Sleep' },
+                      { key: 'soreness', label: 'Soreness' },
+                      { key: 'stress', label: 'Stress' },
+                    ] as const).map(m => (
+                      todayWellness[m.key] != null && (
+                        <span key={m.key} style={{ background: '#FFFFFF', border: '1px solid #CBD7C0', borderRadius: 8, padding: '4px 10px', fontSize: 12, fontWeight: 600, color: '#4F6B4B' }}>
+                          {m.label} {todayWellness[m.key]}/5
+                        </span>
+                      )
+                    ))}
+                  </div>
+                  <button onClick={() => setTab('wellness')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer', padding: 0, fontWeight: 600 }}>
+                    See your trends →
+                  </button>
+                </div>
+              ) : (
+                <div style={{ background: 'linear-gradient(135deg, var(--primary-light) 0%, #FBF8F3 100%)', border: '1px solid var(--border)', borderLeft: '4px solid var(--primary)', borderRadius: 14, padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--primary)', boxShadow: '0 0 0 2px rgba(111,142,107,0.25)' }} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Daily Check-in</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span>
+                  </div>
+                  <div style={{ fontSize: 17, fontWeight: 600, color: '#1F2421', marginBottom: 12 }}>How are you feeling today?</div>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                    {([
+                      { icon: '⚡', label: 'Energy' },
+                      { icon: '😊', label: 'Mood' },
+                      { icon: '🌙', label: 'Sleep' },
+                      { icon: '💪', label: 'Soreness' },
+                      { icon: '🧠', label: 'Stress' },
+                    ] as const).map(m => (
+                      <button key={m.label} onClick={() => setTab('wellness')} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: '#FFFFFF', border: '1px solid #E3DED2', borderRadius: 10, padding: '8px 2px', cursor: 'pointer' }}>
+                        <span style={{ fontSize: 18 }}>{m.icon}</span>
+                        <span style={{ fontSize: 10, color: '#5D6661', fontWeight: 600 }}>{m.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <button className="btn btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setTab('wellness')}>
+                    Check in now →
+                  </button>
+                </div>
+              )
+            )}
 
             {/* New from coach — most recent session */}
             {sessions.length > 0 && (
