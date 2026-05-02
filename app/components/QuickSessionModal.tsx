@@ -111,10 +111,9 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
       fd.append('file', new File([blob], `recording.${ext}`, { type: mimeType }))
 
-      const selectedAthlete = athletes.find((a) => a.id === athleteId)
-      // Could pass sport here if we had it on athlete — left as default for now
       const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
       const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Transcription failed. Please check your API key.')
       if (json.text) setTranscript(json.text)
     } catch {
       setError('Transcription failed. You can type the transcript manually.')
@@ -241,15 +240,21 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
               </div>
 
               {mode === 'athlete' ? (
-                <select
-                  className="input"
-                  value={athleteId}
-                  onChange={(e) => setAthleteId(e.target.value)}
-                >
-                  {athletes.map((a) => (
-                    <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>
-                  ))}
-                </select>
+                athletes.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '10px 0' }}>
+                    No athletes yet — add one first before recording a session.
+                  </div>
+                ) : (
+                  <select
+                    className="input"
+                    value={athleteId}
+                    onChange={(e) => setAthleteId(e.target.value)}
+                  >
+                    {athletes.map((a) => (
+                      <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>
+                    ))}
+                  </select>
+                )
               ) : (
                 <div>
                   <select
