@@ -75,7 +75,9 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       }
       tick()
 
-      const mr = new MediaRecorder(stream)
+      const supported = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+      const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {})
       chunksRef.current = []
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       mr.start(250)
@@ -99,13 +101,15 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     })
     streamRef.current?.getTracks().forEach((t) => t.stop())
 
-    const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+    const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm'
+    const blob = new Blob(chunksRef.current, { type: mimeType })
     if (blob.size < 1000) { setStep('review'); return }
 
     setTranscribing(true)
     try {
       const fd = new FormData()
-      fd.append('file', new File([blob], 'recording.webm', { type: 'audio/webm' }))
+      const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+      fd.append('file', new File([blob], `recording.${ext}`, { type: mimeType }))
 
       const selectedAthlete = athletes.find((a) => a.id === athleteId)
       // Could pass sport here if we had it on athlete — left as default for now

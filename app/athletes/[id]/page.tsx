@@ -349,7 +349,9 @@ export default function AthleteDetailPage() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(e => { setPageError(e?.message ?? 'Microphone access denied'); return null })
     if (!stream) return
     streamRef.current = stream; await startMeter(stream)
-    const rec = new MediaRecorder(stream); mediaRecRef.current = rec
+    const supported = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+    const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
+    const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {}); mediaRecRef.current = rec
     rec.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
     rec.onstop = async () => {
       cleanupAll()
@@ -364,7 +366,8 @@ export default function AthleteDetailPage() {
 
   const transcribeBlob = async (blob: Blob) => {
     const fd = new FormData()
-    fd.append('file', new File([blob], 'recording.webm', { type: blob.type }))
+    const ext = (blob.type || '').includes('mp4') ? 'mp4' : (blob.type || '').includes('ogg') ? 'ogg' : 'webm'
+    fd.append('file', new File([blob], `recording.${ext}`, { type: blob.type || 'audio/webm' }))
     if (coachSport) fd.append('sport', coachSport)
     const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
     if (!res.ok) { setPageError((await res.json().catch(() => ({}))).error ?? 'Transcription failed'); setRecordState('idle'); return }

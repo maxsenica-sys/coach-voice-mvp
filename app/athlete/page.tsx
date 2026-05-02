@@ -357,7 +357,9 @@ export default function AthletePage() {
   const startNoteRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
+      const supported = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+      const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {})
       mediaRecRef.current = recorder
       noteChunksRef.current = []
       recorder.ondataavailable = (e) => { if (e.data.size > 0) noteChunksRef.current.push(e.data) }
@@ -367,7 +369,8 @@ export default function AthletePage() {
         setNoteTranscribing(true)
         try {
           const fd = new FormData()
-          fd.append('file', new File([blob], 'note.webm', { type: blob.type }))
+          const ext = blob.type.includes('mp4') ? 'mp4' : blob.type.includes('ogg') ? 'ogg' : 'webm'
+          fd.append('file', new File([blob], `note.${ext}`, { type: blob.type }))
           if (sport) fd.append('sport', sport)
           const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
           const json = await res.json().catch(() => ({}))

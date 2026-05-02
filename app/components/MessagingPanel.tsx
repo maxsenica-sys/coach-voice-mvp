@@ -264,11 +264,14 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
       return
     }
     streamRef.current = stream
-    const rec = new MediaRecorder(stream)
+    const supported = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+    const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
+    const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {})
     mediaRecRef.current = rec
     rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
     rec.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+      const actualMime = rec.mimeType || 'audio/webm'
+      const blob = new Blob(chunksRef.current, { type: actualMime })
       setAudioBlob(blob)
       setAudioUrl(URL.createObjectURL(blob))
       stream.getTracks().forEach((t) => t.stop())
@@ -284,7 +287,8 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
 
   const sendAudio = async () => {
     if (!audioBlob || !selectedId) return
-    const file = new File([audioBlob], `voice-${Date.now()}.webm`, { type: 'audio/webm' })
+    const ext = audioBlob.type.includes('mp4') ? 'mp4' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm'
+    const file = new File([audioBlob], `voice-${Date.now()}.${ext}`, { type: audioBlob.type || 'audio/webm' })
     await uploadMedia(file, 'audio')
     setAudioBlob(null)
     setAudioUrl(null)

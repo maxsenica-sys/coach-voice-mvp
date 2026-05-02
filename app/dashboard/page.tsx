@@ -1863,7 +1863,7 @@ function DashboardPageInner() {
         </div>
       )}
 
-      {quickSessionOpen && athletes.length > 0 && (
+      {quickSessionOpen && (
         <QuickSessionModal
           athletes={athletes}
           groups={groups}
