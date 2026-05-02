@@ -41,6 +41,19 @@ type SessionVideo = {
   signedUrl: string | null
 }
 
+function AthleteIcon({ name, size = 20, strokeWidth = 2 }: { name: string; size?: number; strokeWidth?: number }) {
+  const s: React.CSSProperties = { width: size, height: size, display: 'block', flexShrink: 0 }
+  const p = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: s }
+  switch (name) {
+    case 'home':     return <svg {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    case 'book':     return <svg {...p}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    case 'calendar': return <svg {...p}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    case 'messages': return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    case 'mic':      return <svg {...p}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    default:         return null
+  }
+}
+
 export default function AthletePage() {
   const router = useRouter()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
@@ -548,21 +561,22 @@ export default function AthletePage() {
             {/* Quick stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
               {[
-                { label: 'Sessions', value: sessions.length, onClick: () => setTab('sessions') },
-                { label: 'My Notes', value: notes.length, onClick: () => setTab('notes') },
-                { label: 'Last Session', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—', onClick: () => setTab('sessions') },
+                { label: 'Sessions', value: sessions.length, color: 'var(--primary)', onClick: () => setTab('sessions') },
+                { label: 'My Notes', value: notes.length, color: 'var(--coach-color)', onClick: () => setTab('notes') },
+                { label: 'Last Session', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—', color: 'var(--energy)', onClick: () => setTab('sessions') },
               ].map((s, idx) => (
                 <button
                   key={s.label}
                   onClick={s.onClick}
                   style={{
-                    background: 'var(--primary-light)', borderRadius: 12, padding: isMobile ? '12px 10px' : '14px',
+                    background: 'var(--card)', borderRadius: 12, padding: isMobile ? '12px 10px' : '14px',
                     border: '1px solid var(--border)', cursor: 'pointer', textAlign: 'left',
                     gridColumn: isMobile && idx === 2 ? 'span 3' : undefined,
-                    transition: 'all 0.15s ease',
+                    transition: 'all 0.15s ease', position: 'relative', overflow: 'hidden',
                   }}
                 >
-                  <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: 'var(--primary)', lineHeight: 1, letterSpacing: -0.5 }}>{s.value}</div>
+                  <div style={{ position: 'absolute', top: 0, left: 10, right: 10, height: 2, background: s.color, borderRadius: '0 0 4px 4px' }} />
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: isMobile ? 24 : 28, fontWeight: 500, color: 'var(--text)', lineHeight: 1, letterSpacing: -1 }}>{s.value}</div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>{s.label}</div>
                 </button>
               ))}
@@ -1107,90 +1121,55 @@ export default function AthletePage() {
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
           background: 'rgba(251,248,243,0.94)',
           backdropFilter: 'blur(12px)',
-          borderTop: '1px solid var(--border-soft)',
-          display: 'flex', alignItems: 'flex-end',
-          height: 'calc(64px + env(safe-area-inset-bottom))',
-          paddingBottom: 'env(safe-area-inset-bottom)',
+          WebkitBackdropFilter: 'blur(12px)',
+          borderTop: '1px solid #E3DED2',
+          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 2,
+          alignItems: 'center',
+          padding: '8px 6px',
+          paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
         }}>
-          {/* Left 3: Home, Sessions, Calendar */}
           {([
-            { key: 'home' as Tab,     icon: '⌂',  label: 'Home'     },
-            { key: 'sessions' as Tab, icon: '📋', label: 'Sessions' },
-            { key: 'calendar' as Tab, icon: '📅', label: 'Calendar' },
-          ]).map(item => {
+            { key: 'home'     as Tab, icon: 'home',     label: 'Today'    },
+            { key: 'sessions' as Tab, icon: 'book',     label: 'Sessions' },
+            null,
+            { key: 'calendar' as Tab, icon: 'calendar', label: 'Calendar' },
+            { key: 'messages' as Tab, icon: 'messages', label: 'Messages' },
+          ] as ({ key: Tab; icon: string; label: string } | null)[]).map((item, i) => {
+            if (item === null) {
+              return (
+                <div key="fab" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  <button
+                    onClick={() => setTab('wellness')}
+                    style={{
+                      width: 46, height: 46,
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #B55C3E 0%, #8E3F27 100%)',
+                      border: '2px solid #FFFFFF',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(181,92,62,0.35), 0 0 0 3px #FBF8F3',
+                      color: '#fff',
+                    }}
+                  >
+                    <AthleteIcon name="mic" size={18} strokeWidth={2.2} />
+                  </button>
+                  <span style={{ fontSize: 9, color: '#B55C3E', fontWeight: 600, lineHeight: 1 }}>Wellness</span>
+                </div>
+              )
+            }
             const active = tab === item.key
             return (
               <button key={item.key} onClick={() => setTab(item.key)} style={{
-                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', gap: 3,
-                padding: '10px 0 8px',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                padding: '6px 0',
                 border: 'none', background: 'none', cursor: 'pointer',
-                position: 'relative', transition: 'all 0.15s ease',
+                position: 'relative',
+                color: active ? '#1F2421' : '#9BA29B',
+                transition: 'all 0.15s ease',
               }}>
-                <div style={{
-                  width: 40, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: active ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)' : 'transparent',
-                  transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
-                  transform: active ? 'scale(1.08)' : 'scale(1)',
-                  boxShadow: active ? '0 3px 12px rgb(111 142 107 / .30)' : 'none',
-                  fontSize: 17, color: active ? '#fff' : 'var(--text-muted)',
-                }}>
-                  {item.icon}
-                </div>
-                <span style={{ fontSize: 10, fontWeight: active ? 800 : 500, lineHeight: 1, color: active ? 'var(--primary)' : 'var(--text-muted)' }}>{item.label}</span>
-              </button>
-            )
-          })}
-
-          {/* Center FAB — Wellness check-in */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 8, position: 'relative' }}>
-            <button
-              onClick={() => setTab('wellness')}
-              style={{
-                width: 56, height: 56,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
-                border: '3px solid rgba(251,248,243,0.94)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer',
-                boxShadow: '0 4px 16px rgb(111 142 107 / .45)',
-                position: 'absolute',
-                bottom: 'calc(50% + 2px)',
-                transform: 'translateY(-10px)',
-                transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
-                fontSize: 22,
-              }}
-            >
-              💚
-            </button>
-            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--primary)', lineHeight: 1, paddingTop: 'clamp(10px, 2.5vh, 14px)' }}>Wellness</span>
-          </div>
-
-          {/* Right 2: Messages, Notes */}
-          {([
-            { key: 'messages' as Tab, icon: '💬', label: 'Messages' },
-            { key: 'notes' as Tab,    icon: '📝', label: 'Notes'    },
-          ]).map(item => {
-            const active = tab === item.key
-            return (
-              <button key={item.key} onClick={() => setTab(item.key)} style={{
-                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', gap: 3,
-                padding: '10px 0 8px',
-                border: 'none', background: 'none', cursor: 'pointer',
-                position: 'relative', transition: 'all 0.15s ease',
-              }}>
-                <div style={{
-                  width: 40, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: active ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)' : 'transparent',
-                  transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
-                  transform: active ? 'scale(1.08)' : 'scale(1)',
-                  boxShadow: active ? '0 3px 12px rgb(111 142 107 / .30)' : 'none',
-                  fontSize: 17, color: active ? '#fff' : 'var(--text-muted)',
-                }}>
-                  {item.icon}
-                </div>
-                <span style={{ fontSize: 10, fontWeight: active ? 800 : 500, lineHeight: 1, color: active ? 'var(--primary)' : 'var(--text-muted)' }}>{item.label}</span>
+                {active && <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', width: 18, height: 2, background: '#1F2421', borderRadius: 2 }} />}
+                <AthleteIcon name={item.icon} size={18} strokeWidth={active ? 2.2 : 1.8} />
+                <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, lineHeight: 1 }}>{item.label}</span>
               </button>
             )
           })}
