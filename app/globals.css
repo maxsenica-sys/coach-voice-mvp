@@ -60,6 +60,8 @@
   --shadow:       0 4px 16px -2px rgb(95 102 97 / .13), 0 2px 6px -2px rgb(95 102 97 / .09);
   --shadow-lg:    0 12px 32px -4px rgb(95 102 97 / .16), 0 4px 10px -4px rgb(95 102 97 / .11);
   --shadow-glow:  0 0 20px rgb(111 142 107 / .22);
+
+  --grain-opacity: 0.4;
 }
 
 /* ─── Base ───────────────────────────────────────────────────── */
@@ -570,6 +572,21 @@ input, textarea, select, button {
   font-size: 18px;
   background: var(--primary-light);
   border: 1px solid var(--border);
+}
+
+/* ─── Grain texture utility ──────────────────────────────────── */
+.bg-grain {
+  position: relative;
+}
+.bg-grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--grain-opacity, 0.4);
+  background-image: radial-gradient(#E3DED2 0.5px, transparent 0.5px);
+  background-size: 14px 14px;
+  z-index: 0;
 }
 
 /* ─── Wheel picker (sport selection) ────────────────────────── */

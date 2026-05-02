@@ -9,7 +9,7 @@ import WellnessSubmit from '@/app/components/WellnessSubmit'
 import { getDailyQuote } from '@/lib/quotes'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
 
-type Tab = 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
+type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
 type SessionRow = {
   id: string
@@ -53,7 +53,7 @@ export default function AthletePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const [tab, setTab] = useState<Tab>('sessions')
+  const [tab, setTab] = useState<Tab>('home')
   const mainRef = useRef<HTMLElement>(null)
 
   // Scroll to top whenever tab changes
@@ -450,7 +450,7 @@ export default function AthletePage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+    <div className="bg-grain" style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       {/* Header */}
       <header style={{
         background: 'linear-gradient(135deg, #1F2421 0%, #4F6B4B 70%, #6F8E6B 100%)',
@@ -471,7 +471,7 @@ export default function AthletePage() {
         </div>
       </header>
 
-      <main ref={mainRef} style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '16px' : '28px 20px', overflowY: 'auto' }}>
+      <main ref={mainRef} style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '16px' : '28px 20px', overflowY: 'auto', paddingBottom: isMobile ? 'max(100px, calc(80px + env(safe-area-inset-bottom)))' : undefined }}>
         {/* No athlete record — show join form */}
         {error === 'no-athlete-record' && (
           <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 16, padding: 24, marginBottom: 20 }}>
@@ -495,75 +495,119 @@ export default function AthletePage() {
           </div>
         )}
 
-        {/* Hero welcome + stats */}
-        <div style={{
-          background: 'linear-gradient(135deg, #4F6B4B 0%, #6F8E6B 50%, #8EA887 100%)',
-          borderRadius: 18, padding: isMobile ? '18px 16px' : '22px 24px',
-          marginBottom: 20, position: 'relative', overflow: 'hidden',
-          boxShadow: '0 8px 32px rgb(111 142 107 / .2)',
-        }}>
-          <div style={{ position: 'absolute', top: '-30%', right: '-5%', width: 180, height: 180, background: 'radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
-          <div style={{ position: 'relative' }}>
-            <div style={{ fontSize: isMobile ? 13 : 14, color: 'rgba(255,255,255,0.65)', fontWeight: 700, marginBottom: 2 }}>Welcome back,</div>
-            <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: isMobile ? 24 : 30, fontWeight: 500, color: '#fff', letterSpacing: -0.5, marginBottom: 14, lineHeight: 1.1 }}>
-              {athleteName.split(' ')[0]}.
+        {/* Tabs (desktop only — mobile uses bottom nav) */}
+        {!isMobile && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+            {([
+              { key: 'home',     label: 'Home'     },
+              { key: 'sessions', label: 'Sessions' },
+              { key: 'messages', label: 'Messages' },
+              { key: 'wellness', label: 'Wellness' },
+              { key: 'calendar', label: 'Calendar' },
+              { key: 'notes',    label: 'My Notes' },
+            ] as { key: Tab; label: string }[]).map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 999,
+                  border: tab === t.key ? 'none' : '1px solid var(--border)',
+                  background: tab === t.key
+                    ? 'linear-gradient(135deg, #6F8E6B 0%, #4F6B4B 100%)'
+                    : 'var(--card)',
+                  color: tab === t.key ? '#fff' : 'var(--text-2)',
+                  fontWeight: tab === t.key ? 800 : 600,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  transition: 'all 0.18s cubic-bezier(.34,1.56,.64,1)',
+                  boxShadow: tab === t.key ? '0 3px 12px rgb(111 142 107 / .30)' : 'var(--shadow-sm)',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  transform: tab === t.key ? 'scale(1.02)' : 'scale(1)',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ─── Tab: Home ─── */}
+        {tab === 'home' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Serif greeting */}
+            <div style={{ paddingBottom: 4 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
+                {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </div>
+              <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 32, letterSpacing: -0.8, lineHeight: 1.05, color: 'var(--text)' }}>
+                Welcome back,<br/>
+                <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{athleteName.split(' ')[0] || 'Athlete'}.</span>
+              </h1>
             </div>
+            {/* Quick stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
               {[
-                { label: 'Sessions', value: sessions.length },
-                { label: 'My Notes', value: notes.length },
-                { label: 'Last Session', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—' },
+                { label: 'Sessions', value: sessions.length, onClick: () => setTab('sessions') },
+                { label: 'My Notes', value: notes.length, onClick: () => setTab('notes') },
+                { label: 'Last Session', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—', onClick: () => setTab('sessions') },
               ].map((s, idx) => (
-                <div key={s.label} style={{
-                  background: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: isMobile ? '10px 10px' : '12px 14px',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  gridColumn: isMobile && idx === 2 ? 'span 3' : undefined,
-                }}>
-                  <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: -0.5 }}>{s.value}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 3, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>{s.label}</div>
-                </div>
+                <button
+                  key={s.label}
+                  onClick={s.onClick}
+                  style={{
+                    background: 'var(--primary-light)', borderRadius: 12, padding: isMobile ? '12px 10px' : '14px',
+                    border: '1px solid var(--border)', cursor: 'pointer', textAlign: 'left',
+                    gridColumn: isMobile && idx === 2 ? 'span 3' : undefined,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: 'var(--primary)', lineHeight: 1, letterSpacing: -0.5 }}>{s.value}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>{s.label}</div>
+                </button>
               ))}
             </div>
+            {sessions.length > 0 && (
+              <button
+                className="btn btn-athlete"
+                onClick={() => setTab('sessions')}
+                style={{ alignSelf: 'flex-start', gap: 6 }}
+              >
+                View Sessions →
+              </button>
+            )}
           </div>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: isMobile ? 4 : 6, marginBottom: 20, flexWrap: 'wrap' }}>
-          {([
-            { key: 'sessions',  label: 'Sessions',  emoji: '📋' },
-            { key: 'messages',  label: 'Messages',  emoji: '💬' },
-            { key: 'wellness',  label: 'Wellness',  emoji: '💚' },
-            { key: 'calendar',  label: 'Calendar',  emoji: '📅' },
-            { key: 'notes',     label: 'My Notes',  emoji: '📝' },
-          ] as { key: Tab; label: string; emoji: string }[]).map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              style={{
-                padding: isMobile ? '7px 12px' : '8px 16px',
-                borderRadius: 999,
-                border: tab === t.key ? 'none' : '1px solid var(--border)',
-                background: tab === t.key
-                  ? 'linear-gradient(135deg, #6F8E6B 0%, #4F6B4B 100%)'
-                  : 'var(--card)',
-                color: tab === t.key ? '#fff' : 'var(--text-2)',
-                fontWeight: tab === t.key ? 800 : 600,
-                fontSize: isMobile ? 12 : 13,
-                cursor: 'pointer',
-                transition: 'all 0.18s cubic-bezier(.34,1.56,.64,1)',
-                boxShadow: tab === t.key ? '0 3px 12px rgb(111 142 107 / .30)' : 'var(--shadow-sm)',
-                display: 'flex', alignItems: 'center', gap: 5,
-                transform: tab === t.key ? 'scale(1.02)' : 'scale(1)',
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        )}
 
         {/* ─── Tab: Sessions ─── */}
         {tab === 'sessions' && (
           <div>
+            {/* Hero card — most recent session from coach */}
+            {sessions.length > 0 && (
+              <div style={{
+                background: 'linear-gradient(135deg, var(--coach-light) 0%, #FBF8F3 100%)',
+                border: '1px solid var(--border)',
+                borderLeft: '4px solid var(--coach-color)',
+                borderRadius: 14,
+                padding: 16,
+                marginBottom: 16,
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--coach-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--coach-color)', display: 'inline-block' }} />
+                  From your coach
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', marginBottom: 4 }}>
+                  {sessions[0].session_name ?? sessions[0].title ?? 'Latest Session'}
+                </div>
+                {sessions[0].summary && (
+                  <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 8 }}>
+                    {sessions[0].summary.slice(0, 140)}{sessions[0].summary.length > 140 ? '…' : ''}
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(sessions[0].created_at)}</div>
+              </div>
+            )}
+
             {sessions.length === 0 ? (
               <div style={{ background: 'linear-gradient(135deg, var(--primary-light) 0%, #e0f2fe 100%)', border: '1px solid var(--border)', borderRadius: 18, padding: 40, textAlign: 'center' }}>
                 <div style={{ fontSize: 48, marginBottom: 14 }}>📋</div>
@@ -1055,6 +1099,102 @@ export default function AthletePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ════════ MOBILE BOTTOM NAV ════════ */}
+      {isMobile && (
+        <nav style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
+          background: 'rgba(251,248,243,0.94)',
+          backdropFilter: 'blur(12px)',
+          borderTop: '1px solid var(--border-soft)',
+          display: 'flex', alignItems: 'flex-end',
+          height: 'calc(64px + env(safe-area-inset-bottom))',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}>
+          {/* Left 3: Home, Sessions, Calendar */}
+          {([
+            { key: 'home' as Tab,     icon: '⌂',  label: 'Home'     },
+            { key: 'sessions' as Tab, icon: '📋', label: 'Sessions' },
+            { key: 'calendar' as Tab, icon: '📅', label: 'Calendar' },
+          ]).map(item => {
+            const active = tab === item.key
+            return (
+              <button key={item.key} onClick={() => setTab(item.key)} style={{
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 3,
+                padding: '10px 0 8px',
+                border: 'none', background: 'none', cursor: 'pointer',
+                position: 'relative', transition: 'all 0.15s ease',
+              }}>
+                <div style={{
+                  width: 40, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: active ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)' : 'transparent',
+                  transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
+                  transform: active ? 'scale(1.08)' : 'scale(1)',
+                  boxShadow: active ? '0 3px 12px rgb(111 142 107 / .30)' : 'none',
+                  fontSize: 17, color: active ? '#fff' : 'var(--text-muted)',
+                }}>
+                  {item.icon}
+                </div>
+                <span style={{ fontSize: 10, fontWeight: active ? 800 : 500, lineHeight: 1, color: active ? 'var(--primary)' : 'var(--text-muted)' }}>{item.label}</span>
+              </button>
+            )
+          })}
+
+          {/* Center FAB — Wellness check-in */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 8, position: 'relative' }}>
+            <button
+              onClick={() => setTab('wellness')}
+              style={{
+                width: 56, height: 56,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
+                border: '3px solid rgba(251,248,243,0.94)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 4px 16px rgb(111 142 107 / .45)',
+                position: 'absolute',
+                bottom: 'calc(50% + 2px)',
+                transform: 'translateY(-10px)',
+                transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
+                fontSize: 22,
+              }}
+            >
+              💚
+            </button>
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--primary)', lineHeight: 1, paddingTop: 'clamp(10px, 2.5vh, 14px)' }}>Wellness</span>
+          </div>
+
+          {/* Right 2: Messages, Notes */}
+          {([
+            { key: 'messages' as Tab, icon: '💬', label: 'Messages' },
+            { key: 'notes' as Tab,    icon: '📝', label: 'Notes'    },
+          ]).map(item => {
+            const active = tab === item.key
+            return (
+              <button key={item.key} onClick={() => setTab(item.key)} style={{
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 3,
+                padding: '10px 0 8px',
+                border: 'none', background: 'none', cursor: 'pointer',
+                position: 'relative', transition: 'all 0.15s ease',
+              }}>
+                <div style={{
+                  width: 40, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: active ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)' : 'transparent',
+                  transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
+                  transform: active ? 'scale(1.08)' : 'scale(1)',
+                  boxShadow: active ? '0 3px 12px rgb(111 142 107 / .30)' : 'none',
+                  fontSize: 17, color: active ? '#fff' : 'var(--text-muted)',
+                }}>
+                  {item.icon}
+                </div>
+                <span style={{ fontSize: 10, fontWeight: active ? 800 : 500, lineHeight: 1, color: active ? 'var(--primary)' : 'var(--text-muted)' }}>{item.label}</span>
+              </button>
+            )
+          })}
+        </nav>
       )}
     </div>
   )

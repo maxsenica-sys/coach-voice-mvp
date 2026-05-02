@@ -62,11 +62,14 @@ const NAV_ITEMS: { key: Tab; icon: string; label: string }[] = [
   { key: 'messages', icon: 'messages', label: 'Messages' },
   { key: 'settings', icon: 'settings', label: 'Settings' },
 ]
-// FAB is rendered as the center slot — 2 items each side
-const BOTTOM_NAV: { key: Tab; icon: string; label: string }[] = [
+// FAB is rendered as the center slot — 3 items left, 2 items right
+const BOTTOM_NAV_LEFT: { key: Tab; icon: string; label: string }[] = [
   { key: 'home',     icon: 'home',     label: 'Home'     },
   { key: 'athletes', icon: 'athletes', label: 'Athletes' },
   { key: 'calendar', icon: 'calendar', label: 'Calendar' },
+]
+const BOTTOM_NAV_RIGHT: { key: Tab; icon: string; label: string }[] = [
+  { key: 'messages', icon: 'messages', label: 'Messages' },
   { key: 'settings', icon: 'settings', label: 'Settings' },
 ]
 
@@ -981,16 +984,26 @@ function DashboardPageInner() {
           </div>
         )}
 
+        {/* Top accent bar */}
+        <div style={{ height: 3, background: 'linear-gradient(90deg, var(--primary), var(--coach-color))', flexShrink: 0 }} />
+
         <div style={{ padding: isMobile ? '16px' : '28px' }}>
 
           {/* ════ HOME TAB ════ */}
           {tab === 'home' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div className="bg-grain" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-              {/* Hero header — flat greeting */}
+              {/* Hero header — serif greeting */}
               <div style={{ paddingBottom: 4 }}>
-                <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-                  {greeting}{firstName ? `, ${firstName}` : ''} 👋
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
+                  {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </div>
+                <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 32, letterSpacing: -0.8, lineHeight: 1.05, color: 'var(--text)' }}>
+                  {greeting},<br/>
+                  <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{firstName || 'Coach'}.</span>
+                </h1>
+                <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>
+                  {athletes.length} athlete{athletes.length !== 1 ? 's' : ''}{todayEvents.length > 0 ? ` · ${todayEvents.length} session${todayEvents.length !== 1 ? 's' : ''} today` : ''}
                 </p>
               </div>
 
@@ -1025,9 +1038,9 @@ function DashboardPageInner() {
               {/* Stats strip — all cards are clickable */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
                 {([
-                  { label: 'Athletes',           value: athletes.length,  color: '#059669', bg: '#ECFDF5', tab: 'athletes' as Tab },
-                  { label: 'Sessions this week', value: thisWeek.length,  color: '#7C3AED', bg: '#F5F3FF', tab: 'calendar' as Tab },
-                  { label: 'Unread',             value: totalUnreadAll,   color: '#D97706', bg: '#FFFBEB', tab: 'messages' as Tab },
+                  { label: 'Athletes',           value: athletes.length,  color: 'var(--primary)',    bg: 'var(--primary-light)',  tab: 'athletes' as Tab },
+                  { label: 'Sessions this week', value: thisWeek.length,  color: 'var(--coach-color)', bg: 'var(--coach-light)',   tab: 'calendar' as Tab },
+                  { label: 'Unread',             value: totalUnreadAll,   color: 'var(--energy)',     bg: 'var(--energy-light)',   tab: 'messages' as Tab },
                 ] as { label: string; value: number; color: string; bg: string; tab: Tab }[]).map(stat => (
                   <button
                     key={stat.label}
@@ -1507,20 +1520,21 @@ function DashboardPageInner() {
       {isMobile && (
         <nav style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
-          background: 'rgba(253,250,245,0.96)',
-          backdropFilter: 'blur(20px)',
-          borderTop: '1px solid var(--border)',
+          background: 'rgba(251,248,243,0.94)',
+          backdropFilter: 'blur(12px)',
+          borderTop: '1px solid var(--border-soft)',
           display: 'flex', alignItems: 'flex-end',
-          paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 6px), 20px)',
+          height: 'calc(64px + env(safe-area-inset-bottom))',
+          paddingBottom: 'env(safe-area-inset-bottom)',
         }}>
-          {/* Left 2 items */}
-          {BOTTOM_NAV.slice(0, 2).map(item => {
+          {/* Left 3 items */}
+          {BOTTOM_NAV_LEFT.map(item => {
             const active = tab === item.key
             return (
               <button key={item.key} onClick={() => setTab(item.key)} style={{
                 flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
                 justifyContent: 'center', gap: 3,
-                padding: 'clamp(10px, 2.5vh, 14px) 0 8px',
+                padding: '10px 0 8px',
                 border: 'none', background: 'none', cursor: 'pointer',
                 position: 'relative', transition: 'all 0.15s ease',
               }}>
@@ -1540,37 +1554,39 @@ function DashboardPageInner() {
             )
           })}
 
-          {/* Center FAB slot */}
+          {/* Center FAB — Record Session */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 8, position: 'relative' }}>
             <button
               onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
               style={{
-                width: 60, height: 60,
+                width: 56, height: 56,
                 borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
-                border: '4px solid rgba(255,255,255,0.94)',
+                background: 'linear-gradient(135deg, var(--coach-color) 0%, #8E3F27 100%)',
+                border: '3px solid rgba(251,248,243,0.94)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer',
-                boxShadow: '0 6px 24px rgb(111 142 107 / .45)',
+                boxShadow: '0 4px 16px rgb(181 92 62 / .45)',
                 position: 'absolute',
-                bottom: 'calc(50% + 4px)',
+                bottom: 'calc(50% + 2px)',
+                transform: 'translateY(-10px)',
                 transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
                 color: '#fff',
               }}
             >
-              <Icon name="mic" size={26} strokeWidth={2.5} />
+              <Icon name="mic" size={22} strokeWidth={2.5} />
             </button>
-            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--primary)', lineHeight: 1, marginTop: 2, paddingTop: 'clamp(10px, 2.5vh, 14px)' }}>Record</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--coach-color)', lineHeight: 1, paddingTop: 'clamp(10px, 2.5vh, 14px)' }}>Record</span>
           </div>
 
           {/* Right 2 items */}
-          {BOTTOM_NAV.slice(2).map(item => {
+          {BOTTOM_NAV_RIGHT.map(item => {
             const active = tab === item.key
+            const unread = item.key === 'messages' ? totalUnreadAll : 0
             return (
               <button key={item.key} onClick={() => setTab(item.key)} style={{
                 flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
                 justifyContent: 'center', gap: 3,
-                padding: 'clamp(10px, 2.5vh, 14px) 0 8px',
+                padding: '10px 0 8px',
                 border: 'none', background: 'none', cursor: 'pointer',
                 position: 'relative', transition: 'all 0.15s ease',
               }}>
@@ -1580,10 +1596,16 @@ function DashboardPageInner() {
                   transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)',
                   transform: active ? 'scale(1.08)' : 'scale(1)',
                   boxShadow: active ? '0 3px 12px rgb(111 142 107 / .30)' : 'none',
+                  position: 'relative',
                 }}>
                   <div style={{ color: active ? '#fff' : 'var(--text-muted)' }}>
                     <Icon name={item.icon} size={19} />
                   </div>
+                  {unread > 0 && (
+                    <span style={{ position: 'absolute', top: 2, right: 4, background: '#ef4444', color: '#fff', borderRadius: 99, minWidth: 14, height: 14, fontSize: 8, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
+                      {unread > 9 ? '9+' : unread}
+                    </span>
+                  )}
                 </div>
                 <span style={{ fontSize: 10, fontWeight: active ? 800 : 500, lineHeight: 1, color: active ? 'var(--primary)' : 'var(--text-muted)' }}>{item.label}</span>
               </button>
