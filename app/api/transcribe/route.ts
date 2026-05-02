@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSportTerminologyHint } from '@/lib/sports'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 export async function POST(req: Request) {
   try {
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
 
     if (!r.ok) {
       const text = await r.text().catch(() => '')
+      console.error('[transcribe] OpenAI error', r.status, text)
       return NextResponse.json({ error: 'OpenAI transcription failed', details: text }, { status: 500 })
     }
 
@@ -50,6 +52,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ text: transcriptText, segments: json?.segments ?? [] })
   } catch (e: any) {
+    console.error('[transcribe] caught error', e?.message)
     return NextResponse.json({ error: e?.message ?? 'Unknown error in /api/transcribe' }, { status: 500 })
   }
 }
