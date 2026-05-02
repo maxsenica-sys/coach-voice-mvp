@@ -68,7 +68,7 @@ const BOTTOM_NAV_ITEMS: ({ key: Tab; icon: string; label: string } | { fab: true
   { key: 'athletes', icon: 'athletes', label: 'Athletes' },
   { fab: true },
   { key: 'calendar', icon: 'calendar', label: 'Calendar' },
-  { key: 'messages', icon: 'messages', label: 'Messages' },
+  { key: 'messages', icon: 'messages', label: 'Inbox' },
 ]
 
 // ── Sidebar item style ───────────────────────────────────────────
@@ -956,245 +956,307 @@ function DashboardPageInner() {
         {isMobile && (
           <div style={{
             position: 'sticky', top: 0, zIndex: 100,
-            background: 'linear-gradient(135deg, #1F2421 0%, #4F6B4B 100%)',
+            background: 'rgba(251,248,243,0.94)',
+            backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+            borderBottom: '1px solid #E3DED2',
+            padding: '10px 16px',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '0 16px', height: 56,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgb(111 142 107 / .35)' }}>
-                <Icon name="mic" size={15} strokeWidth={2.5} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                background: '#1F2421', color: '#fff', fontWeight: 800, fontSize: 13,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', letterSpacing: 0.2,
+              }}>{coachInitials}</div>
+              <div>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: '#9BA29B', letterSpacing: 1, textTransform: 'uppercase' }}>
+                  {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2421', marginTop: 1 }}>{coachName || 'Coach'}</div>
               </div>
-              <span style={{ fontWeight: 900, fontSize: 17, letterSpacing: -0.3, color: '#fff' }}>CoachVoice</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button onClick={() => setTab('messages')} style={{ position: 'relative', background: tab === 'messages' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
-                <Icon name="messages" size={16} />
-                {totalUnreadAll > 0 && (
-                  <span style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
-                    {totalUnreadAll > 10 ? '10+' : totalUnreadAll}
-                  </span>
-                )}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => setTab('messages')} style={{
+                width: 36, height: 36, borderRadius: 10, background: '#FFFFFF',
+                border: '1px solid #E3DED2', position: 'relative',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer',
+              }}>
+                <Icon name="messages" size={15} strokeWidth={1.8} />
+                {totalUnreadAll > 0 && <span style={{ position: 'absolute', top: 7, right: 7, width: 7, height: 7, borderRadius: '50%', background: '#B55C3E', border: '1.5px solid #FFFFFF' }} />}
               </button>
-              <button onClick={() => setTab('settings')} style={{ background: tab === 'settings' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
-                <Icon name="settings" size={16} />
+              <button onClick={() => setTab('settings')} style={{
+                width: 36, height: 36, borderRadius: 10, background: '#FFFFFF',
+                border: '1px solid #E3DED2',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer',
+              }}>
+                <Icon name="settings" size={15} strokeWidth={1.8} />
               </button>
             </div>
           </div>
         )}
 
-        {/* Top accent bar */}
-        <div style={{ height: 3, background: 'linear-gradient(90deg, var(--primary), var(--coach-color))', flexShrink: 0 }} />
 
-        <div style={{ padding: isMobile ? '16px' : '28px' }}>
+<div style={{ padding: isMobile ? '16px' : '28px' }}>
 
           {/* ════ HOME TAB ════ */}
-          {tab === 'home' && (
-            <div className="bg-grain" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {tab === 'home' && (() => {
+            // Compute this week's days + event counts
+            const _td = new Date()
+            const _tds = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`
+            const _sow = new Date(_td); _sow.setDate(_td.getDate() - _td.getDay())
+            const _weekDays = Array.from({ length: 7 }, (_, i) => {
+              const d = new Date(_sow); d.setDate(_sow.getDate() + i)
+              const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+              return { letter: 'SMTWTFS'[d.getDay()], num: d.getDate(), dateStr: ds, isToday: ds === _tds, isPast: d < _td && ds !== _tds, evCount: homeWeekEvents.filter(e => e.event_date === ds).length }
+            })
+            const _toneColors = ['#B55C3E','#6F8E6B','#C9933A']
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-              {/* Hero header — serif greeting */}
-              <div style={{ paddingBottom: 4 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
-                  {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })}
+                {/* Greeting */}
+                <div style={{ paddingBottom: 4 }}>
+                  <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, letterSpacing: -0.8, lineHeight: 1.05, color: '#1F2421' }}>
+                    {greeting},<br/>
+                    <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{firstName || 'Coach'}.</span>
+                  </h1>
+                  <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#5D6661', lineHeight: 1.5, maxWidth: 280 }}>
+                    {athletes.length} athlete{athletes.length !== 1 ? 's' : ''}{todayEvents.length > 0 ? ` · ${todayEvents.length} session${todayEvents.length !== 1 ? 's' : ''} today` : ''}
+                  </p>
                 </div>
-                <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 32, letterSpacing: -0.8, lineHeight: 1.05, color: 'var(--text)' }}>
-                  {greeting},<br/>
-                  <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{firstName || 'Coach'}.</span>
-                </h1>
-                <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>
-                  {athletes.length} athlete{athletes.length !== 1 ? 's' : ''}{todayEvents.length > 0 ? ` · ${todayEvents.length} session${todayEvents.length !== 1 ? 's' : ''} today` : ''}
-                </p>
-              </div>
 
-              {/* Weekly day wheel */}
-              <div className="card" style={{ padding: '12px 14px' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8 }}>This week</div>
-                <WeekDayWheel selectedDay={homeSelectedDay} onSelect={setHomeSelectedDay} calEvents={homeWeekEvents} />
-                {homeSelectedDay && (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-soft)' }}>
-                    {(homeWeekEvents.filter(e => e.event_date === homeSelectedDay)).length === 0 ? (
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '6px 0' }}>No events on this day</div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                        {homeWeekEvents.filter(e => e.event_date === homeSelectedDay).map(ev => (
-                          <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--primary-light)', borderRadius: 8, border: '1px solid #bfdbfe' }}>
-                            <div style={{ width: 3, height: 24, borderRadius: 2, background: 'var(--primary)', flexShrink: 0 }} />
-                            <span style={{ fontWeight: 700, fontSize: 12 }}>{ev.title}</span>
-                            {ev.event_time && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{ev.event_time}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Daily quote */}
-              <p className="quote-strip" style={{ marginTop: 4 }}>
-                {getDailyQuote('coach')}
-              </p>
-
-              {/* Stats strip — all cards are clickable */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-                {([
-                  { label: 'Athletes',           value: athletes.length,  color: 'var(--primary)',     tab: 'athletes' as Tab },
-                  { label: 'Sessions this week', value: thisWeek.length,  color: 'var(--coach-color)', tab: 'calendar' as Tab },
-                  { label: 'Unread',             value: totalUnreadAll,   color: 'var(--energy)',      tab: 'messages' as Tab },
-                ] as { label: string; value: number; color: string; tab: Tab }[]).map(stat => (
-                  <button
-                    key={stat.label}
-                    onClick={() => setTab(stat.tab)}
-                    style={{
-                      background: 'var(--card)', border: '1px solid var(--border)',
-                      borderRadius: 14, padding: '14px 14px 12px',
-                      boxShadow: 'var(--shadow-sm)', position: 'relative', overflow: 'hidden',
+                {/* Stats — 3 cards with delta sub-text */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+                  {([
+                    { label: 'Athletes', value: athletes.length, color: '#6F8E6B', delta: athletes.length > 0 ? `${athletes.filter(a => a.athlete_user_id).length} active` : 'none yet', tab: 'athletes' as Tab },
+                    { label: 'Sessions', value: thisWeek.length, color: '#B55C3E', delta: 'this week', tab: 'calendar' as Tab },
+                    { label: 'Unread',   value: totalUnreadAll,  color: '#C9933A', delta: totalUnreadAll > 0 ? 'messages' : 'all clear', tab: 'messages' as Tab },
+                  ]).map(stat => (
+                    <button key={stat.label} onClick={() => setTab(stat.tab)} style={{
+                      background: '#FFFFFF', border: '1px solid #E3DED2',
+                      borderRadius: 14, padding: '11px 11px 10px',
+                      position: 'relative', overflow: 'hidden',
                       cursor: 'pointer', textAlign: 'left',
                       transition: 'all 0.18s ease',
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)' }}
-                  >
-                    <div style={{ position: 'absolute', top: 0, left: 12, right: 12, height: 2, background: stat.color, borderRadius: '0 0 4px 4px' }} />
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 500, color: 'var(--text)', lineHeight: 1, letterSpacing: -1.5 }}>{stat.value}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.3, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{stat.label}</div>
-                  </button>
-                ))}
-              </div>
+                    }}>
+                      <div style={{ position: 'absolute', top: 0, left: 12, right: 12, height: 2, background: stat.color, borderRadius: '0 0 4px 4px' }} />
+                      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 30, lineHeight: 1, color: '#1F2421', letterSpacing: -1.5, marginTop: 4 }}>{stat.value}</div>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, color: '#5D6661', marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.6 }}>{stat.label}</div>
+                      <div style={{ fontSize: 9, color: '#9BA29B', marginTop: 3, fontWeight: 600 }}>{stat.delta}</div>
+                    </button>
+                  ))}
+                </div>
 
-              {/* Today's schedule */}
-              {todayEvents.length > 0 && (
-                <div className="card" style={{ padding: 18 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                    <div style={{ color: 'var(--primary)' }}><Icon name="calendar" size={16} /></div>
-                    <span style={{ fontWeight: 800, fontSize: 14 }}>Today</span>
+                {/* This week — compact 7-column day strip */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>This week</div>
+                    <button onClick={() => setTab('calendar')} style={{ fontSize: 10, color: '#9BA29B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
+                      Calendar <Icon name="arrow" size={9} />
+                    </button>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {todayEvents.map(ev => (
-                      <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--primary-light)', borderRadius: 8, border: '1px solid #bfdbfe' }}>
-                        <div style={{ width: 3, height: 32, borderRadius: 2, background: 'var(--primary)', flexShrink: 0 }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13 }}>{ev.title}</div>
-                          {ev.event_time && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{ev.event_time}</div>}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 5 }}>
+                    {_weekDays.map((day, i) => (
+                      <button key={i} onClick={() => setHomeSelectedDay(homeSelectedDay === day.dateStr ? null : day.dateStr)} style={{
+                        background: day.isToday ? '#1F2421' : (homeSelectedDay === day.dateStr ? '#E6ECDF' : '#FFFFFF'),
+                        border: day.isToday ? 'none' : `1px solid ${homeSelectedDay === day.dateStr ? '#CBD7C0' : '#E3DED2'}`,
+                        borderRadius: 10, padding: '8px 0 6px', textAlign: 'center',
+                        opacity: day.isPast && !day.isToday ? 0.55 : 1,
+                        cursor: 'pointer',
+                      }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: day.isToday ? 'rgba(255,255,255,0.55)' : '#9BA29B', textTransform: 'uppercase', letterSpacing: 0.5 }}>{day.letter}</div>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 500, color: day.isToday ? '#FBF8F3' : '#1F2421', lineHeight: 1, marginTop: 3, letterSpacing: -0.4 }}>{day.num}</div>
+                        <div style={{ marginTop: 6, height: 14, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 1.5 }}>
+                          {day.evCount > 0
+                            ? Array.from({ length: Math.min(day.evCount, 5) }).map((_, j) => (
+                                <div key={j} style={{ width: 2, height: 4 + j * 2, background: day.isToday ? '#B55C3E' : (day.isPast ? '#9BA29B' : '#6F8E6B'), borderRadius: 1 }} />
+                              ))
+                            : <div style={{ width: 4, height: 1, background: '#E3DED2', borderRadius: 1 }} />}
                         </div>
-                        <span className={`badge badge-${ev.event_type ?? 'other'}`} style={{ fontSize: 10 }}>{ev.event_type}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
-                </div>
-              )}
 
-              {/* Invite code banner */}
-              {!inviteCode && (
-                <div style={{
-                  background: 'var(--coach-color)', color: '#fff',
-                  borderRadius: 14, padding: '16px 20px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
-                }}>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: 15 }}>Set your invite code</div>
-                    <div style={{ fontSize: 13, opacity: 0.75, marginTop: 3 }}>Athletes need your code to join your roster.</div>
-                  </div>
-                  <button className="btn" onClick={() => setTab('settings')} style={{ background: 'var(--primary)', color: '#fff', fontWeight: 800, flexShrink: 0, border: 'none' }}>
-                    Settings
-                  </button>
-                </div>
-              )}
-
-              {/* Recent sessions */}
-              <div className="card" style={{ padding: 18 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                  <span style={{ fontWeight: 800, fontSize: 15 }}>Recent Sessions</span>
-                  <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', gap: 4 }} onClick={() => setTab('sessions')}>
-                    View all <Icon name="arrow" size={12} />
-                  </button>
-                </div>
-                {loadingSessions ? (
-                  <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 20, fontSize: 14 }}>Loading…</div>
-                ) : recentSessions.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                    <div style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 12 }}>No sessions yet.</div>
-                    <button className="btn btn-primary" onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }} style={{ gap: 6 }}>
-                      <Icon name="mic" size={15} /> Record your first session
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {recentSessions.map(s => {
-                      const a = s.athletes
-                      return (
-                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', border: '1px solid var(--border)', borderRadius: 10 }}>
-                          <Avatar initials={a ? `${a.first_name[0]}${a.last_name[0]}`.toUpperCase() : '?'} size={32} bg="var(--coach-color)" />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {a ? `${a.first_name} ${a.last_name}` : 'Unknown'}{s.session_name ? ` · ${s.session_name}` : ''}
+                  {/* Events for selected day */}
+                  {homeSelectedDay && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #EFEAE0' }}>
+                      {homeWeekEvents.filter(e => e.event_date === homeSelectedDay).length === 0 ? (
+                        <div style={{ fontSize: 12, color: '#9BA29B', textAlign: 'center', padding: '6px 0' }}>No events on this day</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {homeWeekEvents.filter(e => e.event_date === homeSelectedDay).map(ev => (
+                            <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#E6ECDF', borderRadius: 8, border: '1px solid #CBD7C0' }}>
+                              <div style={{ width: 3, height: 24, borderRadius: 2, background: '#6F8E6B', flexShrink: 0 }} />
+                              <span style={{ fontWeight: 700, fontSize: 12, color: '#1F2421' }}>{ev.title}</span>
+                              {ev.event_time && <span style={{ fontSize: 11, color: '#9BA29B' }}>{ev.event_time}</span>}
                             </div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(s.created_at).toLocaleDateString()}</div>
-                          </div>
-                          {a && <Link href={`/athletes/${s.athlete_id}`} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 8px', flexShrink: 0, gap: 4 }}>View <Icon name="arrow" size={11} /></Link>}
+                          ))}
                         </div>
-                      )
-                    })}
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Today's sessions — time-based list */}
+                {todayEvents.length > 0 && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>Today</div>
+                      <div style={{ fontSize: 10, color: '#9BA29B' }}>{todayEvents.length} session{todayEvents.length !== 1 ? 's' : ''}</div>
+                    </div>
+                    <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E3DED2', overflow: 'hidden' }}>
+                      {todayEvents.map((ev, i) => {
+                        const m = ev.event_time?.match(/^(\d+):(\d+)/)
+                        const hrs = m ? parseInt(m[1]) : null
+                        const mins = m ? m[2] : null
+                        const ampm = hrs !== null ? (hrs >= 12 ? 'pm' : 'am') : null
+                        const dh = hrs !== null ? (hrs > 12 ? hrs - 12 : hrs === 0 ? 12 : hrs) : null
+                        return (
+                          <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px', borderTop: i === 0 ? 'none' : '1px solid #EFEAE0' }}>
+                            <div style={{ minWidth: 38, flexShrink: 0 }}>
+                              {dh !== null ? (
+                                <>
+                                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 500, color: '#1F2421', lineHeight: 1, letterSpacing: -0.4 }}>{dh}:{mins}</div>
+                                  <div style={{ fontSize: 9, color: '#9BA29B', marginTop: 2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{ampm}</div>
+                                </>
+                              ) : <div style={{ fontSize: 12, color: '#9BA29B' }}>—</div>}
+                            </div>
+                            <div style={{ width: 1, alignSelf: 'stretch', background: '#EFEAE0', flexShrink: 0 }} />
+                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: _toneColors[i % 3], color: '#fff', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              {(ev.title[0] ?? '?').toUpperCase()}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 12.5, color: '#1F2421', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</div>
+                              {ev.event_type && <div style={{ fontSize: 11, color: '#5D6661', marginTop: 1 }}>{ev.event_type}</div>}
+                            </div>
+                            <Icon name="arrow" size={13} strokeWidth={1.8} />
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
-              </div>
 
-              {/* Athletes with activity */}
-              {athletes.length > 0 && (
-                <div className="card" style={{ padding: 18 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                    <span style={{ fontWeight: 800, fontSize: 15 }}>Your Athletes</span>
-                    <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', gap: 4 }} onClick={() => setTab('athletes')}>
-                      Manage <Icon name="arrow" size={12} />
+                {/* Invite code banner */}
+                {!inviteCode && (
+                  <div style={{ background: '#1F2421', color: '#FBF8F3', borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>Set your invite code</div>
+                      <div style={{ fontSize: 13, opacity: 0.7, marginTop: 3 }}>Athletes need your code to join your roster.</div>
+                    </div>
+                    <button className="btn" onClick={() => setTab('settings')} style={{ background: '#B55C3E', color: '#fff', fontWeight: 800, flexShrink: 0, border: 'none' }}>
+                      Settings
                     </button>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {athletes.slice(0, 5).map(a => {
-                      const unread = unreadCounts[a.id] ?? 0
-                      const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
-                      return (
-                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 10 }}>
-                          <Avatar initials={(a.first_name?.[0] ?? '?').toUpperCase()} size={32} bg={status === 'ACTIVE' ? 'var(--coach-color)' : 'var(--text-muted)'} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ fontWeight: 700, fontSize: 13 }}>{a.first_name} {a.last_name}</span>
-                            {status === 'INVITED' && <span style={{ fontSize: 11, color: 'var(--warning)', marginLeft: 6 }}>Pending</span>}
-                          </div>
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            {unread > 0 && (
-                              <button onClick={() => { setMsgPreselectedId(a.id); setTab('messages') }} style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 99, minWidth: 22, height: 22, fontSize: 10, fontWeight: 800, cursor: 'pointer', padding: '0 5px' }}>
-                                {unread}
-                              </button>
-                            )}
-                            <button onClick={() => { setQuickSessionAthleteId(a.id); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }} className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 8px', gap: 4 }} title="Record session">
-                              <Icon name="mic" size={13} />
-                            </button>
-                            <Link href={`/athletes/${a.id}`} className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 8px' }}>
-                              <Icon name="arrow" size={13} />
-                            </Link>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {athletes.length > 5 && (
-                      <button onClick={() => setTab('athletes')} style={{ fontSize: 12, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', textAlign: 'left' }}>
-                        +{athletes.length - 5} more athletes
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
+                )}
 
-              {/* Empty state: no athletes */}
-              {athletes.length === 0 && !loadingAthletes && (
-                <div className="card" style={{ padding: '32px 24px', textAlign: 'center' }}>
-                  <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}><Icon name="athletes" size={32} /></div>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>No athletes yet</div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>Add your first athlete to get started</div>
-                  <button className="btn btn-coach" onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ gap: 6 }}>
-                    <Icon name="plus" size={14} /> Add Athlete
-                  </button>
+                {/* Recent sessions */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>Recent sessions</div>
+                    <button onClick={() => setTab('sessions')} style={{ fontSize: 10, color: '#9BA29B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
+                      All <Icon name="arrow" size={9} />
+                    </button>
+                  </div>
+                  {loadingSessions ? (
+                    <div style={{ color: '#9BA29B', textAlign: 'center', padding: 20, fontSize: 14 }}>Loading…</div>
+                  ) : recentSessions.length === 0 ? (
+                    <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E3DED2', padding: '24px', textAlign: 'center' }}>
+                      <div style={{ color: '#9BA29B', fontSize: 14, marginBottom: 12 }}>No sessions yet.</div>
+                      <button className="btn btn-primary" onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }} style={{ gap: 6 }}>
+                        <Icon name="mic" size={15} /> Record your first session
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      {recentSessions.map((s, i) => {
+                        const a = s.athletes
+                        const initials = a ? `${a.first_name[0] ?? ''}${a.last_name[0] ?? ''}`.toUpperCase() : '?'
+                        const tone = _toneColors[i % 3]
+                        const ago = (() => {
+                          const diff = Date.now() - new Date(s.created_at).getTime()
+                          const h = Math.floor(diff / 3600000)
+                          if (h < 1) return 'just now'
+                          if (h < 24) return `${h}h`
+                          const d = Math.floor(h / 24)
+                          return d === 1 ? 'Yesterday' : `${d}d`
+                        })()
+                        return (
+                          <div key={s.id} style={{ background: '#FFFFFF', borderRadius: 12, padding: '11px 12px', border: '1px solid #E3DED2', display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ position: 'relative', flexShrink: 0 }}>
+                              <div style={{ width: 34, height: 34, borderRadius: '50%', background: tone, color: '#fff', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials}</div>
+                              <div style={{ position: 'absolute', bottom: -2, right: -2, width: 16, height: 16, borderRadius: '50%', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #FFFFFF' }}>
+                                <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#F4DED3', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B55C3E' }}>
+                                  <Icon name="mic" size={8} strokeWidth={2.4} />
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                                <span style={{ fontWeight: 700, fontSize: 12.5, color: '#1F2421' }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</span>
+                                <span style={{ fontSize: 10, color: '#9BA29B' }}>· {ago}</span>
+                              </div>
+                              <div style={{ fontSize: 11.5, color: '#5D6661', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.session_name ?? 'Session'}</div>
+                            </div>
+                            <div style={{ fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 99, letterSpacing: 0.3, flexShrink: 0, ...(s.shared_with_athlete ? { color: '#4F6B4B', background: '#E6ECDF', border: '1px solid #CBD7C0' } : { color: '#5D6661', background: '#EFEAE0', border: '1px solid #E3DED2' }) }}>
+                              {s.shared_with_athlete ? 'SHARED' : 'DRAFT'}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+
+                {/* Your athletes — horizontal scroll strip */}
+                {athletes.length > 0 && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>Athletes</div>
+                      <button onClick={() => setTab('athletes')} style={{ fontSize: 10, color: '#9BA29B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
+                        Roster <Icon name="arrow" size={9} />
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 9, overflowX: 'auto', marginLeft: -16, marginRight: -16, padding: '0 16px 4px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+                      {athletes.slice(0, 8).map((a, i) => {
+                        const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
+                        const unread = unreadCounts[a.id] ?? 0
+                        const tone = _toneColors[i % 3]
+                        return (
+                          <div key={a.id} style={{ minWidth: 78, background: '#FFFFFF', borderRadius: 14, border: '1px solid #E3DED2', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', flexShrink: 0 }}>
+                            {unread > 0 && <div style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 99, background: '#B55C3E', color: '#fff', fontSize: 9, fontWeight: 800, padding: '0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</div>}
+                            <div style={{ width: 42, height: 42, borderRadius: '50%', background: tone, color: '#fff', fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {(a.first_name?.[0] ?? '?').toUpperCase()}
+                            </div>
+                            <div style={{ fontWeight: 700, fontSize: 11.5, color: '#1F2421', marginTop: 1 }}>{a.first_name}</div>
+                            <div style={{ fontSize: 9, color: status === 'INVITED' ? '#C9933A' : '#9BA29B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{status === 'INVITED' ? 'Pending' : 'Active'}</div>
+                          </div>
+                        )
+                      })}
+                      <button onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ minWidth: 78, background: 'transparent', borderRadius: 14, border: '1.5px dashed #E3DED2', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: '#9BA29B', cursor: 'pointer', flexShrink: 0 }}>
+                        <div style={{ width: 42, height: 42, borderRadius: '50%', border: '1.5px dashed #9BA29B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Icon name="plus" size={18} />
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 600 }}>Invite</div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {athletes.length === 0 && !loadingAthletes && (
+                  <div className="card" style={{ padding: '32px 24px', textAlign: 'center' }}>
+                    <div style={{ color: '#9BA29B', marginBottom: 4 }}><Icon name="athletes" size={32} /></div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>No athletes yet</div>
+                    <div style={{ fontSize: 13, color: '#9BA29B', marginBottom: 16 }}>Add your first athlete to get started</div>
+                    <button className="btn btn-coach" onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ gap: 6 }}>
+                      <Icon name="plus" size={14} /> Add Athlete
+                    </button>
+                  </div>
+                )}
+
+              </div>
+            )
+          })()}
 
           {/* ════ ATHLETES TAB ════ */}
           {tab === 'athletes' && (

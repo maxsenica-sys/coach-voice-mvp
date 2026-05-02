@@ -50,6 +50,7 @@ function AthleteIcon({ name, size = 20, strokeWidth = 2 }: { name: string; size?
     case 'calendar': return <svg {...p}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     case 'messages': return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     case 'mic':      return <svg {...p}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    case 'pencil':   return <svg {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
     default:         return null
   }
 }
@@ -466,20 +467,33 @@ export default function AthletePage() {
     <div className="bg-grain" style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       {/* Header */}
       <header style={{
-        background: 'linear-gradient(135deg, #1F2421 0%, #4F6B4B 70%, #6F8E6B 100%)',
         position: 'sticky', top: 0, zIndex: 100,
-        boxShadow: '0 4px 20px rgb(31 36 33 / .25)',
+        background: 'rgba(251,248,243,0.94)',
+        backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+        borderBottom: '1px solid #E3DED2',
       }}>
-        <div style={{ maxWidth: 1000, margin: '0 auto', padding: '0 20px', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, #6F8E6B 0%, #4F6B4B 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgb(111 142 107 / .4)', fontSize: 16 }}>🎙️</div>
-            <span style={{ fontWeight: 900, fontSize: 17, letterSpacing: -0.3, color: '#fff' }}>CoachVoice</span>
-            <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.2)', letterSpacing: 0.5, textTransform: 'uppercase' }}>Athlete</span>
+        <div style={{ maxWidth: 1000, margin: '0 auto', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: '#6F8E6B', color: '#fff', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {(athleteName.split(' ')[0]?.[0] ?? 'A').toUpperCase()}{(athleteName.split(' ')[1]?.[0] ?? '').toUpperCase()}
+            </div>
+            <div>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#9BA29B', letterSpacing: 1, textTransform: 'uppercase' }}>
+                {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2421', marginTop: 1 }}>
+                {athleteName || 'Athlete'}{sport ? ` · ${sport}` : ''}
+              </div>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{athleteName}</span>
-            {sport && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>{sport}</span>}
-            <button onClick={logout} style={{ padding: '5px 12px', fontSize: 12, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, cursor: 'pointer', color: 'rgba(255,255,255,0.75)', fontWeight: 600 }}>Log out</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button style={{ width: 36, height: 36, borderRadius: 10, background: '#FFFFFF', border: '1px solid #E3DED2', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer' }}>
+              <AthleteIcon name="messages" size={15} strokeWidth={1.8} />
+              {sessions.length > 0 && <span style={{ position: 'absolute', top: 7, right: 7, width: 7, height: 7, borderRadius: '50%', background: '#B55C3E', border: '1.5px solid #FFFFFF' }} />}
+            </button>
+            <button onClick={logout} style={{ width: 36, height: 36, borderRadius: 10, background: '#FFFFFF', border: '1px solid #E3DED2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+              Out
+            </button>
           </div>
         </div>
       </header>
@@ -548,48 +562,76 @@ export default function AthletePage() {
         {/* ─── Tab: Home ─── */}
         {tab === 'home' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {/* Serif greeting */}
-            <div style={{ paddingBottom: 4 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
-                {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })}
-              </div>
-              <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 32, letterSpacing: -0.8, lineHeight: 1.05, color: 'var(--text)' }}>
+
+            {/* Greeting */}
+            <div>
+              <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, letterSpacing: -0.8, lineHeight: 1.05, color: '#1F2421' }}>
                 Welcome back,<br/>
                 <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{athleteName.split(' ')[0] || 'Athlete'}.</span>
               </h1>
+              <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#5D6661', lineHeight: 1.5 }}>
+                {sessions.length} session{sessions.length !== 1 ? 's' : ''} from your coach
+              </p>
             </div>
+
+            {/* New from coach — most recent session */}
+            {sessions.length > 0 && (
+              <div style={{ background: 'linear-gradient(135deg, #F4DED3 0%, #FCF9F2 100%)', borderRadius: 16, padding: '14px 14px 14px 16px', border: '1px solid #EBCBBC', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: -28, right: -28, width: 100, height: 100, borderRadius: '50%', border: '1.5px dashed #B55C3E', opacity: 0.25 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, position: 'relative' }}>
+                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#B55C3E' }} />
+                  <span style={{ fontSize: 9.5, fontWeight: 800, color: '#B55C3E', letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                    New from Coach · {fmtDate(sessions[0].created_at)}
+                  </span>
+                </div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 500, color: '#1F2421', lineHeight: 1.35, letterSpacing: -0.2, marginBottom: 4, fontStyle: 'italic', position: 'relative' }}>
+                  {sessions[0].session_name ?? sessions[0].title ?? 'Latest Session'}
+                </div>
+                {sessions[0].summary && (
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 13.5, color: '#1F2421', lineHeight: 1.55, position: 'relative', marginBottom: 12 }}>
+                    &ldquo;{sessions[0].summary.slice(0, 120)}{sessions[0].summary.length > 120 ? '…' : ''}&rdquo;
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
+                  <button onClick={() => setTab('sessions')} style={{ flex: 1, padding: '9px 0', background: '#1F2421', color: '#FBF8F3', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}>
+                    Read full session →
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Quick stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {[
-                { label: 'Sessions', value: sessions.length, color: 'var(--primary)', onClick: () => setTab('sessions') },
-                { label: 'My Notes', value: notes.length, color: 'var(--coach-color)', onClick: () => setTab('notes') },
-                { label: 'Last Session', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—', color: 'var(--energy)', onClick: () => setTab('sessions') },
+                { label: 'Sessions', value: sessions.length, color: '#6F8E6B', delta: 'from coach', onClick: () => setTab('sessions') },
+                { label: 'My Notes', value: notes.length, color: '#B55C3E', delta: 'private', onClick: () => setTab('notes') },
+                { label: 'Last Session', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—', color: '#C9933A', delta: sessions[0] ? 'most recent' : 'none yet', onClick: () => setTab('sessions') },
               ].map((s, idx) => (
-                <button
-                  key={s.label}
-                  onClick={s.onClick}
-                  style={{
-                    background: 'var(--card)', borderRadius: 12, padding: isMobile ? '12px 10px' : '14px',
-                    border: '1px solid var(--border)', cursor: 'pointer', textAlign: 'left',
-                    gridColumn: isMobile && idx === 2 ? 'span 3' : undefined,
-                    transition: 'all 0.15s ease', position: 'relative', overflow: 'hidden',
-                  }}
-                >
+                <button key={s.label} onClick={s.onClick} style={{
+                  background: '#FFFFFF', borderRadius: 14, padding: '11px 10px 10px',
+                  border: '1px solid #E3DED2', cursor: 'pointer', textAlign: 'left',
+                  gridColumn: isMobile && idx === 2 ? 'span 3' : undefined,
+                  position: 'relative', overflow: 'hidden',
+                }}>
                   <div style={{ position: 'absolute', top: 0, left: 10, right: 10, height: 2, background: s.color, borderRadius: '0 0 4px 4px' }} />
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: isMobile ? 24 : 28, fontWeight: 500, color: 'var(--text)', lineHeight: 1, letterSpacing: -1 }}>{s.value}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>{s.label}</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: isMobile ? 24 : 28, fontWeight: 500, color: '#1F2421', lineHeight: 1, letterSpacing: -1, marginTop: 4 }}>{s.value}</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 700, color: '#5D6661', marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.6 }}>{s.label}</div>
+                  <div style={{ fontSize: 9, color: '#9BA29B', marginTop: 3, fontWeight: 600 }}>{s.delta}</div>
                 </button>
               ))}
             </div>
-            {sessions.length > 0 && (
-              <button
-                className="btn btn-athlete"
-                onClick={() => setTab('sessions')}
-                style={{ alignSelf: 'flex-start', gap: 6 }}
-              >
-                View Sessions →
-              </button>
-            )}
+
+            {/* Add a private note CTA */}
+            <button onClick={() => setTab('notes')} style={{ width: '100%', padding: '11px 13px', background: 'transparent', borderRadius: 12, border: '1.5px dashed #E3DED2', display: 'flex', alignItems: 'center', gap: 9, color: '#5D6661', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: '#EFEAE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661' }}>
+                <AthleteIcon name="pencil" size={12} strokeWidth={2} />
+              </div>
+              <span style={{ flex: 1, textAlign: 'left' }}>Add a private note…</span>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#B55C3E', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <AthleteIcon name="mic" size={10} strokeWidth={2.4} /> VOICE
+              </div>
+            </button>
+
           </div>
         )}
 
