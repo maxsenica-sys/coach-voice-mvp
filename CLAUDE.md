@@ -16,6 +16,11 @@ cause recording and transcription to fail.
 | `app/athlete/page.tsx` | `startNoteRecording` | Athlete voice notes |
 | `app/components/MessagingPanel.tsx` | `startAudio`, `sendAudio` | Voice messages |
 
+> **Updated after Round 1:** The re-record `onClick` handler in
+> `QuickSessionModal` was intentionally modified to stop lingering mic streams.
+> Protection applies to `startRecording`, `stopAndTranscribe`, MIME detection,
+> and FormData construction — not UI state handlers.
+
 ### Why MIME type detection matters
 
 All MediaRecorder instances MUST use dynamic MIME type detection:

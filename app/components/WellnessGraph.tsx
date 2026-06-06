@@ -121,6 +121,7 @@ export default function WellnessGraph({ athleteId }: Props) {
   )
 
   const load = useCallback(async () => {
+    if (!athleteId) return
     setLoading(true)
     try {
       const res = await fetch(`/api/wellness?athlete_id=${athleteId}&days=30`)
@@ -154,6 +155,8 @@ export default function WellnessGraph({ athleteId }: Props) {
     if (vals.length === 0) return null
     return +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)
   }
+
+  if (!athleteId) return null
 
   const overallScore = wellnessScore(latest)
   const overallColor = overallScore === null ? '#94a3b8'
@@ -216,7 +219,7 @@ export default function WellnessGraph({ athleteId }: Props) {
                 label={label}
                 icon={icon}
                 color={color}
-                score={(latest as any)[key] ?? null}
+                score={((latest as unknown as Record<string, number | null>)[key]) ?? null}
                 inverted={inverted}
               />
             ))}

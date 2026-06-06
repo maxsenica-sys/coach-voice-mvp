@@ -14,7 +14,7 @@ export type AnnotationStroke = {
 type Props = {
   videoUrl: string
   initialAnnotations?: AnnotationStroke[]
-  onAnnotationsChange?: (strokes: AnnotationStroke[]) => void
+  onAnnotationsChange?: (strokes: AnnotationStroke[]) => void | Promise<void>
   readOnly?: boolean
   sessionId?: string
   videoId?: string

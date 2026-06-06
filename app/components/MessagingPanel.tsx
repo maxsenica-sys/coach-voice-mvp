@@ -148,6 +148,10 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
           if (prev.some((m) => m.id === msg.id)) return prev
           return [...prev, msg]
         })
+        // Mark inbound messages read immediately without awaiting
+        if (msg.sender_role === 'athlete' && !msg.read_at) {
+          fetch(`/api/messages?athlete_id=${selectedId}`, { cache: 'no-store' }).catch(() => null)
+        }
       })
       .subscribe()
 

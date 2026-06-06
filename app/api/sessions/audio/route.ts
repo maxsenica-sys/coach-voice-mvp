@@ -11,7 +11,7 @@ async function transcribeWithOpenAI(file: File) {
   if (!apiKey) throw new Error('OPENAI_API_KEY is missing in .env.local')
 
   const form = new FormData()
-  form.append('model', 'gpt-4o-mini-transcribe')
+  form.append('model', 'whisper-1')
   form.append('file', file, file.name || 'audio.webm')
 
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {

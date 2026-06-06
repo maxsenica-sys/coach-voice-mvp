@@ -216,7 +216,7 @@ export default function AthletePage() {
   // ── Today's wellness ──────────────────────────────────────
   useEffect(() => {
     if (!athleteId) return
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Intl.DateTimeFormat('en-CA').format(new Date())
     fetch(`/api/wellness?athlete_id=${athleteId}&days=1`)
       .then(r => r.json())
       .then(j => {

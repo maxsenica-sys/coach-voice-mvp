@@ -125,6 +125,10 @@ export async function POST(req: NextRequest) {
   const session_name = (body?.session_name as string | undefined) ?? null
   const transcript = (body?.transcript as string | undefined) ?? ''
   const shared_with_athlete = Boolean(body?.shared_with_athlete)
+  const session_date = typeof body?.session_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.session_date)
+    ? body.session_date
+    : null
+  const sport_context = typeof body?.sport_context === 'string' ? body.sport_context.trim() || null : null
 
   if (!athlete_id) {
     const res = NextResponse.json({ error: 'athlete_id is required' }, { status: 400 })
@@ -148,6 +152,7 @@ export async function POST(req: NextRequest) {
       transcript: transcript.trim(),
       summary, // quick scan summary for list
       shared_with_athlete,
+      sport_context,
     })
     .select('id, session_name, summary, transcript, shared_with_athlete, created_at')
     .single()
@@ -160,11 +165,7 @@ export async function POST(req: NextRequest) {
   // Auto-create a calendar event so this session appears on the calendar
   // and the home tab week strip. Fire-and-forget — session is already committed.
   if (data?.id) {
-    const today = new Date()
-    const yy = today.getFullYear()
-    const mm = String(today.getMonth() + 1).padStart(2, '0')
-    const dd = String(today.getDate()).padStart(2, '0')
-    const dateStr = `${yy}-${mm}-${dd}`
+    const dateStr = session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date())
     await supabase
       .from('calendar_events')
       .insert({

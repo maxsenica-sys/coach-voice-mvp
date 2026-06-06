@@ -20,11 +20,12 @@ interface QuickSessionModalProps {
   groups: Group[]
   defaultAthleteId?: string
   defaultGroupId?: string
+  coachSport?: string
   onClose: () => void
   onSaved: () => void
 }
 
-export default function QuickSessionModal({ athletes, groups, defaultAthleteId, defaultGroupId, onClose, onSaved }: QuickSessionModalProps) {
+export default function QuickSessionModal({ athletes, groups, defaultAthleteId, defaultGroupId, coachSport = '', onClose, onSaved }: QuickSessionModalProps) {
   const [mode, setMode] = useState<'athlete' | 'group'>(defaultGroupId ? 'group' : 'athlete')
   const [athleteId, setAthleteId] = useState(defaultAthleteId ?? athletes[0]?.id ?? '')
   const [groupId, setGroupId] = useState(defaultGroupId ?? groups[0]?.id ?? '')
@@ -110,6 +111,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       const fd = new FormData()
       const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
       fd.append('file', new File([blob], `recording.${ext}`, { type: mimeType }))
+      if (coachSport) fd.append('sport', coachSport)
 
       const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
       const json = await res.json().catch(() => ({}))
@@ -139,6 +141,8 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
             session_name: sessionName.trim() || null,
             transcript: transcript.trim(),
             shared_with_athlete: shareWithAthlete,
+            session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
+            sport_context: coachSport || null,
           }),
         })
         if (!res.ok) throw new Error((await res.json())?.error ?? 'Failed to save')
@@ -157,6 +161,8 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 session_name: sessionName.trim() ? `[${group.name}] ${sessionName.trim()}` : `[${group.name}] Session`,
                 transcript: transcript.trim(),
                 shared_with_athlete: shareWithAthlete,
+                session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
+                sport_context: coachSport || null,
               }),
             })
           )

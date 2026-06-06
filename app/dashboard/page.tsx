@@ -694,7 +694,7 @@ function DashboardPageInner() {
   const activeAthletes = athletes.filter(a => a.athlete_user_id)
   const recentSessions = allSessions.slice(0, 3)
   const thisWeek = allSessions.filter(s => Date.now() - new Date(s.created_at).getTime() < 7 * 86400000)
-  const totalUnreadAll = Object.values(unreadCounts).reduce((a, b) => a + b, 0)
+  const totalUnreadAll = Object.values(unreadCounts).reduce((a: number, b: number) => a + b, 0)
 
   const calTitle = calMode === 'personal'
     ? 'My Calendar'
@@ -1068,7 +1068,7 @@ function DashboardPageInner() {
                     <div style={{ display: 'flex', gap: 9, overflowX: 'auto', marginLeft: -16, marginRight: -16, padding: '0 16px 4px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                       {athletes.slice(0, 8).map((a, i) => {
                         const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
-                        const unread = unreadCounts[a.id] ?? 0
+                        const unread = (unreadCounts[a.id] ?? 0) as number
                         const tone = _toneColors[i % 3]
                         return (
                           <div key={a.id} style={{ minWidth: 78, background: '#FFFFFF', borderRadius: 14, border: '1px solid #E3DED2', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', flexShrink: 0 }}>
@@ -1713,6 +1713,7 @@ function DashboardPageInner() {
           groups={groups}
           defaultAthleteId={quickSessionAthleteId}
           defaultGroupId={quickSessionGroupId}
+          coachSport={coachSport}
           onClose={() => { setQuickSessionOpen(false); setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined) }}
           onSaved={() => { fetchAllSessions(); fetchAthletes() }}
         />

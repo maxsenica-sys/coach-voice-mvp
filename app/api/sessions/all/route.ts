@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
   if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
 
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') ?? '50'), 100)
+  const offset = Math.max(0, parseInt(req.nextUrl.searchParams.get('offset') ?? '0'))
   const search = req.nextUrl.searchParams.get('search') ?? ''
   const athleteId = req.nextUrl.searchParams.get('athlete_id') ?? ''
 
@@ -46,13 +47,13 @@ export async function GET(req: NextRequest) {
     `)
     .eq('coach_id', user.id)
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .range(offset, offset + limit - 1)
 
   if (athleteId) query = query.eq('athlete_id', athleteId)
 
   if (search) {
     query = query.or(
-      `session_name.ilike.%${search}%,transcript.ilike.%${search}%,summary.ilike.%${search}%`
+      `session_name.ilike.%${search}%,title.ilike.%${search}%,transcript.ilike.%${search}%,summary.ilike.%${search}%`
     )
   }
 
@@ -60,5 +61,10 @@ export async function GET(req: NextRequest) {
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 
-  return attach(NextResponse.json({ sessions: data ?? [] }), cookiesToSet)
+  return attach(NextResponse.json({
+    sessions: data ?? [],
+    hasMore: (data ?? []).length === limit,
+    offset,
+    limit,
+  }), cookiesToSet)
 }
