@@ -12,7 +12,7 @@ function startsWithRoute(pathname: string, route: string) {
 const COACH_ROUTES = ['/dashboard', '/athletes']
 const ATHLETE_ROUTES = ['/athlete']
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   // ✅ Let invite/reset callbacks pass without middleware interference
@@ -69,7 +69,7 @@ export async function proxy(request: NextRequest) {
 
     const role = (profile?.role ?? '').toLowerCase()
 
-    console.log('[proxy]', { pathname, userId: user.id, role, isCoachRoute, isAthleteRoute })
+    // Role check passed — allow through
 
     // If profile not created yet, do nothing (prevents redirect loops)
     if (!role) {

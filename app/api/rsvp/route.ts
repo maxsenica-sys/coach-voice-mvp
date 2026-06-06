@@ -46,6 +46,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'status must be pending, yes, no, or maybe' }, { status: 400 })
   }
 
+  // Verify athlete_id belongs to the authenticated user
+  const { data: athleteCheck } = await supabase
+    .from('athletes')
+    .select('id')
+    .eq('id', athlete_id)
+    .eq('athlete_user_id', user.id)
+    .maybeSingle()
+  if (!athleteCheck) {
+    return NextResponse.json({ error: 'Athlete not found or not yours' }, { status: 403 })
+  }
+
   const { data, error } = await supabase
     .from('event_rsvps')
     .upsert({ event_id, athlete_id, status, updated_at: new Date().toISOString() }, { onConflict: 'event_id,athlete_id' })

@@ -27,7 +27,8 @@
       "Bash(wc -l /c/Users/pennywise/coach-voice-mvp/.claude/worktrees/quirky-pascal/app/api/**/route.ts)",
       "Bash(grep -A 5 \"type CookieToSet\\\\|type CookieLike\" /c/Users/pennywise/coach-voice-mvp/.claude/worktrees/quirky-pascal/app/api/**/route.ts)",
       "Bash(mkdir -p \"C:\\\\Users\\\\pennywise\\\\coach-voice-mvp\\\\.claude\\\\worktrees\\\\quirky-pascal\\\\app\\\\api\\\\share\\\\clip\\\\[videoId]\")",
-      "Bash(mkdir -p \"C:\\\\Users\\\\pennywise\\\\coach-voice-mvp\\\\.claude\\\\worktrees\\\\quirky-pascal\\\\app\\\\share\\\\clip\\\\[videoId]\")"
+      "Bash(mkdir -p \"C:\\\\Users\\\\pennywise\\\\coach-voice-mvp\\\\.claude\\\\worktrees\\\\quirky-pascal\\\\app\\\\share\\\\clip\\\\[videoId]\")",
+      "Bash(Remove-Item \"C:\\\\Users\\\\pennywise\\\\coach-voice-mvp\\\\proxy.ts\")"
     ]
   }
 }

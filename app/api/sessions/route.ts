@@ -157,6 +157,28 @@ export async function POST(req: NextRequest) {
     return attachCookies(res, cookiesToSet)
   }
 
+  // Auto-create a calendar event so this session appears on the calendar
+  // and the home tab week strip. Fire-and-forget — session is already committed.
+  if (data?.id) {
+    const today = new Date()
+    const yy = today.getFullYear()
+    const mm = String(today.getMonth() + 1).padStart(2, '0')
+    const dd = String(today.getDate()).padStart(2, '0')
+    const dateStr = `${yy}-${mm}-${dd}`
+    await supabase
+      .from('calendar_events')
+      .insert({
+        athlete_id,
+        created_by_user_id: user.id,
+        created_by_role: 'coach',
+        title: session_name?.trim() || 'Coaching Session',
+        event_type: 'session',
+        event_date: dateStr,
+        description: summary ? summary.slice(0, 300) : null,
+      })
+      .then(() => null, () => null)
+  }
+
   const res = NextResponse.json({ session: data })
   return attachCookies(res, cookiesToSet)
 }

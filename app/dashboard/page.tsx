@@ -7,7 +7,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
 import MessagingPanel from '@/app/components/MessagingPanel'
-import { getDailyQuote } from '@/lib/quotes'
+import SportWheelPicker from '@/app/components/SportWheelPicker'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -179,162 +179,6 @@ function JoinToast({ data, onDismiss }: { data: JoinToastData; onDismiss: () => 
       <div style={{ height: 3, background: 'rgba(255,255,255,0.08)' }}>
         <div style={{ height: '100%', background: 'var(--primary)', animation: 'toastProgress 7s linear forwards', borderRadius: 0 }} />
       </div>
-    </div>
-  )
-}
-
-// ── Sports list for scroll wheel picker ─────────────────────────
-const SPORTS_LIST = [
-  'Archery','Athletics (Track & Field)','Australian Rules Football','Badminton','Baseball',
-  'Basketball','Beach Volleyball','Boxing','Canoeing','Chess','Cricket',
-  'Cross Country Running','Cycling','Darts','Diving','Equestrian','Fencing',
-  'Field Hockey','Figure Skating','Football (American)','Football (Soccer)',
-  'Freestyle Skiing','Golf','Gymnastics','Handball','Ice Hockey','Judo','Karate',
-  'Kayaking','Lacrosse','Marathon Running','Mixed Martial Arts','Modern Pentathlon',
-  'Motorcycling','Mountain Biking','Netball','Orienteering','Paddle Tennis','Padel',
-  'Powerlifting','Racquetball','Rock Climbing','Rowing','Rugby League','Rugby Union',
-  'Sailing','Shooting','Skateboarding','Ski Jumping','Skiing (Alpine)',
-  'Skiing (Cross Country)','Snooker','Snowboarding','Softball','Speed Skating',
-  'Squash','Surf Lifesaving','Surfing','Swimming','Synchronized Swimming',
-  'Table Tennis','Taekwondo','Tennis','Triathlon','Volleyball','Water Polo',
-  'Weightlifting','Wrestling','Yoga',
-]
-
-// ── Sport Scroll Wheel Picker ─────────────────────────────────────
-function SportWheelPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
-  const filtered = SPORTS_LIST.filter(s => s.toLowerCase().includes(search.toLowerCase()))
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="input"
-        style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-      >
-        <span style={{ color: value ? 'var(--text)' : 'var(--text-muted)' }}>{value || 'Select sport…'}</span>
-        <span style={{ fontSize: 10 }}>{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: 'var(--shadow)', marginTop: 4, overflow: 'hidden' }}>
-          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-soft)' }}>
-            <input className="input" style={{ fontSize: 12, padding: '6px 10px' }} placeholder="Search sports…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
-          </div>
-          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-            <button type="button" onClick={() => { onChange(''); setOpen(false); setSearch('') }} style={{ width: '100%', padding: '9px 12px', border: 'none', background: !value ? 'var(--primary-light)' : 'transparent', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: 'var(--text-muted)' }}>
-              — None —
-            </button>
-            {filtered.map(s => (
-              <button key={s} type="button" onClick={() => { onChange(s); setOpen(false); setSearch('') }}
-                style={{ width: '100%', padding: '9px 12px', border: 'none', background: value === s ? 'var(--primary-light)' : 'transparent', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: value === s ? 'var(--primary)' : 'var(--text)', fontWeight: value === s ? 700 : 400 }}>
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Home tab weekly day wheel ─────────────────────────────────────
-function WeekDayWheel({ selectedDay, onSelect, calEvents }: {
-  selectedDay: string | null
-  onSelect: (d: string) => void
-  calEvents: CalendarEvent[]
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const snapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-  const ITEM_W = 44
-  const GAP = 6
-
-  // Generate days: 30 before today + today + 30 after = 61 days
-  const today = new Date()
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
-  const days = Array.from({ length: 61 }, (_, i) => {
-    const d = new Date(today)
-    d.setDate(today.getDate() - 30 + i)
-    const str = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-    return { str, dow: d.getDay(), dayNum: d.getDate(), label: DAY_LABELS[d.getDay()] }
-  })
-  const todayIndex = 30 // always index 30
-
-  const eventDates = useMemo(() => new Set(calEvents.map(e => e.event_date)), [calEvents])
-
-  const scrollToIndex = (index: number, smooth = true) => {
-    if (!scrollRef.current) return
-    const containerW = scrollRef.current.clientWidth
-    const offset = index * (ITEM_W + GAP) - containerW / 2 + ITEM_W / 2
-    scrollRef.current.scrollTo({ left: Math.max(0, offset), behavior: smooth ? 'smooth' : 'instant' })
-  }
-
-  // Scroll to today on mount
-  useEffect(() => {
-    requestAnimationFrame(() => scrollToIndex(todayIndex, false))
-  }, [])
-
-  // Auto-snap back to today after 2s of inactivity
-  const handleScroll = () => {
-    if (snapTimerRef.current) clearTimeout(snapTimerRef.current)
-    snapTimerRef.current = setTimeout(() => {
-      scrollToIndex(todayIndex, true)
-      onSelect(todayStr)
-    }, 2000)
-  }
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      {/* Left arrow */}
-      <button
-        onClick={() => scrollRef.current?.scrollBy({ left: -(ITEM_W + GAP) * 3, behavior: 'smooth' })}
-        style={{ flexShrink: 0, width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--text-2)' }}
-      >‹</button>
-
-      {/* Scrollable day strip */}
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        style={{ flex: 1, display: 'flex', gap: GAP, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 2 }}
-      >
-        {days.map(({ str, label, dayNum }) => {
-          const isToday = str === todayStr
-          const isSelected = str === selectedDay
-          const hasEvent = eventDates.has(str)
-          return (
-            <button
-              key={str}
-              onClick={() => onSelect(isSelected ? '' : str)}
-              style={{
-                flexShrink: 0,
-                width: ITEM_W,
-                padding: '6px 0',
-                borderRadius: 10,
-                border: isToday ? '2px solid var(--primary)' : '1px solid var(--border)',
-                background: isSelected ? 'var(--primary)' : isToday ? 'var(--primary-light, #eef2ff)' : 'var(--card)',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 2,
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <span style={{ fontSize: 10, fontWeight: 600, color: isSelected ? '#fff' : isToday ? 'var(--primary)' : 'var(--text-muted)', textTransform: 'uppercase' }}>{label}</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: isSelected ? '#fff' : isToday ? 'var(--primary)' : 'var(--text)' }}>{dayNum}</span>
-              {hasEvent && <div style={{ width: 4, height: 4, borderRadius: '50%', background: isSelected ? '#fff' : 'var(--primary)' }} />}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Right arrow */}
-      <button
-        onClick={() => scrollRef.current?.scrollBy({ left: (ITEM_W + GAP) * 3, behavior: 'smooth' })}
-        style={{ flexShrink: 0, width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--text-2)' }}
-      >›</button>
     </div>
   )
 }
@@ -587,7 +431,7 @@ function DashboardPageInner() {
       const res = await fetch(`/api/calendar?mode=personal&month=${month}`, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       if (res.ok) {
-        const todayStr = today.toISOString().slice(0, 10)
+        const todayStr = new Intl.DateTimeFormat('en-CA').format(today)
         const allEvs: CalendarEvent[] = json.events ?? []
         setTodayEvents(allEvs.filter((e: CalendarEvent) => e.event_date === todayStr))
         setHomeWeekEvents(allEvs)
@@ -805,7 +649,7 @@ function DashboardPageInner() {
         const homeRes = await fetch(`/api/calendar?mode=personal&month=${homeMonth}`, { cache: 'no-store' })
         const homeJson = await homeRes.json().catch(() => ({}))
         if (homeRes.ok) {
-          const todayStr = today.toISOString().slice(0, 10)
+          const todayStr = new Intl.DateTimeFormat('en-CA').format(today)
           const allEvs: CalendarEvent[] = homeJson.events ?? []
           setTodayEvents(allEvs.filter((e: CalendarEvent) => e.event_date === todayStr))
           setHomeWeekEvents(allEvs)
@@ -1025,7 +869,7 @@ function DashboardPageInner() {
                     <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{firstName || 'Coach'}.</span>
                   </h1>
                   <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#5D6661', lineHeight: 1.5, maxWidth: 280 }}>
-                    {athletes.length} athlete{athletes.length !== 1 ? 's' : ''}{todayEvents.length > 0 ? ` · ${todayEvents.length} session${todayEvents.length !== 1 ? 's' : ''} today` : ''}
+                    {athletes.length} athlete{athletes.length !== 1 ? 's' : ''}{todayEvents.length > 0 ? ` · ${todayEvents.length} event${todayEvents.length !== 1 ? 's' : ''} today` : ''}
                   </p>
                 </div>
 
@@ -1106,7 +950,7 @@ function DashboardPageInner() {
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>Today</div>
-                      <div style={{ fontSize: 10, color: '#9BA29B' }}>{todayEvents.length} session{todayEvents.length !== 1 ? 's' : ''}</div>
+                      <div style={{ fontSize: 10, color: '#9BA29B' }}>{todayEvents.length} event{todayEvents.length !== 1 ? 's' : ''}</div>
                     </div>
                     <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E3DED2', overflow: 'hidden' }}>
                       {todayEvents.map((ev, i) => {

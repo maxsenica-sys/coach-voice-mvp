@@ -345,7 +345,13 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 <button
                   className="btn btn-ghost"
                   style={{ fontSize: 12, padding: '4px 10px' }}
-                  onClick={() => { setStep('record'); setTranscript('') }}
+                  onClick={() => {
+                    // Stop any lingering mic stream before re-recording
+                    streamRef.current?.getTracks().forEach(t => t.stop())
+                    streamRef.current = null
+                    setStep('record')
+                    setTranscript('')
+                  }}
                 >
                   ← Re-record
                 </button>

@@ -4,52 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 
-const SPORTS_LIST = [
-  'Archery','Athletics (Track & Field)','Australian Rules Football','Badminton','Baseball',
-  'Basketball','Beach Volleyball','Boxing','Canoeing','Chess','Cricket',
-  'Cross Country Running','Cycling','Darts','Diving','Equestrian','Fencing',
-  'Field Hockey','Figure Skating','Football (American)','Football (Soccer)',
-  'Freestyle Skiing','Golf','Gymnastics','Handball','Ice Hockey','Judo','Karate',
-  'Kayaking','Lacrosse','Marathon Running','Mixed Martial Arts','Modern Pentathlon',
-  'Motorcycling','Mountain Biking','Netball','Orienteering','Paddle Tennis','Padel',
-  'Powerlifting','Racquetball','Rock Climbing','Rowing','Rugby League','Rugby Union',
-  'Sailing','Shooting','Skateboarding','Ski Jumping','Skiing (Alpine)',
-  'Skiing (Cross Country)','Snooker','Snowboarding','Softball','Speed Skating',
-  'Squash','Surf Lifesaving','Surfing','Swimming','Synchronized Swimming',
-  'Table Tennis','Taekwondo','Tennis','Triathlon','Volleyball','Water Polo',
-  'Weightlifting','Wrestling','Yoga',
-]
-
-function SportWheelPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
-  const filtered = SPORTS_LIST.filter(s => s.toLowerCase().includes(search.toLowerCase()))
-  return (
-    <div style={{ position: 'relative' }}>
-      <button type="button" onClick={() => setOpen(o => !o)} className="input" style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-        <span style={{ color: value ? 'var(--text)' : 'var(--text-muted)' }}>{value || 'Select sport…'}</span>
-        <span style={{ fontSize: 10 }}>{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: 'var(--shadow)', marginTop: 4, overflow: 'hidden' }}>
-          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-soft)' }}>
-            <input className="input" style={{ fontSize: 12, padding: '6px 10px' }} placeholder="Search sports…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
-          </div>
-          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-            <button type="button" onClick={() => { onChange(''); setOpen(false); setSearch('') }} style={{ width: '100%', padding: '9px 12px', border: 'none', background: !value ? 'var(--primary-light)' : 'transparent', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: 'var(--text-muted)' }}>— None —</button>
-            {filtered.map(s => (
-              <button key={s} type="button" onClick={() => { onChange(s); setOpen(false); setSearch('') }}
-                style={{ width: '100%', padding: '9px 12px', border: 'none', background: value === s ? 'var(--primary-light)' : 'transparent', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: value === s ? 'var(--primary)' : 'var(--text)', fontWeight: value === s ? 700 : 400 }}>
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+import SportWheelPicker from '@/app/components/SportWheelPicker'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import WellnessGraph from '@/app/components/WellnessGraph'
 
