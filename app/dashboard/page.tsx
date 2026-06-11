@@ -863,34 +863,30 @@ function DashboardPageInner() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
                 {/* Greeting */}
-                <div style={{ paddingBottom: 4 }}>
-                  <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, letterSpacing: -0.8, lineHeight: 1.05, color: '#1F2421' }}>
-                    {greeting},<br/>
-                    <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{firstName || 'Coach'}.</span>
+                <div style={{ paddingBottom: 4, textAlign: 'center' }}>
+                  <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, letterSpacing: -0.8, lineHeight: 1.1, color: '#1F2421' }}>
+                    {greeting}, <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{firstName || 'Coach'}.</span>
                   </h1>
-                  <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#5D6661', lineHeight: 1.5, maxWidth: 280 }}>
-                    {athletes.length} athlete{athletes.length !== 1 ? 's' : ''}{todayEvents.length > 0 ? ` · ${todayEvents.length} event${todayEvents.length !== 1 ? 's' : ''} today` : ''}
-                  </p>
                 </div>
 
                 {/* Stats — 3 cards with delta sub-text */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
                   {([
-                    { label: 'Athletes', value: athletes.length, color: '#6F8E6B', delta: athletes.length > 0 ? `${athletes.filter(a => a.athlete_user_id).length} active` : 'none yet', tab: 'athletes' as Tab },
-                    { label: 'Sessions', value: thisWeek.length, color: '#B55C3E', delta: 'this week', tab: 'calendar' as Tab },
-                    { label: 'Unread',   value: totalUnreadAll,  color: '#C9933A', delta: totalUnreadAll > 0 ? 'messages' : 'all clear', tab: 'messages' as Tab },
+                    { label: 'Athletes', value: athletes.length, color: '#4A6B47', delta: athletes.length > 0 ? `${athletes.filter(a => a.athlete_user_id).length} active` : 'none yet', tab: 'athletes' as Tab },
+                    { label: 'Sessions', value: thisWeek.length, color: '#8B3E2A', delta: 'this week', tab: 'calendar' as Tab },
+                    { label: 'Unread',   value: totalUnreadAll,  color: '#9A7229', delta: totalUnreadAll > 0 ? 'messages' : 'all clear', tab: 'messages' as Tab },
                   ]).map(stat => (
                     <button key={stat.label} onClick={() => setTab(stat.tab)} style={{
-                      background: '#FFFFFF', border: '1px solid #E3DED2',
+                      background: stat.color, border: 'none',
                       borderRadius: 14, padding: '11px 11px 10px',
                       position: 'relative', overflow: 'hidden',
                       cursor: 'pointer', textAlign: 'left',
                       transition: 'all 0.18s ease',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
                     }}>
-                      <div style={{ position: 'absolute', top: 0, left: 12, right: 12, height: 2, background: stat.color, borderRadius: '0 0 4px 4px' }} />
-                      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 30, lineHeight: 1, color: '#1F2421', letterSpacing: -1.5, marginTop: 4 }}>{stat.value}</div>
-                      <div style={{ fontSize: 9.5, fontWeight: 700, color: '#5D6661', marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.6 }}>{stat.label}</div>
-                      <div style={{ fontSize: 9, color: '#9BA29B', marginTop: 3, fontWeight: 600 }}>{stat.delta}</div>
+                      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 30, lineHeight: 1, color: '#FFFFFF', letterSpacing: -1.5, marginTop: 4 }}>{stat.value}</div>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, color: 'rgba(255,255,255,0.85)', marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.6 }}>{stat.label}</div>
+                      <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.65)', marginTop: 3, fontWeight: 600 }}>{stat.delta}</div>
                     </button>
                   ))}
                 </div>

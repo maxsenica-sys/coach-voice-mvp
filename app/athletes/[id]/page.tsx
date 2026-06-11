@@ -8,6 +8,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import WellnessGraph from '@/app/components/WellnessGraph'
+import QuickSessionModal from '@/app/components/QuickSessionModal'
 
 interface Athlete {
   id: string; first_name: string; last_name: string
@@ -237,6 +238,20 @@ export default function AthleteDetailPage() {
   const [metricVal, setMetricVal] = useState('')
   const [customLabel, setCustomLabel] = useState('')
   const [customVal, setCustomVal] = useState('')
+
+  // ── Tab navigation + Quick Session ───────────────────────────
+  type AthleteTab = 'overview' | 'sessions' | 'wellness' | 'calendar' | 'profile' | 'notes'
+  const [activeTab, setActiveTab] = useState<AthleteTab>('overview')
+  const [showQuickSession, setShowQuickSession] = useState(false)
+  const [sessionsShowAll, setSessionsShowAll] = useState(false)
+
+  // ── Notes ─────────────────────────────────────────────────────
+  const [notes, setNotes] = useState<any[]>([])
+  const [noteText, setNoteText] = useState('')
+  const [noteShared, setNoteShared] = useState(false)
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [noteMsg, setNoteMsg] = useState('')
+  const [notesLoaded, setNotesLoaded] = useState(false)
 
   const load = async () => {
     if (!athleteId) return
@@ -475,6 +490,35 @@ export default function AthleteDetailPage() {
     finally { setProfileSaving(false) }
   }
 
+  const loadNotes = async () => {
+    if (notesLoaded) return
+    try {
+      const res = await fetch(`/api/notes?athlete_id=${encodeURIComponent(athleteId)}`)
+      if (!res.ok) return
+      const json = await res.json()
+      setNotes(json.notes ?? [])
+      setNotesLoaded(true)
+    } catch {}
+  }
+
+  const saveNote = async () => {
+    if (!noteText.trim()) return
+    setNoteSaving(true); setNoteMsg('')
+    try {
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete_id: athleteId, summary: noteText.trim(), shared_with_athlete: noteShared }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Save failed')
+      const json = await res.json()
+      setNotes(prev => [json.note, ...prev])
+      setNoteText(''); setNoteMsg('Note saved!')
+      setTimeout(() => setNoteMsg(''), 3000)
+    } catch (e: any) { setNoteMsg(e?.message ?? 'Failed') }
+    finally { setNoteSaving(false) }
+  }
+
   const uploadPhoto = async (file: File) => {
     setPhotoUploading(true)
     try {
@@ -515,12 +559,36 @@ export default function AthleteDetailPage() {
   const p = isMobile ? '16px' : '20px'
   const maxW = 860
 
+  // Session list shown in Sessions tab
+  const visibleSessions = sessionsShowAll ? sessions : sessions.slice(0, 3)
+
+  // Tab definitions
+  const TABS: { key: AthleteTab; label: string }[] = [
+    { key: 'overview',  label: 'Overview' },
+    { key: 'sessions',  label: `Sessions${sessions.length > 0 ? ` (${sessions.length})` : ''}` },
+    { key: 'wellness',  label: 'Wellness' },
+    { key: 'calendar',  label: 'Calendar' },
+    { key: 'profile',   label: 'Profile' },
+    { key: 'notes',     label: 'Notes' },
+  ]
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
 
+      {/* ── Quick Session Modal ── */}
+      {showQuickSession && athlete && (
+        <QuickSessionModal
+          athletes={[athlete as any]}
+          groups={[]}
+          defaultAthleteId={athleteId}
+          coachSport={coachSport}
+          onClose={() => setShowQuickSession(false)}
+          onSaved={() => { setShowQuickSession(false); void load() }}
+        />
+      )}
+
       {/* ── Sticky header ── */}
       <header style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100 }}>
-        {/* Top row: back + athlete name */}
         <div style={{ maxWidth: maxW, margin: '0 auto', padding: `0 ${p}`, height: 52, display: 'flex', alignItems: 'center', gap: 12 }}>
           <Link href="/dashboard" style={{ color: 'var(--text)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, flexShrink: 0, padding: '6px 10px', borderRadius: 8, background: 'var(--bg)', border: '1.5px solid var(--border)' }}>
             <Icon name="arrow-left" size={18} /> {!isMobile && 'Dashboard'}
@@ -541,42 +609,39 @@ export default function AthleteDetailPage() {
                 </div>
                 {athlete.status && <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 10, flexShrink: 0 }}>{athlete.status}</span>}
               </div>
-              {/* Desktop action buttons inline */}
-              {!isMobile && (
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button className={`btn ${showProfile ? 'btn-primary' : 'btn-ghost'}`} style={{ fontSize: 12, padding: '6px 12px', gap: 5 }} onClick={() => setShowProfile(v => !v)}>
-                    <Icon name="users" size={13} /> Profile
-                  </button>
-                  <Link href={`/dashboard?tab=messages&athlete=${athleteId}`} className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px', gap: 5 }}>
-                    <Icon name="messages" size={13} /> Message
-                  </Link>
-                  <button className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px', gap: 5 }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
-                    <Icon name="report" size={13} /> Monthly Report
-                  </button>
-                  <button className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px', gap: 5 }} onClick={() => setShowCaretakers(v => !v)}>
-                    <Icon name="users" size={13} /> Caretakers
-                  </button>
-                </div>
-              )}
+              {/* Record Session CTA */}
+              <button
+                className="btn btn-coach"
+                style={{ fontSize: 12, padding: '7px 14px', gap: 6, flexShrink: 0, fontWeight: 700 }}
+                onClick={() => setShowQuickSession(true)}
+              >
+                <Icon name="mic" size={13} /> Record Session
+              </button>
             </>
           )}
         </div>
 
-        {/* Mobile action strip */}
-        {isMobile && athlete && (
-          <div style={{ borderTop: '1px solid var(--border)', display: 'flex', overflowX: 'auto', padding: '8px 12px', gap: 8, WebkitOverflowScrolling: 'touch' as any }}>
-            <button className={`btn ${showProfile ? 'btn-primary' : 'btn-ghost'}`} style={{ fontSize: 12, padding: '6px 12px', gap: 5, flexShrink: 0 }} onClick={() => setShowProfile(v => !v)}>
-              <Icon name="users" size={13} /> Profile
-            </button>
-            <Link href="/dashboard" className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px', gap: 5, flexShrink: 0 }}>
-              <Icon name="messages" size={13} /> Message
-            </Link>
-            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px', gap: 5, flexShrink: 0 }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
-              <Icon name="report" size={13} /> Monthly Report
-            </button>
-            <button className={`btn ${showCaretakers ? 'btn-coach' : 'btn-ghost'}`} style={{ fontSize: 12, padding: '6px 12px', gap: 5, flexShrink: 0 }} onClick={() => setShowCaretakers(v => !v)}>
-              <Icon name="users" size={13} /> Caretakers
-            </button>
+        {/* Tab bar */}
+        {athlete && (
+          <div style={{ maxWidth: maxW, margin: '0 auto', padding: `0 ${p}`, display: 'flex', overflowX: 'auto', gap: 0, borderTop: '1px solid var(--border)' }}>
+            {TABS.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => {
+                  setActiveTab(tab.key)
+                  if (tab.key === 'notes') void loadNotes()
+                }}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '10px 14px', fontSize: 13, fontWeight: activeTab === tab.key ? 700 : 500,
+                  color: activeTab === tab.key ? 'var(--primary)' : 'var(--text-muted)',
+                  borderBottom: activeTab === tab.key ? '2px solid var(--primary)' : '2px solid transparent',
+                  whiteSpace: 'nowrap', flexShrink: 0, transition: 'all 0.12s',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         )}
       </header>
@@ -588,9 +653,229 @@ export default function AthleteDetailPage() {
           </div>
         )}
 
-        {/* ── Athlete Profile Panel ── */}
-        {athlete && showProfile && (
-          <div className="card" style={{ padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+        {/* ══════════════════════════════════════
+            TAB: OVERVIEW
+        ══════════════════════════════════════ */}
+        {activeTab === 'overview' && athlete && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Hero card */}
+            <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--border)', overflow: 'hidden', border: '3px solid var(--border)', flexShrink: 0 }}>
+                  {athlete.photo_signed_url
+                    ? <img src={athlete.photo_signed_url} alt="profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--coach-color)', color: '#fff', fontWeight: 900, fontSize: 28 }}>{(athlete.first_name?.[0] ?? '?').toUpperCase()}</div>
+                  }
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 20, lineHeight: 1.2 }}>{athlete.first_name} {athlete.last_name}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 3 }}>{athlete.email}</div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                    {athlete.sport && <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', background: 'var(--bg)', borderRadius: 99, border: '1px solid var(--border)' }}>{athlete.sport}</span>}
+                    {athlete.position && <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', background: 'var(--bg)', borderRadius: 99, border: '1px solid var(--border)' }}>{athlete.position}</span>}
+                    {athlete.height && <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', background: 'var(--bg)', borderRadius: 99, border: '1px solid var(--border)' }}>{athlete.height}</span>}
+                    {athlete.status && <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 11 }}>{athlete.status}</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              {[
+                { label: 'Sessions', value: sessions.length, color: '#4A6B47' },
+                { label: 'Last session', value: sessions[0]?.created_at ? new Date(sessions[0].created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—', color: '#8B3E2A' },
+                { label: 'Shared', value: sessions.filter(s => s.shared_with_athlete).length, color: '#9A7229' },
+              ].map(stat => (
+                <div key={stat.label} style={{ background: stat.color, borderRadius: 14, padding: '12px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, lineHeight: 1, color: '#fff', letterSpacing: -1 }}>{stat.value}</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 700, color: 'rgba(255,255,255,0.8)', marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.6 }}>{stat.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Goals */}
+            {athlete.goals && (
+              <div className="card" style={{ padding: 18 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Goals</div>
+                <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{athlete.goals}</div>
+              </div>
+            )}
+
+            {/* Quick actions */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-coach" style={{ gap: 6, fontWeight: 700 }} onClick={() => setShowQuickSession(true)}>
+                <Icon name="mic" size={14} /> Record Session
+              </button>
+              <Link href={`/dashboard?tab=messages&athlete=${athleteId}`} className="btn btn-ghost" style={{ gap: 6 }}>
+                <Icon name="messages" size={14} /> Message
+              </Link>
+              <button className="btn btn-ghost" style={{ gap: 6 }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
+                <Icon name="report" size={14} /> Monthly Report
+              </button>
+              <button className="btn btn-ghost" style={{ gap: 6 }} onClick={() => { setActiveTab('notes'); void loadNotes() }}>
+                <Icon name="report" size={14} /> Notes
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════
+            TAB: SESSIONS
+        ══════════════════════════════════════ */}
+        {activeTab === 'sessions' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div className="section-title">Session History</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
+                <button className="btn btn-coach" style={{ fontSize: 12, padding: '6px 12px', gap: 5 }} onClick={() => setShowQuickSession(true)}>
+                  <Icon name="mic" size={12} /> Record
+                </button>
+              </div>
+            </div>
+
+            {sessions.length === 0 ? (
+              <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+                <div style={{ color: 'var(--text-muted)', marginBottom: 6 }}><Icon name="mic" size={32} /></div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>No sessions yet.</div>
+                <button className="btn btn-coach" style={{ marginTop: 16, gap: 6 }} onClick={() => setShowQuickSession(true)}>
+                  <Icon name="mic" size={14} /> Record First Session
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {visibleSessions.map(s => {
+                    const isOpen = openSessionId === s.id
+                    const sVideos = sessionVideos[s.id] ?? []
+                    const uploading = videoProgress[s.id] != null
+                    const uploadPct = videoProgress[s.id] ?? 0
+
+                    return (
+                      <div key={s.id} className="card" style={{ overflow: 'hidden' }}>
+                        <button
+                          onClick={() => openSession(s.id)}
+                          style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {s.session_name ?? 'Session'}
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                              {s.created_at ? new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : '—'}
+                              {sVideos.length > 0 && ` · ${sVideos.length} video${sVideos.length > 1 ? 's' : ''}`}
+                            </div>
+                          </div>
+                          <span className={`badge ${s.shared_with_athlete ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 10, flexShrink: 0 }}>
+                            {s.shared_with_athlete ? 'Shared' : 'Private'}
+                          </span>
+                          <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
+                            <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} />
+                          </span>
+                        </button>
+
+                        <div style={{ display: 'flex', gap: 6, padding: '0 12px 12px', flexWrap: 'wrap' }}>
+                          <button className="btn btn-ghost" onClick={() => toggleShare(s.id, s.shared_with_athlete)} style={{ fontSize: 12, padding: '5px 10px', gap: 5 }}>
+                            <Icon name="share" size={13} /> {s.shared_with_athlete ? 'Unshare' : 'Share'}
+                          </button>
+                          <button className="btn btn-ghost" onClick={() => window.open(`/pdf/session/${s.id}`, '_blank')} style={{ fontSize: 12, padding: '5px 10px', gap: 5 }}>
+                            <Icon name="pdf" size={13} /> PDF
+                          </button>
+                          <label className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', gap: 5, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}>
+                            <Icon name="video" size={13} /> {uploading ? `${uploadPct}%` : 'Video'}
+                            <input type="file" accept="video/*" style={{ display: 'none' }} disabled={uploading} onChange={e => { const f = e.target.files?.[0]; if (f) { if (!isOpen) openSession(s.id); handleVideoUpload(f, s.id) } }} />
+                          </label>
+                        </div>
+
+                        {isOpen && (
+                          <div style={{ padding: '0 16px 18px', borderTop: '1px solid var(--border)' }}>
+                            {s.summary && (
+                              <div style={{ marginTop: 14 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>AI Summary</div>
+                                <div style={{ fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap', background: 'var(--border-soft)', padding: '12px 14px', borderRadius: 10 }}>{s.summary}</div>
+                              </div>
+                            )}
+                            {s.transcript && (
+                              <details style={{ marginTop: 12 }}>
+                                <summary style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', cursor: 'pointer', padding: '8px 0' }}>Full transcript</summary>
+                                <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-2)', marginTop: 8, padding: '12px 14px', background: 'var(--border-soft)', borderRadius: 8, whiteSpace: 'pre-wrap' }}>{s.transcript}</div>
+                              </details>
+                            )}
+                            {sVideos.length > 0 && (
+                              <div style={{ marginTop: 16 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Videos & Annotations ({sVideos.length})</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                  {sVideos.map(v => v.signedUrl && (
+                                    <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--border-soft)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 6 }}>
+                                        <span style={{ fontSize: 13, fontWeight: 600 }}>{v.file_name ?? 'Video'}</span>
+                                        <div style={{ display: 'flex', gap: 6 }}>
+                                          <button className="btn btn-ghost" onClick={() => toggleVideoShare(s.id, v.id, (v as any).shared_with_athlete ?? false)} style={{ padding: '4px 10px', fontSize: 12, gap: 5 }}>
+                                            <Icon name="share" size={12} /> {(v as any).shared_with_athlete ? 'Shared' : 'Share'}
+                                          </button>
+                                          <button className="btn btn-danger" onClick={() => deleteVideo(s.id, v.id)} style={{ padding: '4px 10px', fontSize: 12, gap: 5 }}>
+                                            <Icon name="trash" size={12} /> Delete
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div style={{ padding: 14 }}>
+                                        <VideoAnnotator videoUrl={v.signedUrl} initialAnnotations={v.annotations ?? []} onAnnotationsChange={strokes => saveAnnotations(s.id, v.id, strokes)} sessionId={s.id} videoId={v.id} />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {uploading && <div style={{ marginTop: 12 }}><VideoUploadBar pct={uploadPct} eta={videoEta[s.id] ?? ''} /></div>}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {sessions.length > 3 && (
+                  <button
+                    className="btn btn-ghost"
+                    style={{ width: '100%', marginTop: 10, justifyContent: 'center', gap: 6 }}
+                    onClick={() => setSessionsShowAll(v => !v)}
+                  >
+                    <Icon name={sessionsShowAll ? 'chevron-up' : 'chevron-down'} size={14} />
+                    {sessionsShowAll ? 'Show less' : `Show all ${sessions.length} sessions`}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════
+            TAB: WELLNESS
+        ══════════════════════════════════════ */}
+        {activeTab === 'wellness' && athlete && (
+          <WellnessGraph athleteId={athleteId} />
+        )}
+
+        {/* ══════════════════════════════════════
+            TAB: CALENDAR
+        ══════════════════════════════════════ */}
+        {activeTab === 'calendar' && athlete && (
+          <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Athlete Calendar</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+              Sessions recorded with this athlete appear here. Use the main{' '}
+              <button className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 8px' }} onClick={() => router.push('/dashboard?tab=calendar')}>Calendar tab</button>{' '}
+              to view your full schedule and add events.
+            </div>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════
+            TAB: PROFILE
+        ══════════════════════════════════════ */}
+        {activeTab === 'profile' && athlete && (
+          <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
             <div className="section-title" style={{ marginBottom: 16 }}>Athlete Profile</div>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', gap: 20, alignItems: 'start' }}>
               {/* Photo */}
@@ -683,6 +968,33 @@ export default function AthleteDetailPage() {
                   </div>
                 </div>
 
+                {/* Caretakers toggle */}
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>Caretakers</div>
+                    <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px' }} onClick={() => setShowCaretakers(v => !v)}>
+                      {showCaretakers ? 'Hide' : 'Manage'}
+                    </button>
+                  </div>
+                  {showCaretakers && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div className="card" style={{ padding: 14 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={autoMonthlyReport} onChange={async e => {
+                            const next = e.target.checked; setAutoMonthlyReport(next)
+                            await fetch(`/api/athletes/${athleteId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_monthly_report: next }) })
+                          }} />
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>Auto Monthly Report</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Send monthly progress report to caretakers</div>
+                          </div>
+                        </label>
+                      </div>
+                      <CaretakerPanel athleteId={athleteId} athleteName={`${athlete.first_name} ${athlete.last_name}`} caretakers={caretakers} setCaretakers={setCaretakers} form={caretakerForm} setForm={setCaretakerForm} saving={caretakerSaving} setSaving={setCaretakerSaving} msg={caretakerMsg} setMsg={setCaretakerMsg} emailSending={emailSending} setEmailSending={setEmailSending} emailMsg={emailMsg} setEmailMsg={setEmailMsg} />
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
                   <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save Profile'}</button>
                   {profileMsg && <span style={{ fontSize: 13, fontWeight: 600, color: profileMsg.includes('Saved') ? 'var(--success)' : 'var(--danger)' }}>{profileMsg}</span>}
@@ -692,219 +1004,61 @@ export default function AthleteDetailPage() {
           </div>
         )}
 
-        {/* Wellness + Caretakers */}
-        {athlete && (
-          <div style={{ display: 'grid', gridTemplateColumns: showCaretakers ? (isMobile ? '1fr' : '1fr 300px') : '1fr', gap: 16, marginBottom: 20, alignItems: 'start' }}>
-            <WellnessGraph athleteId={athleteId} />
-            {showCaretakers && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div className="card" style={{ padding: 14 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={autoMonthlyReport} onChange={async e => {
-                      const next = e.target.checked; setAutoMonthlyReport(next)
-                      await fetch(`/api/athletes/${athleteId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_monthly_report: next }) })
-                    }} />
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>Auto Monthly Report</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Send monthly progress report to caretakers</div>
-                    </div>
-                  </label>
+        {/* ══════════════════════════════════════
+            TAB: NOTES
+        ══════════════════════════════════════ */}
+        {activeTab === 'notes' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* New note form */}
+            <div className="card" style={{ padding: isMobile ? 16 : 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Add Coach Note</div>
+              <textarea
+                className="input"
+                rows={4}
+                placeholder="Private coaching notes — observations, plans, reminders…"
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                style={{ marginBottom: 10 }}
+              />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={noteShared} onChange={e => setNoteShared(e.target.checked)} style={{ accentColor: 'var(--primary)' }} />
+                  Share with athlete
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {noteMsg && <span style={{ fontSize: 13, fontWeight: 600, color: noteMsg.includes('saved') ? 'var(--success)' : 'var(--danger)' }}>{noteMsg}</span>}
+                  <button className="btn btn-coach" onClick={saveNote} disabled={noteSaving || !noteText.trim()}>
+                    {noteSaving ? 'Saving…' : 'Save Note'}
+                  </button>
                 </div>
-                <CaretakerPanel athleteId={athleteId} athleteName={`${athlete.first_name} ${athlete.last_name}`} caretakers={caretakers} setCaretakers={setCaretakers} form={caretakerForm} setForm={setCaretakerForm} saving={caretakerSaving} setSaving={setCaretakerSaving} msg={caretakerMsg} setMsg={setCaretakerMsg} emailSending={emailSending} setEmailSending={setEmailSending} emailMsg={emailMsg} setEmailMsg={setEmailMsg} />
+              </div>
+            </div>
+
+            {/* Notes list */}
+            {notes.length === 0 ? (
+              <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
+                No notes yet. Add your first coaching note above.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {notes.map((n: any) => (
+                  <div key={n.id} className="card" style={{ padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        {n.created_at ? new Date(n.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : '—'}
+                      </span>
+                      {n.shared_with_athlete && (
+                        <span className="badge badge-active" style={{ fontSize: 10 }}>Shared</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>{n.summary}</div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         )}
 
-        {/* ── New Session Form ── */}
-        <div className="card" style={{ padding: isMobile ? 16 : 24, marginBottom: 20 }}>
-          <div className="section-title" style={{ marginBottom: 4 }}>New Session</div>
-          <div className="section-sub" style={{ marginBottom: 18 }}>
-            Record your voice notes — AI transcribes and summarises automatically.{coachSport && ` Sport: ${coachSport}.`}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div>
-              <label className="label">Session name (optional)</label>
-              <input className="input" value={sessionName} onChange={e => setSessionName(e.target.value)} placeholder="e.g. Speed session, Serve technique…" />
-            </div>
-
-            {/* Recording controls */}
-            <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                {recordState === 'idle' && (
-                  <button className="btn btn-primary btn-lg" onClick={startRecording} style={{ gap: 8 }}>
-                    <Icon name="mic" size={17} /> Start Recording
-                  </button>
-                )}
-                {recordState === 'recording' && (
-                  <>
-                    <button className="btn btn-danger btn-lg" onClick={stopRecording} style={{ gap: 8 }}>
-                      <span className="recording-dot" /> Stop
-                    </button>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: '#ef4444' }}>Recording…</span>
-                  </>
-                )}
-                {recordState === 'transcribing' && <span style={{ fontSize: 14, color: 'var(--text-2)', fontWeight: 600 }}>Transcribing audio…</span>}
-                {(recordState === 'ready' || audioBlob) && recordState !== 'recording' && recordState !== 'transcribing' && (
-                  <button className="btn btn-ghost" onClick={clearRecording} style={{ gap: 5 }}><Icon name="x" size={13} /> Clear</button>
-                )}
-              </div>
-              {recordState === 'recording' && (
-                <div style={{ marginTop: 12 }}>
-                  <div className="mic-bar"><div className="mic-bar-fill" style={{ width: `${Math.round(micLevel * 100)}%`, background: '#22c55e' }} /></div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Microphone level</div>
-                </div>
-              )}
-              {audioUrl && <div style={{ marginTop: 12 }}><audio controls src={audioUrl} style={{ width: '100%', borderRadius: 8 }} /></div>}
-            </div>
-
-            <div>
-              <label className="label">Transcript — edit before saving</label>
-              <textarea className="input" value={transcript} onChange={e => setTranscript(e.target.value)} rows={6} placeholder={recordState === 'transcribing' ? 'Transcribing…' : 'Transcript appears here after recording. You can also type directly.'} />
-            </div>
-
-            {summary && (
-              <div style={{ background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 10, padding: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI Summary</div>
-                <div style={{ fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{summary}</div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
-                <input type="checkbox" checked={share} onChange={e => setShare(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
-                <span>Share with athlete</span>
-              </label>
-              <button className="btn btn-coach btn-lg" onClick={saveSession} disabled={saving || !transcript.trim() || recordState === 'recording' || recordState === 'transcribing'} style={{ gap: 6 }}>
-                <Icon name="check" size={16} /> {saving ? 'Saving…' : 'Save Session'}
-              </button>
-            </div>
-
-            {savedSessionId && (
-              <div style={{ background: 'var(--success-light)', border: '1px solid #bbf7d0', borderRadius: 10, padding: 14 }}>
-                <div style={{ fontWeight: 700, color: 'var(--success)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Icon name="check" size={14} /> Session saved!
-                </div>
-                <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 10 }}>Attach a video to this session?</p>
-                <label className="btn btn-primary" style={{ cursor: 'pointer', gap: 6, opacity: videoProgress[savedSessionId] != null ? 0.6 : 1 }}>
-                  <Icon name="video" size={14} /> {videoProgress[savedSessionId] != null ? 'Uploading…' : 'Upload Video'}
-                  <input type="file" accept="video/*" style={{ display: 'none' }} disabled={videoProgress[savedSessionId] != null} onChange={e => { const f = e.target.files?.[0]; if (f && savedSessionId) handleVideoUpload(f, savedSessionId) }} />
-                </label>
-                {videoProgress[savedSessionId] != null && (
-                  <div style={{ marginTop: 10 }}><VideoUploadBar pct={videoProgress[savedSessionId]!} eta={videoEta[savedSessionId] ?? ''} /></div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Session History ── */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <div className="section-title">Session History</div>
-            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
-          </div>
-
-          {sessions.length === 0 ? (
-            <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-              <div style={{ color: 'var(--text-muted)', marginBottom: 6 }}><Icon name="mic" size={32} /></div>
-              <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>No sessions yet. Record one above.</div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {sessions.map(s => {
-                const isOpen = openSessionId === s.id
-                const sVideos = sessionVideos[s.id] ?? []
-                const uploading = videoProgress[s.id] != null
-                const uploadPct = videoProgress[s.id] ?? 0
-
-                return (
-                  <div key={s.id} className="card" style={{ overflow: 'hidden' }}>
-                    {/* ── Session card header: title row ── */}
-                    <button
-                      onClick={() => openSession(s.id)}
-                      style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {s.session_name ?? 'Session'}
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                          {s.created_at ? new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : '—'}
-                          {sVideos.length > 0 && ` · ${sVideos.length} video${sVideos.length > 1 ? 's' : ''}`}
-                        </div>
-                      </div>
-                      <span className={`badge ${s.shared_with_athlete ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 10, flexShrink: 0 }}>
-                        {s.shared_with_athlete ? 'Shared' : 'Private'}
-                      </span>
-                      <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
-                        <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} />
-                      </span>
-                    </button>
-
-                    {/* ── Action row (always visible) ── */}
-                    <div style={{ display: 'flex', gap: 6, padding: '0 12px 12px', flexWrap: 'wrap' }}>
-                      <button className="btn btn-ghost" onClick={() => toggleShare(s.id, s.shared_with_athlete)} style={{ fontSize: 12, padding: '5px 10px', gap: 5 }}>
-                        <Icon name="share" size={13} /> {s.shared_with_athlete ? 'Unshare' : 'Share'}
-                      </button>
-                      <button className="btn btn-ghost" onClick={() => window.open(`/pdf/session/${s.id}`, '_blank')} style={{ fontSize: 12, padding: '5px 10px', gap: 5 }}>
-                        <Icon name="pdf" size={13} /> PDF
-                      </button>
-                      <label className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', gap: 5, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}>
-                        <Icon name="video" size={13} /> {uploading ? `${uploadPct}%` : 'Video'}
-                        <input type="file" accept="video/*" style={{ display: 'none' }} disabled={uploading} onChange={e => { const f = e.target.files?.[0]; if (f) { if (!isOpen) openSession(s.id); handleVideoUpload(f, s.id) } }} />
-                      </label>
-                    </div>
-
-                    {/* ── Expanded content ── */}
-                    {isOpen && (
-                      <div style={{ padding: '0 16px 18px', borderTop: '1px solid var(--border)' }}>
-                        {s.summary && (
-                          <div style={{ marginTop: 14 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>AI Summary</div>
-                            <div style={{ fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap', background: 'var(--border-soft)', padding: '12px 14px', borderRadius: 10 }}>{s.summary}</div>
-                          </div>
-                        )}
-                        {s.transcript && (
-                          <details style={{ marginTop: 12 }}>
-                            <summary style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', cursor: 'pointer', padding: '8px 0' }}>Full transcript</summary>
-                            <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-2)', marginTop: 8, padding: '12px 14px', background: 'var(--border-soft)', borderRadius: 8, whiteSpace: 'pre-wrap' }}>{s.transcript}</div>
-                          </details>
-                        )}
-                        {sVideos.length > 0 && (
-                          <div style={{ marginTop: 16 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Videos & Annotations ({sVideos.length})</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                              {sVideos.map(v => v.signedUrl && (
-                                <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--border-soft)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 6 }}>
-                                    <span style={{ fontSize: 13, fontWeight: 600 }}>{v.file_name ?? 'Video'}</span>
-                                    <div style={{ display: 'flex', gap: 6 }}>
-                                      <button className="btn btn-ghost" onClick={() => toggleVideoShare(s.id, v.id, (v as any).shared_with_athlete ?? false)} style={{ padding: '4px 10px', fontSize: 12, gap: 5 }}>
-                                        <Icon name="share" size={12} /> {(v as any).shared_with_athlete ? 'Shared' : 'Share'}
-                                      </button>
-                                      <button className="btn btn-danger" onClick={() => deleteVideo(s.id, v.id)} style={{ padding: '4px 10px', fontSize: 12, gap: 5 }}>
-                                        <Icon name="trash" size={12} /> Delete
-                                      </button>
-                                    </div>
-                                  </div>
-                                  <div style={{ padding: 14 }}>
-                                    <VideoAnnotator videoUrl={v.signedUrl} initialAnnotations={v.annotations ?? []} onAnnotationsChange={strokes => saveAnnotations(s.id, v.id, strokes)} sessionId={s.id} videoId={v.id} />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {uploading && <div style={{ marginTop: 12 }}><VideoUploadBar pct={uploadPct} eta={videoEta[s.id] ?? ''} /></div>}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
       </main>
     </div>
   )

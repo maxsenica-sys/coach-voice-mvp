@@ -78,10 +78,9 @@ export async function GET(req: NextRequest) {
 
   // ── COACH ROLE ──────────────────────────────────────────────
 
-  // Personal calendar (no athlete)
+  // Personal calendar — shows all coach-created events (personal + session-linked)
   if (mode === 'personal') {
     let q = admin.from('calendar_events').select(baseSelect)
-      .is('athlete_id', null)
       .eq('created_by_user_id', user.id)
       .eq('created_by_role', 'coach')
       .order('event_date', { ascending: true })
