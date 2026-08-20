@@ -84,11 +84,13 @@ export async function POST(req: NextRequest) {
   }
 
   // If athlete provided a coach code, link them to that coach's roster
-  if (role === 'athlete' && coachCode) {
+  const normalisedCoachCode = String(coachCode ?? '').toLowerCase().trim()
+
+  if (role === 'athlete' && normalisedCoachCode) {
     const { data: coachProfile } = await admin
       .from('profiles')
       .select('id')
-      .eq('invite_code', coachCode)
+      .eq('invite_code', normalisedCoachCode)
       .eq('role', 'coach')
       .maybeSingle()
 
