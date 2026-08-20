@@ -129,6 +129,8 @@ export async function POST(req: NextRequest) {
     ? body.session_date
     : null
   const sport_context = typeof body?.sport_context === 'string' ? body.sport_context.trim() || null : null
+  const audio_path = typeof body?.audio_path === 'string' ? body.audio_path.trim() || null : null
+  const audio_mime = typeof body?.audio_mime === 'string' ? body.audio_mime.trim() || null : null
 
   if (!athlete_id) {
     const res = NextResponse.json({ error: 'athlete_id is required' }, { status: 400 })
@@ -153,6 +155,8 @@ export async function POST(req: NextRequest) {
       summary, // quick scan summary for list
       shared_with_athlete,
       sport_context,
+      audio_path,
+      audio_mime,
     })
     .select('id, session_name, summary, transcript, shared_with_athlete, created_at')
     .single()

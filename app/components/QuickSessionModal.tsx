@@ -31,6 +31,8 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   const [groupId, setGroupId] = useState(defaultGroupId ?? groups[0]?.id ?? '')
   const [sessionName, setSessionName] = useState('')
   const [transcript, setTranscript] = useState('')
+  const [audioPath, setAudioPath] = useState<string | null>(null)
+  const [audioMime, setAudioMime] = useState<string | null>(null)
   const [shareWithAthlete, setShareWithAthlete] = useState(false)
 
   // Recording
@@ -117,6 +119,22 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error ?? 'Transcription failed. Please check your API key.')
       if (json.text) setTranscript(json.text)
+      // Persist the raw audio so a mis-heard transcript can be replayed later.
+      // Best-effort: a storage failure must never lose the transcript.
+      try {
+        const audioFd = new FormData()
+        audioFd.append('file', new File([blob], `recording.${ext}`, { type: mimeType }))
+        const audioRes = await fetch('/api/sessions/audio-upload', { method: 'POST', body: audioFd })
+        if (audioRes.ok) {
+          const audioJson = await audioRes.json().catch(() => ({}))
+          if (audioJson?.audio_path) {
+            setAudioPath(audioJson.audio_path)
+            setAudioMime(audioJson.audio_mime ?? mimeType)
+          }
+        }
+      } catch {
+        /* audio archiving is optional — transcript already captured */
+      }
     } catch {
       setError('Transcription failed. You can type the transcript manually.')
     } finally {
@@ -143,6 +161,8 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
             shared_with_athlete: shareWithAthlete,
             session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
             sport_context: coachSport || null,
+            audio_path: audioPath,
+            audio_mime: audioMime,
           }),
         })
         if (!res.ok) throw new Error((await res.json())?.error ?? 'Failed to save')
@@ -163,6 +183,8 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 shared_with_athlete: shareWithAthlete,
                 session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
                 sport_context: coachSport || null,
+                audio_path: audioPath,
+                audio_mime: audioMime,
               }),
             })
           )
@@ -357,6 +379,8 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                     streamRef.current = null
                     setStep('record')
                     setTranscript('')
+                    setAudioPath(null)
+                    setAudioMime(null)
                   }}
                 >
                   ← Re-record

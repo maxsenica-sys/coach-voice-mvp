@@ -355,7 +355,26 @@ export default function AthleteDetailPage() {
     if (!transcript.trim()) return
     setSaving(true); setPageError(null)
     try {
-      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, session_name: sessionName.trim() || null, transcript: transcript.trim(), shared_with_athlete: share, sport_context: coachSport || null, session_date: new Intl.DateTimeFormat('en-CA').format(new Date()) }) })
+      // Archive the raw audio first so a mis-heard transcript can be replayed.
+      // Best-effort: never block saving the session on a storage failure.
+      let audio_path: string | null = null
+      let audio_mime: string | null = null
+      if (audioBlob) {
+        try {
+          const aExt = (audioBlob.type || '').includes('mp4') ? 'mp4' : (audioBlob.type || '').includes('ogg') ? 'ogg' : 'webm'
+          const aFd = new FormData()
+          aFd.append('file', new File([audioBlob], `recording.${aExt}`, { type: audioBlob.type || 'audio/webm' }))
+          const aRes = await fetch('/api/sessions/audio-upload', { method: 'POST', body: aFd })
+          if (aRes.ok) {
+            const aJson = await aRes.json().catch(() => ({}))
+            audio_path = aJson?.audio_path ?? null
+            audio_mime = aJson?.audio_mime ?? null
+          }
+        } catch {
+          /* optional archive */
+        }
+      }
+      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, session_name: sessionName.trim() || null, transcript: transcript.trim(), shared_with_athlete: share, sport_context: coachSport || null, session_date: new Intl.DateTimeFormat('en-CA').format(new Date()), audio_path, audio_mime }) })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to save')
       const { session } = await res.json()
       setSavedSessionId(session.id); setSummary(session.summary ?? ''); setSessionName(''); setShare(true)
