@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSportTerminologyHint } from '@/lib/sports'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { createRouteClient } from '@/lib/supabase-route'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -16,12 +18,44 @@ export async function POST(req: Request) {
     const sport = String(form.get('sport') ?? '').trim()       // optional sport context
     const language = String(form.get('language') ?? '').trim() // optional language hint
 
-    if (!file || !(file instanceof File)) {
-      return NextResponse.json({ error: "No file uploaded. Expected form field 'file'." }, { status: 400 })
+    const audioPath = String(form.get('audio_path') ?? '').trim()
+
+    // Preferred path: the browser uploaded straight to Supabase Storage with a
+    // signed URL, so only the path travels through Vercel. Sidesteps the 4.5MB
+    // serverless request body limit that 413s on longer sessions.
+    let audioFile: File | null = file instanceof File ? file : null
+
+    if (!audioFile && audioPath) {
+      // audio_path is read with the service-role key, so it must be proven to belong
+      // to the caller. Without this any signed-in user could name another coach's
+      // path and read their recording.
+      const routeClient = await createRouteClient()
+      const { data: { user } } = await routeClient.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      if (!audioPath.startsWith(`coach/${user.id}/`)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+
+      const admin = createSupabaseAdminClient()
+      const { data: blob, error: dlErr } = await admin.storage.from('session-audio').download(audioPath)
+      if (dlErr || !blob) {
+        return NextResponse.json({ error: `Could not read audio from storage: ${dlErr?.message ?? 'not found'}` }, { status: 400 })
+      }
+      const name = audioPath.split('/').pop() || 'audio.webm'
+      audioFile = new File([blob], name, { type: blob.type || 'audio/webm' })
+    }
+
+    if (!audioFile) {
+      return NextResponse.json(
+        { error: "No audio provided. Expected form field 'file' or 'audio_path'." },
+        { status: 400 },
+      )
     }
 
     const fd = new FormData()
-    fd.append('file', file, file.name || 'audio.webm')
+    fd.append('file', audioFile, audioFile.name || 'audio.webm')
     fd.append('model', 'whisper-1')
     fd.append('response_format', 'verbose_json') // get segments + timestamps
 

@@ -110,40 +110,55 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
 
     setTranscribing(true)
     try {
-      const fd = new FormData()
       const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
-      fd.append('file', new File([blob], `recording.${ext}`, { type: mimeType }))
+      let uploadedPath: string | null = null
+
+      // Upload straight to Supabase Storage with a signed URL. Only the path then
+      // travels through Vercel, so the 4.5MB serverless body limit no longer applies.
+      try {
+        const urlRes = await fetch(
+          '/api/sessions/audio-upload-url?' + new URLSearchParams({ mime_type: mimeType }),
+        )
+        if (urlRes.ok) {
+          const { signedUrl, path } = await urlRes.json()
+          const putRes = await fetch(signedUrl, {
+            method: 'PUT',
+            headers: { 'content-type': mimeType },
+            body: blob,
+          })
+          if (putRes.ok) uploadedPath = path
+        }
+      } catch {
+        /* fall back to sending the file inline below */
+      }
+
+      const fd = new FormData()
+      if (uploadedPath) {
+        fd.append('audio_path', uploadedPath)
+      } else {
+        // Fallback for when the signed upload is unavailable. Works under 4.5MB.
+        fd.append('file', new File([blob], `recording.${ext}`, { type: mimeType }))
+      }
       if (coachSport) fd.append('sport', coachSport)
 
       const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
-        // Vercel rejects request bodies over 4.5MB at the edge and returns HTML,
-        // so json.error is undefined here — say what actually happened.
         if (res.status === 413) {
           throw new Error(
-            `That recording is too long to upload (${(blob.size / 1048576).toFixed(1)}MB, limit 4.5MB). ` +
+            `That recording is too large to upload (${(blob.size / 1048576).toFixed(1)}MB). ` +
             'Record in shorter parts, or type the transcript below.'
           )
         }
         throw new Error(json.error ?? `Transcription failed (${res.status}). You can type the transcript below.`)
       }
       if (json.text) setTranscript(json.text)
-      // Persist the raw audio so a mis-heard transcript can be replayed later.
-      // Best-effort: a storage failure must never lose the transcript.
-      try {
-        const audioFd = new FormData()
-        audioFd.append('file', new File([blob], `recording.${ext}`, { type: mimeType }))
-        const audioRes = await fetch('/api/sessions/audio-upload', { method: 'POST', body: audioFd })
-        if (audioRes.ok) {
-          const audioJson = await audioRes.json().catch(() => ({}))
-          if (audioJson?.audio_path) {
-            setAudioPath(audioJson.audio_path)
-            setAudioMime(audioJson.audio_mime ?? mimeType)
-          }
-        }
-      } catch {
-        /* audio archiving is optional — transcript already captured */
+
+      // The recording is already in storage — keep the path on the session so a
+      // mis-heard transcript can be replayed later.
+      if (uploadedPath) {
+        setAudioPath(uploadedPath)
+        setAudioMime(mimeType)
       }
     } catch (e: any) {
       setError(e?.message ?? 'Transcription failed. You can type the transcript manually.')

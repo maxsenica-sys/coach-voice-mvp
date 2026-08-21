@@ -199,6 +199,8 @@ export default function AthleteDetailPage() {
 
   const [recordState, setRecordState] = useState<RecordingState>('idle')
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
+  const [audioPath, setAudioPath] = useState<string | null>(null)
+  const [audioMime, setAudioMime] = useState<string | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [micLevel, setMicLevel] = useState(0)
 
@@ -316,7 +318,7 @@ export default function AthleteDetailPage() {
   const startRecording = async () => {
     setPageError(null)
     if (audioUrl) URL.revokeObjectURL(audioUrl)
-    setAudioBlob(null); setAudioUrl(null); setTranscript(''); setSummary(''); chunksRef.current = []; setSavedSessionId(null)
+    setAudioBlob(null); setAudioUrl(null); setAudioPath(null); setAudioMime(null); setTranscript(''); setSummary(''); chunksRef.current = []; setSavedSessionId(null)
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(e => { setPageError(e?.message ?? 'Microphone access denied'); return null })
     if (!stream) return
     streamRef.current = stream; await startMeter(stream)
@@ -336,12 +338,41 @@ export default function AthleteDetailPage() {
   const stopRecording = () => { if (mediaRecRef.current?.state !== 'inactive') mediaRecRef.current?.stop(); setRecordState('transcribing') }
 
   const transcribeBlob = async (blob: Blob) => {
+    const mime = blob.type || 'audio/webm'
+    const ext = mime.includes('mp4') ? 'mp4' : mime.includes('ogg') ? 'ogg' : 'webm'
+    let uploadedPath: string | null = null
+
+    // Browser -> Supabase directly, so Vercel never sees the 4.5MB body.
+    try {
+      const urlRes = await fetch('/api/sessions/audio-upload-url?' + new URLSearchParams({ mime_type: mime }))
+      if (urlRes.ok) {
+        const { signedUrl, path } = await urlRes.json()
+        const putRes = await fetch(signedUrl, { method: 'PUT', headers: { 'content-type': mime }, body: blob })
+        if (putRes.ok) uploadedPath = path
+      }
+    } catch {
+      /* fall back to inline upload below */
+    }
+
     const fd = new FormData()
-    const ext = (blob.type || '').includes('mp4') ? 'mp4' : (blob.type || '').includes('ogg') ? 'ogg' : 'webm'
-    fd.append('file', new File([blob], `recording.${ext}`, { type: blob.type || 'audio/webm' }))
+    if (uploadedPath) {
+      fd.append('audio_path', uploadedPath)
+    } else {
+      fd.append('file', new File([blob], `recording.${ext}`, { type: mime }))
+    }
     if (coachSport) fd.append('sport', coachSport)
+
     const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
-    if (!res.ok) { setPageError((await res.json().catch(() => ({}))).error ?? 'Transcription failed'); setRecordState('idle'); return }
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      setPageError(
+        res.status === 413
+          ? `That recording is too large to upload (${(blob.size / 1048576).toFixed(1)}MB). Record in shorter parts, or type the transcript.`
+          : (j.error ?? `Transcription failed (${res.status})`),
+      )
+      setRecordState('idle'); return
+    }
+    if (uploadedPath) { setAudioPath(uploadedPath); setAudioMime(mime) }
     const json = await res.json(); setTranscript((json.text ?? '').trim()); setRecordState('ready')
   }
 
@@ -355,25 +386,10 @@ export default function AthleteDetailPage() {
     if (!transcript.trim()) return
     setSaving(true); setPageError(null)
     try {
-      // Archive the raw audio first so a mis-heard transcript can be replayed.
-      // Best-effort: never block saving the session on a storage failure.
-      let audio_path: string | null = null
-      let audio_mime: string | null = null
-      if (audioBlob) {
-        try {
-          const aExt = (audioBlob.type || '').includes('mp4') ? 'mp4' : (audioBlob.type || '').includes('ogg') ? 'ogg' : 'webm'
-          const aFd = new FormData()
-          aFd.append('file', new File([audioBlob], `recording.${aExt}`, { type: audioBlob.type || 'audio/webm' }))
-          const aRes = await fetch('/api/sessions/audio-upload', { method: 'POST', body: aFd })
-          if (aRes.ok) {
-            const aJson = await aRes.json().catch(() => ({}))
-            audio_path = aJson?.audio_path ?? null
-            audio_mime = aJson?.audio_mime ?? null
-          }
-        } catch {
-          /* optional archive */
-        }
-      }
+      // Audio already went straight to storage during transcription — reuse that path
+      // rather than uploading the same blob a second time through Vercel.
+      const audio_path = audioPath
+      const audio_mime = audioMime
       const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, session_name: sessionName.trim() || null, transcript: transcript.trim(), shared_with_athlete: share, sport_context: coachSport || null, session_date: new Intl.DateTimeFormat('en-CA').format(new Date()), audio_path, audio_mime }) })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to save')
       const { session } = await res.json()
