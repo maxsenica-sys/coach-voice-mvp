@@ -80,7 +80,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
 
       const supported = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
       const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
-      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {})
+      const mr = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32000 })
       chunksRef.current = []
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       mr.start(250)
@@ -117,7 +117,17 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
 
       const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error ?? 'Transcription failed. Please check your API key.')
+      if (!res.ok) {
+        // Vercel rejects request bodies over 4.5MB at the edge and returns HTML,
+        // so json.error is undefined here — say what actually happened.
+        if (res.status === 413) {
+          throw new Error(
+            `That recording is too long to upload (${(blob.size / 1048576).toFixed(1)}MB, limit 4.5MB). ` +
+            'Record in shorter parts, or type the transcript below.'
+          )
+        }
+        throw new Error(json.error ?? `Transcription failed (${res.status}). You can type the transcript below.`)
+      }
       if (json.text) setTranscript(json.text)
       // Persist the raw audio so a mis-heard transcript can be replayed later.
       // Best-effort: a storage failure must never lose the transcript.
@@ -135,8 +145,8 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       } catch {
         /* audio archiving is optional — transcript already captured */
       }
-    } catch {
-      setError('Transcription failed. You can type the transcript manually.')
+    } catch (e: any) {
+      setError(e?.message ?? 'Transcription failed. You can type the transcript manually.')
     } finally {
       setTranscribing(false)
       setStep('review')

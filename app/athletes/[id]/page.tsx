@@ -322,7 +322,7 @@ export default function AthleteDetailPage() {
     streamRef.current = stream; await startMeter(stream)
     const supported = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
     const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
-    const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {}); mediaRecRef.current = rec
+    const rec = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32000 }); mediaRecRef.current = rec
     rec.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
     rec.onstop = async () => {
       cleanupAll()

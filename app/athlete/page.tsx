@@ -359,7 +359,7 @@ export default function AthletePage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const supported = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
       const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {})
+      const recorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32000 })
       mediaRecRef.current = recorder
       noteChunksRef.current = []
       recorder.ondataavailable = (e) => { if (e.data.size > 0) noteChunksRef.current.push(e.data) }
