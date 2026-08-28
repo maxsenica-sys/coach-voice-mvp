@@ -6,6 +6,98 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## Project history (reconstructed from `git log`, pre-dates this memory bank)
+
+Entries below were backfilled by reading commit subjects/dates and migration
+file history — not sessions this memory bank was live for, so detail is
+lighter than entries above. Kept chronological (oldest first) so it reads as
+one story.
+
+**2026-04-16 — Initial build.** `8575fa0` Initial commit: CoachVoice MVP
+scaffolded (Next.js + Supabase, coach/athlete roles, sessions, calendar,
+messaging, wellness). Same day: TS build error fix, invalid-dir cleanup, two
+rounds of "critical bug fixes + mobile responsive layout", calendar month nav
+fix, direct video upload, load performance, calendar save-confirmation toast,
+merged branch `zen-allen` (calendar fix, direct video upload, athlete status,
+coach settings, UX). Migrations **001–007** landed same day: profiles
+role+RLS, profile trigger, phase-3 full features (`athlete_notes`,
+`calendar_events`, `session_videos`, groups, coach personal calendar,
+messaging/wellness/reports), athlete first-login.
+
+**2026-04-17.** Video upload speed fix, calendar bug fix, UI redesign for a
+younger audience (merged `quirky-antonelli`); calendar refetch-after-add,
+mobile settings, FAB bottom nav. Migration **008**: `calendar_events.athlete_id`
+made nullable (to support coach personal events).
+
+**2026-04-18.** Journal theme, quotes, clickable cards, sport wheel, nav
+improvements (merged `admiring-driscoll`); migration 009 policy-syntax fix
+(`DROP POLICY IF EXISTS` instead of `CREATE POLICY IF NOT EXISTS`); calendar
+scroll-wheel strip, athlete rich profiles, video share links, dedup (merged
+`quirky-pascal`). Migration **009**: athlete profile fields.
+
+**2026-04-19.** Five commits, all same day: full overhaul (calendar fix, home
+wheel, messaging badge, sport picker, hero compact, settings email); calendar
+persistence + messaging optimistic UI + athlete full profile + video
+visibility; `homeWeekEvents` stale-state fix, media 403, athlete
+annotations, unread-count cap, audio crash, message error state, realtime
+client stability, live unread badge; live unread badge via a second realtime
+channel + signed URL for athlete media; calendar grid default, event dots,
+messaging panel height, stat colours, week strip, global border. Migrations
+**010–011**: athlete sport field, athlete height stored as text.
+
+**2026-04-20 — origin of two CLAUDE.md checklist rules.** `b21c320` fixed
+(a) `monthRange` producing an invalid date for 30-day months — this is the
+literal incident behind CLAUDE.md checklist item #5 ("never use hardcoded day
+counts"), and (b) an infinite messaging fetch loop caused by `onUnreadChange`
+being passed as a raw effect dependency — the literal incident behind
+checklist item #3 ("wrap callback deps in `useRef`, known past incident:
+`onUnreadChange`").
+
+**2026-04-26.** Visual redesign: "Letter (02)" — sage/rust palette,
+Newsreader font, cleaner notes UI.
+
+**2026-05-02 — origin of the MediaRecorder/MIME protection rules and the
+pre-commit checklist itself.** Three visual-redesign commits ("Ivory" design:
+white stat cards, Newsreader numerals, SVG nav grid, minimal header,
+redesigned home tabs) plus athlete first-login onboarding / wellness home
+card / coach setup flow. Then, same day: **"Fix: audio recording broken on
+Safari/iOS due to hardcoded webm MIME type"** — the incident that produced
+CLAUDE.md's "Protected recording call sites" table and the dynamic
+MIME-detection requirement (Chrome uses `audio/webm`, Safari/iOS uses
+`audio/mp4`). Then **"Fix silent transcription error and empty-athletes state
+in QuickSessionModal"** — the literal incident CLAUDE.md checklist item #1
+refers to ("the silent fetch bug in QuickSessionModal"). Then **"Add
+mandatory pre-commit review checklist to CLAUDE.md"** — this is when the
+6-item checklist every session since (including this one) follows was
+introduced.
+
+**2026-05-03.** Added `maxDuration = 60` to the transcribe and audio API
+routes, improved error logging.
+
+**2026-06-06.** Two "deploy" commits: one is `.claude` worktree/settings
+housekeeping (not app code); the other adds the CLAUDE.md "Updated after
+Round 1" note clarifying that the re-record `onClick` handler in
+`QuickSessionModal` is exempt from the recording-pipeline protection rule
+(only `startRecording`/`stopAndTranscribe`/MIME/FormData are protected), plus
+small touches to the sessions API routes/pages. Migration **012**: added
+`sessions.title`, `sessions.audio_path`, `sessions.audio_mime`.
+
+**2026-06-11.** "deploy": coach dashboard home redesigned to solid-color stat
+cards (this is the same "Sessions" stat tile fixed in the 2026-08-28 entry
+below — the `tab: 'calendar'` mislabeling already existed before this commit
+and just carried through the redesign), a large rework of
+`app/athletes/[id]/page.tsx` (~630 lines changed — likely the video
+annotator / rich-profile buildout), and a small `app/api/calendar/route.ts`
+tweak.
+
+**2026-08-21 — audio pipeline reliability batch.** Four commits: normalise
+coach code on athlete signup; persist session audio instead of discarding it;
+stop long recordings failing with a misleading error; upload session audio
+direct to storage, removing the 4.5MB request-body ceiling. (No migration —
+storage/route changes only.)
+
+---
+
 ## 2026-08-28 — PR #1: Session feedback not reaching athlete feed + homepage links
 
 Branch: `claude/coach-voice-workspace-9deh1r`
