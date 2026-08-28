@@ -6,6 +6,46 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-08-28 (same day, final) — PR #1 merged to `main`; Vercel Preview red is environmental, not code
+
+PR #1 (branch `claude/coach-voice-workspace-9deh1r`, both entries below) was
+merged directly to `main` at `15711ee` — no rebase/squash, standard merge
+commit, history preserved. User's call: this repo's actual convention is
+direct-to-main deploys (CLAUDE.md says so explicitly), and PRs/Preview
+deployments were only used in this session because the harness required a
+branch workflow. That mismatch caused the one snag worth remembering:
+
+- **Vercel's `Preview` check was red on PR #1** (`Deployment has failed`).
+  Root-caused before merging rather than guessing: reproduced the exact same
+  build failure (`@supabase/ssr: ...URL and API key are required...`,
+  thrown prerendering `/athlete`) **locally on `main` too**, with a clean
+  install and zero code changes — proving it wasn't this PR's code. Confirmed
+  by supplying placeholder env vars locally: build then succeeds cleanly on
+  both branches, all 33 routes.
+  - **Cause: PR #1 was the first pull request ever opened in this repo.**
+    Every prior deploy went straight to `main` (Production), so this was the
+    first time Vercel ever attempted a *Preview* build — and this Vercel
+    project's env vars (`NEXT_PUBLIC_SUPABASE_URL`,
+    `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+    `OPENAI_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`) are almost
+    certainly scoped to Production only, never added to Preview.
+  - **Not fixed** — no tool/browser access to the Vercel dashboard from this
+    session to add the Preview-scope env vars, and once the user decided to
+    skip PRs going forward, it stopped being worth fixing. If someone opens
+    another PR later and hits the same red Preview check, this is why —
+    either add the 6 vars to Preview scope in Vercel, or just merge straight
+    to `main` like this one did.
+- Posted the root-cause + fix instructions as a PR comment before merging
+  (kept for the record even post-merge:
+  https://github.com/maxsenica-sys/coach-voice-mvp/pull/1#issuecomment-5458579009).
+- Unsubscribed from PR activity and cancelled the scheduled CI check-in after
+  merging — nothing left to watch.
+
+**Going forward:** default back to CLAUDE.md's stated workflow (push directly
+to `main`) unless the user asks for a PR again.
+
+---
+
 ## 2026-08-28 (same day, follow-up) — Cleanup pass: deps, RLS drift, code dedup
 
 Same branch/PR as above (`claude/coach-voice-workspace-9deh1r` / PR #1).
