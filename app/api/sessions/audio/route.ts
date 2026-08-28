@@ -5,6 +5,7 @@ export const maxDuration = 60
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
 
 async function transcribeWithOpenAI(file: File) {
   const apiKey = process.env.OPENAI_API_KEY
@@ -177,19 +178,15 @@ export async function POST(req: Request) {
       // calendar once it's actually shared with them.
       if (inserted?.id && shared_with_athlete) {
         const dateStr = new Intl.DateTimeFormat('en-CA').format(new Date())
-        await supabase
-          .from('calendar_events')
-          .insert({
-            athlete_id,
-            session_id: inserted.id,
-            created_by_user_id: user.id,
-            created_by_role: 'coach',
-            title: title || 'Coaching Session',
-            event_type: 'session',
-            event_date: dateStr,
-            description: summary.slice(0, 300),
-          })
-          .then(() => null, () => null)
+        await syncSessionCalendarEvent({
+          supabase,
+          sessionId: inserted.id,
+          athleteId: athlete_id,
+          coachUserId: user.id,
+          title,
+          summary,
+          eventDate: dateStr,
+        })
       }
 
       return NextResponse.json({ session: inserted })

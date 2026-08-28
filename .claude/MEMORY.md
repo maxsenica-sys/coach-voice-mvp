@@ -6,6 +6,93 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-08-28 (same day, follow-up) — Cleanup pass: deps, RLS drift, code dedup
+
+Same branch/PR as above (`claude/coach-voice-workspace-9deh1r` / PR #1).
+Triggered by "go for the full cleanup, making future edits easier" after
+discussing next-upgrade priorities.
+
+**Dependency cleanup:**
+- `package.json` had `npm` and `i` listed as real `dependencies` (not
+  devDependencies) — almost certainly accidental (`npm i <typo>` at some
+  point). This is *why* `npm audit` reported a critical `tar` vuln and a
+  `sigstore` vuln: those are npm's own bundled internals, pulled in only
+  because `npm` itself was a stated dependency of this app. Removed both —
+  152 packages dropped from the tree, vuln count went 26 → 19 immediately.
+- Ran `npm audit fix` (no `--force`): 19 → 8 vulnerabilities, all
+  semver-safe bumps.
+- Remaining 8 (sharp/libvips CVEs, workbox/serialize-javascript chain via
+  `@ducanh2912/next-pwa`) all require `npm audit fix --force`, which would
+  bump `next` to 16.3.3 (currently pinned `16.1.6`, no caret) and downgrade
+  `next-pwa` to 10.2.6 — real, untested behavior changes. **Deliberately not
+  forced through** — flagged as a follow-up decision, not done blindly.
+- **Note for next time:** confirm before re-running a bare `npm install` —
+  this session's sandbox blocked one attempt via the auto-mode classifier and
+  required a retry. Not a code issue, just a permissions quirk to expect.
+
+**Live Supabase schema drift (project `cposdedvstdzxftcaucq`, "Max's Project",
+eu-west-1):**
+- `mcp__Supabase__list_migrations` returned **empty** — the live DB's schema
+  was never applied through Supabase's own tracked-migration mechanism
+  (`supabase_migrations.schema_migrations`), only via ad-hoc SQL (dashboard
+  SQL editor and/or prior AI sessions running raw `execute_sql`). This is the
+  root cause of everything flagged as "not in tracked migration files" in the
+  entry above — it's not that migrations were skipped, it's that the whole
+  live schema has only ever been managed ad hoc. **Going forward, prefer
+  `mcp__Supabase__apply_migration` over raw `execute_sql` for schema changes**
+  so `list_migrations` actually starts reflecting reality.
+- Found and fixed **8 duplicate RLS policies** (same predicate, two names —
+  one "table: description" style matching the tracked-migration convention,
+  one `table_verb_own` style from some untracked pass) on `athletes` (5→3
+  policies), `notes` (4→2), `profiles` (7→4), `sessions` (6→5). Not a security
+  bug (Postgres OR's duplicate permissive policies together, confirmed correct
+  behavior either way) — pure drift/clutter that risked someone editing one
+  copy and not knowing its twin existed. Dropped the redundant twin, kept the
+  colon-style name. Landed as `supabase/migrations/014_dedupe_rls_policies_and_fk_indexes.sql`
+  and applied live via `apply_migration`. Verified post-migration policy
+  counts match exactly (3/2/4/5).
+- Same migration added the **14 missing FK indexes** the performance advisor
+  flagged (`unindexed_foreign_keys`) — purely additive, e.g.
+  `sessions_athlete_id_idx`, `notes_session_id_idx`, etc. Full list is in the
+  migration file.
+- Confirmed migration **013** (`calendar_events.session_id`, from the
+  earlier entry today) is **already live** — `session_id` column exists on
+  `calendar_events` in production. It must have been applied outside this
+  session (possibly the same ad-hoc-SQL pattern above). The "not yet applied,
+  flag to user" note in the entry above is now stale/resolved.
+- **Explicitly NOT done this pass** (scoped out, not forgotten):
+  - `auth_rls_initplan` perf lint (37 instances) — every RLS policy in this
+    schema calls bare `auth.uid()` instead of `(select auth.uid())`, which
+    is the standard Supabase-recommended optimization (lets Postgres cache
+    the value once per statement instead of re-evaluating per row). Fully
+    mechanical, no semantic change, but touches ~20+ policy definitions
+    across every table — decided this deserves its own isolated migration
+    and review pass rather than being bundled into this cleanup. All the
+    exact policy text needed to do this is already captured in this
+    session's tool output if picking it back up.
+  - `unused_index` advisor hits (2: `group_members_group_idx`,
+    `cal_session_idx`) — left alone. "Unused" likely just reflects a young
+    app with little real traffic yet, not genuinely dead; dropping now risks
+    guessing wrong. Revisit once there's real usage data.
+  - Auth setting "Leaked Password Protection Disabled" (WARN from advisors)
+    — a Dashboard toggle (Authentication → Policies), not a migration; no
+    Supabase MCP tool exposes it. Flag to user to enable manually.
+
+**Code dedup:** the `shared_with_athlete`-gated calendar-sync logic added
+earlier today was duplicated near-verbatim across 3 files. Extracted into
+`lib/session-calendar-sync.ts` (`syncSessionCalendarEvent()`), following the
+existing precedent in this codebase for this exact kind of thing (see the
+doc comment atop `lib/supabase-route.ts`: "Replaces the duplicated
+createRouteClient() boilerplate across 28+ API files"). All 3 call sites
+(`app/api/sessions/route.ts`, `app/api/sessions/audio/route.ts`,
+`app/api/sessions/[id]/route.ts`) now call the shared helper instead of
+inlining the insert. **If a 4th session-save path is ever added, use this
+helper — don't re-inline the logic a 3rd time.**
+
+**Verified:** `npx tsc --noEmit` clean after every change in this pass.
+
+---
+
 ## Project history (reconstructed from `git log`, pre-dates this memory bank)
 
 Entries below were backfilled by reading commit subjects/dates and migration
