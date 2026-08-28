@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
 
 type CookieToSet = { name: string; value: string; options?: any }
 
@@ -50,9 +51,27 @@ export async function PATCH(
     .update(updates)
     .eq('id', id)
     .eq('coach_id', user.id)
-    .select('id, session_name, shared_with_athlete, sport_context, created_at')
+    .select('id, athlete_id, session_name, title, summary, shared_with_athlete, sport_context, created_at')
     .single()
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
+
+  // If this update just shared the session, make sure it has a calendar entry —
+  // sessions saved unshared don't get one at creation time (see POST /api/sessions
+  // and /api/sessions/audio), so this is where a later share syncs the calendar.
+  if (updates.shared_with_athlete === true && data) {
+    const dateStr = new Intl.DateTimeFormat('en-CA').format(new Date(data.created_at))
+    await syncSessionCalendarEvent({
+      supabase,
+      sessionId: data.id,
+      athleteId: data.athlete_id,
+      coachUserId: user.id,
+      title: data.session_name || data.title,
+      summary: data.summary,
+      eventDate: dateStr,
+      skipIfExists: true,
+    })
+  }
+
   return attach(NextResponse.json({ session: data }), cookiesToSet)
 }

@@ -5,6 +5,7 @@ export const maxDuration = 60
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
 
 async function transcribeWithOpenAI(file: File) {
   const apiKey = process.env.OPENAI_API_KEY
@@ -170,6 +171,22 @@ export async function POST(req: Request) {
 
       if (insertErr) {
         return NextResponse.json({ error: `Failed to save session: ${insertErr.message}` }, { status: 500 })
+      }
+
+      // Auto-create a calendar event, same as the text-note save path
+      // (/api/sessions POST), so this session shows up on the athlete's
+      // calendar once it's actually shared with them.
+      if (inserted?.id && shared_with_athlete) {
+        const dateStr = new Intl.DateTimeFormat('en-CA').format(new Date())
+        await syncSessionCalendarEvent({
+          supabase,
+          sessionId: inserted.id,
+          athleteId: athlete_id,
+          coachUserId: user.id,
+          title,
+          summary,
+          eventDate: dateStr,
+        })
       }
 
       return NextResponse.json({ session: inserted })

@@ -146,20 +146,12 @@ export default function AthletePage() {
         const onboardKey = `cv_onboarded_${user.id}`
         setHasOnboarded(localStorage.getItem(onboardKey) === 'true')
 
-        // Fetch profile, athlete record, sessions, and notes all in parallel
-        const [
-          { data: profile },
-          { data: athRecord },
-          { data: sessData },
-          notesRes,
-        ] = await Promise.all([
+        // Fetch profile + athlete record first — the sessions query needs the
+        // athlete's own id so it can't leak or miss rows if it ever runs
+        // outside the intended RLS scope.
+        const [{ data: profile }, { data: athRecord }] = await Promise.all([
           supabase.from('profiles').select('role, first_name, last_name, sport').eq('id', user.id).single(),
           supabase.from('athletes').select('id, first_name, last_name').eq('athlete_user_id', user.id).maybeSingle(),
-          supabase.from('sessions')
-            .select('id, session_name, title, summary, transcript, shared_with_athlete, created_at, sport_context')
-            .eq('shared_with_athlete', true)
-            .order('created_at', { ascending: false }),
-          fetch('/api/athlete-notes', { cache: 'no-store' }),
         ])
 
         if (cancelled) return
@@ -167,6 +159,19 @@ export default function AthletePage() {
         if (profile?.role === 'coach') { router.push('/dashboard'); return }
 
         setSport(profile?.sport ?? '')
+
+        const [{ data: sessData }, notesRes] = await Promise.all([
+          athRecord
+            ? supabase.from('sessions')
+                .select('id, session_name, title, summary, transcript, shared_with_athlete, created_at, sport_context')
+                .eq('athlete_id', athRecord.id)
+                .eq('shared_with_athlete', true)
+                .order('created_at', { ascending: false })
+            : Promise.resolve({ data: [] as SessionRow[] }),
+          fetch('/api/athlete-notes', { cache: 'no-store' }),
+        ])
+
+        if (cancelled) return
 
         if (athRecord) {
           setAthleteId(athRecord.id)
