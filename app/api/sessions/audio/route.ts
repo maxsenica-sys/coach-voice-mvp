@@ -172,6 +172,26 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Failed to save session: ${insertErr.message}` }, { status: 500 })
       }
 
+      // Auto-create a calendar event, same as the text-note save path
+      // (/api/sessions POST), so this session shows up on the athlete's
+      // calendar once it's actually shared with them.
+      if (inserted?.id && shared_with_athlete) {
+        const dateStr = new Intl.DateTimeFormat('en-CA').format(new Date())
+        await supabase
+          .from('calendar_events')
+          .insert({
+            athlete_id,
+            session_id: inserted.id,
+            created_by_user_id: user.id,
+            created_by_role: 'coach',
+            title: title || 'Coaching Session',
+            event_type: 'session',
+            event_date: dateStr,
+            description: summary.slice(0, 300),
+          })
+          .then(() => null, () => null)
+      }
+
       return NextResponse.json({ session: inserted })
     }
 

@@ -167,13 +167,17 @@ export async function POST(req: NextRequest) {
   }
 
   // Auto-create a calendar event so this session appears on the calendar
-  // and the home tab week strip. Fire-and-forget — session is already committed.
-  if (data?.id) {
+  // and the home tab week strip. Only do this once the session is actually
+  // shared — otherwise the athlete sees a calendar entry for a session whose
+  // feedback they can't yet open in their feed (see PATCH /api/sessions/[id],
+  // which creates this event instead if the session is shared later).
+  if (data?.id && shared_with_athlete) {
     const dateStr = session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date())
     await supabase
       .from('calendar_events')
       .insert({
         athlete_id,
+        session_id: data.id,
         created_by_user_id: user.id,
         created_by_role: 'coach',
         title: session_name?.trim() || 'Coaching Session',

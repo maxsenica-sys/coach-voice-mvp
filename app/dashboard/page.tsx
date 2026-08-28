@@ -873,7 +873,7 @@ function DashboardPageInner() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
                   {([
                     { label: 'Athletes', value: athletes.length, color: '#4A6B47', delta: athletes.length > 0 ? `${athletes.filter(a => a.athlete_user_id).length} active` : 'none yet', tab: 'athletes' as Tab },
-                    { label: 'Sessions', value: thisWeek.length, color: '#8B3E2A', delta: 'this week', tab: 'calendar' as Tab },
+                    { label: 'Sessions', value: thisWeek.length, color: '#8B3E2A', delta: 'this week', tab: 'sessions' as Tab },
                     { label: 'Unread',   value: totalUnreadAll,  color: '#9A7229', delta: totalUnreadAll > 0 ? 'messages' : 'all clear', tab: 'messages' as Tab },
                   ]).map(stat => (
                     <button key={stat.label} onClick={() => setTab(stat.tab)} style={{
@@ -956,7 +956,7 @@ function DashboardPageInner() {
                         const ampm = hrs !== null ? (hrs >= 12 ? 'pm' : 'am') : null
                         const dh = hrs !== null ? (hrs > 12 ? hrs - 12 : hrs === 0 ? 12 : hrs) : null
                         return (
-                          <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px', borderTop: i === 0 ? 'none' : '1px solid #EFEAE0' }}>
+                          <Link key={ev.id} href={ev.athlete_id ? `/athletes/${ev.athlete_id}` : '#'} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px', borderTop: i === 0 ? 'none' : '1px solid #EFEAE0', textDecoration: 'none', color: 'inherit', cursor: ev.athlete_id ? 'pointer' : 'default' }}>
                             <div style={{ minWidth: 38, flexShrink: 0 }}>
                               {dh !== null ? (
                                 <>
@@ -974,7 +974,7 @@ function DashboardPageInner() {
                               {ev.event_type && <div style={{ fontSize: 11, color: '#5D6661', marginTop: 1 }}>{ev.event_type}</div>}
                             </div>
                             <Icon name="arrow" size={13} strokeWidth={1.8} />
-                          </div>
+                          </Link>
                         )
                       })}
                     </div>
@@ -1026,7 +1026,7 @@ function DashboardPageInner() {
                           return d === 1 ? 'Yesterday' : `${d}d`
                         })()
                         return (
-                          <div key={s.id} style={{ background: '#FFFFFF', borderRadius: 12, padding: '11px 12px', border: '1px solid #E3DED2', display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <Link key={s.id} href={`/athletes/${s.athlete_id}`} style={{ background: '#FFFFFF', borderRadius: 12, padding: '11px 12px', border: '1px solid #E3DED2', display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
                             <div style={{ position: 'relative', flexShrink: 0 }}>
                               <div style={{ width: 34, height: 34, borderRadius: '50%', background: tone, color: '#fff', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials}</div>
                               <div style={{ position: 'absolute', bottom: -2, right: -2, width: 16, height: 16, borderRadius: '50%', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #FFFFFF' }}>
@@ -1045,7 +1045,7 @@ function DashboardPageInner() {
                             <div style={{ fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 99, letterSpacing: 0.3, flexShrink: 0, ...(s.shared_with_athlete ? { color: '#4F6B4B', background: '#E6ECDF', border: '1px solid #CBD7C0' } : { color: '#5D6661', background: '#EFEAE0', border: '1px solid #E3DED2' }) }}>
                               {s.shared_with_athlete ? 'SHARED' : 'DRAFT'}
                             </div>
-                          </div>
+                          </Link>
                         )
                       })}
                     </div>

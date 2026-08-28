@@ -50,9 +50,38 @@ export async function PATCH(
     .update(updates)
     .eq('id', id)
     .eq('coach_id', user.id)
-    .select('id, session_name, shared_with_athlete, sport_context, created_at')
+    .select('id, athlete_id, session_name, title, summary, shared_with_athlete, sport_context, created_at')
     .single()
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
+
+  // If this update just shared the session, make sure it has a calendar entry —
+  // sessions saved unshared don't get one at creation time (see POST /api/sessions
+  // and /api/sessions/audio), so this is where a later share syncs the calendar.
+  if (updates.shared_with_athlete === true && data) {
+    const { data: existing } = await supabase
+      .from('calendar_events')
+      .select('id')
+      .eq('session_id', data.id)
+      .maybeSingle()
+
+    if (!existing) {
+      const dateStr = new Intl.DateTimeFormat('en-CA').format(new Date(data.created_at))
+      await supabase
+        .from('calendar_events')
+        .insert({
+          athlete_id: data.athlete_id,
+          session_id: data.id,
+          created_by_user_id: user.id,
+          created_by_role: 'coach',
+          title: data.session_name?.trim() || data.title?.trim() || 'Coaching Session',
+          event_type: 'session',
+          event_date: dateStr,
+          description: data.summary ? data.summary.slice(0, 300) : null,
+        })
+        .then(() => null, () => null)
+    }
+  }
+
   return attach(NextResponse.json({ session: data }), cookiesToSet)
 }
