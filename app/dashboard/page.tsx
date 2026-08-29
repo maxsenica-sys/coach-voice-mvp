@@ -8,6 +8,7 @@ import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
 import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
+import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -339,6 +340,7 @@ function DashboardPageInner() {
 
   const [athletes, setAthletes] = useState<Athlete[]>([])
   const [loadingAthletes, setLoadingAthletes] = useState(false)
+  const [wellnessByAthlete, setWellnessByAthlete] = useState<Map<string, WellnessCheckin>>(new Map())
   const [athleteSearch, setAthleteSearch] = useState('')
   const [athleteFilter, setAthleteFilter] = useState<'all' | 'ACTIVE' | 'INVITED'>('all')
   const [addForm, setAddForm] = useState({ firstName: '', lastName: '', email: '' })
@@ -439,6 +441,24 @@ function DashboardPageInner() {
     }
     void boot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Wellness roster summary (home tab strip + athletes tab) — self-contained
+  // fetch, same pattern as the athlete profile's at-a-glance card: a failure
+  // here just means no scores show, it shouldn't block anything else.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/wellness?days=14', { cache: 'no-store' })
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('Failed to load wellness'))))
+      .then(json => {
+        if (cancelled) return
+        const list: WellnessCheckin[] = json.checkins ?? []
+        const map = new Map<string, WellnessCheckin>()
+        for (const c of list) map.set(c.athlete_id, c) // ascending by check_date, so last write wins = latest
+        setWellnessByAthlete(map)
+      })
+      .catch(() => { if (!cancelled) setWellnessByAthlete(new Map()) })
+    return () => { cancelled = true }
   }, [])
 
   const fetchAthletes = async () => {
@@ -1066,6 +1086,8 @@ function DashboardPageInner() {
                         const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
                         const unread = (unreadCounts[a.id] ?? 0) as number
                         const tone = _toneColors[i % 3]
+                        const wellnessScore = overallWellnessScore(wellnessByAthlete.get(a.id) ?? null)
+                        const wellnessColor = overallScoreColor(wellnessScore)
                         return (
                           <div key={a.id} style={{ minWidth: 78, background: '#FFFFFF', borderRadius: 14, border: '1px solid #E3DED2', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', flexShrink: 0 }}>
                             {unread > 0 && <div style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 99, background: '#B55C3E', color: '#fff', fontSize: 9, fontWeight: 800, padding: '0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</div>}
@@ -1073,7 +1095,14 @@ function DashboardPageInner() {
                               {(a.first_name?.[0] ?? '?').toUpperCase()}
                             </div>
                             <div style={{ fontWeight: 700, fontSize: 11.5, color: '#1F2421', marginTop: 1 }}>{a.first_name}</div>
-                            <div style={{ fontSize: 9, color: status === 'INVITED' ? '#C9933A' : '#9BA29B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{status === 'INVITED' ? 'Pending' : 'Active'}</div>
+                            {wellnessScore !== null ? (
+                              <div title={`Wellness ${wellnessScore}/5`} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
+                                <span style={{ fontSize: 9.5, fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 9, color: status === 'INVITED' ? '#C9933A' : '#9BA29B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{status === 'INVITED' ? 'Pending' : 'Active'}</div>
+                            )}
                           </div>
                         )
                       })}

@@ -12,6 +12,9 @@ function createSupabase(req: NextRequest) {
 }
 
 // GET /api/wellness?athlete_id=xxx&days=30
+// GET /api/wellness?days=14 (no athlete_id) — coach only: recent check-ins across
+// their whole roster, for a "latest score per athlete" summary (e.g. the
+// dashboard roster strip) instead of N per-athlete requests.
 export async function GET(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
@@ -20,17 +23,19 @@ export async function GET(req: NextRequest) {
   const params = new URL(req.url).searchParams
   const athleteId = params.get('athlete_id')
   const days = parseInt(params.get('days') ?? '30', 10)
-  if (!athleteId) return NextResponse.json({ error: 'athlete_id required' }, { status: 400 })
 
   const since = new Date()
   since.setDate(since.getDate() - days)
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('wellness_checkins')
     .select('*')
-    .eq('athlete_id', athleteId)
     .gte('check_date', since.toISOString().split('T')[0])
     .order('check_date', { ascending: true })
+
+  query = athleteId ? query.eq('athlete_id', athleteId) : query.eq('coach_id', user.id)
+
+  const { data, error } = await query
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

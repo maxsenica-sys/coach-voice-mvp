@@ -6,6 +6,46 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-08-28 (same day, one more still) — Wellness score on the coach dashboard roster strip
+
+Pushed directly to `main`. Follow-up to the athlete-profile at-a-glance work:
+user wanted the same idea on the coach's home tab, specifically "the small
+rating underneath their name" in the "Your athletes" horizontal scroll strip
+(`app/dashboard/page.tsx`, home tab).
+
+**API change — `app/api/wellness/route.ts` GET now has two modes:**
+- `?athlete_id=X` (existing behavior, unchanged) — one athlete's check-ins.
+- No `athlete_id` (new) — returns recent check-ins across the **calling
+  coach's whole roster** (`.eq('coach_id', user.id)` instead of
+  `.eq('athlete_id', ...)`), so the dashboard can build a "latest score per
+  athlete" map with **one request instead of N** (N = roster size). Checked
+  every existing caller (`WellnessGraph`, both athlete-profile pages,
+  `WellnessSubmit`) — all three always pass `athlete_id`, so this is purely
+  additive, nothing else changes behavior.
+
+**Dashboard change:** new self-contained `useEffect` (same
+fetch-independently-and-degrade-to-empty pattern used everywhere else today)
+builds a `Map<athlete_id, WellnessCheckin>` from that roster-wide call. In
+the roster strip, each athlete's status line ("Active"/"Pending") is now
+**replaced by the wellness score dot** when a recent check-in exists, and
+falls back to the original status text otherwise (an invited athlete who
+hasn't onboarded obviously has no wellness data yet). Same
+`overallWellnessScore`/`overallScoreColor` helpers from `lib/wellness-config.ts`
+— third place now reading the identical formula (athlete profile header
+chip, athlete profile Overview card, and now this).
+
+**Scope note:** only the home-tab strip, per what was asked. The full
+"Athletes" roster tab (the tabular/list view, separate from this home strip)
+would be a natural next candidate for the same treatment if wanted later —
+not done yet.
+
+**Verified:** `npx tsc --noEmit` clean, full `npm run build` clean (33
+routes). Same caveat as the athlete-profile change: no browser/Chrome
+access or login credentials in this session, so this was not visually
+confirmed — logic/types only.
+
+---
+
 ## 2026-08-28 (same day, one more still) — Wellness scores at-a-glance on the athlete profile
 
 Pushed directly to `main`. Request: surface wellness check-in scores on the
