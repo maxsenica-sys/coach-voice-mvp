@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
+import { notifySessionShared } from '@/lib/notify'
 
 type CookieToSet = { name: string; value: string; options?: any }
 
@@ -61,7 +62,7 @@ export async function PATCH(
   // and /api/sessions/audio), so this is where a later share syncs the calendar.
   if (updates.shared_with_athlete === true && data) {
     const dateStr = new Intl.DateTimeFormat('en-CA').format(new Date(data.created_at))
-    await syncSessionCalendarEvent({
+    const isFirstShare = await syncSessionCalendarEvent({
       supabase,
       sessionId: data.id,
       athleteId: data.athlete_id,
@@ -71,6 +72,18 @@ export async function PATCH(
       eventDate: dateStr,
       skipIfExists: true,
     })
+    // Only notify the first time this session is shared, not on every re-toggle.
+    if (isFirstShare) {
+      await notifySessionShared({
+        supabase,
+        req,
+        athleteId: data.athlete_id,
+        coachUserId: user.id,
+        coachEmail: user.email,
+        sessionTitle: data.session_name || data.title,
+        summary: data.summary,
+      })
+    }
   }
 
   return attach(NextResponse.json({ session: data }), cookiesToSet)

@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { sendEmail, renderBrandedEmail } from '@/lib/notify'
 
 // GET /api/athletes
 export async function GET() {
@@ -102,44 +103,24 @@ export async function POST(request: Request) {
       : 'Your coach'
 
     // 3) Send branded invite email via Resend
-    const resendKey = process.env.RESEND_API_KEY
-    const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev'
-
     let emailWarning: string | null = null
-    if (!resendKey) {
+    if (!process.env.RESEND_API_KEY) {
       emailWarning = 'RESEND_API_KEY is not configured — invite email was not sent. Share the invite link manually.'
     } else if (inviteLink) {
-      const html = `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#0a1628;background:#ffffff">
-<div style="text-align:center;margin-bottom:32px">
-  <div style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;background:#1F2421;border-radius:12px;margin-bottom:12px">
-    <span style="font-size:22px">🎙</span>
-  </div>
-  <div style="font-weight:900;font-size:20px;letter-spacing:-0.5px;color:#1F2421">CoachVoice</div>
-</div>
-<h1 style="font-size:22px;font-weight:800;margin:0 0 8px;letter-spacing:-0.3px">You've been invited</h1>
-<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 24px"><strong>${coachName}</strong> has added you to their CoachVoice roster. Set your password to access your session notes, feedback, and training calendar.</p>
-<div style="text-align:center;margin:32px 0">
-  <a href="${inviteLink}" style="display:inline-block;background:#6F8E6B;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:8px;text-decoration:none;letter-spacing:0.01em">Set Your Password</a>
-</div>
-<p style="color:#8b9bb4;font-size:12px;line-height:1.6;margin:24px 0 0">This link expires in 24 hours. If you weren't expecting this, you can ignore this email.</p>
-<hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
-<p style="color:#8b9bb4;font-size:11px;margin:0;text-align:center">Sent via CoachVoice · AI-powered coaching platform</p>
-</body></html>`
-      const emailRes = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${resendKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: `CoachVoice <${fromEmail}>`,
-          to: email,
-          reply_to: user.email ?? undefined,
-          subject: `${coachName} invited you to CoachVoice`,
-          html,
-        }),
-      }).catch(() => null)
-      if (!emailRes || !emailRes.ok) {
+      const html = renderBrandedEmail({
+        heading: "You've been invited",
+        bodyHtml: `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 24px"><strong>${coachName}</strong> has added you to their CoachVoice roster. Set your password to access your session notes, feedback, and training calendar.</p>`,
+        ctaText: 'Set Your Password',
+        ctaHref: inviteLink,
+        footerNote: "This link expires in 24 hours. If you weren't expecting this, you can ignore this email.",
+      })
+      const result = await sendEmail({
+        to: email,
+        subject: `${coachName} invited you to CoachVoice`,
+        html,
+        replyTo: user.email ?? undefined,
+      })
+      if (!result.ok) {
         emailWarning = 'Athlete created but invite email failed to send. Check your RESEND_API_KEY and RESEND_FROM_EMAIL environment variables.'
       }
     }

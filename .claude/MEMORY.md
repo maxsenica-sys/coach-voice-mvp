@@ -6,6 +6,65 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-08-28 (same day, one more) — Email notification when a coach shares a session
+
+Pushed directly to `main` (per user's call earlier this session — no more
+PRs unless asked). Follow-up to "what could we dev next?": the earlier fix
+made shared feedback *visible* in the athlete's feed, but the athlete still
+had to happen to open the app to notice it. This adds an actual notification.
+
+**New: `lib/notify.ts`** — the reusable notification core, explicitly meant
+as the precedent for future app-triggered notifications (user's instruction:
+"set the precedent of having notifications FROM the app too"):
+- `sendEmail()` — the actual Resend API call. Consolidates what used to be
+  two separately hand-rolled `fetch('https://api.resend.com/emails')` calls
+  (the athlete invite email in `app/api/athletes/route.ts`, and the manual
+  "send report" endpoint `app/api/email/route.ts`) — both refactored to call
+  this instead of duplicating the fetch a third time.
+- `renderBrandedEmail()` — the shared CoachVoice HTML email shell (logo,
+  heading, body, optional CTA button, footer), extracted from what was an
+  inline template only the invite email used.
+- `getAppBaseUrl(req)` — resolves the app's public URL from request headers,
+  same logic that already existed inline in the invite-email code.
+- `notifySessionShared()` — the new one: emails the athlete when a session
+  is shared with them (subject "{coach} shared feedback with you", links to
+  `/athlete`). Looks up the athlete's email straight from `athletes.email`
+  (works even if they haven't claimed their account yet) and the coach's
+  name from `profiles`. No-ops silently if there's no email on file or
+  `RESEND_API_KEY` isn't configured — never throws, since it's called from
+  hot paths that must succeed regardless of email delivery.
+
+**Wiring:** called from the exact same 3 places `syncSessionCalendarEvent`
+already was (`app/api/sessions/route.ts`, `app/api/sessions/audio/route.ts`,
+`app/api/sessions/[id]/route.ts` PATCH) — sharing a session is one event,
+now with two effects (calendar + email). One behavior change worth knowing:
+**`syncSessionCalendarEvent` now returns `boolean`** (was `void`) — true
+only when it actually inserted a fresh calendar_events row. The PATCH route
+(the share *toggle*, likely the most common share path in practice) uses
+that return value to gate the notification, so toggling share on/off/on
+repeatedly sends the email only once, on the first real share — not on
+every re-toggle. The two creation-time call sites ignore the return value
+(a session is inherently "first share" the moment it's inserted already
+shared).
+
+**Verified:** `npx tsc --noEmit` clean, and a full `npm run build` with
+placeholder env vars succeeds (all 33 routes) — same method used to
+root-cause the Vercel Preview issue earlier today.
+
+**Not done / worth knowing if this needs to change:**
+- No unsubscribe/opt-out mechanism for this email — if that becomes a
+  problem, it needs a real column (e.g. `athletes.email_notifications_enabled`)
+  checked before calling `notifySessionShared`, not a client-side toggle.
+- No rate limiting — an unlikely-but-possible rapid unshare/reshare loop
+  (bypassing the "first share" gate by deleting the calendar_events row some
+  other way) could re-trigger sends. Not guarded against; wasn't worth the
+  complexity for a coach-driven, manual action.
+- Next notification type to add here should follow the same shape: a
+  `notifyX()` function in `lib/notify.ts` that calls `sendEmail()` +
+  `renderBrandedEmail()`, not a new hand-rolled Resend call.
+
+---
+
 ## 2026-08-28 (same day, final) — PR #1 merged to `main`; Vercel Preview red is environmental, not code
 
 PR #1 (branch `claude/coach-voice-workspace-9deh1r`, both entries below) was

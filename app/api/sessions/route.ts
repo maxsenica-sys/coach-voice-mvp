@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
+import { notifySessionShared } from '@/lib/notify'
 
 type CookieToSet = { name: string; value: string; options?: any }
 
@@ -182,6 +183,15 @@ export async function POST(req: NextRequest) {
       title: session_name,
       summary,
       eventDate: dateStr,
+    })
+    await notifySessionShared({
+      supabase,
+      req,
+      athleteId: athlete_id,
+      coachUserId: user.id,
+      coachEmail: user.email,
+      sessionTitle: session_name,
+      summary,
     })
   }
 

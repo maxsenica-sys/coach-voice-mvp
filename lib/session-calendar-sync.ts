@@ -25,7 +25,11 @@ type SyncSessionCalendarEventArgs = {
 /**
  * Creates a calendar_events row for a session that's being shared with its
  * athlete. Fire-and-forget: the caller's session write is already committed,
- * so a failure here shouldn't fail the request.
+ * so a failure here shouldn't fail the request. Returns whether it actually
+ * inserted a new row (false when skipIfExists found one already) — callers
+ * use this as the "is this genuinely the first time this session was
+ * shared?" signal, e.g. to avoid re-sending a share notification on every
+ * toggle.
  */
 export async function syncSessionCalendarEvent({
   supabase,
@@ -36,17 +40,17 @@ export async function syncSessionCalendarEvent({
   summary,
   eventDate,
   skipIfExists,
-}: SyncSessionCalendarEventArgs): Promise<void> {
+}: SyncSessionCalendarEventArgs): Promise<boolean> {
   if (skipIfExists) {
     const { data: existing } = await supabase
       .from('calendar_events')
       .select('id')
       .eq('session_id', sessionId)
       .maybeSingle()
-    if (existing) return
+    if (existing) return false
   }
 
-  await supabase
+  const { error } = await supabase
     .from('calendar_events')
     .insert({
       athlete_id: athleteId,
@@ -58,5 +62,6 @@ export async function syncSessionCalendarEvent({
       event_date: eventDate,
       description: summary ? summary.slice(0, 300) : null,
     })
-    .then(() => undefined, () => undefined)
+
+  return !error
 }

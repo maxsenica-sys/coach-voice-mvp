@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
+import { notifySessionShared } from '@/lib/notify'
 
 async function transcribeWithOpenAI(file: File) {
   const apiKey = process.env.OPENAI_API_KEY
@@ -186,6 +187,15 @@ export async function POST(req: Request) {
           title,
           summary,
           eventDate: dateStr,
+        })
+        await notifySessionShared({
+          supabase,
+          req,
+          athleteId: athlete_id,
+          coachUserId: user.id,
+          coachEmail: user.email,
+          sessionTitle: title,
+          summary,
         })
       }
 
