@@ -341,6 +341,7 @@ function DashboardPageInner() {
   const [athletes, setAthletes] = useState<Athlete[]>([])
   const [loadingAthletes, setLoadingAthletes] = useState(false)
   const [wellnessByAthlete, setWellnessByAthlete] = useState<Map<string, WellnessCheckin>>(new Map())
+  const [noteResults, setNoteResults] = useState<any[]>([])
   const [athleteSearch, setAthleteSearch] = useState('')
   const [athleteFilter, setAthleteFilter] = useState<'all' | 'ACTIVE' | 'INVITED'>('all')
   const [addForm, setAddForm] = useState({ firstName: '', lastName: '', email: '' })
@@ -495,7 +496,11 @@ function DashboardPageInner() {
       if (athleteId) p.set('athlete_id', athleteId)
       const res = await fetch(`/api/sessions/all?${p}`, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
-      if (res.ok) setAllSessions(json.sessions ?? [])
+      if (!res.ok) throw new Error(json.error ?? 'Failed to load sessions')
+      setAllSessions(json.sessions ?? [])
+      setNoteResults(json.notes ?? [])
+    } catch {
+      setAllSessions([]); setNoteResults([])
     } finally { setLoadingSessions(false) }
   }
 
@@ -1450,6 +1455,36 @@ function DashboardPageInner() {
                     </div>
                   )
               }
+              {!loadingSessions && sessionsSearch && noteResults.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+                    Notes matching &ldquo;{sessionsSearch}&rdquo;
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {noteResults.map((n: any) => {
+                      const a = n.athletes
+                      return (
+                        <div key={n.id} className="card" style={{ padding: '14px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                            <Avatar initials={a ? `${a.first_name[0]}${a.last_name[0]}`.toUpperCase() : '?'} size={38} bg="var(--coach-color)" />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 800, fontSize: 14 }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</span>
+                                <span className="badge" style={{ fontSize: 10 }}>Note</span>
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{new Date(n.created_at).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{n.summary}</div>
+                            </div>
+                            <Link href={`/athletes/${n.athlete_id}`} className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 10px', flexShrink: 0, gap: 4 }}>
+                              Open <Icon name="arrow" size={11} />
+                            </Link>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

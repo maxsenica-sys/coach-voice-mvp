@@ -9,7 +9,7 @@ import WellnessSubmit from '@/app/components/WellnessSubmit'
 import { getDailyQuote } from '@/lib/quotes'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
 
-type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
+type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness' | 'plans'
 
 type SessionRow = {
   id: string
@@ -51,6 +51,7 @@ function AthleteIcon({ name, size = 20, strokeWidth = 2 }: { name: string; size?
     case 'messages': return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     case 'mic':      return <svg {...p}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
     case 'pencil':   return <svg {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    case 'file':     return <svg {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
     default:         return null
   }
 }
@@ -91,6 +92,8 @@ export default function AthletePage() {
   // Notes
   const [notes, setNotes] = useState<AthleteNote[]>([])
   const [notesLoading, setNotesLoading] = useState(false)
+  const [plans, setPlans] = useState<any[]>([])
+  const [plansLoading, setPlansLoading] = useState(false)
   const [noteFilter, setNoteFilter] = useState<string | null>(null) // session_id or null for all
   const [noteText, setNoteText] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
@@ -244,6 +247,17 @@ export default function AthletePage() {
   useEffect(() => {
     msgBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // ── Load training plans ────────────────────────────────────
+  useEffect(() => {
+    if (tab !== 'plans' || !athleteId) return
+    setPlansLoading(true)
+    fetch(`/api/training-plans?athlete_id=${athleteId}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Failed to load plans'))))
+      .then((j) => setPlans(j.plans ?? []))
+      .catch(() => setPlans([]))
+      .finally(() => setPlansLoading(false))
+  }, [tab, athleteId])
 
   // ── Load RSVP events ──────────────────────────────────────
   useEffect(() => {
@@ -605,6 +619,7 @@ export default function AthletePage() {
               { key: 'wellness', label: 'Wellness' },
               { key: 'calendar', label: 'Calendar' },
               { key: 'notes',    label: 'My Notes' },
+              { key: 'plans',    label: 'Plans' },
             ] as { key: Tab; label: string }[]).map((t) => (
               <button
                 key={t.key}
@@ -758,6 +773,14 @@ export default function AthletePage() {
               <div style={{ fontSize: 9, fontWeight: 700, color: '#B55C3E', display: 'flex', alignItems: 'center', gap: 3 }}>
                 <AthleteIcon name="mic" size={10} strokeWidth={2.4} /> VOICE
               </div>
+            </button>
+
+            {/* Training plans CTA */}
+            <button onClick={() => setTab('plans')} style={{ width: '100%', padding: '11px 13px', background: 'transparent', borderRadius: 12, border: '1.5px dashed #E3DED2', display: 'flex', alignItems: 'center', gap: 9, color: '#5D6661', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: '#EFEAE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661' }}>
+                <AthleteIcon name="file" size={12} strokeWidth={2} />
+              </div>
+              <span style={{ flex: 1, textAlign: 'left' }}>View training plans{plans.length > 0 ? ` (${plans.length})` : ''}…</span>
             </button>
 
           </div>
@@ -1229,6 +1252,41 @@ export default function AthletePage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {tab === 'plans' && (
+          <div>
+            {plansLoading ? (
+              <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
+            ) : plans.length === 0 ? (
+              <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+                <div style={{ fontSize: 36, marginBottom: 10 }}>📄</div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>No training plans yet</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Plans your coach uploads for you will show up here.</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {plans.map((plan: any) => (
+                  <div key={plan.id} className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--athlete-light)', color: 'var(--athlete-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <AthleteIcon name="file" size={17} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{plan.title}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        {plan.created_at ? fmtDate(plan.created_at) : '—'}
+                      </div>
+                    </div>
+                    {plan.signedUrl && (
+                      <a href={plan.signedUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 12px', flexShrink: 0 }}>
+                        View
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>
