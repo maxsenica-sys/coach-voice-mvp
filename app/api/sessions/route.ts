@@ -126,6 +126,7 @@ export async function POST(req: NextRequest) {
   const athlete_id = body?.athlete_id as string | undefined
   const session_name = (body?.session_name as string | undefined) ?? null
   const transcript = (body?.transcript as string | undefined) ?? ''
+  const transcript_raw = typeof body?.transcript_raw === 'string' ? body.transcript_raw.trim() || null : null
   const shared_with_athlete = Boolean(body?.shared_with_athlete)
   const session_date = typeof body?.session_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.session_date)
     ? body.session_date
@@ -154,6 +155,7 @@ export async function POST(req: NextRequest) {
       athlete_id,
       session_name: session_name?.trim() ? session_name.trim() : null,
       transcript: transcript.trim(),
+      transcript_raw,
       summary, // quick scan summary for list
       shared_with_athlete,
       sport_context,

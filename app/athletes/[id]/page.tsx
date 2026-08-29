@@ -200,6 +200,7 @@ export default function AthleteDetailPage() {
   const [sessionName, setSessionName] = useState('')
   const [share, setShare] = useState(true)
   const [transcript, setTranscript] = useState('')
+  const [rawTranscript, setRawTranscript] = useState<string | null>(null)
   const [summary, setSummary] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedSessionId, setSavedSessionId] = useState<string | null>(null)
@@ -382,7 +383,7 @@ export default function AthleteDetailPage() {
   const startRecording = async () => {
     setPageError(null)
     if (audioUrl) URL.revokeObjectURL(audioUrl)
-    setAudioBlob(null); setAudioUrl(null); setAudioPath(null); setAudioMime(null); setTranscript(''); setSummary(''); chunksRef.current = []; setSavedSessionId(null)
+    setAudioBlob(null); setAudioUrl(null); setAudioPath(null); setAudioMime(null); setTranscript(''); setRawTranscript(null); setSummary(''); chunksRef.current = []; setSavedSessionId(null)
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(e => { setPageError(e?.message ?? 'Microphone access denied'); return null })
     if (!stream) return
     streamRef.current = stream; await startMeter(stream)
@@ -437,13 +438,19 @@ export default function AthleteDetailPage() {
       setRecordState('idle'); return
     }
     if (uploadedPath) { setAudioPath(uploadedPath); setAudioMime(mime) }
-    const json = await res.json(); setTranscript((json.text ?? '').trim()); setRecordState('ready')
+    const json = await res.json()
+    // Same Whisper call cleans up grammar/punctuation server-side (see
+    // /api/transcribe) — pre-fill the editable transcript with that version,
+    // keep the untouched raw text alongside it for the record.
+    setTranscript(((json.textEnhanced || json.text) ?? '').trim())
+    setRawTranscript(typeof json.text === 'string' ? json.text : null)
+    setRecordState('ready')
   }
 
   const clearRecording = () => {
     if (recordState === 'recording') { mediaRecRef.current?.stop(); cleanupAll() }
     if (audioUrl) URL.revokeObjectURL(audioUrl)
-    setAudioBlob(null); setAudioUrl(null); setTranscript(''); setSummary(''); setRecordState('idle'); setSavedSessionId(null)
+    setAudioBlob(null); setAudioUrl(null); setTranscript(''); setRawTranscript(null); setSummary(''); setRecordState('idle'); setSavedSessionId(null)
   }
 
   const saveSession = async () => {
@@ -454,7 +461,7 @@ export default function AthleteDetailPage() {
       // rather than uploading the same blob a second time through Vercel.
       const audio_path = audioPath
       const audio_mime = audioMime
-      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, session_name: sessionName.trim() || null, transcript: transcript.trim(), shared_with_athlete: share, sport_context: coachSport || null, session_date: new Intl.DateTimeFormat('en-CA').format(new Date()), audio_path, audio_mime }) })
+      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, session_name: sessionName.trim() || null, transcript: transcript.trim(), transcript_raw: rawTranscript, shared_with_athlete: share, sport_context: coachSport || null, session_date: new Intl.DateTimeFormat('en-CA').format(new Date()), audio_path, audio_mime }) })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to save')
       const { session } = await res.json()
       setSavedSessionId(session.id); setSummary(session.summary ?? ''); setSessionName(''); setShare(true)

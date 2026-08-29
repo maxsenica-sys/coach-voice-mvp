@@ -394,10 +394,13 @@ export default function AthletePage() {
           const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
           const json = await res.json().catch(() => ({}))
           if (res.ok && json.text) {
+            // This flow saves straight away with no review step, so use the
+            // grammar-cleaned version (same Whisper call) as the note itself.
+            const content = json.textEnhanced || json.text
             const savedRes = await fetch('/api/athlete-notes', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: json.text, session_id: noteFilter, note_type: 'voice' }),
+              body: JSON.stringify({ content, session_id: noteFilter, note_type: 'voice' }),
             })
             const savedJson = await savedRes.json().catch(() => ({}))
             if (savedRes.ok) setNotes((prev) => [...prev, savedJson.note])
