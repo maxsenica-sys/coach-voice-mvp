@@ -6,6 +6,79 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-08-28 (same day, one more still) — Wellness alerts + parent notify
+
+Pushed directly to `main`. User-specified trigger: "alert is a overall score
+of the day below 3, or average below 3." Also asked for a way for coaches to
+send the alert to a parent, either by typing an email on the spot or using a
+saved/linked one — the latter turned out to already half-exist (see below).
+
+**Alert definition — `computeWellnessAlert()` in `lib/wellness-config.ts`**
+(single source of truth, used by both the API and every UI surface):
+active when `overallWellnessScore` of the latest check-in is `< 3` (today),
+OR the average of the last **7** check-ins' overall scores is `< 3`
+(reason: `'today' | 'average' | 'both'`). Exact threshold/window the user
+specified — 7-day window chosen as the reasonable default for "average"
+since it wasn't specified further.
+
+**Trigger point — `POST /api/wellness`** (athlete submits a check-in):
+after the upsert, refetches the athlete's last 14 days, runs
+`computeWellnessAlert`, and if active calls `notifyWellnessAlert()` — emails
+**the coach only**, automatically, every time a submission crosses the
+threshold (no debounce/dedup — deliberate; a coach plausibly wants to know
+each day an athlete stays low, not just once).
+
+**Deliberately does NOT auto-email a parent/caretaker.** That's a conscious
+line: an athlete's stress/soreness/mood scores are sensitive, and the coach
+should choose to loop a parent in, not have the system do it silently.
+`athlete_caretakers.notify_wellness_alerts` (new column, migration `015`,
+applied live) only controls whether that caretaker shows up as a one-click
+option in the manual send — it doesn't trigger anything by itself.
+
+**Manual "Notify parent" — new `POST /api/wellness/alert`:** coach-only,
+verifies the athlete is in their roster, re-derives the current alert
+server-side (never trusts a stale client-side value), and emails whichever
+address the coach provides. Reused for both paths the user asked for:
+- **Type an email on the spot** — plain input in the new alert banner.
+- **Use a linked one** — a `<select>` pre-filled from `/api/caretakers`
+  (filtered to `notify_wellness_alerts !== false`), which shares state with
+  the same input so picking one just fills it in.
+
+Turned out **the "link parent email to athlete in settings" half of the ask
+already existed** — `athlete_caretakers` table + full CRUD
+(`app/api/caretakers/route.ts`) + a `CaretakerPanel` UI in the athlete
+profile Settings, built before this session. Confirmed this before building
+anything, so nothing was duplicated — just added the one missing checkbox
+(`notify_wellness_alerts`) to that existing form, and reused the existing
+per-caretaker "Send" pattern (`sendTestEmail`, previously a hardcoded demo
+email) as the template for the real thing.
+
+**Shared email content:** `buildWellnessAlertHtml()` in `lib/notify.ts` —
+one function, two audiences (`'coach'` gets a "View athlete" CTA;
+`'parent'` doesn't) — used by both the automatic coach email and the manual
+parent send, so they never show different numbers for the same alert.
+
+**Frontend (`app/athletes/[id]/page.tsx`):**
+- Wellness tab: red alert banner above `WellnessGraph` when active, with
+  the send-to picker described above.
+- Overview at-a-glance card (from earlier today): now shows a red border +
+  "Wellness — needs attention" + ⚠️ instead of 💚 when the alert is active,
+  instead of a separate duplicate banner there.
+
+**Verified:** `npx tsc --noEmit` clean, full `npm run build` clean (34
+routes, up from 33 — the new `/api/wellness/alert` route). Migration
+applied and confirmed live (`information_schema.columns` check). Same
+caveat as the rest of today's UI work: not visually verified in a browser,
+no login credentials or browser tool available in this session — logic and
+types only.
+
+**Not done:** no way yet to see whether/when a "Notify parent" email was
+already sent for a given alert (so a coach could double-send without
+knowing) — no send-log table. Low risk given it's a manual, deliberate
+action, but worth a `sent_at` marker if this gets used heavily.
+
+---
+
 ## 2026-08-28 (same day, one more still) — Wellness score on the coach dashboard roster strip
 
 Pushed directly to `main`. Follow-up to the athlete-profile at-a-glance work:

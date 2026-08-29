@@ -17,6 +17,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { WELLNESS_METRICS, metricColor, scoreLabel, type WellnessCheckin, type WellnessAlertReason } from '@/lib/wellness-config'
 
 type SendEmailArgs = {
   to: string | string[]
@@ -326,5 +327,121 @@ ${description ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0
     })
   } catch {
     // Never let a notification failure break the calendar-event request.
+  }
+}
+
+const ALERT_REASON_TEXT: Record<WellnessAlertReason, string> = {
+  today: "today's check-in score",
+  average: 'their recent average score',
+  both: "today's check-in and their recent average",
+}
+
+/**
+ * The wellness alert email body — shared between the automatic coach
+ * notification (notifyWellnessAlert, below) and the manual "notify parent"
+ * send (POST /api/wellness/alert), so a parent and a coach always see the
+ * exact same content for the same alert.
+ */
+export function buildWellnessAlertHtml({
+  athleteName,
+  todayScore,
+  avgScore,
+  reason,
+  checkin,
+  ctaHref,
+  audience,
+}: {
+  athleteName: string
+  todayScore: number | null
+  avgScore: number | null
+  reason: WellnessAlertReason
+  checkin: WellnessCheckin
+  /** Only needed for audience: 'coach' — the CTA target. */
+  ctaHref?: string
+  /** 'coach' shows a "View athlete" CTA into the dashboard; 'parent' keeps it read-only. */
+  audience: 'coach' | 'parent'
+}): string {
+  const metricRows = WELLNESS_METRICS.map(({ key, label, icon }) => {
+    const score = checkin[key]
+    return `<tr>
+  <td style="padding:4px 8px 4px 0;font-size:13px">${icon} ${label}</td>
+  <td style="padding:4px 0;font-size:13px;font-weight:700;color:${metricColor(key, score)}">${score ?? '—'} <span style="font-weight:400;color:#8b9bb4">(${scoreLabel(key, score)})</span></td>
+</tr>`
+  }).join('')
+
+  return renderBrandedEmail({
+    heading: `⚠️ Wellness alert — ${athleteName}`,
+    bodyHtml: `
+<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px">
+  <strong>${athleteName}</strong>'s wellness has dropped based on ${ALERT_REASON_TEXT[reason]}.
+</p>
+<div style="display:flex;gap:16px;margin:0 0 16px">
+  ${todayScore !== null ? `<div style="background:#fef2f2;border-radius:8px;padding:8px 14px"><div style="font-size:20px;font-weight:800;color:#ef4444">${todayScore}/5</div><div style="font-size:10px;color:#8b9bb4;text-transform:uppercase;font-weight:700">Today</div></div>` : ''}
+  ${avgScore !== null ? `<div style="background:#fef2f2;border-radius:8px;padding:8px 14px"><div style="font-size:20px;font-weight:800;color:#ef4444">${avgScore}/5</div><div style="font-size:10px;color:#8b9bb4;text-transform:uppercase;font-weight:700">7-day avg</div></div>` : ''}
+</div>
+<table style="width:100%;border-collapse:collapse;margin:0 0 12px">${metricRows}</table>
+${checkin.notes ? `<p style="color:#4a5568;font-size:13px;line-height:1.6;margin:0 0 12px"><strong>Note from check-in:</strong> ${checkin.notes}</p>` : ''}`,
+    ctaText: audience === 'coach' ? 'View athlete' : undefined,
+    ctaHref: audience === 'coach' ? ctaHref : undefined,
+    footerNote: audience === 'parent'
+      ? "You're receiving this because your coach shared a wellness update with you on CoachVoice."
+      : undefined,
+  })
+}
+
+type NotifyWellnessAlertArgs = {
+  req: Request
+  athleteId: string
+  coachUserId: string
+  athleteName: string
+  todayScore: number | null
+  avgScore: number | null
+  reason: WellnessAlertReason
+  checkin: WellnessCheckin
+}
+
+/**
+ * Emails the coach when an athlete's wellness crosses the alert threshold
+ * (see computeWellnessAlert in lib/wellness-config.ts). Called from
+ * POST /api/wellness, where the caller is the athlete submitting the
+ * check-in — not the coach — so the coach's email is resolved here via the
+ * admin client (same reason notifyNewMessage's athlete-to-coach path needs
+ * getCoachEmail: profiles has no email column).
+ *
+ * Deliberately does NOT auto-email caretakers/parents — that's a separate,
+ * explicit coach action (POST /api/wellness/alert) so a parent never gets a
+ * message about their kid's stress/soreness scores without the coach
+ * choosing to send it. Caretakers with notify_wellness_alerts enabled just
+ * make that manual send a one-click pick instead of typing an email in
+ * each time.
+ */
+export async function notifyWellnessAlert({
+  req,
+  athleteId,
+  coachUserId,
+  athleteName,
+  todayScore,
+  avgScore,
+  reason,
+  checkin,
+}: NotifyWellnessAlertArgs): Promise<void> {
+  try {
+    const coachEmail = await getCoachEmail(coachUserId)
+    if (!coachEmail) return
+    const appUrl = getAppBaseUrl(req)
+
+    const html = buildWellnessAlertHtml({
+      athleteName, todayScore, avgScore, reason, checkin,
+      ctaHref: `${appUrl}/athletes/${athleteId}`,
+      audience: 'coach',
+    })
+
+    await sendEmail({
+      to: coachEmail,
+      subject: `⚠️ Wellness alert: ${athleteName}`,
+      html,
+    })
+  } catch {
+    // Never let a notification failure break the check-in submission.
   }
 }

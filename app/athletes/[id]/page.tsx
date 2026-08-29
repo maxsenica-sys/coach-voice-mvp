@@ -11,7 +11,7 @@ import WellnessGraph from '@/app/components/WellnessGraph'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
 import {
   WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor,
-  type WellnessCheckin,
+  type WellnessCheckin, type WellnessAlert,
 } from '@/lib/wellness-config'
 
 interface Athlete {
@@ -96,11 +96,11 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
     if (!form.name || !form.email) { setMsg('Name and email required'); return }
     setSaving(true); setMsg('')
     try {
-      const res = await fetch('/api/caretakers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, caretaker_name: form.name, caretaker_email: form.email, relationship: form.relationship, notify_session_reports: form.notify_session_reports, notify_monthly_reports: form.notify_monthly_reports }) })
+      const res = await fetch('/api/caretakers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, caretaker_name: form.name, caretaker_email: form.email, relationship: form.relationship, notify_session_reports: form.notify_session_reports, notify_monthly_reports: form.notify_monthly_reports, notify_wellness_alerts: form.notify_wellness_alerts }) })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error)
       setCaretakers([...caretakers.filter(c => c.caretaker_email !== form.email), j.caretaker])
-      setForm({ name: '', email: '', relationship: 'parent', notify_session_reports: true, notify_monthly_reports: true })
+      setForm({ name: '', email: '', relationship: 'parent', notify_session_reports: true, notify_monthly_reports: true, notify_wellness_alerts: true })
       setMsg('Saved!')
     } catch (e: any) { setMsg(e?.message ?? 'Failed') }
     setSaving(false)
@@ -151,6 +151,9 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
           <input type="checkbox" checked={form.notify_monthly_reports} onChange={e => setForm({ ...form, notify_monthly_reports: e.target.checked })} /> Notify on monthly reports
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.notify_wellness_alerts} onChange={e => setForm({ ...form, notify_wellness_alerts: e.target.checked })} /> Show in wellness alert &quot;notify parent&quot; list
         </label>
         {msg && <div style={{ fontSize: 12, color: msg.includes('Saved') ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{msg}</div>}
         <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Caretaker'}</button>
@@ -218,7 +221,7 @@ export default function AthleteDetailPage() {
   const [autoMonthlyReport, setAutoMonthlyReport] = useState(false)
   const [showCaretakers, setShowCaretakers] = useState(false)
   const [caretakers, setCaretakers] = useState<any[]>([])
-  const [caretakerForm, setCaretakerForm] = useState({ name: '', email: '', relationship: 'parent', notify_session_reports: true, notify_monthly_reports: true })
+  const [caretakerForm, setCaretakerForm] = useState({ name: '', email: '', relationship: 'parent', notify_session_reports: true, notify_monthly_reports: true, notify_wellness_alerts: true })
   const [caretakerSaving, setCaretakerSaving] = useState(false)
   const [caretakerMsg, setCaretakerMsg] = useState('')
   const [emailSending, setEmailSending] = useState(false)
@@ -296,6 +299,7 @@ export default function AthleteDetailPage() {
   // Self-contained, same pattern as WellnessGraph's own fetch: a failure
   // here shouldn't block the rest of the profile from loading.
   const [wellnessLatest, setWellnessLatest] = useState<WellnessCheckin | null>(null)
+  const [wellnessAlert, setWellnessAlert] = useState<WellnessAlert | null>(null)
   useEffect(() => {
     if (!athleteId) return
     let cancelled = false
@@ -305,11 +309,39 @@ export default function AthleteDetailPage() {
         if (cancelled) return
         const list: WellnessCheckin[] = json.checkins ?? []
         setWellnessLatest(list[list.length - 1] ?? null)
+        setWellnessAlert(json.alert ?? null)
       })
-      .catch(() => { if (!cancelled) setWellnessLatest(null) })
+      .catch(() => { if (!cancelled) { setWellnessLatest(null); setWellnessAlert(null) } })
     return () => { cancelled = true }
   }, [athleteId])
   const wellnessScore = overallWellnessScore(wellnessLatest)
+
+  // ── Notify parent (wellness alert) ────────────────────────────────
+  const [alertCaretakers, setAlertCaretakers] = useState<{ id: string; caretaker_name: string; caretaker_email: string; notify_wellness_alerts: boolean | null }[]>([])
+  useEffect(() => {
+    if (!athleteId) return
+    fetch(`/api/caretakers?athlete_id=${encodeURIComponent(athleteId)}`)
+      .then(res => (res.ok ? res.json() : { caretakers: [] }))
+      .then(json => setAlertCaretakers(json.caretakers ?? []))
+      .catch(() => setAlertCaretakers([]))
+  }, [athleteId])
+  const [alertSendTo, setAlertSendTo] = useState('')
+  const [alertSending, setAlertSending] = useState(false)
+  const [alertMsg, setAlertMsg] = useState('')
+  const sendWellnessAlert = async (email: string) => {
+    if (!email.includes('@')) { setAlertMsg('Enter a valid email.'); return }
+    setAlertSending(true); setAlertMsg('')
+    try {
+      const res = await fetch('/api/wellness/alert', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete_id: athleteId, to: email }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error ?? 'Failed to send')
+      setAlertMsg(`Sent to ${email}!`)
+    } catch (e: any) { setAlertMsg(e?.message ?? 'Failed to send') }
+    setAlertSending(false)
+  }
   const wellnessColor = overallScoreColor(wellnessScore)
   useEffect(() => () => { cleanupAll() }, [])
 
@@ -754,12 +786,16 @@ export default function AthleteDetailPage() {
             </div>
 
             {/* Wellness at-a-glance */}
-            <div className="card" style={{ padding: 16, cursor: 'pointer' }} onClick={() => setActiveTab('wellness')}>
+            <div
+              className="card"
+              style={{ padding: 16, cursor: 'pointer', ...(wellnessAlert?.active ? { border: '1.5px solid #ef4444' } : {}) }}
+              onClick={() => setActiveTab('wellness')}
+            >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: wellnessLatest ? 12 : 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 16 }}>💚</span>
+                  <span style={{ fontSize: 16 }}>{wellnessAlert?.active ? '⚠️' : '💚'}</span>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>Wellness</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{wellnessAlert?.active ? 'Wellness — needs attention' : 'Wellness'}</div>
                     {wellnessLatest && (
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                         Last check-in: {new Date(wellnessLatest.check_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -973,7 +1009,56 @@ export default function AthleteDetailPage() {
             TAB: WELLNESS
         ══════════════════════════════════════ */}
         {activeTab === 'wellness' && athlete && (
-          <WellnessGraph athleteId={athleteId} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {wellnessAlert?.active && (
+              <div className="card" style={{ padding: 16, border: '1.5px solid #ef4444', background: '#fef2f2' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 18 }}>⚠️</span>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: '#991b1b' }}>Wellness alert</div>
+                </div>
+                <div style={{ fontSize: 13, color: '#7f1d1d', marginBottom: 12 }}>
+                  {wellnessAlert.reason === 'today' && `Today's overall score is ${wellnessAlert.todayScore}/5.`}
+                  {wellnessAlert.reason === 'average' && `${athlete.first_name}'s 7-day average score is ${wellnessAlert.avgScore}/5.`}
+                  {wellnessAlert.reason === 'both' && `Today's score (${wellnessAlert.todayScore}/5) and 7-day average (${wellnessAlert.avgScore}/5) are both low.`}
+                  {' '}You can loop in a parent or caretaker below.
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {alertCaretakers.filter(c => c.notify_wellness_alerts !== false).length > 0 && (
+                    <select
+                      className="input"
+                      style={{ fontSize: 12, width: 'auto' }}
+                      value={alertSendTo}
+                      onChange={e => setAlertSendTo(e.target.value)}
+                    >
+                      <option value="">Choose a caretaker…</option>
+                      {alertCaretakers.filter(c => c.notify_wellness_alerts !== false).map(c => (
+                        <option key={c.id} value={c.caretaker_email}>{c.caretaker_name} ({c.caretaker_email})</option>
+                      ))}
+                    </select>
+                  )}
+                  <input
+                    className="input" type="email" style={{ fontSize: 12, width: 200 }}
+                    placeholder="or type a parent's email"
+                    value={alertSendTo}
+                    onChange={e => setAlertSendTo(e.target.value)}
+                  />
+                  <button
+                    className="btn btn-danger" style={{ fontSize: 12, padding: '6px 12px' }}
+                    disabled={alertSending || !alertSendTo}
+                    onClick={() => sendWellnessAlert(alertSendTo)}
+                  >
+                    {alertSending ? 'Sending…' : 'Notify parent'}
+                  </button>
+                </div>
+                {alertMsg && (
+                  <div style={{ fontSize: 12, marginTop: 8, fontWeight: 600, color: alertMsg.includes('Sent') ? 'var(--success)' : 'var(--danger)' }}>
+                    {alertMsg}
+                  </div>
+                )}
+              </div>
+            )}
+            <WellnessGraph athleteId={athleteId} />
+          </div>
         )}
 
         {/* ══════════════════════════════════════

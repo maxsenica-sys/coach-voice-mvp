@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { computeWellnessAlert, type WellnessCheckin } from '@/lib/wellness-config'
+import { notifyWellnessAlert } from '@/lib/notify'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: { name: string; value: string; options?: any }[] = []
@@ -39,7 +41,11 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const res = NextResponse.json({ checkins: data ?? [] })
+  const checkins = (data ?? []) as WellnessCheckin[]
+  // Alert only makes sense for a single athlete's own trend.
+  const body = athleteId ? { checkins, alert: computeWellnessAlert(checkins) } : { checkins }
+
+  const res = NextResponse.json(body)
   cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
   return res
 }
@@ -71,7 +77,34 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const res = NextResponse.json({ checkin: data }, { status: 201 })
+  // Check whether this puts the athlete over the wellness-alert threshold,
+  // using the same trailing window as GET (so the coach's inbox and the
+  // in-app banner never disagree).
+  const since = new Date()
+  since.setDate(since.getDate() - 14)
+  const { data: recent } = await supabase
+    .from('wellness_checkins')
+    .select('*')
+    .eq('athlete_id', athlete_id)
+    .gte('check_date', since.toISOString().split('T')[0])
+    .order('check_date', { ascending: true })
+
+  const alert = computeWellnessAlert((recent ?? []) as WellnessCheckin[])
+  if (alert.active && data) {
+    const { data: athleteRow } = await supabase.from('athletes').select('first_name, last_name').eq('id', athlete_id).maybeSingle()
+    await notifyWellnessAlert({
+      req,
+      athleteId: athlete_id,
+      coachUserId: ath.coach_id,
+      athleteName: athleteRow ? `${athleteRow.first_name} ${athleteRow.last_name}` : 'Your athlete',
+      todayScore: alert.todayScore,
+      avgScore: alert.avgScore,
+      reason: alert.reason!,
+      checkin: data as WellnessCheckin,
+    })
+  }
+
+  const res = NextResponse.json({ checkin: data, alert })
   cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
   return res
 }

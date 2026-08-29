@@ -93,3 +93,43 @@ export function overallScoreColor(score: number | null): string {
   if (score >= 2.5) return '#f59e0b'
   return '#ef4444'
 }
+
+export type WellnessAlertReason = 'today' | 'average' | 'both'
+
+export interface WellnessAlert {
+  active: boolean
+  reason: WellnessAlertReason | null
+  todayScore: number | null
+  /** Average overall score over the most recent check-ins (up to 7). */
+  avgScore: number | null
+}
+
+const ALERT_THRESHOLD = 3
+const ALERT_AVG_WINDOW = 7
+
+/**
+ * The single definition of "this athlete needs attention": today's overall
+ * score is below 3, or the recent (up to 7 check-in) average is below 3.
+ * Shared by the API (to gate the coach email) and the UI (to show the same
+ * banner) so they can never disagree about what counts as an alert.
+ * `checkins` must be ordered oldest-first (same order GET /api/wellness returns).
+ */
+export function computeWellnessAlert(checkins: WellnessCheckin[]): WellnessAlert {
+  if (checkins.length === 0) return { active: false, reason: null, todayScore: null, avgScore: null }
+
+  const todayScore = overallWellnessScore(checkins[checkins.length - 1])
+
+  const recentScores = checkins
+    .slice(-ALERT_AVG_WINDOW)
+    .map(overallWellnessScore)
+    .filter((v): v is number => v !== null)
+  const avgScore = recentScores.length
+    ? +(recentScores.reduce((a, b) => a + b, 0) / recentScores.length).toFixed(1)
+    : null
+
+  const todayLow = todayScore !== null && todayScore < ALERT_THRESHOLD
+  const avgLow = avgScore !== null && avgScore < ALERT_THRESHOLD
+  const reason: WellnessAlertReason | null = todayLow && avgLow ? 'both' : todayLow ? 'today' : avgLow ? 'average' : null
+
+  return { active: reason !== null, reason, todayScore, avgScore }
+}
