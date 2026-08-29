@@ -16,6 +16,7 @@
 // (saving/sharing a session) that must succeed even if the email fails.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 type SendEmailArgs = {
   to: string | string[]
@@ -105,6 +106,23 @@ export function getAppBaseUrl(req: Request): string {
   return `${proto}://${host}`
 }
 
+/** profiles has no email column (coaches only), so this is just the display name. */
+async function getCoachName(supabase: SupabaseClient, coachUserId: string): Promise<string> {
+  const { data } = await supabase.from('profiles').select('first_name, last_name').eq('id', coachUserId).maybeSingle()
+  return data?.first_name && data?.last_name ? `${data.first_name} ${data.last_name}` : 'Your coach'
+}
+
+/**
+ * A coach's email lives on auth.users, not profiles — needs the admin
+ * (service-role) client to read it, since the caller here is often the
+ * athlete (e.g. notifying a coach about a message the athlete just sent).
+ */
+async function getCoachEmail(coachUserId: string): Promise<string | null> {
+  const admin = createSupabaseAdminClient()
+  const { data } = await admin.auth.admin.getUserById(coachUserId)
+  return data?.user?.email ?? null
+}
+
 type NotifySessionSharedArgs = {
   supabase: SupabaseClient
   req: Request
@@ -131,16 +149,12 @@ export async function notifySessionShared({
   summary,
 }: NotifySessionSharedArgs): Promise<void> {
   try {
-    const [{ data: athlete }, { data: coachProfile }] = await Promise.all([
-      supabase.from('athletes').select('email, first_name').eq('id', athleteId).maybeSingle(),
-      supabase.from('profiles').select('first_name, last_name').eq('id', coachUserId).maybeSingle(),
+    const [{ data: athlete }, coachName] = await Promise.all([
+      supabase.from('athletes').select('email').eq('id', athleteId).maybeSingle(),
+      getCoachName(supabase, coachUserId),
     ])
 
     if (!athlete?.email) return // no address on file (e.g. athlete not invited yet) — nothing to send
-
-    const coachName = coachProfile?.first_name && coachProfile?.last_name
-      ? `${coachProfile.first_name} ${coachProfile.last_name}`
-      : 'Your coach'
 
     const title = sessionTitle?.trim() || 'a coaching session'
     const appUrl = getAppBaseUrl(req)
@@ -164,5 +178,153 @@ ${summary ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 1
     })
   } catch {
     // Never let a notification failure break the session-save/share request.
+  }
+}
+
+type NotifyNewMessageArgs = {
+  supabase: SupabaseClient
+  req: Request
+  messageId: string
+  athleteId: string
+  coachUserId: string
+  senderRole: 'coach' | 'athlete'
+  content: string | null | undefined
+}
+
+/**
+ * Emails whichever side of a coach<>athlete conversation didn't just send a
+ * message. Debounced per-thread: if the recipient already has an earlier
+ * unread message from the same sender, this no-ops — otherwise sending a
+ * burst of messages would fire a burst of emails. One email per "new unread
+ * backlog", not one per message.
+ */
+export async function notifyNewMessage({
+  supabase,
+  req,
+  messageId,
+  athleteId,
+  coachUserId,
+  senderRole,
+  content,
+}: NotifyNewMessageArgs): Promise<void> {
+  try {
+    const { count } = await supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('athlete_id', athleteId)
+      .eq('sender_role', senderRole)
+      .is('read_at', null)
+      .neq('id', messageId)
+    if ((count ?? 0) > 0) return // recipient already has an un-notified backlog from this sender
+
+    const appUrl = getAppBaseUrl(req)
+    const preview = content?.trim() ? content.trim().slice(0, 200) : '📎 Sent an attachment'
+
+    if (senderRole === 'coach') {
+      const [{ data: athlete }, coachName] = await Promise.all([
+        supabase.from('athletes').select('email').eq('id', athleteId).maybeSingle(),
+        getCoachName(supabase, coachUserId),
+      ])
+      if (!athlete?.email) return
+
+      const html = renderBrandedEmail({
+        heading: 'New message from your coach',
+        bodyHtml: `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px;font-style:italic">&ldquo;${preview}${content && content.length > 200 ? '…' : ''}&rdquo;</p>`,
+        ctaText: 'Reply',
+        ctaHref: `${appUrl}/athlete`,
+      })
+      await sendEmail({
+        to: athlete.email,
+        subject: `New message from ${coachName}`,
+        html,
+        fromName: `${coachName} via CoachVoice`,
+      })
+    } else {
+      const [{ data: athlete }, coachEmail] = await Promise.all([
+        supabase.from('athletes').select('first_name, last_name').eq('id', athleteId).maybeSingle(),
+        getCoachEmail(coachUserId),
+      ])
+      if (!coachEmail) return
+
+      const athleteName = athlete ? `${athlete.first_name} ${athlete.last_name}`.trim() : 'Your athlete'
+      const html = renderBrandedEmail({
+        heading: `New message from ${athleteName}`,
+        bodyHtml: `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px;font-style:italic">&ldquo;${preview}${content && content.length > 200 ? '…' : ''}&rdquo;</p>`,
+        ctaText: 'Reply',
+        ctaHref: `${appUrl}/dashboard`,
+      })
+      await sendEmail({
+        to: coachEmail,
+        subject: `New message from ${athleteName}`,
+        html,
+      })
+    }
+  } catch {
+    // Never let a notification failure break the message-send request.
+  }
+}
+
+type NotifyCalendarEventArgs = {
+  supabase: SupabaseClient
+  req: Request
+  athleteId: string
+  coachUserId: string
+  eventTitle: string
+  eventType: string
+  eventDate: string
+  description?: string | null
+}
+
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  session: 'session',
+  homework: 'homework assignment',
+  goal: 'goal',
+  reminder: 'reminder',
+  other: 'calendar event',
+}
+
+/**
+ * Emails the athlete when a coach adds something to their calendar (via the
+ * general calendar UI — session-recording has its own path, see
+ * notifySessionShared). Same "something happened, athlete has no way to
+ * know" gap as unshared sessions used to have.
+ */
+export async function notifyCalendarEventCreated({
+  supabase,
+  req,
+  athleteId,
+  coachUserId,
+  eventTitle,
+  eventType,
+  eventDate,
+  description,
+}: NotifyCalendarEventArgs): Promise<void> {
+  try {
+    const [{ data: athlete }, coachName] = await Promise.all([
+      supabase.from('athletes').select('email').eq('id', athleteId).maybeSingle(),
+      getCoachName(supabase, coachUserId),
+    ])
+    if (!athlete?.email) return
+
+    const typeLabel = EVENT_TYPE_LABELS[eventType] ?? 'calendar event'
+    const appUrl = getAppBaseUrl(req)
+
+    const html = renderBrandedEmail({
+      heading: `New ${typeLabel} on your calendar`,
+      bodyHtml: `
+<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px"><strong>${coachName}</strong> added <strong>${eventTitle}</strong> to your calendar for ${eventDate}.</p>
+${description ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px">${description}</p>` : ''}`,
+      ctaText: 'View calendar',
+      ctaHref: `${appUrl}/athlete`,
+    })
+
+    await sendEmail({
+      to: athlete.email,
+      subject: `${coachName} added ${eventTitle} to your calendar`,
+      html,
+      fromName: `${coachName} via CoachVoice`,
+    })
+  } catch {
+    // Never let a notification failure break the calendar-event request.
   }
 }

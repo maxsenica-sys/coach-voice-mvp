@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { notifyCalendarEventCreated } from '@/lib/notify'
 
 type CookieToSet = { name: string; value: string; options?: any }
 
@@ -212,6 +213,18 @@ export async function POST(req: NextRequest) {
 
     const { error } = await admin.from('calendar_events').insert(rows)
     if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
+
+    await Promise.all(athleteIds.map((aid: string) => notifyCalendarEventCreated({
+      supabase: admin,
+      req,
+      athleteId: aid,
+      coachUserId: user.id,
+      eventTitle: title.trim(),
+      eventType: safeType,
+      eventDate: event_date,
+      description: description?.trim() ?? null,
+    })))
+
     return attach(NextResponse.json({ ok: true, count: athleteIds.length }, { status: 201 }), cookiesToSet)
   }
 
@@ -231,6 +244,20 @@ export async function POST(req: NextRequest) {
   }).select('id, athlete_id, created_by_role, title, description, event_type, event_date, event_time, created_at').single()
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
+
+  if (data?.id) {
+    await notifyCalendarEventCreated({
+      supabase: admin,
+      req,
+      athleteId: athlete_id,
+      coachUserId: user.id,
+      eventTitle: title.trim(),
+      eventType: safeType,
+      eventDate: event_date,
+      description: description?.trim() ?? null,
+    })
+  }
+
   return attach(NextResponse.json({ event: data }, { status: 201 }), cookiesToSet)
 }
 

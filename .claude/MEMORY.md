@@ -6,6 +6,65 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-08-28 (same day, one more still) — Message + calendar-event notifications
+
+Pushed directly to `main`. Follow-up to "do it, and any other notifications
+you feel are necessary" — extended `lib/notify.ts` (built earlier today for
+`notifySessionShared`) with two more, deliberately choosing only the ones
+that match the exact same gap pattern (something happens in-app, the other
+person has no way to find out except opening the app):
+
+- **`notifyNewMessage()`** — wired into `app/api/messages/route.ts` POST.
+  Emails whichever side (coach or athlete) didn't send the message.
+  - Coach → athlete: straightforward, same as `notifySessionShared` (email
+    from `athletes.email`).
+  - Athlete → coach: harder — `profiles` has **no email column**, coach
+    email only exists on `auth.users`. Added `getCoachEmail()` in
+    `lib/notify.ts`, using the service-role admin client
+    (`admin.auth.admin.getUserById`) since the caller here is the athlete's
+    RLS-scoped client, which can't read another user's `auth.users` row.
+  - **Debounced per-thread**, not per-message: before sending, checks
+    whether the recipient already has an earlier *unread* message from the
+    same sender in that conversation (`messages` table, `read_at IS NULL`,
+    excluding the message just inserted) — if so, skips. So a burst of 5
+    messages sends 1 email, not 5. No new schema/column needed for this,
+    just a query against existing `read_at`.
+- **`notifyCalendarEventCreated()`** — wired into `app/api/calendar/route.ts`
+  POST, both the single-athlete and group-event branches (one email per
+  member for group events). Deliberately scoped to **coach-created events
+  for an athlete only** — not the athlete's own personal-event branch (no
+  point self-notifying), and not `mode=personal` (coach's own calendar).
+  Covers `homework`/`goal`/`reminder`/`other` event types too, not just
+  `session` — closes the same "shows on calendar, athlete never told" gap
+  the original session-feedback bug had, just for the other event types.
+  No overlap with `notifySessionShared`: this route is a separate,
+  general-purpose calendar CRUD endpoint the session-recording flow doesn't
+  use (that flow inserts `calendar_events` directly via
+  `syncSessionCalendarEvent`).
+
+**Refactored while there:** `notifySessionShared` now uses a shared
+`getCoachName()` helper instead of inlining the same profiles lookup a
+third time — same de-dup instinct as the rest of today's work.
+
+**Deliberately NOT added** (survey done, judged not worth it right now):
+- Wellness check-in submissions — pull/dashboard pattern for the coach, not
+  an urgent push; and there's no obvious "coach must act now" moment.
+- RSVP status changes on calendar events — minor, low-value.
+- Video-share toggle (`session_videos.shared_with_athlete`) — real gap,
+  same shape as everything above, but scoped out for today; same
+  `notifyX()` pattern would apply if it's wanted later.
+- Caretaker/parent notifications — schema already has
+  `athlete_caretakers.notify_session_reports` /
+  `notify_monthly_reports` flags, but nothing in the app actually sends to
+  caretakers yet (checked: only read/written by the caretakers CRUD route
+  and a settings toggle). Different persona, different (digest-shaped, not
+  event-shaped) problem — left alone rather than half-building it.
+
+**Verified:** `npx tsc --noEmit` clean, full `npm run build` clean (33
+routes) with placeholder env vars, same method as before.
+
+---
+
 ## 2026-08-28 (same day, one more) — Email notification when a coach shares a session
 
 Pushed directly to `main` (per user's call earlier this session — no more

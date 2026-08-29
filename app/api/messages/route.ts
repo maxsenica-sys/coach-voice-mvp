@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { notifyNewMessage } from '@/lib/notify'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: { name: string; value: string; options?: any }[] = []
@@ -75,6 +76,18 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (data?.id) {
+    await notifyNewMessage({
+      supabase,
+      req,
+      messageId: data.id,
+      athleteId: athlete_id,
+      coachUserId: coachId,
+      senderRole,
+      content,
+    })
+  }
 
   const res = NextResponse.json({ message: data }, { status: 201 })
   cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
