@@ -1,21 +1,11 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { WELLNESS_METRICS, metricColor, scoreLabel, type MetricKey } from '@/lib/wellness-config'
+import {
+  WELLNESS_METRICS, metricColor, scoreLabel, overallWellnessScore, overallScoreColor,
+  type MetricKey, type WellnessCheckin as Checkin,
+} from '@/lib/wellness-config'
 import { fmtShortDate as fmtDate } from '@/lib/date-utils'
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-interface Checkin {
-  id: string
-  athlete_id: string
-  check_date: string
-  energy: number | null
-  mood: number | null
-  sleep_q: number | null
-  soreness: number | null
-  stress: number | null
-  notes: string | null
-}
 
 interface Props {
   athleteId: string
@@ -144,25 +134,10 @@ export default function WellnessGraph({ athleteId }: Props) {
     })
   }
 
-  // Overall wellness score (average of non-inverted normalised values)
-  const wellnessScore = (c: Checkin | null) => {
-    if (!c) return null
-    const vals = METRICS.map(({ key, inverted }) => {
-      const raw = c[key as keyof Checkin] as number | null
-      if (raw === null) return null
-      return inverted ? 6 - raw : raw
-    }).filter((v): v is number => v !== null)
-    if (vals.length === 0) return null
-    return +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)
-  }
-
   if (!athleteId) return null
 
-  const overallScore = wellnessScore(latest)
-  const overallColor = overallScore === null ? '#94a3b8'
-    : overallScore >= 3.5 ? '#10b981'
-    : overallScore >= 2.5 ? '#f59e0b'
-    : '#ef4444'
+  const overallScore = overallWellnessScore(latest)
+  const overallColor = overallScoreColor(overallScore)
 
   return (
     <div className="card" style={{ padding: 18 }}>

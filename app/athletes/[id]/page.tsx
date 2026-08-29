@@ -9,6 +9,10 @@ import SportWheelPicker from '@/app/components/SportWheelPicker'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import WellnessGraph from '@/app/components/WellnessGraph'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
+import {
+  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor,
+  type WellnessCheckin,
+} from '@/lib/wellness-config'
 
 interface Athlete {
   id: string; first_name: string; last_name: string
@@ -287,6 +291,26 @@ export default function AthleteDetailPage() {
   }
 
   useEffect(() => { void load() }, [athleteId])
+
+  // ── Wellness at-a-glance (Overview card + header chip) ───────────
+  // Self-contained, same pattern as WellnessGraph's own fetch: a failure
+  // here shouldn't block the rest of the profile from loading.
+  const [wellnessLatest, setWellnessLatest] = useState<WellnessCheckin | null>(null)
+  useEffect(() => {
+    if (!athleteId) return
+    let cancelled = false
+    fetch(`/api/wellness?athlete_id=${encodeURIComponent(athleteId)}&days=14`)
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('Failed to load wellness'))))
+      .then(json => {
+        if (cancelled) return
+        const list: WellnessCheckin[] = json.checkins ?? []
+        setWellnessLatest(list[list.length - 1] ?? null)
+      })
+      .catch(() => { if (!cancelled) setWellnessLatest(null) })
+    return () => { cancelled = true }
+  }, [athleteId])
+  const wellnessScore = overallWellnessScore(wellnessLatest)
+  const wellnessColor = overallScoreColor(wellnessScore)
   useEffect(() => () => { cleanupAll() }, [])
 
   const cleanupAll = () => {
@@ -643,6 +667,20 @@ export default function AthleteDetailPage() {
                   {!isMobile && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: -1 }}>{athlete.email}</div>}
                 </div>
                 {athlete.status && <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 10, flexShrink: 0 }}>{athlete.status}</span>}
+                {wellnessScore !== null && (
+                  <button
+                    onClick={() => setActiveTab('wellness')}
+                    title={`Latest wellness score: ${wellnessScore}/5`}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+                      background: wellnessColor + '18', border: `1px solid ${wellnessColor}40`,
+                      borderRadius: 99, padding: '2px 8px 2px 6px', cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
+                  </button>
+                )}
               </div>
               {/* Record Session CTA */}
               <button
@@ -713,6 +751,52 @@ export default function AthleteDetailPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Wellness at-a-glance */}
+            <div className="card" style={{ padding: 16, cursor: 'pointer' }} onClick={() => setActiveTab('wellness')}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: wellnessLatest ? 12 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>💚</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>Wellness</div>
+                    {wellnessLatest && (
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        Last check-in: {new Date(wellnessLatest.check_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {wellnessScore !== null && (
+                    <div style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center',
+                      background: wellnessColor + '15', borderRadius: 8, padding: '3px 9px',
+                    }}>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: wellnessColor, lineHeight: 1 }}>{wellnessScore}</span>
+                      <span style={{ fontSize: 8, color: wellnessColor, fontWeight: 700 }}>/ 5</span>
+                    </div>
+                  )}
+                  <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>Details →</span>
+                </div>
+              </div>
+
+              {wellnessLatest ? (
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                  {WELLNESS_METRICS.map(({ key, label, icon }) => {
+                    const score = wellnessLatest[key]
+                    return (
+                      <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: 12 }}>{icon}</span>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: metricColor(key, score), flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{label} {score ?? '—'}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No check-ins yet — the athlete hasn&rsquo;t submitted one from their portal.</div>
+              )}
             </div>
 
             {/* Quick stats */}

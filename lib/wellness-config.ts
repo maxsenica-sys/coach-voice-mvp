@@ -59,3 +59,37 @@ export function scoreLabel(key: MetricKey, score: number | null): string {
   if (val >= 3) return 'OK'
   return 'Low'
 }
+
+// Shape returned by GET /api/wellness — shared so every consumer (the graph,
+// the athlete-profile at-a-glance summary) reads the same fields.
+export interface WellnessCheckin {
+  id: string
+  athlete_id: string
+  check_date: string
+  energy: number | null
+  mood: number | null
+  sleep_q: number | null
+  soreness: number | null
+  stress: number | null
+  notes: string | null
+}
+
+/** Average of each metric's normalised (inverted metrics flipped) 1-5 value. */
+export function overallWellnessScore(checkin: WellnessCheckin | null): number | null {
+  if (!checkin) return null
+  const vals = WELLNESS_METRICS.map(({ key, inverted }) => {
+    const raw = checkin[key]
+    if (raw === null) return null
+    return inverted ? 6 - raw : raw
+  }).filter((v): v is number => v !== null)
+  if (vals.length === 0) return null
+  return +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)
+}
+
+/** Same green/amber/red thresholds used everywhere an overall score is shown. */
+export function overallScoreColor(score: number | null): string {
+  if (score === null) return '#94a3b8'
+  if (score >= 3.5) return '#10b981'
+  if (score >= 2.5) return '#f59e0b'
+  return '#ef4444'
+}

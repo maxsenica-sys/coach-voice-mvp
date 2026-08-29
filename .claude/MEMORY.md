@@ -6,6 +6,51 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-08-28 (same day, one more still) — Wellness scores at-a-glance on the athlete profile
+
+Pushed directly to `main`. Request: surface wellness check-in scores on the
+athlete profile for a coach to read at a glance, with the existing Wellness
+tab (`WellnessGraph`) staying as the detailed view.
+
+**Shared logic extracted to `lib/wellness-config.ts`** (previously only had
+metric definitions): added `WellnessCheckin` type, `overallWellnessScore()`,
+and `overallScoreColor()` — pulled out of `WellnessGraph.tsx`'s local
+`wellnessScore()` function so the new at-a-glance UI computes the identical
+overall score the same way the detail view does, not a second formula that
+could drift. `WellnessGraph.tsx` now imports these instead of defining its
+own copy.
+
+**Two new UI surfaces in `app/athletes/[id]/page.tsx`** (Overview tab is
+what a coach lands on first when opening an athlete):
+- A small colored score chip in the **sticky header**, next to the
+  ACTIVE/INVITED status badge — visible from every tab, not just Overview.
+  Click jumps straight to the Wellness tab.
+- A **Wellness at-a-glance card** on the Overview tab, right after the hero
+  card and before the existing Sessions/Last-session/Shared stat tiles:
+  overall score bubble + last check-in date in the header row, then one
+  colored dot + number per metric (energy/mood/sleep/soreness/stress) in a
+  single compact row — no chart, no scrolling, matches what `WellnessGraph`
+  already colors each metric so the quick view and detail view never
+  disagree on "is this good or bad." Whole card is clickable through to the
+  Wellness tab. Empty state ("No check-ins yet") handled, not left blank.
+
+**Data fetch:** new self-contained `useEffect` (mirrors how `WellnessGraph`
+already fetches independently) hitting `GET /api/wellness?athlete_id=...&days=14`,
+kept deliberately separate from the page's main `load()` function — a
+wellness-fetch failure degrades to an empty state instead of blocking the
+rest of the athlete profile from rendering (checked `res.ok` before parsing,
+per the CLAUDE.md fetch-error-handling rule).
+
+**Verified:** `npx tsc --noEmit` clean, full `npm run build` clean (33
+routes) with placeholder env vars. **Not visually verified in a browser** —
+this session has no browser/Chrome automation tool and no real login
+credentials for the live app, only Supabase MCP (DB) access. If something
+looks visually off (spacing, wrapping, dark mode, etc.), that's the part
+that wasn't actually seen rendered — logic and types were the only things
+checked.
+
+---
+
 ## 2026-08-28 (same day, one more still) — Message + calendar-event notifications
 
 Pushed directly to `main`. Follow-up to "do it, and any other notifications
