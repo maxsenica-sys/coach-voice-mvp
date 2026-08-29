@@ -1248,6 +1248,8 @@ function DashboardPageInner() {
                     const status = (a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')).toUpperCase()
                     const last = allSessions.find(s => s.athlete_id === a.id)
                     const count = allSessions.filter(s => s.athlete_id === a.id).length
+                    const wellnessScore = overallWellnessScore(wellnessByAthlete.get(a.id) ?? null)
+                    const wellnessColor = overallScoreColor(wellnessScore)
                     return (
                       <div key={a.id} className="card" style={{ padding: 16 }}>
                         <div style={{ display: 'flex', gap: 12 }}>
@@ -1256,6 +1258,12 @@ function DashboardPageInner() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                               <Link href={`/athletes/${a.id}`} style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', textDecoration: 'none' }}>{a.first_name} {a.last_name}</Link>
                               <span className={`badge ${status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 10 }}>{status}</span>
+                              {wellnessScore !== null && (
+                                <span title={`Wellness ${wellnessScore}/5`} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
+                                  <span style={{ fontSize: 11, fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
+                                </span>
+                              )}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{a.email}</div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
