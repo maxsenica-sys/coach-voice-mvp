@@ -31,6 +31,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   const [groupId, setGroupId] = useState(defaultGroupId ?? groups[0]?.id ?? '')
   const [sessionName, setSessionName] = useState('')
   const [transcript, setTranscript] = useState('')
+  const [rawTranscript, setRawTranscript] = useState<string | null>(null)
   const [audioPath, setAudioPath] = useState<string | null>(null)
   const [audioMime, setAudioMime] = useState<string | null>(null)
   const [shareWithAthlete, setShareWithAthlete] = useState(false)
@@ -152,7 +153,13 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         }
         throw new Error(json.error ?? `Transcription failed (${res.status}). You can type the transcript below.`)
       }
-      if (json.text) setTranscript(json.text)
+      if (json.text) {
+        // Pre-fill the review textarea with the grammar-cleaned version (same
+        // Whisper call, see /api/transcribe) so there's less to hand-fix; the
+        // untouched raw transcript still travels with the session on save.
+        setTranscript(json.textEnhanced || json.text)
+        setRawTranscript(json.text)
+      }
 
       // The recording is already in storage — keep the path on the session so a
       // mis-heard transcript can be replayed later.
@@ -183,6 +190,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
             athlete_id: athleteId,
             session_name: sessionName.trim() || null,
             transcript: transcript.trim(),
+            transcript_raw: rawTranscript,
             shared_with_athlete: shareWithAthlete,
             session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
             sport_context: coachSport || null,
@@ -205,6 +213,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 athlete_id: aid,
                 session_name: sessionName.trim() ? `[${group.name}] ${sessionName.trim()}` : `[${group.name}] Session`,
                 transcript: transcript.trim(),
+                transcript_raw: rawTranscript,
                 shared_with_athlete: shareWithAthlete,
                 session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
                 sport_context: coachSport || null,
@@ -394,7 +403,10 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <label className="label" style={{ margin: 0 }}>Transcript</label>
+                <label className="label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  Transcript
+                  {rawTranscript && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)', textTransform: 'none', letterSpacing: 0 }}>✨ auto-cleaned</span>}
+                </label>
                 <button
                   className="btn btn-ghost"
                   style={{ fontSize: 12, padding: '4px 10px' }}
@@ -404,6 +416,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                     streamRef.current = null
                     setStep('record')
                     setTranscript('')
+                    setRawTranscript(null)
                     setAudioPath(null)
                     setAudioMime(null)
                   }}

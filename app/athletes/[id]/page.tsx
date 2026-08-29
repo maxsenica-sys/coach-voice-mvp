@@ -200,6 +200,7 @@ export default function AthleteDetailPage() {
   const [sessionName, setSessionName] = useState('')
   const [share, setShare] = useState(true)
   const [transcript, setTranscript] = useState('')
+  const [rawTranscript, setRawTranscript] = useState<string | null>(null)
   const [summary, setSummary] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedSessionId, setSavedSessionId] = useState<string | null>(null)
@@ -249,7 +250,7 @@ export default function AthleteDetailPage() {
   const [customVal, setCustomVal] = useState('')
 
   // ── Tab navigation + Quick Session ───────────────────────────
-  type AthleteTab = 'overview' | 'sessions' | 'wellness' | 'calendar' | 'profile' | 'notes'
+  type AthleteTab = 'overview' | 'sessions' | 'wellness' | 'calendar' | 'profile' | 'notes' | 'plans'
   const [activeTab, setActiveTab] = useState<AthleteTab>('overview')
   const [showQuickSession, setShowQuickSession] = useState(false)
   const [sessionsShowAll, setSessionsShowAll] = useState(false)
@@ -261,6 +262,14 @@ export default function AthleteDetailPage() {
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteMsg, setNoteMsg] = useState('')
   const [notesLoaded, setNotesLoaded] = useState(false)
+
+  // ── Training plans ────────────────────────────────────────────
+  const [plans, setPlans] = useState<any[]>([])
+  const [plansLoaded, setPlansLoaded] = useState(false)
+  const [planTitle, setPlanTitle] = useState('')
+  const [planFile, setPlanFile] = useState<File | null>(null)
+  const [planUploading, setPlanUploading] = useState(false)
+  const [planMsg, setPlanMsg] = useState('')
 
   const load = async () => {
     if (!athleteId) return
@@ -374,7 +383,7 @@ export default function AthleteDetailPage() {
   const startRecording = async () => {
     setPageError(null)
     if (audioUrl) URL.revokeObjectURL(audioUrl)
-    setAudioBlob(null); setAudioUrl(null); setAudioPath(null); setAudioMime(null); setTranscript(''); setSummary(''); chunksRef.current = []; setSavedSessionId(null)
+    setAudioBlob(null); setAudioUrl(null); setAudioPath(null); setAudioMime(null); setTranscript(''); setRawTranscript(null); setSummary(''); chunksRef.current = []; setSavedSessionId(null)
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(e => { setPageError(e?.message ?? 'Microphone access denied'); return null })
     if (!stream) return
     streamRef.current = stream; await startMeter(stream)
@@ -429,13 +438,19 @@ export default function AthleteDetailPage() {
       setRecordState('idle'); return
     }
     if (uploadedPath) { setAudioPath(uploadedPath); setAudioMime(mime) }
-    const json = await res.json(); setTranscript((json.text ?? '').trim()); setRecordState('ready')
+    const json = await res.json()
+    // Same Whisper call cleans up grammar/punctuation server-side (see
+    // /api/transcribe) — pre-fill the editable transcript with that version,
+    // keep the untouched raw text alongside it for the record.
+    setTranscript(((json.textEnhanced || json.text) ?? '').trim())
+    setRawTranscript(typeof json.text === 'string' ? json.text : null)
+    setRecordState('ready')
   }
 
   const clearRecording = () => {
     if (recordState === 'recording') { mediaRecRef.current?.stop(); cleanupAll() }
     if (audioUrl) URL.revokeObjectURL(audioUrl)
-    setAudioBlob(null); setAudioUrl(null); setTranscript(''); setSummary(''); setRecordState('idle'); setSavedSessionId(null)
+    setAudioBlob(null); setAudioUrl(null); setTranscript(''); setRawTranscript(null); setSummary(''); setRecordState('idle'); setSavedSessionId(null)
   }
 
   const saveSession = async () => {
@@ -446,7 +461,7 @@ export default function AthleteDetailPage() {
       // rather than uploading the same blob a second time through Vercel.
       const audio_path = audioPath
       const audio_mime = audioMime
-      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, session_name: sessionName.trim() || null, transcript: transcript.trim(), shared_with_athlete: share, sport_context: coachSport || null, session_date: new Intl.DateTimeFormat('en-CA').format(new Date()), audio_path, audio_mime }) })
+      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, session_name: sessionName.trim() || null, transcript: transcript.trim(), transcript_raw: rawTranscript, shared_with_athlete: share, sport_context: coachSport || null, session_date: new Intl.DateTimeFormat('en-CA').format(new Date()), audio_path, audio_mime }) })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to save')
       const { session } = await res.json()
       setSavedSessionId(session.id); setSummary(session.summary ?? ''); setSessionName(''); setShare(true)
@@ -610,6 +625,60 @@ export default function AthleteDetailPage() {
     finally { setNoteSaving(false) }
   }
 
+  const loadPlans = async () => {
+    if (plansLoaded) return
+    try {
+      const res = await fetch(`/api/training-plans?athlete_id=${encodeURIComponent(athleteId)}`)
+      if (!res.ok) return
+      const json = await res.json()
+      setPlans(json.plans ?? [])
+      setPlansLoaded(true)
+    } catch {}
+  }
+
+  const uploadPlan = async () => {
+    if (!planFile) return
+    setPlanUploading(true); setPlanMsg('')
+    try {
+      const urlRes = await fetch('/api/training-plans/upload-url', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete_id: athleteId, file_name: planFile.name }),
+      })
+      if (!urlRes.ok) throw new Error((await urlRes.json().catch(() => ({}))).error ?? 'Failed to get upload URL')
+      const { uploadUrl, storagePath } = await urlRes.json()
+
+      const uploadRes = await fetch(uploadUrl, { method: 'PUT', body: planFile, headers: { 'Content-Type': planFile.type || 'application/octet-stream' } })
+      if (!uploadRes.ok) throw new Error('Upload failed')
+
+      const registerRes = await fetch('/api/training-plans', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          athlete_id: athleteId,
+          storage_path: storagePath,
+          title: planTitle.trim() || planFile.name,
+          file_name: planFile.name,
+          mime_type: planFile.type || null,
+          file_size: planFile.size,
+        }),
+      })
+      if (!registerRes.ok) throw new Error((await registerRes.json().catch(() => ({}))).error ?? 'Failed to save plan')
+      const json = await registerRes.json()
+      setPlans(prev => [json.plan, ...prev])
+      setPlanTitle(''); setPlanFile(null); setPlanMsg('Plan uploaded!')
+      setTimeout(() => setPlanMsg(''), 3000)
+    } catch (e: any) { setPlanMsg(e?.message ?? 'Upload failed') }
+    finally { setPlanUploading(false) }
+  }
+
+  const deletePlan = async (id: string) => {
+    if (!confirm('Delete this training plan?')) return
+    try {
+      const res = await fetch(`/api/training-plans?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Delete failed')
+      setPlans(prev => prev.filter(p => p.id !== id))
+    } catch (e: any) { setPlanMsg(e?.message ?? 'Delete failed') }
+  }
+
   const uploadPhoto = async (file: File) => {
     setPhotoUploading(true)
     try {
@@ -661,6 +730,7 @@ export default function AthleteDetailPage() {
     { key: 'calendar',  label: 'Calendar' },
     { key: 'profile',   label: 'Profile' },
     { key: 'notes',     label: 'Notes' },
+    { key: 'plans',     label: `Plans${plans.length > 0 ? ` (${plans.length})` : ''}` },
   ]
 
   return (
@@ -735,6 +805,7 @@ export default function AthleteDetailPage() {
                 onClick={() => {
                   setActiveTab(tab.key)
                   if (tab.key === 'notes') void loadNotes()
+                  if (tab.key === 'plans') void loadPlans()
                 }}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer',
@@ -1256,6 +1327,70 @@ export default function AthleteDetailPage() {
                       )}
                     </div>
                     <div style={{ fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>{n.summary}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'plans' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Upload form */}
+            <div className="card" style={{ padding: isMobile ? 16 : 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Upload Training Plan</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                Any file from your phone or computer — PDF, photo, Word/Excel doc. The athlete can view and download it.
+              </div>
+              <input
+                className="input"
+                placeholder="Plan name (e.g. Week 12 Strength Block)"
+                value={planTitle}
+                onChange={e => setPlanTitle(e.target.value)}
+                style={{ marginBottom: 10 }}
+              />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <input
+                  type="file"
+                  onChange={e => setPlanFile(e.target.files?.[0] ?? null)}
+                  style={{ fontSize: 13, maxWidth: '100%' }}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {planMsg && <span style={{ fontSize: 13, fontWeight: 600, color: planMsg.includes('uploaded') ? 'var(--success)' : 'var(--danger)' }}>{planMsg}</span>}
+                  <button className="btn btn-coach" onClick={uploadPlan} disabled={planUploading || !planFile}>
+                    {planUploading ? 'Uploading…' : 'Upload'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Plans list */}
+            {plans.length === 0 ? (
+              <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
+                No training plans yet. Upload one above.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {plans.map((plan: any) => (
+                  <div key={plan.id} className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Icon name="pdf" size={17} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{plan.title}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        {plan.created_at ? new Date(plan.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : '—'}
+                        {plan.file_name ? ` · ${plan.file_name}` : ''}
+                      </div>
+                    </div>
+                    {plan.signedUrl && (
+                      <a href={plan.signedUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 12px', flexShrink: 0 }}>
+                        View
+                      </a>
+                    )}
+                    <button onClick={() => deletePlan(plan.id)} className="btn btn-danger" style={{ fontSize: 12, padding: '7px 10px', flexShrink: 0 }}>
+                      <Icon name="trash" size={13} />
+                    </button>
                   </div>
                 ))}
               </div>

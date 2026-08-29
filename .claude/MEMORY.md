@@ -1,5 +1,16 @@
 # Memory Bank — CoachVoice
 
+## Deferred idea (not started) — Multi-coach / assistant-coach support
+
+Raised 2026-08-29 during a "what's missing" brainstorm. Current data model is
+single-coach-owns-roster (`athletes.coach_id`, `sessions.coach_id`, etc. all
+point at one `auth.users` row). Clubs with multiple coaches sharing the same
+athletes can't do that today — there's no concept of a coach being invited
+onto another coach's roster, or of an athlete having more than one coach.
+User explicitly said to hold off on this and bank it for future dev — not
+scoped, not started, no schema drafted. Revisit when asked.
+
+
 Running log of work done via Claude Code sessions. Read this file first before
 starting new work to avoid re-investigating things already resolved. Append a
 new dated entry per session/PR — don't rewrite history above.

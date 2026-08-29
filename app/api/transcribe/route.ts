@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSportTerminologyHint } from '@/lib/sports'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { createRouteClient } from '@/lib/supabase-route'
+import { enhanceTranscript } from '@/lib/transcript-enhance'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -84,7 +85,12 @@ export async function POST(req: Request) {
     const json = await r.json()
     const transcriptText = (json?.text ?? '').toString()
 
-    return NextResponse.json({ text: transcriptText, segments: json?.segments ?? [] })
+    // Same call, same process: grammar/punctuation cleanup runs right here so
+    // the caller gets both versions back in one round trip. textEnhanced is
+    // what review UIs should pre-fill; text (raw) is kept for the record.
+    const textEnhanced = await enhanceTranscript(transcriptText)
+
+    return NextResponse.json({ text: transcriptText, textEnhanced, segments: json?.segments ?? [] })
   } catch (e: any) {
     console.error('[transcribe] caught error', e?.message)
     return NextResponse.json({ error: e?.message ?? 'Unknown error in /api/transcribe' }, { status: 500 })

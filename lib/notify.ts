@@ -330,6 +330,52 @@ ${description ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0
   }
 }
 
+type NotifyTrainingPlanSharedArgs = {
+  supabase: SupabaseClient
+  req: Request
+  athleteId: string
+  coachUserId: string
+  planTitle: string
+}
+
+/**
+ * Emails the athlete when a coach uploads a training plan file for them.
+ * Same "something new landed, athlete has no way to know" gap the other
+ * notifyX() functions close — see notifySessionShared for the precedent.
+ */
+export async function notifyTrainingPlanShared({
+  supabase,
+  req,
+  athleteId,
+  coachUserId,
+  planTitle,
+}: NotifyTrainingPlanSharedArgs): Promise<void> {
+  try {
+    const [{ data: athlete }, coachName] = await Promise.all([
+      supabase.from('athletes').select('email').eq('id', athleteId).maybeSingle(),
+      getCoachName(supabase, coachUserId),
+    ])
+    if (!athlete?.email) return
+
+    const appUrl = getAppBaseUrl(req)
+    const html = renderBrandedEmail({
+      heading: 'New training plan from your coach',
+      bodyHtml: `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px"><strong>${coachName}</strong> uploaded a new plan for you: <strong>${planTitle}</strong>.</p>`,
+      ctaText: 'View plan',
+      ctaHref: `${appUrl}/athlete`,
+    })
+
+    await sendEmail({
+      to: athlete.email,
+      subject: `${coachName} shared a training plan with you`,
+      html,
+      fromName: `${coachName} via CoachVoice`,
+    })
+  } catch {
+    // Never let a notification failure break the plan-upload request.
+  }
+}
+
 const ALERT_REASON_TEXT: Record<WellnessAlertReason, string> = {
   today: "today's check-in score",
   average: 'their recent average score',

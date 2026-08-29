@@ -7,6 +7,7 @@ import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
 import { notifySessionShared } from '@/lib/notify'
+import { enhanceTranscript } from '@/lib/transcript-enhance'
 
 async function transcribeWithOpenAI(file: File) {
   const apiKey = process.env.OPENAI_API_KEY
@@ -127,11 +128,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Storage upload failed: ${uploadRes.error.message}` }, { status: 500 })
       }
 
-      const transcript = await transcribeWithOpenAI(file)
+      const transcriptRaw = await transcribeWithOpenAI(file)
+      // Same call, same process: clean up grammar/punctuation right here,
+      // then summarise the cleaned version (better summary input than raw
+      // speech-to-text). transcriptRaw is kept for the record.
+      const transcript = await enhanceTranscript(transcriptRaw)
       const summary = await summariseTranscript(transcript)
 
       return NextResponse.json({
         transcript,
+        transcript_raw: transcriptRaw,
         summary,
         audio_path: path,
         audio_mime: file.type || 'audio/webm',
@@ -147,8 +153,9 @@ export async function POST(req: Request) {
 
       // summary = short table-friendly
       const summary = String(form.get('summary') ?? '').trim()
-      // transcript = full raw transcript
+      // transcript = full (cleaned) transcript reviewed by the coach
       const transcript = String(form.get('transcript') ?? '').trim() || null
+      const transcript_raw = String(form.get('transcript_raw') ?? '').trim() || null
 
       const audio_path = String(form.get('audio_path') ?? '').trim() || null
       const audio_mime = String(form.get('audio_mime') ?? '').trim() || null
@@ -163,6 +170,7 @@ export async function POST(req: Request) {
           title,
           summary,
           transcript,
+          transcript_raw,
           shared_with_athlete,
           audio_path,
           audio_mime,

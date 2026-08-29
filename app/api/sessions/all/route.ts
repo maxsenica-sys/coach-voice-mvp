@@ -61,8 +61,28 @@ export async function GET(req: NextRequest) {
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 
+  // Notes don't have their own "all" listing UI, so a search term also
+  // checks them here and folds matches into the same response — otherwise
+  // "that note where we talked about her hamstring" is unfindable.
+  let notes: any[] = []
+  if (search) {
+    let notesQuery = supabase
+      .from('notes')
+      .select('id, summary, created_at, athlete_id, athletes!inner(id, first_name, last_name, email)')
+      .eq('coach_id', user.id)
+      .ilike('summary', `%${search}%`)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (athleteId) notesQuery = notesQuery.eq('athlete_id', athleteId)
+
+    const { data: notesData, error: notesError } = await notesQuery
+    if (!notesError) notes = notesData ?? []
+  }
+
   return attach(NextResponse.json({
     sessions: data ?? [],
+    notes,
     hasMore: (data ?? []).length === limit,
     offset,
     limit,

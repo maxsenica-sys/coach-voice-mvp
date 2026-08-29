@@ -341,6 +341,7 @@ function DashboardPageInner() {
   const [athletes, setAthletes] = useState<Athlete[]>([])
   const [loadingAthletes, setLoadingAthletes] = useState(false)
   const [wellnessByAthlete, setWellnessByAthlete] = useState<Map<string, WellnessCheckin>>(new Map())
+  const [noteResults, setNoteResults] = useState<any[]>([])
   const [athleteSearch, setAthleteSearch] = useState('')
   const [athleteFilter, setAthleteFilter] = useState<'all' | 'ACTIVE' | 'INVITED'>('all')
   const [addForm, setAddForm] = useState({ firstName: '', lastName: '', email: '' })
@@ -495,7 +496,11 @@ function DashboardPageInner() {
       if (athleteId) p.set('athlete_id', athleteId)
       const res = await fetch(`/api/sessions/all?${p}`, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
-      if (res.ok) setAllSessions(json.sessions ?? [])
+      if (!res.ok) throw new Error(json.error ?? 'Failed to load sessions')
+      setAllSessions(json.sessions ?? [])
+      setNoteResults(json.notes ?? [])
+    } catch {
+      setAllSessions([]); setNoteResults([])
     } finally { setLoadingSessions(false) }
   }
 
@@ -1248,6 +1253,8 @@ function DashboardPageInner() {
                     const status = (a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')).toUpperCase()
                     const last = allSessions.find(s => s.athlete_id === a.id)
                     const count = allSessions.filter(s => s.athlete_id === a.id).length
+                    const wellnessScore = overallWellnessScore(wellnessByAthlete.get(a.id) ?? null)
+                    const wellnessColor = overallScoreColor(wellnessScore)
                     return (
                       <div key={a.id} className="card" style={{ padding: 16 }}>
                         <div style={{ display: 'flex', gap: 12 }}>
@@ -1256,6 +1263,12 @@ function DashboardPageInner() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                               <Link href={`/athletes/${a.id}`} style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', textDecoration: 'none' }}>{a.first_name} {a.last_name}</Link>
                               <span className={`badge ${status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 10 }}>{status}</span>
+                              {wellnessScore !== null && (
+                                <span title={`Wellness ${wellnessScore}/5`} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
+                                  <span style={{ fontSize: 11, fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
+                                </span>
+                              )}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{a.email}</div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
@@ -1442,6 +1455,36 @@ function DashboardPageInner() {
                     </div>
                   )
               }
+              {!loadingSessions && sessionsSearch && noteResults.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+                    Notes matching &ldquo;{sessionsSearch}&rdquo;
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {noteResults.map((n: any) => {
+                      const a = n.athletes
+                      return (
+                        <div key={n.id} className="card" style={{ padding: '14px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                            <Avatar initials={a ? `${a.first_name[0]}${a.last_name[0]}`.toUpperCase() : '?'} size={38} bg="var(--coach-color)" />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 800, fontSize: 14 }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</span>
+                                <span className="badge" style={{ fontSize: 10 }}>Note</span>
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{new Date(n.created_at).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{n.summary}</div>
+                            </div>
+                            <Link href={`/athletes/${n.athlete_id}`} className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 10px', flexShrink: 0, gap: 4 }}>
+                              Open <Icon name="arrow" size={11} />
+                            </Link>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
