@@ -10,7 +10,9 @@ annotation, printable session and monthly reports, squads, parent/caretaker
 contacts, and email notifications for shared sessions, new messages and new
 calendar events.
 
-Production: <https://coach-voice-mvp.vercel.app>
+Production URL: unconfirmed. `coach-voice-mvp.vercel.app` serves a different,
+older static SPA, not this app — check the Vercel dashboard for the domain
+attached to project `prj_ZOujfp5dcL3UvulOstS4PYjhEmt9`.
 
 ## Stack
 

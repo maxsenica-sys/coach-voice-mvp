@@ -108,6 +108,18 @@ made the sessions table un-auditable from the repo.
   **committed as gitlinks** (mode 160000) under `.claude/worktrees/` — untracked
   and added to `.gitignore`.
 
+**Correction worth carrying forward — the production URL is NOT confirmed.**
+The audit's first draft listed `coach-voice-mvp.vercel.app` as production because
+it returned 200. It is **not this app**: every path there returns the same static
+HTML shell (a Vite SPA titled "CoachVoice - Automated Voice Coaching Assistant",
+`assets/index-*.js`, Inter font) with none of the Next.js response headers. Some
+older build is squatting the obvious domain. This repo's real URL could not be
+determined here — `npx vercel whoami` fails with an expired token, so deployments
+could not be listed. `.vercel/project.json` says project
+`prj_ZOujfp5dcL3UvulOstS4PYjhEmt9` / team `team_KSabyOrw0ZH3QqdGLhAFazL0`.
+**Next session: get the real domain from the Vercel dashboard and record it here.**
+Note the email sender defaults to `reports@coachvoice.app`, a third domain again.
+
 **NOT done, and why:**
 - **Leaked-password protection is still off.** It's an Auth dashboard toggle
   (Authentication → Policies); no Supabase MCP tool exposes it and this session
