@@ -108,22 +108,25 @@ made the sessions table un-auditable from the repo.
   **committed as gitlinks** (mode 160000) under `.claude/worktrees/` — untracked
   and added to `.gitignore`.
 
-**Correction worth carrying forward — the production URL is NOT confirmed.**
-The audit's first draft listed `coach-voice-mvp.vercel.app` as production because
-it returned 200. It is **not this app**: every path there returns the same static
-HTML shell (a Vite SPA titled "CoachVoice - Automated Voice Coaching Assistant",
-`assets/index-*.js`, Inter font) with none of the Next.js response headers. Some
-older build is squatting the obvious domain. This repo's real URL could not be
-determined here — `npx vercel whoami` fails with an expired token, so deployments
-could not be listed. `.vercel/project.json` says project
-`prj_ZOujfp5dcL3UvulOstS4PYjhEmt9` / team `team_KSabyOrw0ZH3QqdGLhAFazL0`.
-**Next session: get the real domain from the Vercel dashboard and record it here.**
-Note the email sender defaults to `reports@coachvoice.app`, a third domain again.
+**Production URL — CONFIRMED 2026-09-03:** <https://coach-voice-mvp-pi.vercel.app>,
+Vercel project `suppstackd/coach-voice-mvp`. Note the `-pi` suffix.
+`coach-voice-mvp.vercel.app` (no suffix) is a **different, older static Vite SPA**
+squatting the obvious name — an earlier audit draft mistook it for this app on the
+strength of a 200. Verified: `X-Nextjs-Prerender` header present, manifest serves
+the new PNG icons, login page renders clean with no console errors.
+Both commits deployed Ready to Production (35s / 40s).
+
+**Preview deployments fail and that is FINE — do not "fix" it.** All Preview builds
+error because the six env vars are Production-scope only. User was asked directly
+and said previews are not needed: the app is in active dev, pushes go straight to
+main, and there are no PRs. Leave the env vars Production-only.
 
 **NOT done, and why:**
-- **Leaked-password protection is still off.** It's an Auth dashboard toggle
-  (Authentication → Policies); no Supabase MCP tool exposes it and this session
-  has no Management API token. **User must click it.**
+- **Leaked-password protection cannot be enabled — the org is on the Supabase
+  free plan.** The HaveIBeenPwned check is a Pro-plan feature, so there is no
+  toggle to click; the advisor will keep flagging it until the project upgrades.
+  Earlier notes said "user must click it" — that was wrong, don't re-raise it as
+  an action item. Org `xjlylreygapvrqxqsizj` (Max Senica), plan `free`.
 - **No test suite added.** CI runs typecheck + build only. Adding a framework is
   its own task; the report's step 4 still stands.
 - **No usage instrumentation** (report step 3). That's a feature build and a
