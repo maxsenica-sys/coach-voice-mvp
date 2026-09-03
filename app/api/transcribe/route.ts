@@ -13,6 +13,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing OPENAI_API_KEY in .env.local' }, { status: 500 })
     }
 
+    // Whisper calls cost money on every request, so the caller must be signed in
+    // before we reach OpenAI at all — not only on the storage-path branch below.
+    // Both recorders (coach sessions and athlete voice notes) post as a logged-in
+    // user, so a plain identity check is enough here.
+    const routeClient = await createRouteClient()
+    const { data: { user } } = await routeClient.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const form = await req.formData()
     const file = form.get('file')
     const sport = String(form.get('sport') ?? '').trim()       // optional sport context
@@ -29,11 +39,6 @@ export async function POST(req: Request) {
       // audio_path is read with the service-role key, so it must be proven to belong
       // to the caller. Without this any signed-in user could name another coach's
       // path and read their recording.
-      const routeClient = await createRouteClient()
-      const { data: { user } } = await routeClient.auth.getUser()
-      if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
       if (!audioPath.startsWith(`coach/${user.id}/`)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }

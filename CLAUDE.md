@@ -48,11 +48,20 @@ devices. The file extension in the filename is how Whisper detects the codec.
 | Route | Purpose |
 |-------|---------|
 | `app/api/transcribe/route.ts` | Whisper-1 transcription (used everywhere) |
-| `app/api/sessions/audio/route.ts` | Full pipeline: upload to storage + transcribe + summarise |
+| `app/api/sessions/audio-upload-url/route.ts` | Signed upload URL — browser sends audio straight to storage |
+| `app/api/sessions/[id]/audio-url/route.ts` | Signed playback URL for a saved recording |
 | `app/api/sessions/route.ts` | Save session with AI summary |
 
 Do NOT change `export const runtime = 'nodejs'` on these routes — removing it
 switches to the Edge runtime which has no FormData file support.
+
+> **Updated 2026-09-03:** `app/api/sessions/audio/route.ts` and
+> `app/api/sessions/audio-upload/route.ts` were deleted. Neither had a caller —
+> the recorders upload via `audio-upload-url` and transcribe via `/api/transcribe`.
+> The deleted `sessions/audio` route also carried a summariser prompt hardcoded to
+> volleyball, which would have applied to every sport had it ever been re-wired.
+> If a new session-save path is added, reuse `lib/session-calendar-sync.ts` and
+> `lib/notify.ts` rather than re-inlining that logic.
 
 ## General rules
 
@@ -70,7 +79,15 @@ Before committing **any** edit, run through this checklist for every file touche
 These are the bug classes that have already caused production issues.
 
 ### 1. fetch() error handling
-Every `fetch()` call that reads a response MUST check `res.ok` before using the data.
+Every `fetch()` call MUST check `res.ok` — including ones whose only job is a
+side effect. `await fetch(url, { method: 'DELETE' })` with no check is the bug
+this rule exists for: a non-2xx response is not an exception, so the UI carries
+on and tells the user it worked.
+
+**Use the helpers in `lib/api-client.ts` instead of raw `fetch` for API calls:**
+`apiMutate(url, init)` for side effects and `apiJson(url, init)` when you need
+the body. Both throw an Error carrying the server's message, so an existing
+catch block surfaces it.
 ```ts
 // ❌ WRONG — non-2xx silently produces empty/undefined data
 const json = await res.json().catch(() => ({}))

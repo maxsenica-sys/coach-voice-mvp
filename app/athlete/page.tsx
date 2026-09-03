@@ -8,6 +8,8 @@ import VideoAnnotator from '@/app/components/VideoAnnotator'
 import WellnessSubmit from '@/app/components/WellnessSubmit'
 import { getDailyQuote } from '@/lib/quotes'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
+import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
+import { apiMutate } from '@/lib/api-client'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -20,6 +22,7 @@ type SessionRow = {
   shared_with_athlete: boolean
   created_at: string | null
   sport_context: string | null
+  audio_path?: string | null
 }
 
 type AthleteNote = {
@@ -83,6 +86,9 @@ export default function AthletePage() {
   const [todayWellness, setTodayWellness] = useState<Record<string, any> | null>(null)
   const [sport, setSport] = useState('')
   const [error, setError] = useState('')
+  // Failures from actions that used to fail silently (RSVP, deletes, annotation
+  // saves). Separate from `error`, which is a fatal load failure for the page.
+  const [actionError, setActionError] = useState('')
 
   // Sessions
   const [sessions, setSessions] = useState<SessionRow[]>([])
@@ -163,7 +169,7 @@ export default function AthletePage() {
         const [{ data: sessData }, notesRes] = await Promise.all([
           athRecord
             ? supabase.from('sessions')
-                .select('id, session_name, title, summary, transcript, shared_with_athlete, created_at, sport_context')
+                .select('id, session_name, title, summary, transcript, shared_with_athlete, created_at, sport_context, audio_path')
                 .eq('athlete_id', athRecord.id)
                 .eq('shared_with_athlete', true)
                 .order('created_at', { ascending: false })
@@ -277,11 +283,16 @@ export default function AthletePage() {
 
   const sendRsvp = async (eventId: string, status: string) => {
     if (!athleteId) return
-    await fetch('/api/rsvp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event_id: eventId, athlete_id: athleteId, status }),
-    })
+    try {
+      await apiMutate('/api/rsvp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: eventId, athlete_id: athleteId, status }),
+      })
+    } catch (e: any) {
+      setActionError(e?.message ?? 'Could not send your reply — your coach did not get it.')
+      return
+    }
     setRsvpMap((prev) => ({ ...prev, [eventId]: status }))
   }
 
@@ -354,7 +365,12 @@ export default function AthletePage() {
   }
 
   const deleteNote = async (id: string) => {
-    await fetch(`/api/athlete-notes?id=${id}`, { method: 'DELETE' })
+    try {
+      await apiMutate(`/api/athlete-notes?id=${id}`, { method: 'DELETE' })
+    } catch (e: any) {
+      setActionError(e?.message ?? 'Could not delete that note')
+      return
+    }
     setNotes((prev) => prev.filter((n) => n.id !== id))
   }
 
@@ -443,7 +459,12 @@ export default function AthletePage() {
   }
 
   const deleteCalEvent = async (id: string) => {
-    await fetch(`/api/calendar?id=${id}`, { method: 'DELETE' })
+    try {
+      await apiMutate(`/api/calendar?id=${id}`, { method: 'DELETE' })
+    } catch (e: any) {
+      setActionError(e?.message ?? 'Could not delete that event')
+      return
+    }
     setCalEvents((prev) => prev.filter((e) => e.id !== id))
   }
 
@@ -538,6 +559,31 @@ export default function AthletePage() {
 
   return (
     <div className="bg-grain" style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+
+      {/* Action failure banner */}
+      {actionError && (
+        <div
+          role="alert"
+          style={{
+            position: 'fixed', left: 12, right: 12, bottom: 78, zIndex: 2000,
+            maxWidth: 520, margin: '0 auto',
+            background: '#B55C3E', color: '#fff',
+            borderRadius: 12, padding: '12px 14px',
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+            boxShadow: '0 6px 24px rgba(0,0,0,0.18)', fontSize: 13, lineHeight: 1.5,
+          }}
+        >
+          <span style={{ flex: 1 }}>{actionError}</span>
+          <button
+            onClick={() => setActionError('')}
+            aria-label="Dismiss"
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <header style={{
         position: 'sticky', top: 0, zIndex: 100,
@@ -847,6 +893,17 @@ export default function AthletePage() {
                       {/* Session body */}
                       {isOpen && (
                         <div style={{ padding: '0 20px 20px', borderTop: '1px solid var(--border)' }}>
+                          {/* Recording from the session */}
+                          {s.audio_path && (
+                            <div style={{ marginTop: 16 }}>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--coach-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--coach-color)', display: 'inline-block' }} />
+                                Recording
+                              </div>
+                              <SessionAudioPlayer sessionId={s.id} />
+                            </div>
+                          )}
+
                           {/* Coach summary */}
                           {s.summary && (
                             <div style={{ marginTop: 16 }}>
@@ -888,11 +945,15 @@ export default function AthletePage() {
                                     videoId={v.id}
                                     onAnnotationsChange={async (strokes) => {
                                       // FIX 3: athletes can now annotate; save via PATCH endpoint
-                                      await fetch(`/api/sessions/${v.session_id}/videos?video_id=${v.id}`, {
-                                        method: 'PATCH',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ annotations: strokes }),
-                                      })
+                                      try {
+                                        await apiMutate(`/api/sessions/${v.session_id}/videos?video_id=${v.id}`, {
+                                          method: 'PATCH',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ annotations: strokes }),
+                                        })
+                                      } catch (e: any) {
+                                        setActionError(e?.message ?? 'Could not save your drawing — it is on screen but not stored.')
+                                      }
                                     }}
                                   />
                                 ))}

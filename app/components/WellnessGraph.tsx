@@ -6,6 +6,7 @@ import {
   type MetricKey, type WellnessCheckin as Checkin,
 } from '@/lib/wellness-config'
 import { fmtShortDate as fmtDate } from '@/lib/date-utils'
+import { apiJson } from '@/lib/api-client'
 
 interface Props {
   athleteId: string
@@ -105,6 +106,7 @@ function ScoreBar({ metricKey, label, icon, color, score, inverted }: { metricKe
 export default function WellnessGraph({ athleteId }: Props) {
   const [checkins, setCheckins] = useState<Checkin[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [showChart, setShowChart] = useState(false)
   const [activeMetrics, setActiveMetrics] = useState<Set<MetricKey>>(
     new Set(['energy', 'mood', 'sleep_q', 'soreness', 'stress'])
@@ -113,10 +115,17 @@ export default function WellnessGraph({ athleteId }: Props) {
   const load = useCallback(async () => {
     if (!athleteId) return
     setLoading(true)
+    setLoadError('')
     try {
-      const res = await fetch(`/api/wellness?athlete_id=${athleteId}&days=30`)
-      const json = await res.json()
+      const json = await apiJson<{ checkins?: Checkin[] }>(
+        `/api/wellness?athlete_id=${athleteId}&days=30`,
+      )
       setCheckins(json.checkins ?? [])
+    } catch (e: any) {
+      // Without this the chart rendered as "no check-ins yet" on a failed
+      // request, which reads as an athlete who never submitted one.
+      setLoadError(e?.message ?? 'Could not load wellness check-ins')
+      setCheckins([])
     } finally {
       setLoading(false)
     }
@@ -177,7 +186,19 @@ export default function WellnessGraph({ athleteId }: Props) {
         <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>Loading…</div>
       )}
 
-      {!loading && checkins.length === 0 && (
+      {!loading && loadError && (
+        <div style={{ textAlign: 'center', fontSize: 13, padding: '12px 0', color: '#B55C3E' }}>
+          {loadError}{' '}
+          <button
+            onClick={() => void load()}
+            style={{ background: 'none', border: 'none', color: 'inherit', textDecoration: 'underline', cursor: 'pointer', font: 'inherit', padding: 0 }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {!loading && !loadError && checkins.length === 0 && (
         <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>
           No check-ins yet. The athlete can submit from their portal.
         </div>

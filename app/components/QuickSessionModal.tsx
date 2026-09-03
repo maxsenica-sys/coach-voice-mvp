@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { apiMutate } from '@/lib/api-client'
 
 interface Athlete {
   id: string
@@ -196,24 +197,44 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         const group = groups.find((g) => g.id === groupId)
         if (!group || group.member_ids.length === 0) { setError('This group has no members.'); setSaving(false); return }
 
-        await Promise.all(
-          group.member_ids.map((aid) =>
-            fetch('/api/sessions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                athlete_id: aid,
-                session_name: sessionName.trim() ? `[${group.name}] ${sessionName.trim()}` : `[${group.name}] Session`,
-                transcript: transcript.trim(),
-                shared_with_athlete: shareWithAthlete,
-                session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
-                sport_context: coachSport || null,
-                audio_path: audioPath,
-                audio_mime: audioMime,
-              }),
-            })
-          )
+        // One session per member. Previously these were fired without checking
+        // any response, so a group save reported success even when every insert
+        // failed. Report partial failure by name instead of swallowing it.
+        const results = await Promise.all(
+          group.member_ids.map(async (aid) => {
+            try {
+              await apiMutate('/api/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  athlete_id: aid,
+                  session_name: sessionName.trim() ? `[${group.name}] ${sessionName.trim()}` : `[${group.name}] Session`,
+                  transcript: transcript.trim(),
+                  shared_with_athlete: shareWithAthlete,
+                  session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
+                  sport_context: coachSport || null,
+                  audio_path: audioPath,
+                  audio_mime: audioMime,
+                }),
+              })
+              return { aid, ok: true }
+            } catch {
+              return { aid, ok: false }
+            }
+          })
         )
+
+        const failed = results.filter((r) => !r.ok)
+        if (failed.length === results.length) {
+          throw new Error('Could not save this session for anyone in the group. Nothing was recorded.')
+        }
+        if (failed.length > 0) {
+          const names = failed
+            .map((r) => athletes.find((a) => a.id === r.aid))
+            .map((a) => (a ? `${a.first_name} ${a.last_name}` : 'an athlete'))
+            .join(', ')
+          throw new Error(`Saved for ${results.length - failed.length} of ${results.length}. Failed for: ${names}.`)
+        }
       }
 
       onSaved()

@@ -9,6 +9,8 @@ import SportWheelPicker from '@/app/components/SportWheelPicker'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import WellnessGraph from '@/app/components/WellnessGraph'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
+import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
+import { apiMutate, apiJson } from '@/lib/api-client'
 import {
   WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor,
   type WellnessCheckin, type WellnessAlert,
@@ -30,7 +32,7 @@ interface Athlete {
 interface Session {
   id: string; session_name: string | null; summary: string | null
   transcript: string | null; shared_with_athlete: boolean
-  created_at: string | null; sport_context?: string | null
+  created_at: string | null; sport_context?: string | null; audio_path?: string | null
 }
 interface SessionVideo {
   id: string; session_id: string; file_name: string | null
@@ -88,9 +90,10 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
   const [loaded, setLoaded] = useState(false)
   useEffect(() => {
     if (loaded) return
-    fetch(`/api/caretakers?athlete_id=${athleteId}`)
-      .then(r => r.json()).then(j => { setCaretakers(j.caretakers ?? []); setLoaded(true) })
-  }, [athleteId, loaded, setCaretakers])
+    apiJson<{ caretakers?: any[] }>(`/api/caretakers?athlete_id=${athleteId}`)
+      .then(j => { setCaretakers(j.caretakers ?? []); setLoaded(true) })
+      .catch((e: any) => { setMsg(e?.message ?? 'Could not load caretakers'); setLoaded(true) })
+  }, [athleteId, loaded, setCaretakers, setMsg])
 
   const save = async () => {
     if (!form.name || !form.email) { setMsg('Name and email required'); return }
@@ -110,7 +113,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
     setEmailSending(true); setEmailMsg('')
     try {
       const html = buildSessionEmailHtml('Example Session', '• Great work on technique today\n• Focus on footwork next session', athleteName, 'Coach', new Date().toLocaleDateString())
-      const res = await fetch('/api/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: email, subject: `Session update for ${athleteName}`, html }) })
+      const res = await fetch('/api/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, to: email, subject: `Session update for ${athleteName}`, html }) })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error)
       setEmailMsg(`Sent to ${name}!`)
@@ -132,7 +135,15 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
               <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11, gap: 4 }} onClick={() => sendTestEmail(c.caretaker_email, c.caretaker_name)} disabled={emailSending}>
                 <Icon name="mail" size={12} /> Send
               </button>
-              <button className="btn btn-danger" style={{ padding: '4px 8px' }} onClick={async () => { await fetch(`/api/caretakers?id=${c.id}`, { method: 'DELETE' }); setCaretakers(caretakers.filter(x => x.id !== c.id)) }}>
+              <button className="btn btn-danger" style={{ padding: '4px 8px' }} onClick={async () => {
+                try {
+                  await apiMutate(`/api/caretakers?id=${c.id}`, { method: 'DELETE' })
+                } catch (e: any) {
+                  setMsg(e?.message ?? 'Could not remove that caretaker')
+                  return
+                }
+                setCaretakers(caretakers.filter(x => x.id !== c.id))
+              }}>
                 <Icon name="x" size={13} />
               </button>
             </div>
@@ -226,6 +237,11 @@ export default function AthleteDetailPage() {
   const [caretakerMsg, setCaretakerMsg] = useState('')
   const [emailSending, setEmailSending] = useState(false)
   const [emailMsg, setEmailMsg] = useState('')
+
+  // Surfaces failures from actions that used to fail silently (share toggles,
+  // deletes, annotation saves). Cleared by the user, not on a timer, so a
+  // failed save can't scroll past unnoticed.
+  const [actionError, setActionError] = useState('')
 
   const [openSessionId, setOpenSessionId] = useState<string | null>(null)
   const [sessionVideos, setSessionVideos] = useState<Record<string, SessionVideo[]>>({})
@@ -456,7 +472,12 @@ export default function AthleteDetailPage() {
   }
 
   const toggleShare = async (sessionId: string, current: boolean) => {
-    await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shared_with_athlete: !current }) })
+    try {
+      await apiMutate(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shared_with_athlete: !current }) })
+    } catch (e: any) {
+      setActionError(e?.message ?? (current ? 'Could not unshare that session' : 'Could not share that session'))
+      return
+    }
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, shared_with_athlete: !current } : s))
   }
 
@@ -541,18 +562,33 @@ export default function AthleteDetailPage() {
   }
 
   const saveAnnotations = async (sessionId: string, videoId: string, annotations: AnnotationStroke[]) => {
-    await fetch(`/api/sessions/${sessionId}/videos?video_id=${videoId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ annotations }) })
+    try {
+      await apiMutate(`/api/sessions/${sessionId}/videos?video_id=${videoId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ annotations }) })
+    } catch (e: any) {
+      setActionError(e?.message ?? 'Could not save your annotations — they are still on screen but not stored.')
+      return
+    }
     setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).map(v => v.id === videoId ? { ...v, annotations } : v) }))
   }
 
   const deleteVideo = async (sessionId: string, videoId: string) => {
     if (!confirm('Delete this video?')) return
-    await fetch(`/api/sessions/${sessionId}/videos?video_id=${videoId}`, { method: 'DELETE' })
+    try {
+      await apiMutate(`/api/sessions/${sessionId}/videos?video_id=${videoId}`, { method: 'DELETE' })
+    } catch (e: any) {
+      setActionError(e?.message ?? 'Could not delete that video')
+      return
+    }
     setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).filter(v => v.id !== videoId) }))
   }
 
   const toggleVideoShare = async (sessionId: string, videoId: string, current: boolean) => {
-    await fetch(`/api/sessions/${sessionId}/videos?video_id=${videoId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shared_with_athlete: !current }) })
+    try {
+      await apiMutate(`/api/sessions/${sessionId}/videos?video_id=${videoId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shared_with_athlete: !current }) })
+    } catch (e: any) {
+      setActionError(e?.message ?? 'Could not change who can see that video')
+      return
+    }
     setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).map(v => v.id === videoId ? { ...v, shared_with_athlete: !current } as any : v) }))
   }
 
@@ -665,6 +701,30 @@ export default function AthleteDetailPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+
+      {/* ── Action failure banner ── */}
+      {actionError && (
+        <div
+          role="alert"
+          style={{
+            position: 'fixed', left: 12, right: 12, bottom: 12, zIndex: 2000,
+            maxWidth: 520, margin: '0 auto',
+            background: '#B55C3E', color: '#fff',
+            borderRadius: 12, padding: '12px 14px',
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+            boxShadow: '0 6px 24px rgba(0,0,0,0.18)', fontSize: 13, lineHeight: 1.5,
+          }}
+        >
+          <span style={{ flex: 1 }}>{actionError}</span>
+          <button
+            onClick={() => setActionError('')}
+            aria-label="Dismiss"
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* ── Quick Session Modal ── */}
       {showQuickSession && athlete && (
@@ -945,6 +1005,12 @@ export default function AthleteDetailPage() {
 
                         {isOpen && (
                           <div style={{ padding: '0 16px 18px', borderTop: '1px solid var(--border)' }}>
+                            {s.audio_path && (
+                              <div style={{ marginTop: 14 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Recording</div>
+                                <SessionAudioPlayer sessionId={s.id} />
+                              </div>
+                            )}
                             {s.summary && (
                               <div style={{ marginTop: 14 }}>
                                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>AI Summary</div>
@@ -1186,7 +1252,12 @@ export default function AthleteDetailPage() {
                         <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                           <input type="checkbox" checked={autoMonthlyReport} onChange={async e => {
                             const next = e.target.checked; setAutoMonthlyReport(next)
-                            await fetch(`/api/athletes/${athleteId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_monthly_report: next }) })
+                            try {
+                              await apiMutate(`/api/athletes/${athleteId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_monthly_report: next }) })
+                            } catch (err: any) {
+                              setAutoMonthlyReport(!next)   // put the switch back — the change didn't save
+                              setActionError(err?.message ?? 'Could not save that setting')
+                            }
                           }} />
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 700 }}>Auto Monthly Report</div>

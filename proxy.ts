@@ -12,7 +12,7 @@ function startsWithRoute(pathname: string, route: string) {
 const COACH_ROUTES = ['/dashboard', '/athletes']
 const ATHLETE_ROUTES = ['/athlete']
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   // ✅ Let invite/reset callbacks pass without middleware interference

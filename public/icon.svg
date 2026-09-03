@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Background -->
-  <rect width="512" height="512" rx="110" fill="#0f2042"/>
-  <!-- Microphone body -->
-  <rect x="196" y="100" width="120" height="195" rx="60" fill="#2563eb"/>
+  <!-- Background — ink, matching the app's Letter/Ivory palette -->
+  <rect width="512" height="512" rx="110" fill="#1F2421"/>
+  <!-- Microphone body — sage, the app's primary -->
+  <rect x="196" y="100" width="120" height="195" rx="60" fill="#6F8E6B"/>
   <!-- Sound arc -->
-  <path d="M 148 268 Q 148 394 256 394 Q 364 394 364 268" fill="none" stroke="#2563eb" stroke-width="28" stroke-linecap="round"/>
+  <path d="M 148 268 Q 148 394 256 394 Q 364 394 364 268" fill="none" stroke="#6F8E6B" stroke-width="28" stroke-linecap="round"/>
   <!-- Stand -->
-  <line x1="256" y1="394" x2="256" y2="445" stroke="white" stroke-width="26" stroke-linecap="round" stroke-opacity="0.85"/>
-  <line x1="196" y1="445" x2="316" y2="445" stroke="white" stroke-width="26" stroke-linecap="round" stroke-opacity="0.85"/>
+  <line x1="256" y1="394" x2="256" y2="445" stroke="#FBF8F3" stroke-width="26" stroke-linecap="round" stroke-opacity="0.9"/>
+  <line x1="196" y1="445" x2="316" y2="445" stroke="#FBF8F3" stroke-width="26" stroke-linecap="round" stroke-opacity="0.9"/>
 </svg>

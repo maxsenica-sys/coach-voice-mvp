@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, session_name, summary, transcript, shared_with_athlete, created_at')
+    .select('id, session_name, summary, transcript, shared_with_athlete, created_at, audio_path')
     .eq('coach_id', user.id)
     .eq('athlete_id', athlete_id)
     .order('created_at', { ascending: false })
@@ -160,7 +160,7 @@ export async function POST(req: NextRequest) {
       audio_path,
       audio_mime,
     })
-    .select('id, session_name, summary, transcript, shared_with_athlete, created_at')
+    .select('id, session_name, summary, transcript, shared_with_athlete, created_at, audio_path')
     .single()
 
   if (error) {

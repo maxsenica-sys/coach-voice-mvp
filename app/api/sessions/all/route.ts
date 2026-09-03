@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
       sport_context,
       created_at,
       athlete_id,
+      audio_path,
       athletes!inner(id, first_name, last_name, email)
     `)
     .eq('coach_id', user.id)

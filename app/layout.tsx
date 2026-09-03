@@ -14,7 +14,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: '#5B63F5',
+  themeColor: '#1F2421',   // matches manifest + globals.css --text
 }
 
 export const metadata: Metadata = {
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false },
   icons: {
     icon: '/icon.svg',
-    apple: '/icon.svg',
+    apple: '/apple-icon.png',
   },
 }
 
@@ -42,8 +42,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="CoachVoice" />
-        <link rel="apple-touch-icon" href="/icon.svg" />
-        <link rel="apple-touch-startup-image" href="/icon.svg" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-icon.png" />
+        <link rel="apple-touch-startup-image" href="/icon-512.png" />
       </head>
       <body className={jakartaSans.variable}>
         {children}

@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CoachVoice
 
-## Getting Started
+A voice-first coaching platform. A coach records a session on their phone,
+Whisper transcribes it, GPT-4o-mini condenses it into bullets, and the coach
+chooses whether to share it with the athlete.
 
-First, run the development server:
+Around that core loop: a roster, a dual-privacy calendar, real-time messaging,
+daily wellness check-ins with low-score alerts, video upload with canvas
+annotation, printable session and monthly reports, squads, parent/caretaker
+contacts, and email notifications for shared sessions, new messages and new
+calendar events.
+
+Production: <https://coach-voice-mvp.vercel.app>
+
+## Stack
+
+| Layer | What |
+|-------|------|
+| App | Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · PWA |
+| Data | Supabase — Postgres 17, auth, storage, realtime |
+| AI | OpenAI Whisper (transcription) + GPT-4o-mini (summaries) |
+| Email | Resend |
+| Hosting | Vercel |
+
+## Running locally
 
 ```bash
+npm install
+cp .env.example .env.local   # then fill in the values
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open <http://localhost:3000>.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Every variable in `.env.example` is required. Without `RESEND_API_KEY` the app
+still runs — invites and notifications are skipped silently rather than failing.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Database
 
-## Learn More
+Migrations live in `supabase/migrations/` and are numbered in apply order.
 
-To learn more about Next.js, take a look at the following resources:
+Apply schema changes with the Supabase MCP `apply_migration` tool (or
+`supabase db push`) so the tracked migration list stays truthful — several
+early migrations were applied by hand via the SQL editor and are missing from
+Supabase's own history as a result.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Storage buckets, all private: `session-audio`, `session-videos`,
+`messages-media`, `athlete-photos`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Checks
 
-## Deploy on Vercel
+```bash
+npx tsc --noEmit && npm run lint && npm run build
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+CI runs the same three on every push and pull request. There is no test suite
+yet — `CLAUDE.md` carries a mandatory pre-commit review checklist derived from
+past production incidents, and it is worth reading before changing anything in
+the recording or transcription path.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deploying
+
+```bash
+npm run deploy
+```
+
+Pushes straight to `main`; Vercel builds and deploys from there. Preview
+deployments on pull requests will fail until the six environment variables are
+added to Vercel's Preview scope — they are currently Production-only.

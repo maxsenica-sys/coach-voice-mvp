@@ -1,0 +1,46 @@
+name: CI
+
+# The project pushes straight to main with no tests and no staging, so this is
+# the only automated gate between an edit and production. It runs the same two
+# checks CLAUDE.md asks for by hand — typecheck and a real production build —
+# plus lint, so a broken build is caught before Vercel deploys it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Advisory only. The repo has ~1100 pre-existing lint errors (mostly
+      # no-explicit-any and unescaped entities) that predate this workflow, so
+      # a hard gate would fail every push and get ignored. Blocking on it is
+      # worth doing once that backlog is cleared.
+      - name: Lint (advisory)
+        run: npm run lint
+        continue-on-error: true
+
+      # `next build` prerenders /athlete, which constructs a Supabase client at
+      # module scope and throws without these. They are placeholders — the build
+      # never makes a network call — so no real secrets belong in CI.
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
+          OPENAI_API_KEY: placeholder-openai-key

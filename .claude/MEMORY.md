@@ -6,6 +6,121 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-09-03 — Full-program audit, then fixed everything it found
+
+Started as "congregate all information on the current state of the program".
+Produced a field report (Artifact, also saved to the user's Desktop as
+`CoachVoice-Field-Report.html`), then the user said "implement all the changes
+you spoke about in the entire document. Fix all." Everything below is that.
+
+**First finding, and the reason to check this every session:** the local working
+copy was **11 commits behind `origin/main`**. All of 28–29 Aug (`lib/notify.ts`,
+wellness alerts, migrations 013–015, this memory bank) existed on GitHub and in
+production but not on disk. Pulled before touching anything. **Check
+`git status -sb` for drift before starting work here** — this repo gets edited
+from more than one machine.
+
+**Security — two genuinely open endpoints, both closed:**
+- `POST /api/transcribe` authenticated only on the storage-path branch. Posting
+  a file directly in the form body reached Whisper with **no auth at all** —
+  anyone with the URL could spend the OpenAI budget in a loop. The `getUser()`
+  check now runs before the branch split. Both recorders post as a signed-in
+  user, so a plain identity check suffices.
+- `POST /api/email` checked only that you were logged in, then sent arbitrary
+  `to`/`subject`/`html` from the verified Resend sender. Any athlete account
+  could send arbitrary mail under the CoachVoice domain. Now requires
+  `role = 'coach'`, requires `athlete_id` on the caller's roster, and requires
+  the recipient to already be a saved caretaker of that athlete. Caller
+  (`CaretakerPanel.sendTestEmail`) updated to pass `athlete_id`.
+
+**Session audio playback — the missing half of the August work.** Recordings
+were uploaded and `audio_path` saved on every session, and read back nowhere.
+Added `GET /api/sessions/[id]/audio-url` (signed URL, 1h, service-role, allows
+the owning coach or the athlete a session was *shared* with) plus
+`app/components/SessionAudioPlayer.tsx`, wired into the coach session card and
+the athlete portal. `audio_path` added to the three session selects so the
+button only renders when a recording exists.
+
+**Silent mutations — new `lib/api-client.ts`.** 14 `await fetch(...)` calls with
+no `res.ok` check, all writes: video delete/share/annotate, calendar delete,
+group delete, member remove, note delete, RSVP, session share toggle, monthly
+report toggle. `apiMutate()` / `apiJson()` throw with the server's message; each
+call site now surfaces it. Dashboard reuses its existing `showToast`; the athlete
+profile and athlete portal each got a dismissible `actionError` banner (kept
+separate from `error`, which is a fatal page-load state). Also fixed:
+QuickSessionModal's group fan-out (a `Promise.all` of unchecked fetches that
+reported success when every insert failed — now reports partial failure by
+athlete name), WellnessGraph (a failed fetch rendered as "No check-ins yet",
+i.e. indistinguishable from an athlete who never submitted one), and the
+caretaker list load. CLAUDE.md checklist item #1 rewritten to point at the helpers.
+
+**Orphans deleted:**
+- `app/api/sessions/audio/route.ts` (208 lines) and
+  `app/api/sessions/audio-upload/route.ts` — **no callers**. The recorders use
+  `audio-upload-url` + `/api/transcribe`. Note the 28 Aug session added calendar
+  sync and `notifySessionShared` wiring *into* the dead route. It also held a
+  summariser prompt hardcoded to **"an elite volleyball coach assistant"** in a
+  100-sport app — that risk left with it. CLAUDE.md's protected-routes table
+  listed it and has been corrected.
+- `training_plans` table + `training-plans` bucket + `sessions.transcript_raw`
+  — created live 29 Aug, referenced by zero lines of code. Verified empty
+  (0 rows / 0 objects / 0 non-null) before dropping. Migration
+  `016_drop_unused_objects.sql` carries the full recreate SQL in a comment.
+  **Buckets cannot be deleted in SQL** (`storage.protect_delete` raises) — used
+  the Storage API `DELETE /storage/v1/bucket/<id>` with the service-role key.
+
+**RLS pass — `017_rls_initplan_and_roles.sql`, applied live.** All 29 policies
+dropped and recreated with `(select auth.uid())` instead of bare `auth.uid()`,
+and `TO authenticated` instead of the default `public`. Every predicate already
+required a uid match, so anon could never satisfy one — naming the role was free
+and collapsed the per-role multiplication of the permissive-policy lint.
+**Performance advisories 109 → 30**: all 31 `auth_rls_initplan` gone,
+`multiple_permissive_policies` 65 → 17. Verified post-apply: 29/29 policies
+scoped to `authenticated`, 0 bare `auth.uid()` in either `using` or `with check`.
+This also puts the four `coach_*_own_sessions` policies **in a migration file for
+the first time** — they had only ever existed as hand-applied SQL, which is what
+made the sessions table un-auditable from the repo.
+- **The remaining 17 permissive-policy warnings were left deliberately.** They
+  are genuine coach-OR-athlete overlaps within `authenticated`. Merging each
+  pair into one OR'd policy is semantically equivalent but collapses two clearly
+  named rules into one, which is worse to audit, for a gain that is invisible at
+  this data volume. Revisit if row counts grow.
+
+**Platform:**
+- `middleware.ts` → `proxy.ts` (function renamed to `proxy`) — Next 16
+  deprecation warning gone.
+- `globals.css`: Google Fonts `@import` moved above `@import "tailwindcss"`;
+  it was being dropped by the CSS optimiser because Tailwind's import expands
+  into rules first. **Build now emits zero warnings.**
+- PWA icons: generated `icon-192/512`, a safe-zone-padded `icon-maskable-512`
+  and `apple-icon.png` (180px) from the SVG with `sharp`. iOS ignores SVG home
+  screen icons, so installs previously fell back to a page screenshot. Recoloured
+  `icon.svg` from the retired blue/navy to the current ink/sage palette, and
+  fixed three stale theme colours (`manifest.ts` `#2563eb`, `layout.tsx`
+  `themeColor: '#5B63F5'`) to `#1F2421`.
+- `.github/workflows/ci.yml`: typecheck + build on push and PR, with the six env
+  vars as placeholders (the prerender of `/athlete` needs them). **Lint is
+  advisory (`continue-on-error`)** — the repo has ~1,100 pre-existing lint errors,
+  mostly `no-explicit-any`, so a hard gate would fail every push and be ignored.
+  Make it blocking once that backlog is cleared.
+- README replaced (was still `create-next-app` boilerplate).
+- Removed 9 fully-merged `claude/*` worktrees and branches. They were also
+  **committed as gitlinks** (mode 160000) under `.claude/worktrees/` — untracked
+  and added to `.gitignore`.
+
+**NOT done, and why:**
+- **Leaked-password protection is still off.** It's an Auth dashboard toggle
+  (Authentication → Policies); no Supabase MCP tool exposes it and this session
+  has no Management API token. **User must click it.**
+- **No test suite added.** CI runs typecheck + build only. Adding a framework is
+  its own task; the report's step 4 still stands.
+- **No usage instrumentation** (report step 3). That's a feature build and a
+  product decision, not a fix.
+- Not visually verified in a browser — no login credentials in this session.
+  Typecheck, lint and a full production build are clean, and the RLS changes were
+  verified by querying `pg_policies` after applying. The UI additions (audio
+  player, two error banners) are logic-and-types-checked only.
+
 ## 2026-08-28 (same day, one more still) — Wellness alerts + parent notify
 
 Pushed directly to `main`. User-specified trigger: "alert is a overall score

@@ -9,6 +9,7 @@ import QuickSessionModal from '@/app/components/QuickSessionModal'
 import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
+import { apiMutate } from '@/lib/api-client'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -606,7 +607,12 @@ function DashboardPageInner() {
 
   const deleteGroup = async (id: string) => {
     if (!confirm('Delete this group? Athletes are not removed.')) return
-    await fetch(`/api/groups?id=${id}`, { method: 'DELETE' })
+    try {
+      await apiMutate(`/api/groups?id=${id}`, { method: 'DELETE' })
+    } catch (e: any) {
+      showToast(e?.message ?? 'Could not delete the group', 'error')
+      return
+    }
     setGroups(prev => prev.filter(g => g.id !== id))
     if (expandedGroup === id) setExpandedGroup(null)
   }
@@ -622,7 +628,12 @@ function DashboardPageInner() {
   }
 
   const removeMemberFromGroup = async (groupId: string, athleteId: string) => {
-    await fetch(`/api/groups/${groupId}/members?athlete_id=${athleteId}`, { method: 'DELETE' })
+    try {
+      await apiMutate(`/api/groups/${groupId}/members?athlete_id=${athleteId}`, { method: 'DELETE' })
+    } catch (e: any) {
+      showToast(e?.message ?? 'Could not remove that athlete', 'error')
+      return
+    }
     await fetchGroups()
   }
 
@@ -649,12 +660,19 @@ function DashboardPageInner() {
         return
       }
 
-      // Optionally also add the same event to coach's personal calendar
+      // Optionally also add the same event to coach's personal calendar.
+      // The athlete's copy is already saved at this point, so a failure here is
+      // reported but doesn't discard that.
+      let coachCopyFailed = false
       if (alsoAddToCoach && (calMode === 'athlete' || calMode === 'group')) {
-        await fetch('/api/calendar', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(base), // no athlete_id/group_id = personal event
-        })
+        try {
+          await apiMutate('/api/calendar', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(base), // no athlete_id/group_id = personal event
+          })
+        } catch {
+          coachCopyFailed = true
+        }
       }
 
       setAddEventModal(null)
@@ -677,14 +695,23 @@ function DashboardPageInner() {
       } catch { /* non-fatal */ }
 
       const label = calMode === 'group' ? 'Event added for group' : 'Event added to calendar'
-      showToast(`✓ ${label}${alsoAddToCoach ? ' + your calendar' : ''}`)
+      if (coachCopyFailed) {
+        showToast(`${label}, but it could not be added to your own calendar`, 'error')
+      } else {
+        showToast(`✓ ${label}${alsoAddToCoach ? ' + your calendar' : ''}`)
+      }
     } catch {
       showToast('Failed to save event', 'error')
     } finally { setEventSaving(false) }
   }
 
   const deleteEvent = async (id: string) => {
-    await fetch(`/api/calendar?id=${id}`, { method: 'DELETE' })
+    try {
+      await apiMutate(`/api/calendar?id=${id}`, { method: 'DELETE' })
+    } catch (e: any) {
+      showToast(e?.message ?? 'Could not delete the event', 'error')
+      return
+    }
     setCalEvents(prev => prev.filter(e => e.id !== id))
   }
 
