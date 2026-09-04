@@ -12,6 +12,7 @@ import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@
 import { apiMutate } from '@/lib/api-client'
 import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
+import { activeCount } from '@/lib/athlete-status'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -19,6 +20,8 @@ type CalMode = 'personal' | 'athlete' | 'group'
 interface Athlete {
   id: string; first_name: string; last_name: string
   email: string; athlete_user_id: string | null; status?: 'INVITED' | 'ACTIVE'
+  /** Set the first time they open their portal — the basis for ACTIVE. */
+  first_login_at?: string | null
 }
 interface Group {
   id: string; name: string; color: string; description: string | null
@@ -938,7 +941,11 @@ function DashboardPageInner() {
                 {/* Stats — 3 cards with delta sub-text */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
                   {([
-                    { label: 'Athletes', value: athletes.length, color: '#4A6B47', delta: athletes.length > 0 ? `${athletes.filter(a => a.athlete_user_id).length} active` : 'none yet', tab: 'athletes' as Tab },
+                    // "active" counts athletes who have actually opened their
+                    // portal, matching the ACTIVE/PENDING badges on the roster.
+                    // It used to count anyone with an account, so it read
+                    // "8 active" while two of them had never signed in.
+                    { label: 'Athletes', value: athletes.length, color: '#4A6B47', delta: athletes.length > 0 ? `${activeCount(athletes)} active` : 'none yet', tab: 'athletes' as Tab },
                     { label: 'Sessions', value: thisWeek.length, color: '#8B3E2A', delta: 'this week', tab: 'sessions' as Tab },
                     { label: 'Unread',   value: totalUnreadAll,  color: '#9A7229', delta: totalUnreadAll > 0 ? 'messages' : 'all clear', tab: 'messages' as Tab },
                   ]).map(stat => (

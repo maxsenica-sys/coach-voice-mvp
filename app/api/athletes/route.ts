@@ -1,6 +1,7 @@
 // app/api/athletes/route.ts
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
+import { athleteStatus } from '@/lib/athlete-status'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { sendEmail, renderBrandedEmail } from '@/lib/notify'
 
@@ -33,7 +34,7 @@ export async function GET() {
       ...a,
       // INVITED = invite sent but athlete hasn't logged in yet
       // ACTIVE = athlete has visited their portal at least once
-      status: a.first_login_at ? 'ACTIVE' : (a.athlete_user_id ? 'INVITED' : 'INVITED'),
+      status: athleteStatus(a),
     }))
 
     return NextResponse.json({ athletes })

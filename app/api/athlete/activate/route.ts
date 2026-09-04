@@ -41,9 +41,14 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (ath && !ath.first_login_at) {
+    const now = new Date().toISOString()
+    // Also write status/activated_at. Nothing had ever updated them, so the
+    // status column still read 'invited' for every athlete in the database,
+    // including ones using the app daily. Anything reading the column directly
+    // was being told the opposite of the truth.
     await admin
       .from('athletes')
-      .update({ first_login_at: new Date().toISOString() })
+      .update({ first_login_at: now, status: 'active', activated_at: now })
       .eq('id', ath.id)
   }
 

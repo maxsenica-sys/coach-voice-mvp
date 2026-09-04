@@ -1,6 +1,7 @@
 // app/api/athletes/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
+import { athleteStatus } from '@/lib/athlete-status'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 // GET /api/athletes/[id]
@@ -18,7 +19,7 @@ export async function GET(
 
     const { data, error } = await admin
       .from('athletes')
-      .select('id, first_name, last_name, email, athlete_user_id, invited_at, created_at, photo_url, position, height_cm, height, sport, sport_metrics, goals, custom_fields, auto_monthly_report')
+      .select('id, first_name, last_name, email, athlete_user_id, invited_at, created_at, first_login_at, photo_url, position, height_cm, height, sport, sport_metrics, goals, custom_fields, auto_monthly_report')
       .eq('id', id)
       .eq('coach_id', user.id)
       .single()
@@ -44,7 +45,7 @@ export async function GET(
         email: data.email,
         invited_at: data.invited_at,
         created_at: data.created_at,
-        status: data.athlete_user_id ? 'ACTIVE' : 'INVITED',
+        status: athleteStatus(data),
         photo_url: data.photo_url,
         photo_signed_url: photoSignedUrl,
         position: data.position ?? null,
