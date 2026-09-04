@@ -33,7 +33,7 @@ interface Athlete {
 interface Session {
   id: string; session_name: string | null; summary: string | null
   transcript: string | null; shared_with_athlete: boolean
-  created_at: string | null; sport_context?: string | null; audio_path?: string | null
+  created_at: string | null; sport_context?: string | null; audio_path?: string | null; audio_mime?: string | null
 }
 interface SessionVideo {
   id: string; session_id: string; file_name: string | null
@@ -398,7 +398,12 @@ export default function AthleteDetailPage() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(e => { setPageError(e?.message ?? 'Microphone access denied'); return null })
     if (!stream) return
     streamRef.current = stream; await startMeter(stream)
-    const supported = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+    // mp4/AAC first: iOS Safari cannot decode WebM at all, so a WebM recording
+    // made in Chrome played back as an endless spinner on an iPhone. Every
+    // browser that can play WebM can also play mp4, so preferring it makes a
+    // recording playable everywhere. isTypeSupported still guards the choice,
+    // and WebM stays as the fallback for browsers that can't record mp4.
+    const supported = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
     const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
     const rec = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32000 }); mediaRecRef.current = rec
     rec.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
@@ -1015,7 +1020,7 @@ export default function AthleteDetailPage() {
                             {s.audio_path && (
                               <div style={{ marginTop: 14 }}>
                                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Recording</div>
-                                <SessionAudioPlayer sessionId={s.id} />
+                                <SessionAudioPlayer sessionId={s.id} mime={(s as any).audio_mime ?? null} />
                               </div>
                             )}
                             {s.summary && (

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { apiJson, apiMutate } from '@/lib/api-client'
+import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 
 type FocusPoint = string
 
@@ -388,11 +389,10 @@ export default function SessionDetailPage() {
         {session.audio_url && (
           <Section icon="mic" label="Recording" accent="var(--coach-color)">
             <div className="card" style={{ padding: '13px 15px' }}>
-              <audio
-                controls
-                preload="none"
-                src={session.audio_url}
-                style={{ width: '100%', height: 38 }}
+              <SessionAudioPlayer
+                sessionId={session.id}
+                initialUrl={session.audio_url}
+                mime={session.audio_mime}
               />
               <p style={{ fontSize: 11.5, color: 'var(--text-muted)', margin: '9px 0 0' }}>
                 Streams on demand — nothing downloads until you press play.

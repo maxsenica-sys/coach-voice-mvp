@@ -268,7 +268,12 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
       return
     }
     streamRef.current = stream
-    const supported = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+    // mp4/AAC first: iOS Safari cannot decode WebM at all, so a WebM recording
+    // made in Chrome played back as an endless spinner on an iPhone. Every
+    // browser that can play WebM can also play mp4, so preferring it makes a
+    // recording playable everywhere. isTypeSupported still guards the choice,
+    // and WebM stays as the fallback for browsers that can't record mp4.
+    const supported = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
     const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
     const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {})
     mediaRecRef.current = rec
