@@ -10,6 +10,7 @@ import { getDailyQuote } from '@/lib/quotes'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { apiMutate } from '@/lib/api-client'
+import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -79,12 +80,14 @@ export default function AthletePage() {
   }, [tab])
 
   const [loading, setLoading] = useState(true)
-  const [athleteName, setAthleteName] = useState('')
+  // Seeded from cache so the athlete's own name doesn't flash blank on every
+  // tab change or return to the portal.
+  const [athleteName, setAthleteName] = useState(() => { const c = readCachedProfile(); return c ? displayName(c) : '' })
   const [athleteId, setAthleteId] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null)
   const [todayWellness, setTodayWellness] = useState<Record<string, any> | null>(null)
-  const [sport, setSport] = useState('')
+  const [sport, setSport] = useState(() => readCachedProfile()?.sport ?? '')
   const [error, setError] = useState('')
   // Failures from actions that used to fail silently (RSVP, deletes, annotation
   // saves). Separate from `error`, which is a fatal load failure for the page.
@@ -184,6 +187,14 @@ export default function AthletePage() {
           const first = profile?.first_name ?? athRecord.first_name ?? ''
           const last = profile?.last_name ?? athRecord.last_name ?? ''
           setAthleteName(`${first} ${last}`.trim() || (user.email ?? 'Athlete'))
+          writeCachedProfile({
+            userId: user.id,
+            role: 'athlete',
+            firstName: first,
+            lastName: last,
+            sport: profile?.sport ?? '',
+            email: user.email ?? '',
+          })
           // Mark this athlete as ACTIVE on their first portal visit
           fetch('/api/athlete/activate', { method: 'POST' }).catch(() => {})
         } else {
@@ -493,6 +504,7 @@ export default function AthletePage() {
   }
 
   const logout = async () => {
+    clearCachedProfile()
     await supabase.auth.signOut()
     router.push('/')
   }
@@ -893,6 +905,23 @@ export default function AthletePage() {
                       {/* Session body */}
                       {isOpen && (
                         <div style={{ padding: '0 20px 20px', borderTop: '1px solid var(--border)' }}>
+                          {/* Full session — focus points, images and coach notes
+                              live on the session page, not in this quick view. */}
+                          <a
+                            href={`/sessions/${s.id}`}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              gap: 8, marginTop: 14, padding: '10px 13px', borderRadius: 10,
+                              background: 'var(--primary-light)', color: 'var(--primary-dark)',
+                              textDecoration: 'none', fontSize: 13, fontWeight: 700,
+                            }}
+                          >
+                            Open full session
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+                              <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+                            </svg>
+                          </a>
+
                           {/* Recording from the session */}
                           {s.audio_path && (
                             <div style={{ marginTop: 16 }}>

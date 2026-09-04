@@ -10,6 +10,7 @@ import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
 import { apiMutate } from '@/lib/api-client'
+import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -329,10 +330,14 @@ function DashboardPageInner() {
     mainRef.current?.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
   }, [tab])
 
-  const [coachName, setCoachName] = useState('')
-  const [coachInitials, setCoachInitials] = useState('')
-  const [coachSport, setCoachSport] = useState('')
-  const [coachEmail, setCoachEmail] = useState('')
+  // Seeded from the session cache so returning to the dashboard paints the
+  // coach's real name on the first frame instead of flashing "Coach" while the
+  // profile query round-trips. Revalidated in boot() below.
+  const cachedProfile = readCachedProfile()
+  const [coachName, setCoachName] = useState(() => (cachedProfile ? displayName(cachedProfile) : ''))
+  const [coachInitials, setCoachInitials] = useState(() => (cachedProfile ? initialsFor(cachedProfile) : ''))
+  const [coachSport, setCoachSport] = useState(cachedProfile?.sport ?? '')
+  const [coachEmail, setCoachEmail] = useState(cachedProfile?.email ?? '')
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [codeEditing, setCodeEditing] = useState(false)
   const [codeDraft, setCodeDraft] = useState('')
@@ -423,6 +428,16 @@ function DashboardPageInner() {
       setCoachName(name); setCoachInitials(initials)
       setCoachSport(profile?.sport ?? '')
       setCoachEmail(user.email ?? '')
+
+      // Keep the cache fresh so the next navigation paints instantly.
+      writeCachedProfile({
+        userId: user.id,
+        role: 'coach',
+        firstName: profile?.first_name ?? '',
+        lastName: profile?.last_name ?? '',
+        sport: profile?.sport ?? '',
+        email: user.email ?? '',
+      })
       setInviteCode(profile?.invite_code ?? null)
       if (profile?.invite_code) setCodeDraft(profile.invite_code)
 
@@ -730,7 +745,7 @@ function DashboardPageInner() {
     } finally { setDeleteLoading(false) }
   }
 
-  const logout = async () => { await supabase.auth.signOut(); router.push('/') }
+  const logout = async () => { clearCachedProfile(); await supabase.auth.signOut(); router.push('/') }
 
   const filteredAthletes = athletes.filter(a => {
     const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
@@ -1447,7 +1462,14 @@ function DashboardPageInner() {
                       {allSessions.map(s => {
                         const a = s.athletes
                         return (
-                          <div key={s.id} className="card" style={{ padding: '14px 16px' }}>
+                          // The whole row is the link — tapping a session opens
+                          // that session, not its athlete.
+                          <Link
+                            key={s.id}
+                            href={`/sessions/${s.id}`}
+                            className="card"
+                            style={{ padding: '14px 16px', textDecoration: 'none', color: 'inherit', display: 'block' }}
+                          >
                             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                               <Avatar initials={a ? `${a.first_name[0]}${a.last_name[0]}`.toUpperCase() : '?'} size={38} bg="var(--coach-color)" />
                               <div style={{ flex: 1, minWidth: 0 }}>
@@ -1459,11 +1481,11 @@ function DashboardPageInner() {
                                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{new Date(s.created_at).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</div>
                                 {s.summary && <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{s.summary}</div>}
                               </div>
-                              <Link href={`/athletes/${s.athlete_id}`} className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 10px', flexShrink: 0, gap: 4 }}>
+                              <span className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 10px', flexShrink: 0, gap: 4 }}>
                                 Open <Icon name="arrow" size={11} />
-                              </Link>
+                              </span>
                             </div>
-                          </div>
+                          </Link>
                         )
                       })}
                     </div>

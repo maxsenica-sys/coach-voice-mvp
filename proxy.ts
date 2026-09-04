@@ -11,6 +11,9 @@ function startsWithRoute(pathname: string, route: string) {
 
 const COACH_ROUTES = ['/dashboard', '/athletes']
 const ATHLETE_ROUTES = ['/athlete']
+// Signed-in but role-agnostic: a session page serves the owning coach and the
+// athlete it was shared with. The route itself checks which of the two you are.
+const SHARED_ROUTES = ['/sessions']
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
@@ -49,7 +52,8 @@ export async function proxy(request: NextRequest) {
 
   const isCoachRoute = COACH_ROUTES.some((r) => startsWithRoute(pathname, r))
   const isAthleteRoute = ATHLETE_ROUTES.some((r) => startsWithRoute(pathname, r))
-  const isProtectedRoute = isCoachRoute || isAthleteRoute
+  const isSharedRoute = SHARED_ROUTES.some((r) => startsWithRoute(pathname, r))
+  const isProtectedRoute = isCoachRoute || isAthleteRoute || isSharedRoute
 
   // ✅ Not logged in: block protected routes only
   if (!user) {
@@ -89,5 +93,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/dashboard/:path*', '/athletes/:path*', '/athlete/:path*', '/reset'],
+  matcher: ['/', '/dashboard/:path*', '/athletes/:path*', '/athlete/:path*', '/sessions/:path*', '/reset'],
 }

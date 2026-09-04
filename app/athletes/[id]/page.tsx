@@ -11,6 +11,7 @@ import WellnessGraph from '@/app/components/WellnessGraph'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { apiMutate, apiJson } from '@/lib/api-client'
+import { readCachedProfile } from '@/lib/profile-cache'
 import {
   WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor,
   type WellnessCheckin, type WellnessAlert,
@@ -45,6 +46,7 @@ function Icon({ name, size = 18, strokeWidth = 2 }: { name: string; size?: numbe
   const s: React.CSSProperties = { width: size, height: size, display: 'block', flexShrink: 0 }
   const p = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: s }
   switch (name) {
+    case 'arrow-right': return <svg {...p}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
     case 'arrow-left': return <svg {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
     case 'mic':        return <svg {...p}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
     case 'messages':   return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -206,7 +208,9 @@ export default function AthleteDetailPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [pageError, setPageError] = useState<string | null>(null)
-  const [coachSport, setCoachSport] = useState('')
+  // Seeded from the session cache so the recorder knows the sport on the first
+  // frame — it used to load late, which is why 26 sessions saved with no sport.
+  const [coachSport, setCoachSport] = useState(() => readCachedProfile()?.sport ?? '')
 
   const [sessionName, setSessionName] = useState('')
   const [share, setShare] = useState(true)
@@ -994,6 +998,9 @@ export default function AthleteDetailPage() {
                           <button className="btn btn-ghost" onClick={() => toggleShare(s.id, s.shared_with_athlete)} style={{ fontSize: 12, padding: '5px 10px', gap: 5 }}>
                             <Icon name="share" size={13} /> {s.shared_with_athlete ? 'Unshare' : 'Share'}
                           </button>
+                          <Link href={`/sessions/${s.id}`} className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', gap: 5, textDecoration: 'none' }}>
+                            <Icon name="arrow-right" size={13} /> Open
+                          </Link>
                           <button className="btn btn-ghost" onClick={() => window.open(`/pdf/session/${s.id}`, '_blank')} style={{ fontSize: 12, padding: '5px 10px', gap: 5 }}>
                             <Icon name="pdf" size={13} /> PDF
                           </button>

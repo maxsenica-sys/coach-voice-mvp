@@ -37,10 +37,30 @@ export async function PATCH(
   const { id } = await ctx.params
   const body = await req.json().catch(() => ({}))
 
-  const allowed = ['shared_with_athlete', 'session_name', 'sport_context', 'title', 'summary']
+  const allowed = ['shared_with_athlete', 'session_name', 'sport_context', 'title', 'summary', 'coach_notes', 'focus_points']
   const updates: Record<string, any> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
+  }
+
+  // focus_points is a list of short strings shown as a checklist — normalise it
+  // here so a malformed client payload can't write junk into the column.
+  if ('focus_points' in updates) {
+    if (!Array.isArray(updates.focus_points)) {
+      return attach(NextResponse.json({ error: 'focus_points must be a list.' }, { status: 400 }), cookiesToSet)
+    }
+    updates.focus_points = updates.focus_points
+      .filter((p: unknown): p is string => typeof p === 'string')
+      .map((p: string) => p.trim())
+      .filter(Boolean)
+      .slice(0, 20)
+      .map((p: string) => p.slice(0, 200))
+  }
+
+  if ('coach_notes' in updates) {
+    updates.coach_notes = typeof updates.coach_notes === 'string'
+      ? updates.coach_notes.slice(0, 10000) || null
+      : null
   }
 
   if (Object.keys(updates).length === 0) {
