@@ -10,6 +10,7 @@ import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
 import { apiMutate } from '@/lib/api-client'
+import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
@@ -408,6 +409,30 @@ function DashboardPageInner() {
   const [homeWeekEvents, setHomeWeekEvents] = useState<CalendarEvent[]>([])
   const [homeSelectedDay, setHomeSelectedDay] = useState<string | null>(null)
 
+  // The day wheel spans roughly eight weeks either side of today, which can
+  // cross three or four calendar months — fetch each one the range touches and
+  // merge, rather than the single current month the old seven-day strip needed.
+  const refreshHomeEvents = useCallback(async () => {
+    try {
+      const months = wheelMonths()
+      const results = await Promise.all(
+        months.map((m) =>
+          fetch(`/api/calendar?mode=personal&month=${m}`, { cache: 'no-store' })
+            .then((r) => (r.ok ? r.json() : { events: [] }))
+            .catch(() => ({ events: [] })),
+        ),
+      )
+      const byId = new Map<string, CalendarEvent>()
+      for (const r of results) for (const ev of (r.events ?? []) as CalendarEvent[]) byId.set(ev.id, ev)
+      const allEvs = Array.from(byId.values())
+      const todayStr = toDateStr(new Date())
+      setHomeWeekEvents(allEvs)
+      setTodayEvents(allEvs.filter((e) => e.event_date === todayStr))
+    } catch {
+      /* leave whatever is already on screen rather than blanking the wheel */
+    }
+  }, [])
+
   useEffect(() => {
     const boot = async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -443,17 +468,7 @@ function DashboardPageInner() {
 
       await Promise.all([fetchAthletes(), fetchGroups(), fetchAllSessions(), fetchUnreadCounts()])
 
-      // Fetch today's events and this week's events for home wheel
-      const today = new Date()
-      const month = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-      const res = await fetch(`/api/calendar?mode=personal&month=${month}`, { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok) {
-        const todayStr = new Intl.DateTimeFormat('en-CA').format(today)
-        const allEvs: CalendarEvent[] = json.events ?? []
-        setTodayEvents(allEvs.filter((e: CalendarEvent) => e.event_date === todayStr))
-        setHomeWeekEvents(allEvs)
-      }
+      await refreshHomeEvents()
     }
     void boot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -695,19 +710,8 @@ function DashboardPageInner() {
       setAlsoAddToCoach(false)
       await fetchCalendar(calMode, calTargetId, calMonth)
 
-      // FIX 1: also refresh homeWeekEvents so new events appear on the Home wheel without page reload
-      try {
-        const today = new Date()
-        const homeMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-        const homeRes = await fetch(`/api/calendar?mode=personal&month=${homeMonth}`, { cache: 'no-store' })
-        const homeJson = await homeRes.json().catch(() => ({}))
-        if (homeRes.ok) {
-          const todayStr = new Intl.DateTimeFormat('en-CA').format(today)
-          const allEvs: CalendarEvent[] = homeJson.events ?? []
-          setTodayEvents(allEvs.filter((e: CalendarEvent) => e.event_date === todayStr))
-          setHomeWeekEvents(allEvs)
-        }
-      } catch { /* non-fatal */ }
+      // Refresh the wheel so a new event shows without a page reload.
+      await refreshHomeEvents()
 
       const label = calMode === 'group' ? 'Event added for group' : 'Event added to calendar'
       if (coachCopyFailed) {
@@ -911,15 +915,8 @@ function DashboardPageInner() {
 
           {/* ════ HOME TAB ════ */}
           {tab === 'home' && (() => {
-            // Compute this week's days + event counts
-            const _td = new Date()
-            const _tds = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`
-            const _sow = new Date(_td); _sow.setDate(_td.getDate() - _td.getDay())
-            const _weekDays = Array.from({ length: 7 }, (_, i) => {
-              const d = new Date(_sow); d.setDate(_sow.getDate() + i)
-              const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-              return { letter: 'SMTWTFS'[d.getDay()], num: d.getDate(), dateStr: ds, isToday: ds === _tds, isPast: d < _td && ds !== _tds, evCount: homeWeekEvents.filter(e => e.event_date === ds).length }
-            })
+            // Day maths now lives in DayWheel, which spans months rather than
+            // one fixed week.
             const _toneColors = ['#B55C3E','#6F8E6B','#C9933A']
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -953,54 +950,19 @@ function DashboardPageInner() {
                   ))}
                 </div>
 
-                {/* This week — compact 7-column day strip */}
+                {/* Day wheel — scrolls back through what you've done and
+                    forward through what's booked, with a Today control. */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>This week</div>
-                    <button onClick={() => setTab('calendar')} style={{ fontSize: 10, color: '#9BA29B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -22 }}>
+                    <button onClick={() => setTab('calendar')} style={{ fontSize: 10, color: '#9BA29B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0, position: 'relative', zIndex: 1 }}>
                       Calendar <Icon name="arrow" size={9} />
                     </button>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 5 }}>
-                    {_weekDays.map((day, i) => (
-                      <button key={i} onClick={() => setHomeSelectedDay(homeSelectedDay === day.dateStr ? null : day.dateStr)} style={{
-                        background: day.isToday ? '#1F2421' : (homeSelectedDay === day.dateStr ? '#E6ECDF' : '#FFFFFF'),
-                        border: day.isToday ? 'none' : `1px solid ${homeSelectedDay === day.dateStr ? '#CBD7C0' : '#E3DED2'}`,
-                        borderRadius: 10, padding: '8px 0 6px', textAlign: 'center',
-                        opacity: day.isPast && !day.isToday ? 0.55 : 1,
-                        cursor: 'pointer',
-                      }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: day.isToday ? 'rgba(255,255,255,0.55)' : '#9BA29B', textTransform: 'uppercase', letterSpacing: 0.5 }}>{day.letter}</div>
-                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 500, color: day.isToday ? '#FBF8F3' : '#1F2421', lineHeight: 1, marginTop: 3, letterSpacing: -0.4 }}>{day.num}</div>
-                        <div style={{ marginTop: 6, height: 14, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 1.5 }}>
-                          {day.evCount > 0
-                            ? Array.from({ length: Math.min(day.evCount, 5) }).map((_, j) => (
-                                <div key={j} style={{ width: 2, height: 4 + j * 2, background: day.isToday ? '#B55C3E' : (day.isPast ? '#9BA29B' : '#6F8E6B'), borderRadius: 1 }} />
-                              ))
-                            : <div style={{ width: 4, height: 1, background: '#E3DED2', borderRadius: 1 }} />}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Events for selected day */}
-                  {homeSelectedDay && (
-                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #EFEAE0' }}>
-                      {homeWeekEvents.filter(e => e.event_date === homeSelectedDay).length === 0 ? (
-                        <div style={{ fontSize: 12, color: '#9BA29B', textAlign: 'center', padding: '6px 0' }}>No events on this day</div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                          {homeWeekEvents.filter(e => e.event_date === homeSelectedDay).map(ev => (
-                            <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#E6ECDF', borderRadius: 8, border: '1px solid #CBD7C0' }}>
-                              <div style={{ width: 3, height: 24, borderRadius: 2, background: '#6F8E6B', flexShrink: 0 }} />
-                              <span style={{ fontWeight: 700, fontSize: 12, color: '#1F2421' }}>{ev.title}</span>
-                              {ev.event_time && <span style={{ fontSize: 11, color: '#9BA29B' }}>{ev.event_time}</span>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <DayWheel
+                    events={homeWeekEvents as WheelEvent[]}
+                    selectedDay={homeSelectedDay}
+                    onSelectDay={setHomeSelectedDay}
+                  />
                 </div>
 
                 {/* Today's sessions — time-based list */}
