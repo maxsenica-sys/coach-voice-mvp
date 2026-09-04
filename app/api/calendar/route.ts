@@ -82,9 +82,12 @@ export async function GET(req: NextRequest) {
 
   // ── COACH ROLE ──────────────────────────────────────────────
 
-  // Personal calendar — shows all coach-created events (personal + session-linked)
+  // Personal calendar — shows all coach-created events (personal + session-linked).
+  // Joins the athlete so the home day wheel can name who a session was with
+  // without a second lookup. Personal events have no athlete_id and come back
+  // with athletes = null.
   if (mode === 'personal') {
-    let q = admin.from('calendar_events').select(baseSelect)
+    let q = admin.from('calendar_events').select(`${baseSelect}, athletes(first_name, last_name)`)
       .eq('created_by_user_id', user.id)
       .eq('created_by_role', 'coach')
       .order('event_date', { ascending: true })

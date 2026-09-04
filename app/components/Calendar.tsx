@@ -11,6 +11,11 @@ export type CalendarEvent = {
   event_type: 'session' | 'homework' | 'goal' | 'reminder' | 'other'
   event_date: string // "YYYY-MM-DD"
   event_time?: string | null
+  /** Set on session-linked events (migration 013) — lets a calendar entry open
+   *  the session it came from. */
+  session_id?: string | null
+  /** Joined athlete on coach-facing queries; null for the coach's own events. */
+  athletes?: { first_name: string; last_name: string } | null
 }
 
 type Props = {

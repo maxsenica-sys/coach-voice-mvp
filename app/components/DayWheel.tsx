@@ -18,6 +18,8 @@ export type WheelEvent = {
   event_time?: string | null
   event_type?: string | null
   session_id?: string | null
+  /** Joined from calendar_events.athlete_id; null for the coach's own events. */
+  athletes?: { first_name: string; last_name: string } | null
 }
 
 const DAYS_BACK = 56
@@ -45,9 +47,12 @@ type Props = {
   events: WheelEvent[]
   selectedDay: string | null
   onSelectDay: (dateStr: string | null) => void
+  /** Rendered at the end of the header row — kept inside the wheel's own flex
+   *  row so it can never be overlapped by the Today pill. */
+  headerAction?: React.ReactNode
 }
 
-export default function DayWheel({ events, selectedDay, onSelectDay }: Props) {
+export default function DayWheel({ events, selectedDay, onSelectDay, headerAction }: Props) {
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const todayRef = useRef<HTMLButtonElement | null>(null)
   const [todayOffScreen, setTodayOffScreen] = useState<'left' | 'right' | null>(null)
@@ -73,10 +78,17 @@ export default function DayWheel({ events, selectedDay, onSelectDay }: Props) {
     })
   }, [todayStr])
 
-  // Count events per day once, rather than filtering the list inside every cell.
-  const countByDay = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const e of events) map.set(e.event_date, (map.get(e.event_date) ?? 0) + 1)
+  // Per day: how many events, and whether any of them is a recorded session.
+  // Sessions get their own green marker — the thing you scan the strip for is
+  // "which days did I actually coach", not "which days have anything on them".
+  const byDay = useMemo(() => {
+    const map = new Map<string, { total: number; sessions: number }>()
+    for (const e of events) {
+      const entry = map.get(e.event_date) ?? { total: 0, sessions: 0 }
+      entry.total += 1
+      if (e.session_id || e.event_type === 'session') entry.sessions += 1
+      map.set(e.event_date, entry)
+    }
     return map
   }, [events])
 
@@ -107,10 +119,15 @@ export default function DayWheel({ events, selectedDay, onSelectDay }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8 }}>
+      {/* One flex row: label, then the Today pill, then whatever the page wants
+          at the end. The pill used to be absolutely the same corner as the
+          dashboard's Calendar link and covered it whenever it appeared. */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10, gap: 10 }}>
         <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>
           Your days
         </div>
+
+        <span style={{ flex: 1 }} />
 
         {todayOffScreen && (
           <button
@@ -118,12 +135,15 @@ export default function DayWheel({ events, selectedDay, onSelectDay }: Props) {
             style={{
               fontSize: 10, fontWeight: 700, color: '#FBF8F3', background: '#1F2421',
               border: 'none', borderRadius: 999, padding: '4px 10px', cursor: 'pointer',
-              display: 'inline-flex', alignItems: 'center', gap: 4,
+              display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
+              whiteSpace: 'nowrap',
             }}
           >
             {todayOffScreen === 'left' ? '←' : ''} Today {todayOffScreen === 'right' ? '→' : ''}
           </button>
         )}
+
+        {headerAction}
       </div>
 
       <div
@@ -137,7 +157,7 @@ export default function DayWheel({ events, selectedDay, onSelectDay }: Props) {
         }}
       >
         {days.map((day) => {
-          const count = countByDay.get(day.dateStr) ?? 0
+          const { total: count, sessions: sessionCount } = byDay.get(day.dateStr) ?? { total: 0, sessions: 0 }
           const isSelected = selectedDay === day.dateStr
           return (
             <button
@@ -178,15 +198,31 @@ export default function DayWheel({ events, selectedDay, onSelectDay }: Props) {
               }}>
                 {day.num}
               </div>
-              <div style={{ marginTop: 6, height: 14, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 1.5 }}>
-                {count > 0
-                  ? Array.from({ length: Math.min(count, 5) }).map((_, j) => (
-                      <div key={j} style={{
-                        width: 2, height: 4 + j * 2, borderRadius: 1,
-                        background: day.isToday ? '#E8B4A0' : (day.isPast ? '#9BA29B' : '#6F8E6B'),
-                      }} />
-                    ))
-                  : <div style={{ width: 4, height: 1, background: '#E3DED2', borderRadius: 1 }} />}
+              {/* A solid green tab means "a session was recorded on this day" —
+                  the thing worth scanning for. Other events stay as small grey
+                  dots so they don't compete with it. */}
+              <div style={{ marginTop: 6, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                {sessionCount > 0 ? (
+                  <span style={{
+                    minWidth: 18, height: 5, borderRadius: 3,
+                    background: '#6F8E6B',
+                    boxShadow: day.isToday ? '0 0 0 1.5px #1F2421' : 'none',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {sessionCount > 1 && (
+                      <span style={{ fontSize: 7, fontWeight: 800, color: '#FBF8F3', lineHeight: 1 }}>
+                        {sessionCount}
+                      </span>
+                    )}
+                  </span>
+                ) : count > 0 ? (
+                  <span style={{
+                    width: 4, height: 4, borderRadius: '50%',
+                    background: day.isToday ? 'rgba(255,255,255,0.5)' : '#C4C9C2',
+                  }} />
+                ) : (
+                  <span style={{ width: 4, height: 1, background: day.isToday ? 'rgba(255,255,255,0.2)' : '#E3DED2', borderRadius: 1 }} />
+                )}
               </div>
             </button>
           )
@@ -203,20 +239,60 @@ export default function DayWheel({ events, selectedDay, onSelectDay }: Props) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {dayEvents.map((ev) => {
+                const isSession = Boolean(ev.session_id) || ev.event_type === 'session'
+                const who = ev.athletes
+                  ? `${ev.athletes.first_name} ${ev.athletes.last_name}`.trim()
+                  : null
+                const initials = ev.athletes
+                  ? `${ev.athletes.first_name?.[0] ?? ''}${ev.athletes.last_name?.[0] ?? ''}`.toUpperCase()
+                  : null
+
+                // Two lines at most: who it was with, then what it was. Enough
+                // to know whether to open it, without becoming a panel.
                 const body = (
                   <>
-                    <div style={{ width: 3, height: 24, borderRadius: 2, background: '#6F8E6B', flexShrink: 0 }} />
-                    <span style={{ fontWeight: 700, fontSize: 12, color: '#1F2421', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {ev.title}
+                    {initials ? (
+                      <span style={{
+                        width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                        background: isSession ? '#6F8E6B' : '#C4C9C2', color: '#FBF8F3',
+                        fontSize: 9, fontWeight: 800,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>{initials}</span>
+                    ) : (
+                      <span style={{ width: 3, height: 22, borderRadius: 2, background: '#C4C9C2', flexShrink: 0 }} />
+                    )}
+
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      {who && (
+                        <span style={{ display: 'block', fontWeight: 700, fontSize: 11.5, color: '#1F2421', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {who}
+                        </span>
+                      )}
+                      <span style={{
+                        display: 'block', fontSize: who ? 11 : 12,
+                        fontWeight: who ? 500 : 700,
+                        color: who ? '#5D6661' : '#1F2421',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {ev.title}
+                      </span>
                     </span>
-                    {ev.event_time && <span style={{ fontSize: 11, color: '#9BA29B' }}>{ev.event_time}</span>}
+
+                    {ev.event_time && <span style={{ fontSize: 10.5, color: '#9BA29B', flexShrink: 0 }}>{ev.event_time}</span>}
+                    {isSession && (
+                      <span style={{ fontSize: 12, color: '#6F8E6B', flexShrink: 0, lineHeight: 1 }}>›</span>
+                    )}
                   </>
                 )
+
                 const style: React.CSSProperties = {
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
-                  background: '#E6ECDF', borderRadius: 8, border: '1px solid #CBD7C0',
+                  display: 'flex', alignItems: 'center', gap: 9, padding: '6px 10px',
+                  background: isSession ? '#E6ECDF' : '#FFFFFF',
+                  borderRadius: 8,
+                  border: `1px solid ${isSession ? '#CBD7C0' : '#E3DED2'}`,
                   textDecoration: 'none',
                 }
+
                 // Session events open the session; everything else is just a note.
                 return ev.session_id
                   ? <a key={ev.id} href={`/sessions/${ev.session_id}`} style={style}>{body}</a>

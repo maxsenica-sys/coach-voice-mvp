@@ -960,15 +960,15 @@ function DashboardPageInner() {
                 {/* Day wheel — scrolls back through what you've done and
                     forward through what's booked, with a Today control. */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -22 }}>
-                    <button onClick={() => setTab('calendar')} style={{ fontSize: 10, color: '#9BA29B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0, position: 'relative', zIndex: 1 }}>
-                      Calendar <Icon name="arrow" size={9} />
-                    </button>
-                  </div>
                   <DayWheel
                     events={homeWeekEvents as WheelEvent[]}
                     selectedDay={homeSelectedDay}
                     onSelectDay={setHomeSelectedDay}
+                    headerAction={
+                      <button onClick={() => setTab('calendar')} style={{ fontSize: 10, color: '#9BA29B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                        Calendar <Icon name="arrow" size={9} />
+                      </button>
+                    }
                   />
                 </div>
 
