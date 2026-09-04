@@ -6,6 +6,70 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-09-05 — Nine-item punch list from the user
+
+Commits `79cd659`, `3ea2c4c`, `cafaaa9`, `b8784b0`, `b43104c`. All deployed
+Ready to production (`coach-voice-mvp-pi.vercel.app`).
+
+**1+9. Athletes couldn't see sessions; sessions never hit the calendar.** One
+root cause. Since 2026-08-28 a session only got a `calendar_events` row once
+`shared_with_athlete` was true — conflating "the athlete may see this" with
+"this belongs on the coach's calendar". The save UI defaulted to private, so
+**27 of 40 sessions were invisible to everyone**, and `calendar_events.session_id`
+was 0 rows across the board. Fixed with `visible_to_athlete` on `calendar_events`
+(migration 018): the event is now always created, that column decides who sees
+it. New sessions default to **shared** (user's explicit choice). Backfill done
+**in SQL on purpose** — going through `PATCH /api/sessions/[id]` would have
+fired `notifySessionShared` 27 times. Legacy events relinked by (athlete, date)
+before backfilling so nothing duplicated. **Never bulk-share through the API.**
+
+**3. AI summary referenced the wrong sport.** `sport_context` was saved but
+never passed to `makeQuickSummary` — it guessed the sport from a rough Whisper
+transcript. Worse, **26 of 40 sessions had saved with `sport_context` null**
+despite the coach's profile saying Volleyball, because the recorders read
+`coachSport` from state that hasn't loaded when the modal opens. Both
+`/api/sessions` and `/api/transcribe` now resolve the sport **server-side**
+(athlete's sport → coach's profile) rather than trusting the client. Prompt
+rewritten: names the sport and its terminology, states the input is
+speech-to-text not prose, forbids inventing. Existing rows backfilled.
+
+**4+7. Sessions had no page.** New `/sessions/[id]` — one `/detail` request
+returns session, athlete, videos, attachments and signed URLs (no waterfall).
+Migration 019 adds `sessions.coach_notes`, `sessions.focus_points` (jsonb) and
+`session_attachments` (images, in the existing `session-videos` bucket under an
+`attachments/` prefix, signed-URL upload). Coach edits, athlete reads once
+shared. `/sessions` is in the proxy matcher as signed-in-but-role-agnostic.
+
+**2. Audio "slow to load" was actually unplayable.** Every stored recording is
+`audio/webm;codecs=opus`. **iOS Safari cannot decode WebM at all** and never
+fires an error — it just never becomes ready, which presents as an infinite
+spinner. Recorders now prefer `audio/mp4` with WebM as fallback (**this
+deliberately changes the MIME detection CLAUDE.md protects — done under explicit
+user instruction**). `SessionAudioPlayer` checks `canPlayType` first and offers a
+download link for the old WebM files instead of spinning. The ~12 existing
+recordings remain WebM and will not play on iPhones — only a transcode fixes
+those, not done.
+
+**5+8. Identity reset on navigation / everything felt slow.** `lib/profile-cache.ts`
+caches name/initials/sport in sessionStorage and seeds `useState`, so a page
+paints the real name on the first frame instead of flashing "Coach". Cleared on
+sign-out, never trusted for access control. Dashboard boot also starts the four
+cookie-authenticated API fetches immediately instead of queueing them behind
+`getUser()` + the profile query.
+
+**6. Athlete Overview redesigned** — identity and figures as one object,
+wellness as five comparable bars, and recent sessions surfaced (Overview
+previously showed no session content at all).
+
+**9b. Home day wheel** — new `DayWheel` component, ±8 weeks, scroll-snap,
+opens centred on today, Today pill when today scrolls off, session events link
+to their session. Dashboard fetches every month the range spans and merges.
+
+**Verified:** typecheck, lint and full build clean; DB state confirmed by query
+(40/40 shared, 40/40 calendar-linked, 0 missing sport). **Not clicked through in
+a browser — no login in this session.** The audio player on an actual iPhone and
+the new session page are the parts most worth eyeballing.
+
 ## 2026-09-03 — Full-program audit, then fixed everything it found
 
 Started as "congregate all information on the current state of the program".
