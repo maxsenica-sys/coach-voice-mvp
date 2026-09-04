@@ -203,18 +203,16 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                   dots so they don't compete with it. */}
               <div style={{ marginTop: 6, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
                 {sessionCount > 0 ? (
-                  <span style={{
-                    minWidth: 18, height: 5, borderRadius: 3,
-                    background: '#6F8E6B',
-                    boxShadow: day.isToday ? '0 0 0 1.5px #1F2421' : 'none',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {sessionCount > 1 && (
-                      <span style={{ fontSize: 7, fontWeight: 800, color: '#FBF8F3', lineHeight: 1 }}>
-                        {sessionCount}
-                      </span>
-                    )}
-                  </span>
+                  // One pill per session, up to three. A numeral inside a 5px
+                  // bar was unreadable and just looked like a gap in the bar.
+                  Array.from({ length: Math.min(sessionCount, 3) }).map((_, j) => (
+                    <span key={j} style={{
+                      width: sessionCount === 1 ? 18 : 7, height: 5, borderRadius: 3,
+                      background: '#6F8E6B',
+                      boxShadow: day.isToday ? '0 0 0 1.5px #1F2421' : 'none',
+                      display: 'inline-block',
+                    }} />
+                  ))
                 ) : count > 0 ? (
                   <span style={{
                     width: 4, height: 4, borderRadius: '50%',
