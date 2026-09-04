@@ -435,6 +435,14 @@ function DashboardPageInner() {
 
   useEffect(() => {
     const boot = async () => {
+      // The roster, groups, sessions and unread counts are all cookie-authenticated
+      // API routes — they don't need the user id on the client, so they start
+      // immediately instead of queueing behind getUser() and the profile query.
+      // That removes two serial round trips from every arrival on the dashboard.
+      const dataReady = Promise.all([
+        fetchAthletes(), fetchGroups(), fetchAllSessions(), fetchUnreadCounts(),
+      ])
+
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/'); return }
 
@@ -466,8 +474,7 @@ function DashboardPageInner() {
       setInviteCode(profile?.invite_code ?? null)
       if (profile?.invite_code) setCodeDraft(profile.invite_code)
 
-      await Promise.all([fetchAthletes(), fetchGroups(), fetchAllSessions(), fetchUnreadCounts()])
-
+      await dataReady
       await refreshHomeEvents()
     }
     void boot()

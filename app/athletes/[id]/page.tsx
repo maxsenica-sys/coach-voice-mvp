@@ -831,114 +831,182 @@ export default function AthleteDetailPage() {
             TAB: OVERVIEW
         ══════════════════════════════════════ */}
         {activeTab === 'overview' && athlete && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Hero card */}
-            <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--border)', overflow: 'hidden', border: '3px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+            {/* ── Identity and the three figures that matter, as one object ──
+                This was a white hero card followed by three saturated colour
+                tiles left over from the old palette. They read as separate,
+                equally-loud things and fought the ivory ground. */}
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 15, padding: isMobile ? '16px' : '20px 22px' }}>
+                <div style={{ width: 62, height: 62, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border)' }}>
                   {athlete.photo_signed_url
-                    ? <img src={athlete.photo_signed_url} alt="profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--coach-color)', color: '#fff', fontWeight: 900, fontSize: 28 }}>{(athlete.first_name?.[0] ?? '?').toUpperCase()}</div>
-                  }
+                    ? <img src={athlete.photo_signed_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--coach-light)', color: 'var(--coach-color)', fontWeight: 800, fontSize: 22 }}>
+                        {`${athlete.first_name?.[0] ?? '?'}${athlete.last_name?.[0] ?? ''}`.toUpperCase()}
+                      </div>}
                 </div>
+
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 20, lineHeight: 1.2 }}>{athlete.first_name} {athlete.last_name}</div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 3 }}>{athlete.email}</div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                    {athlete.sport && <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', background: 'var(--bg)', borderRadius: 99, border: '1px solid var(--border)' }}>{athlete.sport}</span>}
-                    {athlete.position && <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', background: 'var(--bg)', borderRadius: 99, border: '1px solid var(--border)' }}>{athlete.position}</span>}
-                    {athlete.height && <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', background: 'var(--bg)', borderRadius: 99, border: '1px solid var(--border)' }}>{athlete.height}</span>}
-                    {athlete.status && <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 11 }}>{athlete.status}</span>}
+                  <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 'clamp(21px, 4.6vw, 27px)', lineHeight: 1.12, letterSpacing: '-0.015em' }}>
+                    {athlete.first_name} {athlete.last_name}
+                  </h1>
+                  <div style={{ display: 'flex', gap: 7, marginTop: 7, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {[athlete.sport, athlete.position, athlete.height].filter(Boolean).map((v, i) => (
+                      <span key={i} style={{ fontSize: 11.5, color: 'var(--text-2)', fontWeight: 600 }}>
+                        {i > 0 && <span style={{ color: 'var(--border)', marginRight: 7 }}>·</span>}{v}
+                      </span>
+                    ))}
+                    <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 9.5 }}>
+                      {athlete.status}
+                    </span>
                   </div>
                 </div>
+              </div>
+
+              {/* The figures live inside the same object as the name, on a
+                  tinted footer — facts about this athlete, not three cards. */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+                {[
+                  { label: 'Sessions', value: String(sessions.length) },
+                  { label: 'Shared', value: String(sessions.filter(s => s.shared_with_athlete).length) },
+                  { label: 'Last', value: sessions[0]?.created_at ? new Date(sessions[0].created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—' },
+                ].map((stat, i) => (
+                  <button key={stat.label} onClick={() => setActiveTab('sessions')} style={{
+                    background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                    padding: '11px 14px 12px',
+                    borderLeft: i > 0 ? '1px solid var(--border)' : 'none',
+                  }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 20, lineHeight: 1, letterSpacing: '-0.03em', color: 'var(--text)' }}>
+                      {stat.value}
+                    </div>
+                    <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                      {stat.label}
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Wellness at-a-glance */}
-            <div
-              className="card"
-              style={{ padding: 16, cursor: 'pointer', ...(wellnessAlert?.active ? { border: '1.5px solid #ef4444' } : {}) }}
-              onClick={() => setActiveTab('wellness')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: wellnessLatest ? 12 : 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 16 }}>{wellnessAlert?.active ? '⚠️' : '💚'}</span>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{wellnessAlert?.active ? 'Wellness — needs attention' : 'Wellness'}</div>
-                    {wellnessLatest && (
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        Last check-in: {new Date(wellnessLatest.check_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {wellnessScore !== null && (
-                    <div style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      background: wellnessColor + '15', borderRadius: 8, padding: '3px 9px',
-                    }}>
-                      <span style={{ fontSize: 15, fontWeight: 800, color: wellnessColor, lineHeight: 1 }}>{wellnessScore}</span>
-                      <span style={{ fontSize: 8, color: wellnessColor, fontWeight: 700 }}>/ 5</span>
-                    </div>
-                  )}
-                  <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>Details →</span>
-                </div>
+            {/* ── The one thing you came here to do ── */}
+            <button className="btn btn-coach" style={{ gap: 7, fontWeight: 700, justifyContent: 'center', padding: '12px' }} onClick={() => setShowQuickSession(true)}>
+              <Icon name="mic" size={15} /> Record a session
+            </button>
+
+            {/* ── Wellness ── */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Wellness</div>
+                <button onClick={() => setActiveTab('wellness')} style={{ fontSize: 10.5, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>
+                  Details →
+                </button>
               </div>
 
-              {wellnessLatest ? (
-                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                  {WELLNESS_METRICS.map(({ key, label, icon }) => {
-                    const score = wellnessLatest[key]
-                    return (
-                      <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span style={{ fontSize: 12 }}>{icon}</span>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: metricColor(key, score), flexShrink: 0 }} />
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{label} {score ?? '—'}</span>
-                      </div>
-                    )
-                  })}
+              <div
+                className="card"
+                style={{ padding: 15, cursor: 'pointer', ...(wellnessAlert?.active ? { borderColor: 'var(--danger)', borderWidth: 1.5 } : {}) }}
+                onClick={() => setActiveTab('wellness')}
+              >
+                {wellnessLatest ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 13 }}>
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: 30, lineHeight: 1, fontWeight: 500, color: wellnessColor, letterSpacing: '-0.03em' }}>
+                        {wellnessScore ?? '—'}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>out of 5</span>
+                      <span style={{ flex: 1 }} />
+                      <span style={{ fontSize: 10.5, color: wellnessAlert?.active ? 'var(--danger)' : 'var(--text-muted)', fontWeight: wellnessAlert?.active ? 700 : 600 }}>
+                        {wellnessAlert?.active ? 'Needs attention' : `Checked in ${new Date(wellnessLatest.check_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+                      </span>
+                    </div>
+
+                    {/* One small bar per metric — comparable at a glance, which
+                        a row of coloured dots and numbers never was. */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                      {WELLNESS_METRICS.map(({ key, label }) => {
+                        const score = wellnessLatest[key]
+                        const pct = score ? (score / 5) * 100 : 0
+                        return (
+                          <div key={key}>
+                            <div style={{ height: 4, background: 'var(--border-soft)', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ width: `${pct}%`, height: '100%', background: metricColor(key, score), borderRadius: 2 }} />
+                            </div>
+                            <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {label}
+                            </div>
+                            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)', marginTop: 1 }}>{score ?? '—'}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.55 }}>
+                    No check-ins yet — {athlete.first_name} hasn&rsquo;t submitted one from their portal.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── Recent sessions: the reason to open an athlete at all.
+                   Overview previously showed no session content whatsoever. ── */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Recent sessions</div>
+                {sessions.length > 3 && (
+                  <button onClick={() => setActiveTab('sessions')} style={{ fontSize: 10.5, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>
+                    All {sessions.length} →
+                  </button>
+                )}
+              </div>
+
+              {sessions.length === 0 ? (
+                <div className="card" style={{ padding: 22, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
+                  Nothing recorded yet. The first session you record will appear here.
                 </div>
               ) : (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No check-ins yet — the athlete hasn&rsquo;t submitted one from their portal.</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {sessions.slice(0, 3).map(s => (
+                    <Link key={s.id} href={`/sessions/${s.id}`} className="card" style={{ padding: '12px 14px', textDecoration: 'none', color: 'inherit', display: 'block' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        <span style={{ fontWeight: 700, fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {s.session_name ?? 'Coaching session'}
+                        </span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
+                          {s.created_at ? new Date(s.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—'}
+                        </span>
+                      </div>
+                      {s.summary && (
+                        <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 5, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                          {s.summary}
+                        </div>
+                      )}
+                    </Link>
+                  ))}
+                </div>
               )}
             </div>
 
-            {/* Quick stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-              {[
-                { label: 'Sessions', value: sessions.length, color: '#4A6B47' },
-                { label: 'Last session', value: sessions[0]?.created_at ? new Date(sessions[0].created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—', color: '#8B3E2A' },
-                { label: 'Shared', value: sessions.filter(s => s.shared_with_athlete).length, color: '#9A7229' },
-              ].map(stat => (
-                <div key={stat.label} style={{ background: stat.color, borderRadius: 14, padding: '12px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
-                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 22, lineHeight: 1, color: '#fff', letterSpacing: -1 }}>{stat.value}</div>
-                  <div style={{ fontSize: 9.5, fontWeight: 700, color: 'rgba(255,255,255,0.8)', marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.6 }}>{stat.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Goals */}
+            {/* ── Goals ── */}
             {athlete.goals && (
-              <div className="card" style={{ padding: 18 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Goals</div>
-                <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{athlete.goals}</div>
+              <div>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 9 }}>Goals</div>
+                <div style={{ borderLeft: '2px solid var(--coach-color)', paddingLeft: 14, fontSize: 14.5, lineHeight: 1.72, color: 'var(--text-2)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-display)' }}>
+                  {athlete.goals}
+                </div>
               </div>
             )}
 
-            {/* Quick actions */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="btn btn-coach" style={{ gap: 6, fontWeight: 700 }} onClick={() => setShowQuickSession(true)}>
-                <Icon name="mic" size={14} /> Record Session
-              </button>
-              <Link href={`/dashboard?tab=messages&athlete=${athleteId}`} className="btn btn-ghost" style={{ gap: 6 }}>
-                <Icon name="messages" size={14} /> Message
+            {/* ── Secondary actions ── */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 2 }}>
+              <Link href={`/dashboard?tab=messages&athlete=${athleteId}`} className="btn btn-ghost" style={{ gap: 6, fontSize: 12.5 }}>
+                <Icon name="messages" size={13} /> Message
               </Link>
-              <button className="btn btn-ghost" style={{ gap: 6 }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
-                <Icon name="report" size={14} /> Monthly Report
+              <button className="btn btn-ghost" style={{ gap: 6, fontSize: 12.5 }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
+                <Icon name="report" size={13} /> Monthly report
               </button>
-              <button className="btn btn-ghost" style={{ gap: 6 }} onClick={() => { setActiveTab('notes'); void loadNotes() }}>
-                <Icon name="report" size={14} /> Notes
+              <button className="btn btn-ghost" style={{ gap: 6, fontSize: 12.5 }} onClick={() => { setActiveTab('notes'); void loadNotes() }}>
+                <Icon name="report" size={13} /> Notes
               </button>
             </div>
           </div>
