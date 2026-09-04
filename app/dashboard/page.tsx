@@ -1057,7 +1057,9 @@ function DashboardPageInner() {
                           return d === 1 ? 'Yesterday' : `${d}d`
                         })()
                         return (
-                          <Link key={s.id} href={`/athletes/${s.athlete_id}`} style={{ background: '#FFFFFF', borderRadius: 12, padding: '11px 12px', border: '1px solid #E3DED2', display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
+                          // Opens the session, not its athlete. The Sessions tab
+                          // was fixed for this; the home list had been missed.
+                          <Link key={s.id} href={`/sessions/${s.id}`} style={{ background: '#FFFFFF', borderRadius: 12, padding: '11px 12px', border: '1px solid #E3DED2', display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
                             <div style={{ position: 'relative', flexShrink: 0 }}>
                               <div style={{ width: 34, height: 34, borderRadius: '50%', background: tone, color: '#fff', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials}</div>
                               <div style={{ position: 'absolute', bottom: -2, right: -2, width: 16, height: 16, borderRadius: '50%', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #FFFFFF' }}>
