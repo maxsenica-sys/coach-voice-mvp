@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
+import { getSportTerminologyHint } from '@/lib/sports'
 import { notifySessionShared } from '@/lib/notify'
 
 type CookieToSet = { name: string; value: string; options?: any }
@@ -27,21 +28,43 @@ function createSupabase(req: NextRequest) {
   return { supabase, cookiesToSet }
 }
 
-async function makeQuickSummary(transcript: string) {
+async function makeQuickSummary(transcript: string, sport?: string | null) {
   const key = process.env.OPENAI_API_KEY
   if (!key) return null
 
+  // The sport matters more than it looks. The transcript comes from Whisper
+  // transcribing a coach talking, often near a noisy court, so sport jargon
+  // arrives mangled ("set" as "sat", "libero" as "libro"). Without knowing the
+  // sport the model guesses from context and gets terminology subtly wrong —
+  // the "summary references the wrong thing" problem. Naming the sport and its
+  // vocabulary lets it read through the mishearings instead of inventing.
+  const trimmedSport = (sport ?? '').trim()
+  const terminology = trimmedSport ? getSportTerminologyHint(trimmedSport) : ''
+
+  const sportBlock = trimmedSport
+    ? `SPORT: ${trimmedSport}\n` +
+      (terminology ? `Common terms in this sport: ${terminology.slice(0, 400)}\n` : '') +
+      `Interpret ambiguous or misheard words as ${trimmedSport} terminology where that is the plausible reading. Never introduce terms from a different sport.\n`
+    : `SPORT: not specified. Keep the language general — do NOT assume a particular sport, and do not use sport-specific jargon that isn't already in the transcript.\n`
+
   const prompt = `
-You are a sports coach assistant. Summarise this coaching session in 2–5 bullet points.
+You are summarising a coach's spoken notes from a training session, for the athlete to read afterwards.
 
-Critical rules:
-- ONLY include points about things that actually happened or were explicitly mentioned
-- Do NOT write empty categories, "N/A", "None", or placeholder text
-- Each bullet must be specific and factual — skip any category with nothing to say
-- Total output under 300 characters if possible
-- Start each bullet with •
+${sportBlock}
+WHAT YOU ARE READING
+The text below is an automatic transcript of the coach talking out loud, not a written report. Expect run-on sentences, filler, self-corrections and misheard words. Read it for intent — the coach's actual coaching points — and quietly ignore transcription noise.
 
-Transcript:
+WRITE
+2–5 bullets, each starting with •, each a short specific coaching point in the coach's own voice. Prefer what the athlete should DO next over abstract praise. Aim for under 300 characters total.
+
+NEVER
+- Never state anything the coach did not say. If the transcript is too garbled or too short to summarise, output only: • Recording too unclear to summarise.
+- Never write empty categories, "N/A", "None", or placeholders — omit the point instead.
+- Never invent drills, numbers, scores or names that are not in the transcript.
+- Never repeat the whole transcript back; this is a summary.
+- No preamble, no heading, no sign-off. Bullets only.
+
+TRANSCRIPT
 ${transcript}
 `.trim()
 
@@ -144,8 +167,23 @@ export async function POST(req: NextRequest) {
     return attachCookies(res, cookiesToSet)
   }
 
+  // Resolve the sport server-side rather than trusting the client to send it.
+  // 26 of the first 40 sessions saved with sport_context null even though the
+  // coach's profile said Volleyball — the recorder reads `coachSport` from
+  // state that hasn't always loaded by the time the modal opens. Falling back
+  // to the athlete's sport, then the coach's profile, makes the summary
+  // sport-aware regardless of client timing.
+  let resolvedSport = sport_context
+  if (!resolvedSport) {
+    const [{ data: athleteRow }, { data: coachProfile }] = await Promise.all([
+      supabase.from('athletes').select('sport').eq('id', athlete_id).maybeSingle(),
+      supabase.from('profiles').select('sport').eq('id', user.id).maybeSingle(),
+    ])
+    resolvedSport = athleteRow?.sport?.trim() || coachProfile?.sport?.trim() || null
+  }
+
   // AI quick scan summary (if it fails, we still save with summary = null)
-  const summary = await makeQuickSummary(transcript.trim())
+  const summary = await makeQuickSummary(transcript.trim(), resolvedSport)
 
   const { data, error } = await supabase
     .from('sessions')
@@ -156,7 +194,7 @@ export async function POST(req: NextRequest) {
       transcript: transcript.trim(),
       summary, // quick scan summary for list
       shared_with_athlete,
-      sport_context,
+      sport_context: resolvedSport,
       audio_path,
       audio_mime,
     })
@@ -168,12 +206,11 @@ export async function POST(req: NextRequest) {
     return attachCookies(res, cookiesToSet)
   }
 
-  // Auto-create a calendar event so this session appears on the calendar
-  // and the home tab week strip. Only do this once the session is actually
-  // shared — otherwise the athlete sees a calendar entry for a session whose
-  // feedback they can't yet open in their feed (see PATCH /api/sessions/[id],
-  // which creates this event instead if the session is shared later).
-  if (data?.id && shared_with_athlete) {
+  // Every session goes on the coach's calendar and the home week wheel, shared
+  // or not — it's a record of work they did. `visible_to_athlete` decides
+  // whether the athlete also sees it, so an unshared session stays off their
+  // calendar without vanishing from the coach's.
+  if (data?.id) {
     const dateStr = session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date())
     await syncSessionCalendarEvent({
       supabase,
@@ -183,16 +220,20 @@ export async function POST(req: NextRequest) {
       title: session_name,
       summary,
       eventDate: dateStr,
+      visibleToAthlete: shared_with_athlete,
     })
-    await notifySessionShared({
-      supabase,
-      req,
-      athleteId: athlete_id,
-      coachUserId: user.id,
-      coachEmail: user.email,
-      sessionTitle: session_name,
-      summary,
-    })
+
+    if (shared_with_athlete) {
+      await notifySessionShared({
+        supabase,
+        req,
+        athleteId: athlete_id,
+        coachUserId: user.id,
+        coachEmail: user.email,
+        sessionTitle: session_name,
+        summary,
+      })
+    }
   }
 
   const res = NextResponse.json({ session: data })

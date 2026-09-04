@@ -25,10 +25,20 @@ export async function POST(req: Request) {
 
     const form = await req.formData()
     const file = form.get('file')
-    const sport = String(form.get('sport') ?? '').trim()       // optional sport context
+    let sport = String(form.get('sport') ?? '').trim()         // optional sport context
     const language = String(form.get('language') ?? '').trim() // optional language hint
 
     const audioPath = String(form.get('audio_path') ?? '').trim()
+
+    // The sport primes Whisper's vocabulary, which is what stops jargon coming
+    // back mangled. The recorders read it from client state that isn't always
+    // loaded yet, so fall back to the caller's own profile rather than
+    // transcribing blind.
+    if (!sport) {
+      const { data: profile } = await routeClient
+        .from('profiles').select('sport').eq('id', user.id).maybeSingle()
+      sport = (profile?.sport ?? '').trim()
+    }
 
     // Preferred path: the browser uploaded straight to Supabase Storage with a
     // signed URL, so only the path travels through Vercel. Sidesteps the 4.5MB

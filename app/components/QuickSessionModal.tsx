@@ -34,7 +34,10 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   const [transcript, setTranscript] = useState('')
   const [audioPath, setAudioPath] = useState<string | null>(null)
   const [audioMime, setAudioMime] = useState<string | null>(null)
-  const [shareWithAthlete, setShareWithAthlete] = useState(false)
+  // Shared by default: the point of recording a session is that the athlete
+  // receives it. Defaulting to private meant 27 of 40 sessions silently never
+  // reached anyone — untick before saving to keep one to yourself.
+  const [shareWithAthlete, setShareWithAthlete] = useState(true)
 
   // Recording
   const [recording, setRecording] = useState(false)

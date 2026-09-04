@@ -59,16 +59,19 @@ export async function GET(req: NextRequest) {
   const admin = createSupabaseAdminClient()
   const range = monthRange(month)
 
-  const baseSelect = 'id, athlete_id, created_by_user_id, created_by_role, title, description, event_type, event_date, event_time, created_at'
+  const baseSelect = 'id, athlete_id, session_id, created_by_user_id, created_by_role, title, description, event_type, event_date, event_time, created_at'
 
   // ── ATHLETE ROLE ────────────────────────────────────────────
   if (role === 'athlete') {
     const { data: ath } = await admin.from('athletes').select('id').eq('athlete_user_id', user.id).maybeSingle()
     if (!ath) return attach(NextResponse.json({ events: [] }), cookiesToSet)
 
+    // visible_to_athlete gates coach-created events (an unshared session stays
+    // on the coach's calendar but off the athlete's). The athlete's own events
+    // are always theirs to see.
     let q = admin.from('calendar_events').select(baseSelect)
       .eq('athlete_id', ath.id)
-      .or(`created_by_role.eq.coach,and(created_by_role.eq.athlete,created_by_user_id.eq.${user.id})`)
+      .or(`and(created_by_role.eq.coach,visible_to_athlete.eq.true),and(created_by_role.eq.athlete,created_by_user_id.eq.${user.id})`)
       .order('event_date', { ascending: true })
     if (range) q = q.gte('event_date', range.from).lte('event_date', range.to)
 

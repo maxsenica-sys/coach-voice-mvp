@@ -57,10 +57,10 @@ export async function PATCH(
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 
-  // If this update just shared the session, make sure it has a calendar entry —
-  // sessions saved unshared don't get one at creation time (see POST /api/sessions
-  // and /api/sessions/audio), so this is where a later share syncs the calendar.
-  if (updates.shared_with_athlete === true && data) {
+  // Toggling share flips who can see the session's calendar event. The event
+  // itself already exists (created at save time), so this normally just updates
+  // visibility; the insert path only runs for sessions predating that change.
+  if (typeof updates.shared_with_athlete === 'boolean' && data) {
     const dateStr = new Intl.DateTimeFormat('en-CA').format(new Date(data.created_at))
     const isFirstShare = await syncSessionCalendarEvent({
       supabase,
@@ -70,10 +70,12 @@ export async function PATCH(
       title: data.session_name || data.title,
       summary: data.summary,
       eventDate: dateStr,
+      visibleToAthlete: updates.shared_with_athlete,
       skipIfExists: true,
     })
-    // Only notify the first time this session is shared, not on every re-toggle.
-    if (isFirstShare) {
+    // Only notify the first time this session is shared, not on every re-toggle,
+    // and never when it's being unshared.
+    if (isFirstShare && updates.shared_with_athlete === true) {
       await notifySessionShared({
         supabase,
         req,
