@@ -12,9 +12,16 @@ cause recording and transcription to fail.
 | File | Function | Notes |
 |------|----------|-------|
 | `app/components/QuickSessionModal.tsx` | `startRecording`, `stopAndTranscribe` | Coach session recorder |
-| `app/athletes/[id]/page.tsx` | `startRecording`, `transcribeBlob` | Athlete profile recorder |
 | `app/athlete/page.tsx` | `startNoteRecording` | Athlete voice notes |
 | `app/components/MessagingPanel.tsx` | `startAudio`, `sendAudio` | Voice messages |
+
+> **Updated 2026-09-05:** The athlete profile page's own recorder
+> (`startRecording`, `stopRecording`, `transcribeBlob`, `clearRecording`,
+> `saveSession` in `app/athletes/[id]/page.tsx`) was deleted. It had been
+> unreachable for some time — both "Record Session" buttons on that page open
+> `QuickSessionModal`, and nothing rendered the local recorder's UI. Recording
+> from an athlete's profile still works; it goes through the modal like
+> everywhere else.
 
 > **Updated after Round 1:** The re-record `onClick` handler in
 > `QuickSessionModal` was intentionally modified to stop lingering mic streams.
