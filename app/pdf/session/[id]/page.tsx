@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+import { formatSessionDate } from '@/lib/session-date'
 
 interface SessionData {
   id: string
   session_name: string | null
   summary: string | null
   transcript: string | null
+  session_date?: string | null
   shared_with_athlete: boolean
   created_at: string
   sport_context: string | null
@@ -85,7 +87,7 @@ export default function SessionPDFPage() {
   const coachName = coach
     ? [coach.first_name, coach.last_name].filter(Boolean).join(' ')
     : 'Coach'
-  const sessionDate = new Date(session.created_at).toLocaleDateString(undefined, {
+  const sessionDate = formatSessionDate(session, {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   })
 

@@ -11,6 +11,7 @@ import { fmtDate, fmtDateTime } from '@/lib/date-utils'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { apiMutate } from '@/lib/api-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
+import { formatSessionDate } from '@/lib/session-date'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -20,6 +21,7 @@ type SessionRow = {
   title: string | null
   summary: string | null
   transcript: string | null
+  session_date?: string | null
   shared_with_athlete: boolean
   created_at: string | null
   sport_context: string | null
@@ -173,7 +175,7 @@ export default function AthletePage() {
         const [{ data: sessData }, notesRes] = await Promise.all([
           athRecord
             ? supabase.from('sessions')
-                .select('id, session_name, title, summary, transcript, shared_with_athlete, created_at, sport_context, audio_path, audio_mime')
+                .select('id, session_name, title, summary, transcript, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime')
                 .eq('athlete_id', athRecord.id)
                 .eq('shared_with_athlete', true)
                 .order('created_at', { ascending: false })
@@ -773,7 +775,7 @@ export default function AthletePage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, position: 'relative' }}>
                   <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#B55C3E' }} />
                   <span style={{ fontSize: 9.5, fontWeight: 800, color: '#B55C3E', letterSpacing: 1.2, textTransform: 'uppercase' }}>
-                    New from Coach · {fmtDate(sessions[0].created_at)}
+                    New from Coach · {formatSessionDate(sessions[0])}
                   </span>
                 </div>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 500, color: '#1F2421', lineHeight: 1.35, letterSpacing: -0.2, marginBottom: 4, fontStyle: 'italic', position: 'relative' }}>
@@ -797,7 +799,7 @@ export default function AthletePage() {
               {[
                 { label: 'Sessions', value: sessions.length, color: '#6F8E6B', delta: 'from coach', onClick: () => setTab('sessions') },
                 { label: 'My Notes', value: notes.length, color: '#B55C3E', delta: 'private', onClick: () => setTab('notes') },
-                { label: 'Last Session', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—', color: '#C9933A', delta: sessions[0] ? 'most recent' : 'none yet', onClick: () => setTab('sessions') },
+                { label: 'Last Session', value: sessions[0] ? formatSessionDate(sessions[0]) : '—', color: '#C9933A', delta: sessions[0] ? 'most recent' : 'none yet', onClick: () => setTab('sessions') },
               ].map((s, idx) => (
                 <button key={s.label} onClick={s.onClick} style={{
                   background: '#FFFFFF', borderRadius: 14, padding: '11px 10px 10px',
@@ -852,7 +854,7 @@ export default function AthletePage() {
                     {sessions[0].summary.slice(0, 140)}{sessions[0].summary.length > 140 ? '…' : ''}
                   </div>
                 )}
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(sessions[0].created_at)}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatSessionDate(sessions[0])}</div>
               </div>
             )}
 
@@ -896,7 +898,7 @@ export default function AthletePage() {
                           <div>
                             <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{s.session_name ?? s.title ?? 'Session'}</div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                              {fmtDateTime(s.created_at)}
+                              {formatSessionDate(s)}
                               {s.sport_context ? ` · ${s.sport_context}` : ''}
                               {sNotes.length > 0 && ` · 📝 ${sNotes.length}`}
                               {sVideos.length > 0 && ` · 🎬 ${sVideos.length}`}

@@ -16,6 +16,7 @@ import {
   WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor,
   type WellnessCheckin, type WellnessAlert,
 } from '@/lib/wellness-config'
+import { formatSessionDate } from '@/lib/session-date'
 
 interface Athlete {
   id: string; first_name: string; last_name: string
@@ -33,6 +34,7 @@ interface Athlete {
 interface Session {
   id: string; session_name: string | null; summary: string | null
   transcript: string | null; shared_with_athlete: boolean
+  session_date?: string | null
   created_at: string | null; sport_context?: string | null; audio_path?: string | null; audio_mime?: string | null
 }
 interface SessionVideo {
@@ -870,7 +872,7 @@ export default function AthleteDetailPage() {
                 {[
                   { label: 'Sessions', value: String(sessions.length) },
                   { label: 'Shared', value: String(sessions.filter(s => s.shared_with_athlete).length) },
-                  { label: 'Last', value: sessions[0]?.created_at ? new Date(sessions[0].created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—' },
+                  { label: 'Last', value: sessions[0] ? formatSessionDate(sessions[0], { month: 'short', day: 'numeric' }) : '—' },
                 ].map((stat, i) => (
                   <button key={stat.label} onClick={() => setActiveTab('sessions')} style={{
                     background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
@@ -973,7 +975,7 @@ export default function AthleteDetailPage() {
                           {s.session_name ?? 'Coaching session'}
                         </span>
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
-                          {s.created_at ? new Date(s.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—'}
+                          {formatSessionDate(s, { day: 'numeric', month: 'short' })}
                         </span>
                       </div>
                       {s.summary && (
@@ -1055,7 +1057,7 @@ export default function AthleteDetailPage() {
                               {s.session_name ?? 'Session'}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                              {s.created_at ? new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : '—'}
+                              {formatSessionDate(s, { year: 'numeric', month: 'short', day: '2-digit' })}
                               {sVideos.length > 0 && ` · ${sVideos.length} video${sVideos.length > 1 ? 's' : ''}`}
                             </div>
                           </div>

@@ -3,11 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+import { formatSessionDate } from '@/lib/session-date'
 
 interface Session {
   id: string
   session_name: string | null
   summary: string | null
+  session_date?: string | null
   created_at: string
 }
 
@@ -78,12 +80,16 @@ export default function MonthlyReportPage() {
       const since = new Date()
       since.setDate(since.getDate() - 30)
       const sinceStr = since.toISOString()
+      const sinceDate = new Intl.DateTimeFormat('en-CA').format(since)
 
       const { data: sess } = await supabase
         .from('sessions')
-        .select('id, session_name, summary, created_at')
+        .select('id, session_name, summary, session_date, created_at')
         .eq('athlete_id', athleteId)
-        .gte('created_at', sinceStr)
+        // Backdated sessions belong in the window they happened in, so filter
+        // on session_date and keep created_at only for rows that predate it.
+        .or(`session_date.gte.${sinceDate},and(session_date.is.null,created_at.gte.${sinceStr})`)
+        .order('session_date', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
       setSessions(sess ?? [])
 
@@ -212,7 +218,7 @@ export default function MonthlyReportPage() {
             {sessions.map((s) => (
               <div key={s.id} className="session-row">
                 <div className="session-date">
-                  {new Date(s.created_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                  {formatSessionDate(s, { weekday: 'short', month: 'short', day: 'numeric' })}
                 </div>
                 <div className="session-name">{s.session_name ?? 'Session'}</div>
                 {s.summary && <div className="session-summary">{s.summary}</div>}
