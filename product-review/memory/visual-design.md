@@ -18,3 +18,43 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 ```
 
 ---
+
+## 2026-09-05 — DESIGN-001 — Replace the raw-Tailwind wellness palette with four tokens in the app's own colour family
+Status: PROPOSED
+Verdict at proposal: BUILD NOW
+Priority: (3 x 3 x 3 x 5) / 2 = 67.5
+Grounded in: `lib/wellness-config.ts:45-52, 90-95` (the four state hexes) and
+  `:21,26,31,36,41` (25 colorMap literals that only ever render as a selected-button
+  fill) · rendered as *text* at `app/dashboard/page.tsx:1131`,
+  `app/athletes/[id]/page.tsx:647` and `:778`, `WellnessGraph.tsx:98-100` and `:179-180`
+Evidence: measured WCAG 2.2 ratios. Current: `#10b981` 2.54:1, `#f59e0b` 2.15:1,
+  `#ef4444` 3.76:1, `#94a3b8` 2.56:1 on white — every render site fails 1.4.3, including
+  the two that qualify as large text and need only 3:1. Selected check-in digit measures
+  2.99-3.48:1 versus 5.93:1 unselected, so selection degrades legibility from pass to
+  fail. Proposed `#4F6B4B` 5.94, `#7E5A1C` 6.24, `#A54034` 6.21, `#5D6661` 5.93 on white,
+  4.80-5.18 on their paired tints. 9.5 px at `dashboard:1131` is below Apple HIG Caption 2
+  (11 pt) and Material label small (11 sp). `WellnessSubmit.tsx:70` is 40 px against
+  HIG 44 / Material 48 — and against the app's own `globals.css:528` house rule.
+  Orchestrator spot-checked `#10b981`, `#4F6B4B` and `#7E5A1C`: all correct.
+  Explicitly NOT claimed: SC 1.4.1 (colour is redundant, the numeral is always printed).
+Opinion, labelled: saturated web-default green/amber/red on parchment reads as a
+  dashboard widget dropped into a letter; muted rust says "noted" where `#ef4444` says
+  "alarm". Would change its mind if the real complaint is that low wellness is too *easy
+  to miss* — then the answer is structural (surface that athlete first), not a different
+  hue. That call is Max's.
+Outcome: awaiting Max
+
+## 2026-09-05 — Deliberately scoped out, do not rediscover
+The five per-metric identity hues (`lib/wellness-config.ts:19,24,29,34,39`) stay for now.
+As chart strokes and fills they are governed by 3:1 (SC 1.4.11), and the chart sits behind
+a toggle. The one place they are *text* is the metric pills (`WellnessGraph.tsx:248-262`)
+at 2.00-3.78:1, all failing — the fix is to move identity colour onto a dot or border and
+set pill text to `--text`/`--text-2`. Separate, smaller recommendation, held back rather
+than bundling two colour decisions into one review.
+
+## 2026-09-05 — Register contamination, first run
+The register was pre-seeded with two predicted design findings before any agent ran, so
+this agent numbered itself DESIGN-003 and declined to re-propose either. Corrected: the
+register now holds agent output only, and unreviewed observations sit in a separate
+section. Both seeded items (`--text-muted` at 2.47:1; the sign-in page's separate visual
+identity) are there, unproposed, and available to pick up.
