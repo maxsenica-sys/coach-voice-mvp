@@ -16,6 +16,7 @@ import {
   WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor,
   type WellnessCheckin, type WellnessAlert,
 } from '@/lib/wellness-config'
+import { formatSessionDate } from '@/lib/session-date'
 
 interface Athlete {
   id: string; first_name: string; last_name: string
@@ -33,13 +34,13 @@ interface Athlete {
 interface Session {
   id: string; session_name: string | null; summary: string | null
   transcript: string | null; shared_with_athlete: boolean
+  session_date?: string | null
   created_at: string | null; sport_context?: string | null; audio_path?: string | null; audio_mime?: string | null
 }
 interface SessionVideo {
   id: string; session_id: string; file_name: string | null
   annotations: AnnotationStroke[]; signedUrl: string | null; created_at: string
 }
-type RecordingState = 'idle' | 'recording' | 'transcribing' | 'ready'
 
 // ── SVG Icon (reused from dashboard) ────────────────────────────
 function Icon({ name, size = 18, strokeWidth = 2 }: { name: string; size?: number; strokeWidth?: number }) {
@@ -208,30 +209,10 @@ export default function AthleteDetailPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [pageError, setPageError] = useState<string | null>(null)
-  // Seeded from the session cache so the recorder knows the sport on the first
-  // frame — it used to load late, which is why 26 sessions saved with no sport.
+  // Seeded from the session cache so QuickSessionModal knows the sport on the
+  // first frame — it used to load late, which is why 26 sessions saved with no
+  // sport.
   const [coachSport, setCoachSport] = useState(() => readCachedProfile()?.sport ?? '')
-
-  const [sessionName, setSessionName] = useState('')
-  const [share, setShare] = useState(true)
-  const [transcript, setTranscript] = useState('')
-  const [summary, setSummary] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [savedSessionId, setSavedSessionId] = useState<string | null>(null)
-
-  const [recordState, setRecordState] = useState<RecordingState>('idle')
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
-  const [audioPath, setAudioPath] = useState<string | null>(null)
-  const [audioMime, setAudioMime] = useState<string | null>(null)
-  const [audioUrl, setAudioUrl] = useState<string | null>(null)
-  const [micLevel, setMicLevel] = useState(0)
-
-  const mediaRecRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<BlobPart[]>([])
-  const streamRef = useRef<MediaStream | null>(null)
-  const audioCtxRef = useRef<AudioContext | null>(null)
-  const analyserRef = useRef<AnalyserNode | null>(null)
-  const rafRef = useRef<number>(0)
 
   const [autoMonthlyReport, setAutoMonthlyReport] = useState(false)
   const [showCaretakers, setShowCaretakers] = useState(false)
@@ -363,122 +344,6 @@ export default function AthleteDetailPage() {
     setAlertSending(false)
   }
   const wellnessColor = overallScoreColor(wellnessScore)
-  useEffect(() => () => { cleanupAll() }, [])
-
-  const cleanupAll = () => {
-    cancelAnimationFrame(rafRef.current); setMicLevel(0)
-    try { analyserRef.current?.disconnect() } catch {}
-    try { audioCtxRef.current?.close() } catch {}
-    streamRef.current?.getTracks().forEach(t => t.stop())
-    audioCtxRef.current = null; analyserRef.current = null; streamRef.current = null
-  }
-
-  const startMeter = async (stream: MediaStream) => {
-    const Ctx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext | undefined
-    if (!Ctx) return
-    const ctx = new Ctx(); audioCtxRef.current = ctx
-    const src = ctx.createMediaStreamSource(stream)
-    const analyser = ctx.createAnalyser(); analyser.fftSize = 512; analyserRef.current = analyser
-    src.connect(analyser)
-    const data = new Uint8Array(analyser.frequencyBinCount)
-    const tick = () => {
-      if (!analyserRef.current) return
-      analyserRef.current.getByteTimeDomainData(data)
-      let sum = 0; for (const v of data) sum += ((v - 128) / 128) ** 2
-      setMicLevel(Math.min(1, Math.sqrt(sum / data.length) * 2.5))
-      rafRef.current = requestAnimationFrame(tick)
-    }
-    rafRef.current = requestAnimationFrame(tick)
-  }
-
-  const startRecording = async () => {
-    setPageError(null)
-    if (audioUrl) URL.revokeObjectURL(audioUrl)
-    setAudioBlob(null); setAudioUrl(null); setAudioPath(null); setAudioMime(null); setTranscript(''); setSummary(''); chunksRef.current = []; setSavedSessionId(null)
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(e => { setPageError(e?.message ?? 'Microphone access denied'); return null })
-    if (!stream) return
-    streamRef.current = stream; await startMeter(stream)
-    // mp4/AAC first: iOS Safari cannot decode WebM at all, so a WebM recording
-    // made in Chrome played back as an endless spinner on an iPhone. Every
-    // browser that can play WebM can also play mp4, so preferring it makes a
-    // recording playable everywhere. isTypeSupported still guards the choice,
-    // and WebM stays as the fallback for browsers that can't record mp4.
-    const supported = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
-    const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
-    const rec = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32000 }); mediaRecRef.current = rec
-    rec.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-    rec.onstop = async () => {
-      cleanupAll()
-      const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' })
-      setAudioBlob(blob); setAudioUrl(URL.createObjectURL(blob)); setRecordState('transcribing')
-      await transcribeBlob(blob)
-    }
-    rec.start(); setRecordState('recording')
-  }
-
-  const stopRecording = () => { if (mediaRecRef.current?.state !== 'inactive') mediaRecRef.current?.stop(); setRecordState('transcribing') }
-
-  const transcribeBlob = async (blob: Blob) => {
-    const mime = blob.type || 'audio/webm'
-    const ext = mime.includes('mp4') ? 'mp4' : mime.includes('ogg') ? 'ogg' : 'webm'
-    let uploadedPath: string | null = null
-
-    // Browser -> Supabase directly, so Vercel never sees the 4.5MB body.
-    try {
-      const urlRes = await fetch('/api/sessions/audio-upload-url?' + new URLSearchParams({ mime_type: mime }))
-      if (urlRes.ok) {
-        const { signedUrl, path } = await urlRes.json()
-        const putRes = await fetch(signedUrl, { method: 'PUT', headers: { 'content-type': mime }, body: blob })
-        if (putRes.ok) uploadedPath = path
-      }
-    } catch {
-      /* fall back to inline upload below */
-    }
-
-    const fd = new FormData()
-    if (uploadedPath) {
-      fd.append('audio_path', uploadedPath)
-    } else {
-      fd.append('file', new File([blob], `recording.${ext}`, { type: mime }))
-    }
-    if (coachSport) fd.append('sport', coachSport)
-
-    const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}))
-      setPageError(
-        res.status === 413
-          ? `That recording is too large to upload (${(blob.size / 1048576).toFixed(1)}MB). Record in shorter parts, or type the transcript.`
-          : (j.error ?? `Transcription failed (${res.status})`),
-      )
-      setRecordState('idle'); return
-    }
-    if (uploadedPath) { setAudioPath(uploadedPath); setAudioMime(mime) }
-    const json = await res.json(); setTranscript((json.text ?? '').trim()); setRecordState('ready')
-  }
-
-  const clearRecording = () => {
-    if (recordState === 'recording') { mediaRecRef.current?.stop(); cleanupAll() }
-    if (audioUrl) URL.revokeObjectURL(audioUrl)
-    setAudioBlob(null); setAudioUrl(null); setTranscript(''); setSummary(''); setRecordState('idle'); setSavedSessionId(null)
-  }
-
-  const saveSession = async () => {
-    if (!transcript.trim()) return
-    setSaving(true); setPageError(null)
-    try {
-      // Audio already went straight to storage during transcription — reuse that path
-      // rather than uploading the same blob a second time through Vercel.
-      const audio_path = audioPath
-      const audio_mime = audioMime
-      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, session_name: sessionName.trim() || null, transcript: transcript.trim(), shared_with_athlete: share, sport_context: coachSport || null, session_date: new Intl.DateTimeFormat('en-CA').format(new Date()), audio_path, audio_mime }) })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to save')
-      const { session } = await res.json()
-      setSavedSessionId(session.id); setSummary(session.summary ?? ''); setSessionName(''); setShare(true)
-      await load()
-    } catch (e: any) { setPageError(e?.message ?? 'Failed to save session') }
-    finally { setSaving(false) }
-  }
 
   const toggleShare = async (sessionId: string, current: boolean) => {
     try {
@@ -870,7 +735,7 @@ export default function AthleteDetailPage() {
                 {[
                   { label: 'Sessions', value: String(sessions.length) },
                   { label: 'Shared', value: String(sessions.filter(s => s.shared_with_athlete).length) },
-                  { label: 'Last', value: sessions[0]?.created_at ? new Date(sessions[0].created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—' },
+                  { label: 'Last', value: sessions[0] ? formatSessionDate(sessions[0], { month: 'short', day: 'numeric' }) : '—' },
                 ].map((stat, i) => (
                   <button key={stat.label} onClick={() => setActiveTab('sessions')} style={{
                     background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
@@ -973,7 +838,7 @@ export default function AthleteDetailPage() {
                           {s.session_name ?? 'Coaching session'}
                         </span>
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
-                          {s.created_at ? new Date(s.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—'}
+                          {formatSessionDate(s, { day: 'numeric', month: 'short' })}
                         </span>
                       </div>
                       {s.summary && (
@@ -1055,7 +920,7 @@ export default function AthleteDetailPage() {
                               {s.session_name ?? 'Session'}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                              {s.created_at ? new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : '—'}
+                              {formatSessionDate(s, { year: 'numeric', month: 'short', day: '2-digit' })}
                               {sVideos.length > 0 && ` · ${sVideos.length} video${sVideos.length > 1 ? 's' : ''}`}
                             </div>
                           </div>

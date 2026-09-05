@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { apiMutate } from '@/lib/api-client'
+import { formatSessionDate, todayISODate, yesterdayISODate } from '@/lib/session-date'
 
 interface Athlete {
   id: string
@@ -31,6 +32,9 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   const [athleteId, setAthleteId] = useState(defaultAthleteId ?? athletes[0]?.id ?? '')
   const [groupId, setGroupId] = useState(defaultGroupId ?? groups[0]?.id ?? '')
   const [sessionName, setSessionName] = useState('')
+  // Sessions are often written up after the fact — the day before's training
+  // logged over breakfast. Defaults to today; the picker moves it back.
+  const [sessionDate, setSessionDate] = useState(todayISODate())
   const [transcript, setTranscript] = useState('')
   const [audioPath, setAudioPath] = useState<string | null>(null)
   const [audioMime, setAudioMime] = useState<string | null>(null)
@@ -179,6 +183,10 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
 
   const save = async () => {
     if (!transcript.trim()) { setError('Please record or type a transcript.'); return }
+    // Saving a cleared date would quietly file the session under today, which
+    // is the exact mistake the picker exists to prevent.
+    if (!sessionDate) { setError('Pick the date this session happened.'); return }
+    if (sessionDate > todayISODate()) { setError('A session date cannot be in the future.'); return }
     setSaving(true)
     setError('')
 
@@ -193,13 +201,13 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
             session_name: sessionName.trim() || null,
             transcript: transcript.trim(),
             shared_with_athlete: shareWithAthlete,
-            session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
+            session_date: sessionDate,
             sport_context: coachSport || null,
             audio_path: audioPath,
             audio_mime: audioMime,
           }),
         })
-        if (!res.ok) throw new Error((await res.json())?.error ?? 'Failed to save')
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? 'Failed to save')
       } else {
         // Group session: save one session per member
         const group = groups.find((g) => g.id === groupId)
@@ -219,7 +227,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   session_name: sessionName.trim() ? `[${group.name}] ${sessionName.trim()}` : `[${group.name}] Session`,
                   transcript: transcript.trim(),
                   shared_with_athlete: shareWithAthlete,
-                  session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
+                  session_date: sessionDate,
                   sport_context: coachSport || null,
                   audio_path: audioPath,
                   audio_mime: audioMime,
@@ -253,6 +261,17 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       setSaving(false)
     }
   }
+
+  // Recomputed per render rather than held in state: a modal left open across
+  // midnight would otherwise cap the picker at yesterday.
+  const today = todayISODate()
+  const sessionDateLabel = !sessionDate
+    ? 'Pick the day this session happened'
+    : sessionDate === today
+      ? 'Today'
+      : sessionDate === yesterdayISODate()
+        ? 'Yesterday'
+        : formatSessionDate({ session_date: sessionDate }, { weekday: 'long', month: 'short', day: 'numeric' })
 
   const groupMembers = groups.find((g) => g.id === groupId)?.member_ids ?? []
   const groupMemberNames = groupMembers
@@ -357,15 +376,30 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
               )}
             </div>
 
-            {/* Session name */}
-            <div>
-              <label className="label">Session name (optional)</label>
-              <input
-                className="input"
-                placeholder="e.g. Tackling drills, Speed work"
-                value={sessionName}
-                onChange={(e) => setSessionName(e.target.value)}
-              />
+            {/* Session name + date */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ flex: '2 1 220px', minWidth: 0 }}>
+                <label className="label">Session name (optional)</label>
+                <input
+                  className="input"
+                  placeholder="e.g. Tackling drills, Speed work"
+                  value={sessionName}
+                  onChange={(e) => setSessionName(e.target.value)}
+                />
+              </div>
+              <div style={{ flex: '1 1 150px', minWidth: 0 }}>
+                <label className="label">Session date</label>
+                <input
+                  className="input"
+                  type="date"
+                  value={sessionDate}
+                  max={today}
+                  onChange={(e) => setSessionDate(e.target.value)}
+                />
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>
+                  {sessionDateLabel}
+                </div>
+              </div>
             </div>
 
             {/* Record button */}
@@ -464,6 +498,23 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
             }}>
               <span>✨</span>
               <span>AI summary will be generated automatically when you save.</span>
+            </div>
+
+            {/* Session date — the save happens on this step, so it stays
+                editable here for anyone who skipped straight to typing. */}
+            <div>
+              <label className="label">Session date</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  className="input"
+                  type="date"
+                  value={sessionDate}
+                  max={today}
+                  onChange={(e) => setSessionDate(e.target.value)}
+                  style={{ maxWidth: 190 }}
+                />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{sessionDateLabel}</span>
+              </div>
             </div>
 
             {/* Share toggle */}

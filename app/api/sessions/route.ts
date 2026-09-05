@@ -118,9 +118,12 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, session_name, summary, transcript, shared_with_athlete, created_at, audio_path, audio_mime')
+    .select('id, session_name, summary, transcript, shared_with_athlete, session_date, created_at, audio_path, audio_mime')
     .eq('coach_id', user.id)
     .eq('athlete_id', athlete_id)
+    // Newest session first by the date it happened, not the date it was typed
+    // up — a session backdated to last Tuesday belongs under last Tuesday.
+    .order('session_date', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -153,6 +156,16 @@ export async function POST(req: NextRequest) {
   const session_date = typeof body?.session_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.session_date)
     ? body.session_date
     : null
+  // A session is something that already happened, so a future date is a
+  // mistake rather than a plan. The picker caps at today; the one-day slack
+  // here is for coaches whose local date is already tomorrow in UTC terms.
+  if (session_date) {
+    const tomorrow = new Date(Date.now() + 86400000)
+    if (session_date > new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(tomorrow)) {
+      const res = NextResponse.json({ error: 'Session date cannot be in the future.' }, { status: 400 })
+      return attachCookies(res, cookiesToSet)
+    }
+  }
   const sport_context = typeof body?.sport_context === 'string' ? body.sport_context.trim() || null : null
   const audio_path = typeof body?.audio_path === 'string' ? body.audio_path.trim() || null : null
   const audio_mime = typeof body?.audio_mime === 'string' ? body.audio_mime.trim() || null : null
@@ -195,10 +208,13 @@ export async function POST(req: NextRequest) {
       summary, // quick scan summary for list
       shared_with_athlete,
       sport_context: resolvedSport,
+      // The date the session happened. Null only if the client sent nothing,
+      // in which case it happened today.
+      session_date: session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date()),
       audio_path,
       audio_mime,
     })
-    .select('id, session_name, summary, transcript, shared_with_athlete, created_at, audio_path, audio_mime')
+    .select('id, session_name, summary, transcript, shared_with_athlete, session_date, created_at, audio_path, audio_mime')
     .single()
 
   if (error) {
@@ -211,7 +227,7 @@ export async function POST(req: NextRequest) {
   // whether the athlete also sees it, so an unshared session stays off their
   // calendar without vanishing from the coach's.
   if (data?.id) {
-    const dateStr = session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date())
+    const dateStr = data.session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date())
     await syncSessionCalendarEvent({
       supabase,
       sessionId: data.id,

@@ -6,6 +6,55 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-09-05 — Session date selection (PR #3)
+
+Branch `claude/session-date-selection-recording-ku9dvl`. Not yet merged.
+
+**The ask.** A coach who misses logging a session during the day had no way to
+say which day it happened — the recorder always filed under "now".
+
+**It was not a UI change.** `sessions` had no date column at all. `session_date`
+was already accepted by `POST /api/sessions` and validated, but it was used for
+*one thing only*: the `calendar_events` row. Every other surface — athlete list,
+session detail, dashboard week count, both PDFs — read `created_at`. A date
+picker alone would have moved the calendar entry and nothing else.
+
+**Migration 021** adds `sessions.session_date date`, backfills all 40 existing
+rows from `created_at`, and indexes `(coach_id, session_date desc, created_at
+desc)`. Applied via Supabase MCP. `created_at` is untouched and stays the audit
+trail of when the row was written.
+
+**`lib/session-date.ts`** is the single answer to "when did this session
+happen": `session_date` if present, else `created_at`. Use it rather than
+reading either field directly. It parses `YYYY-MM-DD` via `new Date(y, m-1, d)`
+— **not** `new Date(iso)`, which is parsed as UTC midnight and renders a day
+early for anyone west of Greenwich.
+
+**Watch out:** `PATCH /api/sessions/[id]` re-syncs the calendar event when
+sharing is toggled. It read `created_at` for the event date, which would have
+dragged a backdated session's calendar entry forward the first time it was
+shared. Now reads `session_date`.
+
+**Deleted the athlete profile page's recorder.** `app/athletes/[id]/page.tsx`
+held a complete second recorder (`startRecording`, `stopRecording`,
+`transcribeBlob`, `clearRecording`, `saveSession`, mic meter, ~12 state hooks)
+that **nothing could reach** — both "Record Session" buttons open
+`QuickSessionModal` and no JSX referenced `recordState`. It drew a real edit in
+this work before turning out to be dead. `QuickSessionModal` already carried
+the same mp4-first MIME ordering, so nothing was lost. CLAUDE.md's protected
+call-site table updated to match.
+
+**CLAUDE.md's MIME snippet was stale** — it showed webm-first while both real
+recorders are mp4-first. Corrected. The *order* is about iOS playback, which is
+a separate concern from the detection that keeps Whisper working.
+
+**Preview deployments disabled for `claude/*`** (`vercel.json`). Vercel's Git
+integration auto-deploys every branch; the six env vars are Production-only, so
+those previews always failed and put a meaningless red X on every agent PR. CI
+(typecheck/lint/build) still runs. See README → Deploying.
+
+---
+
 ## 2026-09-05 — Nine-item punch list from the user
 
 Commits `79cd659`, `3ea2c4c`, `cafaaa9`, `b8784b0`, `b43104c`. All deployed

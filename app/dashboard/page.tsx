@@ -13,6 +13,7 @@ import { apiMutate } from '@/lib/api-client'
 import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
 import { activeCount } from '@/lib/athlete-status'
+import { formatSessionDate, sessionDate, sessionISODate, todayISODate } from '@/lib/session-date'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -29,7 +30,7 @@ interface Group {
 }
 interface Session {
   id: string; session_name: string | null; summary: string | null
-  shared_with_athlete: boolean; created_at: string
+  shared_with_athlete: boolean; session_date?: string | null; created_at: string
   athlete_id: string; athletes?: { id: string; first_name: string; last_name: string; email: string }
 }
 
@@ -769,7 +770,10 @@ function DashboardPageInner() {
   })
   const activeAthletes = athletes.filter(a => a.athlete_user_id)
   const recentSessions = allSessions.slice(0, 3)
-  const thisWeek = allSessions.filter(s => Date.now() - new Date(s.created_at).getTime() < 7 * 86400000)
+  const thisWeek = allSessions.filter(s => {
+    const d = sessionDate(s)
+    return d !== null && Date.now() - d.getTime() < 7 * 86400000
+  })
   const totalUnreadAll = Object.values(unreadCounts).reduce((a: number, b: number) => a + b, 0)
 
   const calTitle = calMode === 'personal'
@@ -1056,7 +1060,13 @@ function DashboardPageInner() {
                         const initials = a ? `${a.first_name[0] ?? ''}${a.last_name[0] ?? ''}`.toUpperCase() : '?'
                         const tone = _toneColors[i % 3]
                         const ago = (() => {
-                          const diff = Date.now() - new Date(s.created_at).getTime()
+                          // A session recorded today keeps the precise "3h";
+                          // a backdated one counts whole days from the day it
+                          // happened, not the minute it was typed up.
+                          const happened = sessionDate(s)
+                          const sameDay = sessionISODate(s) === todayISODate()
+                          const from = happened && !sameDay ? happened : new Date(s.created_at)
+                          const diff = Date.now() - from.getTime()
                           const h = Math.floor(diff / 3600000)
                           if (h < 1) return 'just now'
                           if (h < 24) return `${h}h`
@@ -1279,7 +1289,7 @@ function DashboardPageInner() {
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{a.email}</div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
-                              {last ? `Last session ${new Date(last.created_at).toLocaleDateString()}` : 'No sessions yet'}
+                              {last ? `Last session ${formatSessionDate(last, {})}` : 'No sessions yet'}
                               {count > 0 && ` · ${count} total`}
                             </div>
                           </div>
@@ -1456,7 +1466,7 @@ function DashboardPageInner() {
                                   {s.session_name && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>— {s.session_name}</span>}
                                   {s.shared_with_athlete && <span className="badge badge-active" style={{ fontSize: 10 }}>Shared</span>}
                                 </div>
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{new Date(s.created_at).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{formatSessionDate(s, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</div>
                                 {s.summary && <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{s.summary}</div>}
                               </div>
                               <span className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 10px', flexShrink: 0, gap: 4 }}>
