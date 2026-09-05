@@ -1,0 +1,210 @@
+# CoachVoice — Project State
+
+**Purpose of this file:** the shared, cheap context every review agent reads
+*instead of* re-reading the repo. Keep it under ~250 lines. Update it when the
+architecture changes, not when a line of CSS changes.
+
+Last verified against the codebase: **2026-09-05** (commit `020fc70`).
+
+---
+
+## What CoachVoice is
+
+A voice-first coaching platform. The core loop is one sentence:
+
+> A coach speaks into their phone after a session → Whisper transcribes →
+> GPT-4o-mini condenses it into 2–5 bullets → the coach chooses whether the
+> athlete sees it.
+
+Everything else in the product orbits that loop. Real use is with young
+athletes (roughly 13–18), primarily volleyball, on phones, often courtside.
+
+Production: `https://coach-voice-mvp-pi.vercel.app`
+
+## Stack
+
+Next.js 16 App Router · React 19 · TypeScript · Tailwind v4 + a hand-written
+token layer in `app/globals.css` · Supabase (Postgres 17, auth, storage,
+realtime) · OpenAI Whisper + GPT-4o-mini · Resend email · Vercel · PWA.
+
+No test suite. `CLAUDE.md` carries a mandatory pre-commit checklist derived
+from real production incidents. Checks are `npx tsc --noEmit && npm run lint
+&& npm run build`.
+
+---
+
+## Pages (the whole surface area)
+
+| Route | Who | What it is |
+|---|---|---|
+| `/` | anyone | Sign-in / forgot password. **Visually a different app** — dark-brown gradient, amber+indigo glows, none of it from the token set. |
+| `/signup`, `/signup/confirm` | anyone | Account creation, coach-code join |
+| `/dashboard` | coach | Everything for the coach. 7 tabs: `home · athletes · groups · sessions · calendar · messages · settings`. 1,793 lines, one file. Bottom nav on mobile with a centre FAB. |
+| `/athletes/[id]` | coach | One athlete. 6 tabs: `overview · sessions · wellness · calendar · profile · notes`. 1,285 lines. |
+| `/sessions/[id]` | coach **and** athlete | The session page. Summary, focus points, coach notes, audio, videos, image attachments. 622 lines. |
+| `/athlete` | athlete | The athlete's whole app. 6 tabs: `home · sessions · calendar · notes · messages · wellness`. 1,499 lines. Bottom nav on mobile. |
+| `/pdf/session/[id]`, `/pdf/monthly/[athleteId]` | coach | Printable reports |
+| `/share/clip/[videoId]` | public | Shared video clip |
+| `/reset`, `/auth/callback` | anyone | Password reset |
+
+Route protection is `proxy.ts` (middleware): matcher `['/', '/dashboard/*',
+'/athletes/*', '/athlete/*', '/sessions/*', '/reset']`, role-checked against
+`profiles.role`. `/sessions/*` is signed-in but role-agnostic.
+
+## Components (`app/components/`)
+
+`QuickSessionModal` (the recorder — 22 KB) · `MessagingPanel` (28 KB) ·
+`VideoAnnotator` · `Calendar` · `DayWheel` (home day strip) ·
+`WellnessGraph` · `WellnessSubmit` · `SessionAudioPlayer` · `SportWheelPicker`.
+
+Almost all styling is **inline `style={{}}` objects**, not the token classes in
+`globals.css`. The token classes exist and are good; the pages mostly bypass
+them. Any design recommendation has to reckon with that.
+
+## Shared logic (`lib/`)
+
+`api-client.ts` (`apiMutate` / `apiJson` — always use these, never raw fetch) ·
+`session-date.ts` (**the** answer to "when did this session happen") ·
+`athlete-status.ts` (ACTIVE vs INVITED) · `wellness-config.ts` (the 5 metrics) ·
+`sports.ts` (sport list + terminology hints fed to Whisper and the summariser) ·
+`notify.ts` (Resend emails) · `session-calendar-sync.ts` · `profile-cache.ts`
+(sessionStorage identity cache so pages paint a real name on frame 1) ·
+`quotes.ts` · `date-utils.ts` · three Supabase client factories.
+
+---
+
+## The data model, in the terms that matter for review
+
+### What a session actually holds
+`sessions`: `id, coach_id, athlete_id, session_name, title, summary,
+transcript, coach_notes, focus_points (jsonb array of short strings),
+shared_with_athlete, sport_context, audio_path, audio_mime, session_date,
+created_at`.
+
+**There are no quantitative session fields.** No reps, no attempts, no
+success/failure counts, no scores, no ratings, no drill records. Every session
+is qualitative: a voice recording, its transcript, an AI summary, optional
+typed notes, an optional ordered list of focus points, optional videos and
+images. This is a deliberate shape, not an oversight — but it means any "track
+the numbers" recommendation is a **new data-capture surface**, not a
+visualisation of data already sitting there.
+
+`focus_points` is the only structured, forward-looking, athlete-actionable
+field in the system. It renders **only** on `/sessions/[id]`.
+
+### What wellness holds
+`wellness_checkins`: one row per `(athlete_id, check_date)` —
+`energy, mood, sleep_q, soreness, stress`, each 1–5, plus free `notes`.
+`soreness` and `stress` are inverted (5 = good). Athlete submits; coach reads.
+Low scores fire caretaker alerts (`/api/wellness/alert`).
+
+**Wellness and session data never meet.** Nothing joins a check-in to a
+session, on either side of the app.
+
+### Other tables
+`profiles` (role, name, sport, position, experience, goals, invite_code) ·
+`athletes` (roster row owned by a coach; `athlete_user_id` links to an account
+once they sign up; `first_login_at` drives ACTIVE/INVITED) · `athlete_notes`
+(private to the athlete — **coaches cannot see these**) · `calendar_events`
+(dual-privacy, `visible_to_athlete` decides) · `messages` · `groups` ·
+`athlete_caretakers` · `session_videos` · `session_attachments`.
+
+Storage buckets, all private: `session-audio`, `session-videos`,
+`messages-media`, `athlete-photos`.
+
+### API routes (`app/api/`)
+`transcribe · sessions · sessions/all · sessions/[id] · sessions/[id]/detail ·
+sessions/[id]/audio-url · sessions/[id]/videos(+upload-url) ·
+sessions/[id]/attachments · sessions/audio-upload-url · athletes ·
+athletes/[id](+photo, hard-delete) · athlete/activate · athlete-notes · notes ·
+wellness · wellness/alert · calendar · messages(+unread) · groups ·
+groups/[id]/members · caretakers · coach-profile · coach-code · join · rsvp ·
+complete-signup · email · share/clip/[videoId]`
+
+---
+
+## The two workflows that matter most
+
+### Coach records a session
+Dashboard → FAB (or "Record Session" on three other surfaces) → `QuickSessionModal`.
+
+Step 1 "record": *Session for* (Individual / Group toggle) → athlete `<select>`
+→ session name (optional) → session date (defaults today) → **Start Recording**
+→ Stop & Transcribe → uploads audio to storage via signed URL and posts the
+file to `/api/transcribe`.
+Step 2 "review": editable transcript → share-with-athlete toggle (defaults ON)
+→ Save. `POST /api/sessions` resolves the sport server-side, generates the
+summary, writes the session, creates the calendar event, sends the email.
+
+The athlete `<select>` defaults to `defaultAthleteId ?? athletes[0]`. Opened
+from the FAB there is no `defaultAthleteId`, so it silently pre-selects the
+first athlete in the roster.
+
+### Athlete receives a session
+`/athlete` home shows "New from Coach" — the session name plus the **first 120
+characters of the AI summary**, truncated. Tapping goes to the Sessions tab,
+which shows a hero card for the same most-recent session (**again**, at 140
+chars) and below it an accordion list of every session. Opening an accordion
+row reveals: an "Open full session" link, the audio player, the full summary,
+a collapsed transcript, videos, and the athlete's own notes.
+
+Focus points are **not** on either of those screens. They only appear one more
+tap in, on `/sessions/[id]`.
+
+---
+
+## Design system, as it actually is
+
+`app/globals.css` defines a coherent "Letter Edition" token set: ivory/parchment
+surfaces (`--bg #FBF8F3`, `--card #FFFFFF`, `--border #E3DED2`), sage primary
+(`--primary #6F8E6B`, `--primary-dark #4F6B4B`), rust for coach
+(`--coach-color #B55C3E`), amber energy, Newsreader serif for display + Plus
+Jakarta Sans for UI + JetBrains Mono. Component classes: `.card`, `.card-lg`,
+`.card-journal`, `.btn` + 6 variants, `.input`, `.label`, `.badge` + 9 variants,
+`.stat-card`, `.nav-pill`, `.hero-bar`, animations, PWA/safe-area handling,
+44 px minimum tap targets under 768 px.
+
+**Three palettes are live at once:**
+1. the token set above (most of the app),
+2. `/` sign-in — dark browns `#1A0E06 → #2C1810`, amber `rgba(245,158,11)` and
+   indigo `rgba(91,99,245)` glows, all inline, none of them tokens,
+3. `lib/wellness-config.ts` — raw Tailwind defaults `#10b981 #3b82f6 #8b5cf6
+   #f59e0b #ef4444`, which is what the athlete sees on the wellness screens.
+
+**Known contrast measurements** (computed, sRGB, WCAG 2.2 formula):
+
+| Pair | Ratio | Verdict |
+|---|---|---|
+| `--text` `#1F2421` on `--bg` `#FBF8F3` | ~15.4:1 | passes everything |
+| `--text-2` `#5D6661` on `--bg` | **5.49:1** | passes AA normal text |
+| `--text-muted` `#9BA29B` on `--bg` | **2.47:1** | **fails AA (4.5:1) and fails 3:1 large text** |
+| `--primary` `#6F8E6B` on white | **3.65:1** | fails AA normal text; fine as a fill |
+| `--primary-dark` `#4F6B4B` on white | 5.94:1 | passes AA normal text |
+
+`--text-muted` is used at 10–13 px for session dates, stat sub-labels, "delta"
+strings, quote strips and empty-state copy across every page.
+
+---
+
+## Constraints any recommendation must respect
+
+- **Do not touch the recording/transcription path** without explicit user
+  instruction. `CLAUDE.md` lists the protected call sites and why. MIME
+  detection order (mp4 first) is load-bearing for iPhone playback.
+- `export const runtime = 'nodejs'` stays on the audio API routes.
+- Migrations are numbered and applied via Supabase MCP; the next one is `022`.
+- No test suite — every change is validated by typecheck + lint + build and by
+  reading the diff.
+- Pages are large single files with inline styles. A "small" visual change can
+  mean 40 edit sites. Estimate complexity against that reality, not against an
+  idealised component library.
+
+## Where the app is thin (state this honestly rather than rediscovering it)
+
+- No quantitative performance data of any kind.
+- No session goal set *before* a session, only notes captured after.
+- No athlete self-assessment tied to a session (wellness is the only athlete
+  input, and it is day-level, not session-level).
+- No trend or progress view over sessions — the athlete sees a reverse-chron
+  list, the coach sees a count.
+- No way to carry a focus point from one session into the next.
