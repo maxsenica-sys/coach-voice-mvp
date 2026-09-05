@@ -20,7 +20,7 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 ---
 
 ## 2026-09-05 — UX-001 — The recorder silently pre-selects the most recently added athlete, and the result cannot be undone
-Status: PROPOSED
+Status: IMPLEMENTED (2026-09-05, same day)
 Verdict at proposal: BUILD NOW
 Priority: (5 x 5 x 5 x 4) / 2 = 250
 Grounded in: `app/components/QuickSessionModal.tsx:32-33` (the `?? athletes[0]?.id`
@@ -41,7 +41,15 @@ Synthesis note: the proposal is bigger than the finding. The defect is the fallb
 Carried forward: **there is no session delete and no reassign.** That survives this fix
   and is arguably the larger gap — a coach who picks the right athlete and misspeaks has
   the same problem. Deserves its own ID on a later run.
-Outcome: awaiting Max
+Outcome: APPROVED and BUILT — **both halves**, not just the fallback removal the
+  synthesis argued for. `athletes[0]`/`groups[0]` fallbacks gone; both `<select>`s replaced
+  with one-tap chips (44px-ish targets, wrapping, scroll-capped at 132px so a large roster
+  still works); Start Recording *and* "Skip — type transcript manually" both disabled until
+  a target is picked; a "Select a group." error added, since the group branch previously
+  reported an unpicked group as "This group has no members."
+  **The larger gap this agent surfaced is NOT fixed and is still live:** there is no session
+  DELETE route and `athlete_id` is not in the PATCH allow-list. A session recorded against
+  the right athlete but misspoken still cannot be removed. Worth its own ID.
 
 ## 2026-09-05 — Checked and explicitly found fine
 - Recorder empty-roster state (`QuickSessionModal.tsx:344-347`) — real explanation, correct.

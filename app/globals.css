@@ -31,6 +31,22 @@
   --energy:       #B8883A;
   --energy-light: #F6E9CC;
 
+  /* Wellness state scale — good / ok / low / no-data.
+     These render as *text* (scores on the coach's roster strip, the athlete
+     profile and the wellness graph), so they are chosen to clear WCAG AA 4.5:1
+     on --card and on their paired light tint, which the previous raw-Tailwind
+     values (#10b981 2.54:1, #f59e0b 2.15:1, #ef4444 3.76:1) did not. Two are
+     existing tokens reused; the other two are deeper members of hue families
+     the app already ships, so no new hue is introduced. */
+  --wellness-good:      #4F6B4B;  /* 5.94:1 on white · 4.93:1 on --success-light */
+  --wellness-good-tint: #E6ECDF;
+  --wellness-ok:        #7E5A1C;  /* 6.24:1 on white · 5.18:1 on --warning-light */
+  --wellness-ok-tint:   #F6E9CC;
+  --wellness-low:       #A54034;  /* 6.21:1 on white · 4.80:1 on --danger-light  */
+  --wellness-low-tint:  #F4DED3;
+  --wellness-none:      #5D6661;  /* 5.93:1 on white · 4.95:1 on --border-soft   */
+  --wellness-none-tint: #EFEAE0;
+
   /* Semantic */
   --danger:       #B0473A;
   --danger-light: #F4DED3;
@@ -42,7 +58,10 @@
   /* Typography */
   --text:         #1F2421;
   --text-2:       #5D6661;
-  --text-muted:   #9BA29B;
+  /* Was #9BA29B — 2.47:1 on --bg, failing AA (4.5:1) and even the 3:1 large-text
+     floor, while carrying session dates, stat sub-labels and empty-state copy at
+     10-13px on every page. #6B736D measures 4.61:1 on --bg and 4.89:1 on --card. */
+  --text-muted:   #6B736D;
 
   /* Fonts */
   --font-display: 'Newsreader', 'Georgia', serif;

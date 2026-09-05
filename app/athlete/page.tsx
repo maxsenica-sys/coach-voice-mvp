@@ -21,6 +21,7 @@ type SessionRow = {
   title: string | null
   summary: string | null
   transcript: string | null
+  focus_points?: string[] | null
   session_date?: string | null
   shared_with_athlete: boolean
   created_at: string | null
@@ -175,9 +176,14 @@ export default function AthletePage() {
         const [{ data: sessData }, notesRes] = await Promise.all([
           athRecord
             ? supabase.from('sessions')
-                .select('id, session_name, title, summary, transcript, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime')
+                .select('id, session_name, title, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime')
                 .eq('athlete_id', athRecord.id)
                 .eq('shared_with_athlete', true)
+                // By when the session happened, not when the row was written —
+                // matching the coach side. Ordering by created_at alone put a
+                // backdated session at the top of the athlete's list as though
+                // it had happened tonight.
+                .order('session_date', { ascending: false, nullsFirst: false })
                 .order('created_at', { ascending: false })
             : Promise.resolve({ data: [] as SessionRow[] }),
           fetch('/api/athlete-notes', { cache: 'no-store' }),
@@ -541,7 +547,7 @@ export default function AthletePage() {
       <div className="bg-grain" style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 20px' }}>
         <div style={{ width: '100%', maxWidth: 440 }}>
           <div style={{ marginBottom: 32 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#9BA29B', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, fontFamily: 'monospace' }}>{onboardDate}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, fontFamily: 'monospace' }}>{onboardDate}</div>
             <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 34, letterSpacing: -0.8, lineHeight: 1.1, color: '#1F2421' }}>
               Welcome to CoachVoice,<br/>
               <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{onboardFirstName}.</span>
@@ -617,7 +623,7 @@ export default function AthletePage() {
               {(athleteName.split(' ')[0]?.[0] ?? 'A').toUpperCase()}{(athleteName.split(' ')[1]?.[0] ?? '').toUpperCase()}
             </div>
             <div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#9BA29B', letterSpacing: 1, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase' }}>
                 {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2421', marginTop: 1 }}>
@@ -769,7 +775,12 @@ export default function AthletePage() {
             )}
 
             {/* New from coach — most recent session */}
-            {sessions.length > 0 && (
+            {sessions.length > 0 && (() => {
+              const points = sessions[0].focus_points
+              const nextFocus = Array.isArray(points) && typeof points[0] === 'string' && points[0].trim()
+                ? points[0].trim()
+                : null
+              return (
               <div style={{ background: 'linear-gradient(135deg, #F4DED3 0%, #FCF9F2 100%)', borderRadius: 16, padding: '14px 14px 14px 16px', border: '1px solid #EBCBBC', position: 'relative', overflow: 'hidden' }}>
                 <div style={{ position: 'absolute', top: -28, right: -28, width: 100, height: 100, borderRadius: '50%', border: '1.5px dashed #B55C3E', opacity: 0.25 }} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, position: 'relative' }}>
@@ -786,13 +797,31 @@ export default function AthletePage() {
                     &ldquo;{sessions[0].summary.slice(0, 120)}{sessions[0].summary.length > 120 ? '…' : ''}&rdquo;
                   </div>
                 )}
+                {/* The one thing to work on next. Everything else on this card
+                    recaps what already happened; this is the only line that
+                    says what to do about it, so it goes where the athlete
+                    already looks rather than two taps deep on the session page.
+                    Unquoted and under its own label — the summary above is
+                    presented as the coach speaking, and this line is drawn out
+                    of the recording rather than dictated. */}
+                {nextFocus && (
+                  <div style={{ position: 'relative', marginBottom: 12, padding: '10px 12px', background: 'rgba(255,255,255,0.66)', border: '1px solid #EBCBBC', borderRadius: 10 }}>
+                    <div style={{ fontSize: 9.5, fontWeight: 800, color: '#B55C3E', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>
+                      Take into next session
+                    </div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1F2421', lineHeight: 1.45 }}>
+                      {nextFocus}
+                    </div>
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
                   <button onClick={() => setTab('sessions')} style={{ flex: 1, padding: '9px 0', background: '#1F2421', color: '#FBF8F3', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}>
                     Read full session →
                   </button>
                 </div>
               </div>
-            )}
+              )
+            })()}
 
             {/* Quick stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
@@ -810,7 +839,7 @@ export default function AthletePage() {
                   <div style={{ position: 'absolute', top: 0, left: 10, right: 10, height: 2, background: s.color, borderRadius: '0 0 4px 4px' }} />
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: isMobile ? 24 : 28, fontWeight: 500, color: '#1F2421', lineHeight: 1, letterSpacing: -1, marginTop: 4 }}>{s.value}</div>
                   <div style={{ fontSize: 9.5, fontWeight: 700, color: '#5D6661', marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.6 }}>{s.label}</div>
-                  <div style={{ fontSize: 9, color: '#9BA29B', marginTop: 3, fontWeight: 600 }}>{s.delta}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 3, fontWeight: 600 }}>{s.delta}</div>
                 </button>
               ))}
             </div>
@@ -1432,7 +1461,7 @@ export default function AthletePage() {
                 padding: '6px 0',
                 border: 'none', background: 'none', cursor: 'pointer',
                 position: 'relative',
-                color: active ? '#1F2421' : '#9BA29B',
+                color: active ? '#1F2421' : 'var(--text-muted)',
                 transition: 'all 0.15s ease',
               }}>
                 {active && <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', width: 18, height: 2, background: '#1F2421', borderRadius: 2 }} />}

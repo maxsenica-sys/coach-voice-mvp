@@ -186,7 +186,7 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
               )}
               <div style={{
                 fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
-                color: day.isToday ? 'rgba(255,255,255,0.55)' : '#9BA29B',
+                color: day.isToday ? 'rgba(255,255,255,0.55)' : 'var(--text-muted)',
                 marginTop: day.isFirstOfMonth ? 6 : 0,
               }}>
                 {day.letter}
@@ -229,11 +229,11 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
 
       {selectedDay && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #EFEAE0' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#9BA29B', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>
             {new Date(`${selectedDay}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
           {dayEvents.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#9BA29B', textAlign: 'center', padding: '6px 0' }}>Nothing on this day</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '6px 0' }}>Nothing on this day</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {dayEvents.map((ev) => {
@@ -276,7 +276,7 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                       </span>
                     </span>
 
-                    {ev.event_time && <span style={{ fontSize: 10.5, color: '#9BA29B', flexShrink: 0 }}>{ev.event_time}</span>}
+                    {ev.event_time && <span style={{ fontSize: 10.5, color: 'var(--text-muted)', flexShrink: 0 }}>{ev.event_time}</span>}
                     {isSession && (
                       <span style={{ fontSize: 12, color: '#6F8E6B', flexShrink: 0, lineHeight: 1 }}>›</span>
                     )}

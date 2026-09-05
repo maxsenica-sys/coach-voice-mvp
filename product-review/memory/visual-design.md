@@ -20,7 +20,7 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 ---
 
 ## 2026-09-05 — DESIGN-001 — Replace the raw-Tailwind wellness palette with four tokens in the app's own colour family
-Status: PROPOSED
+Status: IMPLEMENTED (2026-09-05, same day)
 Verdict at proposal: BUILD NOW
 Priority: (3 x 3 x 3 x 5) / 2 = 67.5
 Grounded in: `lib/wellness-config.ts:45-52, 90-95` (the four state hexes) and
@@ -42,7 +42,23 @@ Opinion, labelled: saturated web-default green/amber/red on parchment reads as a
   "alarm". Would change its mind if the real complaint is that low wellness is too *easy
   to miss* — then the answer is structural (surface that athlete first), not a different
   hue. That call is Max's.
-Outcome: awaiting Max
+Outcome: APPROVED and BUILT, in full, including both riders and the scoped-out pill fix.
+  Eight tokens added to globals.css (four roles + four paired tints); `colorMap`'s 25
+  literals deleted; `metricColor`/`overallScoreColor` return `var(--wellness-*)`;
+  `metricTint`/`overallScoreTint` added and the three hex-alpha concatenation sites
+  (`+ '22'`, `+ '15'`, `+ '18'`/`{color}40`) retired; slate neutrals `#e2e8f0`/`#94a3b8`/
+  `#f1f5f9` and the stray Tailwind green-200 border swapped for warm tokens;
+  `dashboard:1131` 9.5→11px; `WellnessSubmit` 40→44px.
+  Built at the same time, as this agent recommended: **DESIGN-001's sibling** — the
+  `--text-muted` failure. Rather than editing hundreds of call sites the token itself was
+  raised `#9BA29B` → `#6B736D` (2.47:1 → 4.61:1 on --bg), and the 23 places that hardcoded
+  the old hex inline were repointed at the token, so there is one definition again.
+  Also built: the metric toggle pills this agent deliberately held back — identity hue
+  moved to a 7px dot, label to `--text`/`--text-2`. The five series hues are untouched as
+  chart fills, which is what this agent argued for.
+  **Not built, deliberately:** the sign-in page's separate visual identity. No agent has
+  proposed it and there is no agreed target, so restyling it would be a redesign on
+  nobody's authority. It stays in "Not yet reviewed".
 
 ## 2026-09-05 — Deliberately scoped out, do not rediscover
 The five per-metric identity hues (`lib/wellness-config.ts:19,24,29,34,39`) stay for now.

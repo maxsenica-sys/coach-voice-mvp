@@ -11,44 +11,62 @@ export interface WellnessMetric {
   color: string
   hint: string
   inverted?: boolean // true = higher raw score means worse (soreness, stress)
-  colorMap: string[] // 5 bg colors indexed 0-4 (score 1-5)
 }
 
 export const WELLNESS_METRICS: WellnessMetric[] = [
   {
     key: 'energy', label: 'Energy', icon: '⚡', color: '#10b981',
     hint: 'How energetic do you feel today?',
-    colorMap: ['#fef2f2','#fef3c7','#fef9c3','#f0fdf4','#dcfce7'],
   },
   {
     key: 'mood', label: 'Mood', icon: '😊', color: '#3b82f6',
     hint: 'How is your overall mood?',
-    colorMap: ['#fef2f2','#fef3c7','#fef9c3','#eff6ff','#dbeafe'],
   },
   {
     key: 'sleep_q', label: 'Sleep', icon: '😴', color: '#8b5cf6',
     hint: 'How well did you sleep last night?',
-    colorMap: ['#fef2f2','#fef3c7','#fef9c3','#faf5ff','#ede9fe'],
   },
   {
     key: 'soreness', label: 'Soreness', icon: '💪', color: '#f59e0b',
     hint: '1 = very sore, 5 = no soreness', inverted: true,
-    colorMap: ['#dcfce7','#f0fdf4','#fef9c3','#fef3c7','#fef2f2'],
   },
   {
     key: 'stress', label: 'Stress', icon: '🧠', color: '#ef4444',
     hint: '1 = very stressed, 5 = relaxed', inverted: true,
-    colorMap: ['#dcfce7','#f0fdf4','#fef9c3','#fef3c7','#fef2f2'],
   },
 ]
 
+/**
+ * The good / ok / low bucket for a single metric, as a CSS colour.
+ *
+ * Every wellness colour in the app comes from here or from `overallScoreColor`
+ * below — the per-metric `colorMap` that used to sit alongside these entries
+ * bucketed the same three ways, 40 lines apart, and only ever rendered as a
+ * selected-button fill. One rule now, and the selected check-in button means
+ * the same thing as the dot on the coach's roster.
+ */
 export function metricColor(key: MetricKey, score: number | null): string {
   const cfg = WELLNESS_METRICS.find(m => m.key === key)!
-  if (score === null) return '#94a3b8'
+  if (score === null) return 'var(--wellness-none)'
   const val = cfg.inverted ? 6 - score : score
-  if (val >= 4) return '#10b981'
-  if (val >= 3) return '#f59e0b'
-  return '#ef4444'
+  if (val >= 4) return 'var(--wellness-good)'
+  if (val >= 3) return 'var(--wellness-ok)'
+  return 'var(--wellness-low)'
+}
+
+/**
+ * The light pair for `metricColor`, for backgrounds behind that text.
+ * Replaces concatenating a hex alpha suffix onto the colour (`color + '18'`),
+ * which only worked because the values happened to be 6-digit hex and left the
+ * text sitting on a tint of itself at ~2:1.
+ */
+export function metricTint(key: MetricKey, score: number | null): string {
+  const cfg = WELLNESS_METRICS.find(m => m.key === key)!
+  if (score === null) return 'var(--wellness-none-tint)'
+  const val = cfg.inverted ? 6 - score : score
+  if (val >= 4) return 'var(--wellness-good-tint)'
+  if (val >= 3) return 'var(--wellness-ok-tint)'
+  return 'var(--wellness-low-tint)'
 }
 
 export function scoreLabel(key: MetricKey, score: number | null): string {
@@ -86,12 +104,20 @@ export function overallWellnessScore(checkin: WellnessCheckin | null): number | 
   return +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)
 }
 
-/** Same green/amber/red thresholds used everywhere an overall score is shown. */
+/** Same good/ok/low thresholds used everywhere an overall score is shown. */
 export function overallScoreColor(score: number | null): string {
-  if (score === null) return '#94a3b8'
-  if (score >= 3.5) return '#10b981'
-  if (score >= 2.5) return '#f59e0b'
-  return '#ef4444'
+  if (score === null) return 'var(--wellness-none)'
+  if (score >= 3.5) return 'var(--wellness-good)'
+  if (score >= 2.5) return 'var(--wellness-ok)'
+  return 'var(--wellness-low)'
+}
+
+/** The light pair for `overallScoreColor`. */
+export function overallScoreTint(score: number | null): string {
+  if (score === null) return 'var(--wellness-none-tint)'
+  if (score >= 3.5) return 'var(--wellness-good-tint)'
+  if (score >= 2.5) return 'var(--wellness-ok-tint)'
+  return 'var(--wellness-low-tint)'
 }
 
 export type WellnessAlertReason = 'today' | 'average' | 'both'

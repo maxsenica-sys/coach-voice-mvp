@@ -26,9 +26,24 @@ as proposals.
 
 | ID | Date | Status | One line | Verdict at proposal | Priority |
 |---|---|---|---|---|---|
-| UX-001 | 2026-09-05 | PROPOSED | The recorder silently pre-selects the most recently added athlete, and a mis-targeted session can be neither deleted nor reassigned | BUILD NOW | 250 |
-| DATA-001 | 2026-09-05 | PROPOSED | Extract one "what to work on next" line from the transcript the coach already recorded, and show it on the athlete's home card | BUILD NOW | 200 |
-| DESIGN-001 | 2026-09-05 | PROPOSED | Replace the raw-Tailwind wellness palette with four tokens in the app's own colour family; every wellness number currently fails AA | BUILD NOW | 67.5 |
+| UX-001 | 2026-09-05 | IMPLEMENTED | The recorder silently pre-selects the most recently added athlete, and a mis-targeted session can be neither deleted nor reassigned | BUILD NOW | 250 |
+| DATA-001 | 2026-09-05 | IMPLEMENTED | Extract one "what to work on next" line from the transcript the coach already recorded, and show it on the athlete's home card | BUILD NOW | 200 |
+| DESIGN-001 | 2026-09-05 | IMPLEMENTED | Replace the raw-Tailwind wellness palette with four tokens in the app's own colour family; every wellness number currently fails AA | BUILD NOW | 67.5 |
+
+All three were approved and built the same day, in commit `feat: act on the
+first daily review`. The scores below are what the agents assigned at proposal;
+they are not re-scored after the fact.
+
+| ID | Built as |
+|---|---|
+| UX-001 | Fallbacks removed; `<select>`s replaced with one-tap chips; both step-1 exits gated on having a target; modal made scrollable |
+| DATA-001 | `makeQuickSummary` returns `{summary, next}`; `NEXT:` line extracted and written to `focus_points`; rendered on the athlete's home card under "Take into next session" |
+| DESIGN-001 | Eight wellness tokens in `globals.css`; `colorMap` deleted; `metricTint`/`overallScoreTint` added; hex-alpha concatenation retired; slate neutrals swapped; 9.5→11 px; 40→44 px |
+
+Also built in the same pass, from the "Not yet reviewed" list below:
+`--text-muted` raised to `#6B736D` (4.61:1) with all 23 hardcoded instances
+pointed at the token; the athlete session ordering bug; the metric-pill contrast
+failure; the modal scroll clip.
 
 ## Not yet reviewed
 
@@ -37,11 +52,11 @@ An agent may pick any of these up as its own recommendation on a later run.
 
 | Noted | Area | Observation |
 |---|---|---|
-| 2026-09-05 setup | Design | `--text-muted` `#9BA29B` is 2.47:1 on `--bg` and carries dates, stat sub-labels and empty-state copy at 10–13 px across every page. `--text-2` at 5.49:1 is the drop-in. |
-| 2026-09-05 setup | Design | `/` sign-in is visually a different product: dark browns `#1A0E06 → #2C1810` with amber and indigo glows, all inline, none of them tokens. |
-| 2026-09-05 DESIGN-001 | Design | Wellness metric toggle pills (`WellnessGraph.tsx:248-262`) render 11 px text in the five identity hues: 2.00–3.78:1, all failing. The design agent scoped this out deliberately rather than bundling two colour decisions. |
-| 2026-09-05 DATA-001 | Correctness | `app/athlete/page.tsx:181` orders the athlete's sessions by `created_at`, while the coach side now orders by `session_date` (`020fc70`). A backdated session appears at the top of the athlete's list as if it happened tonight. This is a bug, not a recommendation. |
-| 2026-09-05 UX-001 | UX | `QuickSessionModal`'s backdrop has no `overflow-y` and `.card-lg` no max-height; the review step is ~600 px and may clip unscrollably on a short viewport or with the keyboard raised. |
+| ~~2026-09-05 setup~~ | ~~Design~~ | **DONE 2026-09-05** — token raised to `#6B736D` (4.61:1 on `--bg`, 4.89:1 on `--card`); 23 hardcoded `#9BA29B` instances repointed at the token. |
+| 2026-09-05 setup | Design | `/` sign-in is visually a different product: dark browns `#1A0E06 → #2C1810` with amber and indigo glows, all inline, none of them tokens. **Still open** — deliberately not built: no agent has proposed it and there is no agreed target design, so restyling it would be a redesign on nobody's authority. Give it to `visual-design` on a future run. |
+| ~~2026-09-05 DESIGN-001~~ | ~~Design~~ | **DONE 2026-09-05** — identity hue moved to a 7 px dot; pill label now `--text`/`--text-2`. The five series hues are untouched as chart fills. |
+| ~~2026-09-05 DATA-001~~ | ~~Correctness~~ | **DONE 2026-09-05** — athlete query now orders `session_date desc nullsFirst:false`, then `created_at desc`, matching the coach side. |
+| ~~2026-09-05 UX-001~~ | ~~UX~~ | **DONE 2026-09-05** — `overflowY: auto` on the backdrop, `maxHeight: 100%` + `overflowY: auto` on the card. |
 
 ## Coverage
 

@@ -100,7 +100,7 @@ export default function SessionAudioPlayer({ sessionId, initialUrl = null, mime 
           style={{ width: '100%', height: 34 }}
         />
         {buffering && (
-          <div style={{ fontSize: 11.5, color: 'var(--text-muted, #9BA29B)', marginTop: 4 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--text-muted, var(--text-muted))', marginTop: 4 }}>
             Buffering — it will start as soon as enough has arrived.
           </div>
         )}

@@ -20,7 +20,7 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 ---
 
 ## 2026-09-05 — DATA-001 — Extract one "what to work on next" line from the transcript and show it on the athlete's home card
-Status: PROPOSED
+Status: IMPLEMENTED (2026-09-05, same day)
 Verdict at proposal: BUILD NOW
 Priority: (4 x 5 x 5 x 4) / 2 = 200
 Grounded in: `supabase/migrations/019_session_detail_fields.sql:19-22` (focus_points is
@@ -39,7 +39,18 @@ Open risk (raised in synthesis, not by this agent): the extracted line is LLM-wr
 Validation proposed: after four weeks, what share of sessions produce a non-empty line,
   and what share of those a coach deletes or rewrites. Heavy rewriting means the
   extraction is wrong and this becomes a coach-review step instead.
-Outcome: awaiting Max
+Outcome: APPROVED and BUILT. `makeQuickSummary` now returns `{summary, next}`; the
+  prompt asks for a trailing `NEXT:` line and to omit it entirely when the coach said
+  nothing forward-looking. The line is dropped server-side if empty, over 120 chars, or a
+  "none"/"n/a" placeholder — a bad instruction shown to a 14-year-old is worse than none.
+  Written to `focus_points` on insert and rendered on the athlete's home card under
+  "Take into next session".
+  Provenance was handled by *not* presenting it as the coach speaking: the summary above
+  it is rendered in quotation marks, the next-session line is unquoted and under its own
+  label. The coach's existing edit/delete path on /sessions/[id] is unchanged.
+  **Still to do: the four-week validation this agent proposed** — what share of sessions
+  produce a line, and what share a coach rewrites. Nobody has run it yet. If coaches
+  rewrite most of them, revisit as a coach-review step in the recorder's step 2.
 
 ## 2026-09-05 — Considered and NOT proposed
 - **A quantitative capture surface** (reps, attempts, success rates). There is no

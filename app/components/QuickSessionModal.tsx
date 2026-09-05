@@ -29,8 +29,14 @@ interface QuickSessionModalProps {
 
 export default function QuickSessionModal({ athletes, groups, defaultAthleteId, defaultGroupId, coachSport = '', onClose, onSaved }: QuickSessionModalProps) {
   const [mode, setMode] = useState<'athlete' | 'group'>(defaultGroupId ? 'group' : 'athlete')
-  const [athleteId, setAthleteId] = useState(defaultAthleteId ?? athletes[0]?.id ?? '')
-  const [groupId, setGroupId] = useState(defaultGroupId ?? groups[0]?.id ?? '')
+  // No fallback to athletes[0]/groups[0]. The roster arrives ordered
+  // created_at desc, so that fallback silently attributed a session to whoever
+  // was added to the roster most recently — a different person each time the
+  // roster grew. Sharing defaults on, so save then emailed that athlete and
+  // their caretakers, and a session can be neither deleted nor reassigned.
+  // Opened without a target, the modal now opens with no target.
+  const [athleteId, setAthleteId] = useState(defaultAthleteId ?? '')
+  const [groupId, setGroupId] = useState(defaultGroupId ?? '')
   const [sessionName, setSessionName] = useState('')
   // Sessions are often written up after the fact — the day before's training
   // logged over breakfast. Defaults to today; the picker moves it back.
@@ -210,6 +216,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? 'Failed to save')
       } else {
         // Group session: save one session per member
+        if (!groupId) { setError('Select a group.'); setSaving(false); return }
         const group = groups.find((g) => g.id === groupId)
         if (!group || group.member_ids.length === 0) { setError('This group has no members.'); setSaving(false); return }
 
@@ -273,6 +280,10 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         ? 'Yesterday'
         : formatSessionDate({ session_date: sessionDate }, { weekday: 'long', month: 'short', day: 'numeric' })
 
+  // The chips are the only live control until a target is picked, which is what
+  // makes the required choice self-evident without a line of instructional text.
+  const hasTarget = mode === 'athlete' ? !!athleteId : !!groupId
+
   const groupMembers = groups.find((g) => g.id === groupId)?.member_ids ?? []
   const groupMemberNames = groupMembers
     .map((id) => athletes.find((a) => a.id === id))
@@ -290,8 +301,12 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       justifyContent: 'center',
       zIndex: 300,
       padding: 20,
+      // The review step runs ~600px. Without this the card clipped
+      // unscrollably on a short viewport, or with the keyboard raised over the
+      // transcript textarea — .card-lg sets no max-height of its own.
+      overflowY: 'auto',
     }}>
-      <div className="card-lg" style={{ width: '100%', maxWidth: 560, padding: 32, position: 'relative' }}>
+      <div className="card-lg" style={{ width: '100%', maxWidth: 560, padding: 32, position: 'relative', maxHeight: '100%', overflowY: 'auto' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
@@ -340,33 +355,79 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 )}
               </div>
 
+              {/* Chips rather than a native <select>. A select hides the current
+                  value's meaning behind an interaction and costs a wheel drag;
+                  with no pre-selection the target has to be visible, not
+                  discovered. Same filled-chip treatment as the mode toggle
+                  above, so the pattern is already familiar in this modal. */}
               {mode === 'athlete' ? (
                 athletes.length === 0 ? (
                   <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '10px 0' }}>
                     No athletes yet — add one first before recording a session.
                   </div>
                 ) : (
-                  <select
-                    className="input"
-                    value={athleteId}
-                    onChange={(e) => setAthleteId(e.target.value)}
-                  >
-                    {athletes.map((a) => (
-                      <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>
-                    ))}
-                  </select>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 132, overflowY: 'auto' }}>
+                    {athletes.map((a) => {
+                      const on = athleteId === a.id
+                      return (
+                        <button
+                          key={a.id}
+                          onClick={() => setAthleteId(on ? '' : a.id)}
+                          aria-pressed={on}
+                          style={{
+                            minHeight: 40,
+                            padding: '8px 14px',
+                            borderRadius: 999,
+                            border: '1.5px solid',
+                            borderColor: on ? 'var(--primary)' : 'var(--border)',
+                            background: on ? 'var(--primary)' : 'var(--card)',
+                            color: on ? '#fff' : 'var(--text)',
+                            fontSize: 14,
+                            fontWeight: on ? 700 : 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {a.first_name} {a.last_name}
+                        </button>
+                      )
+                    })}
+                  </div>
                 )
               ) : (
                 <div>
-                  <select
-                    className="input"
-                    value={groupId}
-                    onChange={(e) => setGroupId(e.target.value)}
-                  >
-                    {groups.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name} ({g.member_ids.length} athletes)</option>
-                    ))}
-                  </select>
+                  {groups.length === 0 && (
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '10px 0' }}>
+                      No squads yet — create one first, or record for an individual athlete.
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 132, overflowY: 'auto' }}>
+                    {groups.map((g) => {
+                      const on = groupId === g.id
+                      return (
+                        <button
+                          key={g.id}
+                          onClick={() => setGroupId(on ? '' : g.id)}
+                          aria-pressed={on}
+                          style={{
+                            minHeight: 40,
+                            padding: '8px 14px',
+                            borderRadius: 999,
+                            border: '1.5px solid',
+                            borderColor: on ? 'var(--primary)' : 'var(--border)',
+                            background: on ? 'var(--primary)' : 'var(--card)',
+                            color: on ? '#fff' : 'var(--text)',
+                            fontSize: 14,
+                            fontWeight: on ? 700 : 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {g.name} ({g.member_ids.length})
+                        </button>
+                      )
+                    })}
+                  </div>
                   {groupMemberNames.length > 0 && (
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
                       Session will be saved for: {groupMemberNames.join(', ')}
@@ -434,6 +495,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   <button
                     className="btn btn-primary btn-lg"
                     onClick={startRecording}
+                    disabled={!hasTarget}
                     style={{ width: 200, fontSize: 16 }}
                   >
                     🎙 Start Recording
@@ -442,6 +504,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   <button
                     className="btn btn-ghost"
                     onClick={() => setStep('review')}
+                    disabled={!hasTarget}
                     style={{ fontSize: 13 }}
                   >
                     Skip — type transcript manually →

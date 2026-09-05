@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { WELLNESS_METRICS } from '@/lib/wellness-config'
+import { WELLNESS_METRICS, metricColor, metricTint } from '@/lib/wellness-config'
 
 interface Props {
   athleteId: string
@@ -61,19 +61,27 @@ export default function WellnessSubmit({ athleteId, onSaved }: Props) {
           <div style={{ display: 'flex', gap: 6 }}>
             {[1, 2, 3, 4, 5].map((v) => {
               const selected = scores[m.key] === v
-              const bg = m.colorMap[v - 1] ?? '#f8fafc'
+              // The selected state now carries the same good/ok/low meaning as
+              // the coach's roster dot. It also used to make the answer the
+              // athlete had just given the *least* legible thing on screen —
+              // --primary on a pale tint measured 2.99-3.48:1 against 5.93:1
+              // unselected, so choosing a score dropped it below AA.
+              const bg = selected ? metricTint(m.key, v) : '#fff'
               return (
                 <button
                   key={v}
                   onClick={() => setScore(m.key, v)}
                   style={{
-                    flex: 1, height: 40, borderRadius: 8,
-                    border: selected ? '2px solid var(--primary)' : '1.5px solid var(--border)',
-                    background: selected ? bg : '#fff',
+                    // 44px: Apple HIG and the app's own house rule in
+                    // globals.css, which is scoped to .btn and so never reached
+                    // these bare buttons.
+                    flex: 1, height: 44, borderRadius: 8,
+                    border: selected ? `2px solid ${metricColor(m.key, v)}` : '1.5px solid var(--border)',
+                    background: bg,
                     fontWeight: selected ? 800 : 600, fontSize: 15,
-                    color: selected ? 'var(--primary)' : 'var(--text-2)',
+                    color: selected ? metricColor(m.key, v) : 'var(--text-2)',
                     cursor: 'pointer', transition: 'all 0.1s',
-                    boxShadow: selected ? '0 0 0 3px var(--primary-light)' : 'none',
+                    boxShadow: selected ? `0 0 0 3px ${metricTint(m.key, v)}` : 'none',
                     transform: selected ? 'scale(1.05)' : 'none',
                   }}
                 >
@@ -102,7 +110,7 @@ export default function WellnessSubmit({ athleteId, onSaved }: Props) {
 
       {saved ? (
         <div style={{
-          background: 'var(--success-light)', border: '1px solid #bbf7d0', borderRadius: 8,
+          background: 'var(--success-light)', border: '1px solid #CBD7C0', borderRadius: 8,
           padding: '10px 14px', fontSize: 13, fontWeight: 600, color: 'var(--success)',
         }}>
           ✓ Check-in saved! Your coach can now see your wellness data.

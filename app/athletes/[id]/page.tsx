@@ -13,7 +13,7 @@ import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile } from '@/lib/profile-cache'
 import {
-  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor,
+  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint,
   type WellnessCheckin, type WellnessAlert,
 } from '@/lib/wellness-config'
 import { formatSessionDate } from '@/lib/session-date'
@@ -344,6 +344,10 @@ export default function AthleteDetailPage() {
     setAlertSending(false)
   }
   const wellnessColor = overallScoreColor(wellnessScore)
+  // Paired light token rather than a hex-alpha suffix concatenated onto the
+  // colour — that trick only worked while these were 6-digit hex literals, and
+  // it left the score sitting on a tint of itself.
+  const wellnessTint = overallScoreTint(wellnessScore)
 
   const toggleShare = async (sessionId: string, current: boolean) => {
     try {
@@ -639,7 +643,7 @@ export default function AthleteDetailPage() {
                     title={`Latest wellness score: ${wellnessScore}/5`}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
-                      background: wellnessColor + '18', border: `1px solid ${wellnessColor}40`,
+                      background: wellnessTint, border: `1px solid ${wellnessColor}`,
                       borderRadius: 99, padding: '2px 8px 2px 6px', cursor: 'pointer',
                     }}
                   >

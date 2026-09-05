@@ -28,9 +28,25 @@ function createSupabase(req: NextRequest) {
   return { supabase, cookiesToSet }
 }
 
-async function makeQuickSummary(transcript: string, sport?: string | null) {
+// Returns the athlete-facing bullets and, separately, the one thing to carry
+// into the next session. The forward-looking instruction is already in the
+// transcript — coaches say it out loud — so it is extracted from the summary
+// call that was being made anyway rather than captured from the coach, who has
+// no spare taps courtside.
+interface QuickSummary {
+  summary: string | null
+  next: string | null
+}
+
+const EMPTY_SUMMARY: QuickSummary = { summary: null, next: null }
+
+// Anything longer than this is the model writing prose rather than the coach's
+// one instruction, so it is dropped rather than shown. The prompt asks for 90.
+const MAX_NEXT_LENGTH = 120
+
+async function makeQuickSummary(transcript: string, sport?: string | null): Promise<QuickSummary> {
   const key = process.env.OPENAI_API_KEY
-  if (!key) return null
+  if (!key) return EMPTY_SUMMARY
 
   // The sport matters more than it looks. The transcript comes from Whisper
   // transcribing a coach talking, often near a noisy court, so sport jargon
@@ -57,6 +73,12 @@ The text below is an automatic transcript of the coach talking out loud, not a w
 WRITE
 2–5 bullets, each starting with •, each a short specific coaching point in the coach's own voice. Prefer what the athlete should DO next over abstract praise. Aim for under 300 characters total.
 
+THEN, ON A FINAL SEPARATE LINE
+If — and only if — the coach said something about what to work on next time, add one line in exactly this form:
+NEXT: <the one thing to work on next session>
+Under 90 characters, an instruction the athlete can act on, in the coach's own words. One thing, not several.
+If the coach did not say anything forward-looking, omit this line entirely. Do not invent one, do not restate a bullet as a NEXT line, and do not write "NEXT: none".
+
 NEVER
 - Never state anything the coach did not say. If the transcript is too garbled or too short to summarise, output only: • Recording too unclear to summarise.
 - Never write empty categories, "N/A", "None", or placeholders — omit the point instead.
@@ -82,12 +104,33 @@ ${transcript}
       }),
     })
 
-    if (!res.ok) return null
+    if (!res.ok) return EMPTY_SUMMARY
 
     const json = await res.json()
-    return json?.choices?.[0]?.message?.content?.trim() || null
+    const content: string = json?.choices?.[0]?.message?.content?.trim() || ''
+    if (!content) return EMPTY_SUMMARY
+
+    // Split the trailing NEXT: line off the bullets. Everything before it is
+    // the summary exactly as it was before this existed, so a response without
+    // the line behaves identically to the old one.
+    const lines = content.split('\n')
+    const nextIndex = lines.findIndex((l) => l.trim().toUpperCase().startsWith('NEXT:'))
+    if (nextIndex === -1) return { summary: content, next: null }
+
+    const next = lines[nextIndex].trim().slice('NEXT:'.length).trim()
+    const summary = lines.slice(0, nextIndex).join('\n').trim() || null
+
+    // A missing, over-long or placeholder line is dropped rather than shown:
+    // this is rendered to a 14-year-old as an instruction, so a bad one is
+    // worse than none.
+    const usable =
+      next.length > 0 &&
+      next.length <= MAX_NEXT_LENGTH &&
+      !/^(none|n\/a|nothing)\b/i.test(next)
+
+    return { summary, next: usable ? next : null }
   } catch {
-    return null
+    return EMPTY_SUMMARY
   }
 }
 
@@ -118,7 +161,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, session_name, summary, transcript, shared_with_athlete, session_date, created_at, audio_path, audio_mime')
+    .select('id, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime')
     .eq('coach_id', user.id)
     .eq('athlete_id', athlete_id)
     // Newest session first by the date it happened, not the date it was typed
@@ -196,7 +239,7 @@ export async function POST(req: NextRequest) {
   }
 
   // AI quick scan summary (if it fails, we still save with summary = null)
-  const summary = await makeQuickSummary(transcript.trim(), resolvedSport)
+  const { summary, next: nextFocus } = await makeQuickSummary(transcript.trim(), resolvedSport)
 
   const { data, error } = await supabase
     .from('sessions')
@@ -206,6 +249,11 @@ export async function POST(req: NextRequest) {
       session_name: session_name?.trim() ? session_name.trim() : null,
       transcript: transcript.trim(),
       summary, // quick scan summary for list
+      // The one thing to carry into the next session, lifted out of the same
+      // transcript. Empty when the coach said nothing forward-looking, which
+      // leaves the field exactly as it was before. The coach can edit or delete
+      // it on the session page like any focus point they typed themselves.
+      focus_points: nextFocus ? [nextFocus] : [],
       shared_with_athlete,
       sport_context: resolvedSport,
       // The date the session happened. Null only if the client sent nothing,
@@ -214,7 +262,7 @@ export async function POST(req: NextRequest) {
       audio_path,
       audio_mime,
     })
-    .select('id, session_name, summary, transcript, shared_with_athlete, session_date, created_at, audio_path, audio_mime')
+    .select('id, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime')
     .single()
 
   if (error) {
