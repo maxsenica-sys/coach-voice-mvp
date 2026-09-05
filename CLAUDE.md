@@ -33,7 +33,11 @@ cause recording and transcription to fail.
 All MediaRecorder instances MUST use dynamic MIME type detection:
 
 ```ts
-const supported = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+// mp4/AAC first: iOS Safari cannot decode WebM at all, so a WebM recording made
+// in Chrome plays back as an endless spinner on an iPhone. Every browser that
+// can play WebM can also play mp4, so preferring it makes a recording playable
+// everywhere. WebM stays as the fallback for browsers that can't record mp4.
+const supported = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
 const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
 const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {})
 ```
@@ -49,6 +53,10 @@ fd.append('file', new File([blob], `recording.${ext}`, { type: actualMime }))
 **Why:** Chrome uses `audio/webm`, Safari/iOS uses `audio/mp4`. Hardcoding
 `audio/webm` causes OpenAI Whisper to silently fail or reject files on Apple
 devices. The file extension in the filename is how Whisper detects the codec.
+
+The *order* of the list matters separately from the detection: it decides
+playback, not transcription. Recording mp4 wherever the browser supports it is
+what makes a saved session playable on an iPhone later.
 
 ### Protected API routes
 
