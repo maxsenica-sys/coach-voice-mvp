@@ -582,6 +582,7 @@ export default function AthletePage() {
             Let's go →
           </button>
         </div>
+        <ColdStartSplash />
       </div>
     )
   }

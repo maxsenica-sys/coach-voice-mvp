@@ -43,7 +43,7 @@ const SPLASH_VARIANT: 'A' | 'D' = 'D'
 /** Set for the life of the webview. Cleared only when the app is really closed. */
 export const SPLASH_SESSION_KEY = 'cv_splash_session'
 const SPLASH_LAST_KEY = 'cv_splash_at'
-const COOLDOWN_MS = 30 * 60 * 1000
+const COOLDOWN_MS = 3 * 60 * 1000
 
 const DRAW_MS = 300 // the hairline
 const WAVE_MS = 1250 // the stroke crossing the screen
@@ -67,6 +67,10 @@ export function markAppReady() {
 /** True at most once per genuinely cold launch. Records the decision as it goes. */
 function isColdStart(): boolean {
   try {
+    // ?splash=1 forces it, on any page, ignoring both gates. Without this the
+    // only way to see it twice is to wait out the cooldown, which is exactly
+    // what makes a working splash look like a broken one.
+    if (new URLSearchParams(window.location.search).get('splash') === '1') return true
     if (sessionStorage.getItem(SPLASH_SESSION_KEY)) return false
     sessionStorage.setItem(SPLASH_SESSION_KEY, '1')
     const last = Number(localStorage.getItem(SPLASH_LAST_KEY) ?? 0)
@@ -199,7 +203,7 @@ export default function ColdStartSplash() {
       hidden
       aria-hidden="true"
       style={{
-        position: 'fixed', inset: 0, zIndex: 400,
+        position: 'fixed', inset: 0, zIndex: 9000,
         background: 'var(--grad-ink)',
         opacity: 1, transition: `opacity ${OUT_MS}ms ease-out`,
       }}

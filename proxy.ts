@@ -16,12 +16,33 @@ const ATHLETE_ROUTES = ['/athlete']
 // athlete it was shared with. The route itself checks which of the two you are.
 const SHARED_ROUTES = ['/sessions']
 
+/** Is there a Supabase auth cookie at all? Cheap, local, no network. */
+function looksSignedIn(request: NextRequest) {
+  return request.cookies.getAll().some((c) => /^sb-.*-auth-token/.test(c.name))
+}
+
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   // ✅ Let invite/reset callbacks pass without middleware interference
   if (pathname.startsWith('/reset') || pathname.startsWith('/auth/callback')) {
     return NextResponse.next()
+  }
+
+  // ✅ The app's entry point, handled before any network call.
+  //
+  // `start_url` is "/", so this runs on every cold start. Validating the
+  // session here cost a round trip to Supabase's auth server, and then
+  // /dashboard immediately did the same again — two auth calls before a single
+  // pixel. The cookie's presence is enough to redirect optimistically; if it
+  // turns out to be stale, /dashboard bounces back to /?next=… below, and the
+  // `next` guard stops that becoming a loop.
+  //
+  // No role lookup either: the destination checks the role anyway and sends an
+  // athlete onward, so asking here would just be a third round trip.
+  const q = request.nextUrl.searchParams
+  if (pathname === '/' && !q.has('next') && q.get('intro') !== '1' && looksSignedIn(request)) {
+    return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
   // Supabase response must be returned so cookies are forwarded
@@ -70,26 +91,6 @@ export async function proxy(request: NextRequest) {
       )
     }
     return response
-  }
-
-  // ✅ Logged in and standing on the sign-in page: send them home.
-  // `start_url` is "/" (manifest), so every cold start of the installed app
-  // landed here — and this middleware already had the user object in hand and
-  // did nothing with it. A coach with a live session was being asked for their
-  // password on the way to a screen they were already entitled to.
-  if (pathname === '/') {
-    // ?intro=1 is the deliberate exception: it is how the opening sequence gets
-    // watched at all once you are signed in, since this redirect is otherwise
-    // total. It only ever shows the sign-in screen — no data, no access.
-    if (request.nextUrl.searchParams.get('intro') === '1') return response
-
-    // Deliberately no role query here. Asking for the role costs a round trip
-    // on the critical path of every cold start, and the redirect target then
-    // asks for it again — two lookups before anything paints. Send everyone to
-    // /dashboard and let the role check below bounce an athlete onward: same
-    // number of lookups for an athlete, one fewer for a coach, and one fewer
-    // before the first byte for both.
-    return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
   // ✅ Logged in: only role-check on protected routes
