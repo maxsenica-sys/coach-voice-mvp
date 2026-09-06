@@ -20,6 +20,48 @@ Outcome: <filled in when Max decides — especially WHY, so the idea can evolve
 
 ---
 
+## 2026-09-06 — WOW-002 — "The Line"
+Status: PROPOSED · Verdict: PROTOTYPE
+Priority: (4 x 2 x 2 x 4) / 3 = 21.3 — and it argued with the score correctly: "user value
+2 is right, this screen does not make an athlete better. But the formula has NO TERM FOR
+ACQUISITION, and this is the only screen whose user does not yet have an account."
+The idea: one continuous stroke that is a waveform, a silhouette and the logo in that order,
+4.5s, driven by a real coach's real 8s recording — playing SILENT, and the silence is the
+hook. At the three loudest peaks the stroke swells into an athlete silhouette and relaxes
+back: sound and sport are literally the same line.
+THE MECHANISM (this is the good part): browsers block autoplay audio until a gesture. A
+silent app treats that as a tax; a voice-first app treats it as a CLIFFHANGER — the silent
+version shows you THAT someone is speaking and WHAT they said, and withholds HOW. The
+gesture that unlocks the audio is the gesture that opens the door.
+Flash-safe BY CONSTRUCTION: no luminance transitions at all, only a stroke morphing on a
+static ground, ~0.7 shape-changes/second.
+Spread: not the animation — animations get a screenshot and die. This gets SCREEN-RECORDED,
+because the payload is the coach's sentence, not the app. What gets sent to the WhatsApp
+group is "listen to how she says this" — sharing coaching craft, with the app as wrapper.
+Phase 2: coaches submit their own 8 seconds, a human picks one a week, "that's me on the
+login screen" goes in the club chat. Moat: a rival can shoot an ad but cannot have 200 real
+coaches' sentences.
+Safeguarding: KILLED its own first version again — the clip named a real minor ("Ana — that
+third set...") in an adult's assessment of her performance on the one unauthenticated page,
+permanently. Dead. Survivors: second person only, NO athlete name ever; consent from athlete
+AND registered caretaker for the specific clip on top of the coach's; the named party is the
+adult; no club/squad/age identifier; coach-only submission; human review; zero wellness data,
+faces or minors' names; no engagement mechanic at all.
+KILL CONDITION, stated plainly: if Max cannot find one genuinely excellent 8 seconds, this
+should not ship AT ALL. The clip IS the thesis statement — if it is bland, the product looks
+bland permanently on its most-viewed screen.
+Cheapest version: /dev/frontdoor, one day, already covered by the /dev coach-only route.
+Hand a phone to two coaches WITH THE SOUND OFF and watch whether they tap. Worth the other
+90% only if someone taps a second time.
+Outcome: awaiting Max — and the real blocker is a recording, not code.
+
+## 2026-09-06 — Three more, unargued (round 3)
+1. A returning coach's cold launch draws the waveform of the last thing THEY said to an
+   athlete, silent, 1.2s, as the loading state. Their own voice as the splash screen.
+2. Coaches submit their own 8 seconds to the front door; a human picks one a week.
+3. An invite link carries `?s=volleyball` so the front door morphs into THEIR sport before
+   they have typed a character.
+
 ## 2026-09-06 — WOW-001 — Hear It: the coach's actual voice, cut to the sentence
 Status: PROTOTYPING (prototype built 2026-09-06)
 Verdict at proposal: PROTOTYPE

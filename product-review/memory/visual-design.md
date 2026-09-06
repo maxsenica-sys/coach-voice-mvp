@@ -19,6 +19,47 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-06 — DESIGN-004 — Three intro directions on one motion envelope
+Status: PROPOSED · Verdict: BUILD NOW in two pieces, in order
+Priority: (3 x 2 x 3 x 4) / 3 = 24 — deliberately not inflated; the intro is a brand
+  decision Max asked for, not a problem the product has. The MOTION-SAFETY layer is the
+  part that would score high on its own, and it is the part that ships this week.
+THE FLASH ANALYSIS (computed, WCAG 2.2 sRGB, against #1F2421 L 0.01663):
+  #3A4F38 5.1% safe · #445C42 7.6% safe · #4F6B4B 11.0% FAILS · #6F8E6B 22.1% FAILS ·
+  #FBF8F3 92.5% catastrophic. Max's literal proposal (white on brown #1A0E06) = 93.6% delta
+  at 10Hz = ~9x threshold amplitude at 3x the legal rate, audience aged 13-18.
+  Area exemption computed for phone geometry: 10deg field at 30cm = 5.25cm, 25% = 6.89cm2
+  = ~143x143 CSS px. Sage mic tile 36x36 = 6.3% of that, legal with wide margin.
+  THE RULE: "big or bright, never both — and if both, never faster than 2.5Hz."
+  CONSEQUENCE FOR MAX: figures at #445C42 never reach the 10% threshold, so no flash occurs
+  at ANY frequency — his 0.1s cadence is legal provided the images never brighten. Honest
+  cost: 2.14:1, genuinely subtle in daylight, motion doing the work contrast used to.
+Directions: A "The Voice" (hairline -> 64-bar waveform -> mic tile, 2.1s, ZERO assets,
+  NOMINATED) · B "The Roll Call" (Max's idea made safe, 5 figures at 400ms = 2.5Hz, 3.2s,
+  needs 5 commissioned SVGs) · C "The First Word" (6 words -> 2 bullets, 2.35s, no assets).
+Says Max's idea is the SECOND-best: 154 sports means a 5-figure montage is 3.2% of the list
+  and asserts breadth the roster lacks; sports silhouettes are the most commoditised visual
+  in the category and cannot be CoachVoice's, only sport's. A waveform CAN be, because it is
+  the literal raw material. Changes its mind if the growth story is "any sport, one tool".
+WOULD NOT FUSE: "a waveform that becomes a silhouette that becomes a sentence is three ideas
+  at 700ms each, which is how intros become gimmicks." (WOW-002 proposes exactly that fusion
+  — the disagreement is filed unresolved in the report.)
+HARD SEQUENCING: do not build the intro before DESIGN-002 ships, or it hardcodes an ending
+  you are about to delete.
+Rider, 2 lines, ship regardless: manifest background_color and theme_color -> #1F2421.
+Outcome: awaiting Max
+
+## 2026-09-06 — DESIGN-005 — STRETCH: "The Ten-Second Proof"
+Status: PROPOSED · Verdict: BACKLOG. Direction C with the audio on. Requires a public
+unauthenticated read, which is a security review rather than a design change. "Right
+eventually and premature now — but the only version that would make someone forward the URL."
+
+## 2026-09-06 — Challenge and cut
+Challenge: before designing what happens on `/`, decide who should ever see it. An intro
+playing for a coach opening the app courtside for the ninth time is a tax, not a brand.
+Cut: the book emoji at `app/page.tsx:83` — the first mark a voice-recording product shows
+the world is a picture of a book.
+
 ## 2026-09-06 — DESIGN-002 — One auth shell from a gradient the app already draws
 Status: PROPOSED
 Verdict at proposal: BUILD NOW

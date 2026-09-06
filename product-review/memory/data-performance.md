@@ -19,6 +19,39 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-06 — DATA-004 — The opening sequence: a screen to REMOVE, not add
+Status: PROPOSED · Verdict: BUILD NOW (redirect + manifest) · REJECT the sports montage
+Priority: (4 x 4 x 4 x 5) / 2 = 160
+Grounded in: `proxy.ts:13-17,50-52,93` + `app/page.tsx` (no session check) + manifest
+  `start_url: "/"` — a signed-in coach lands on a password field. `public/manifest.webmanifest`
+  is navy #0f2042 from a retired palette while `app/manifest.ts` holds the right colours and
+  is dead code. `lib/sports.ts` = 154 sports as STRINGS, zero silhouette assets in public/.
+  Two post-auth first-run intros already exist (`app/athlete/page.tsx:540-586`,
+  `app/dashboard/page.tsx:1149-1180+`). All verified by the orchestrator.
+Key reasoning: nobody arrives at `/` cold — there is no public surface, so every user came
+  through a coach's invite. An intro at `/` is a sales pitch to people who already bought.
+  Pre-auth there is no true number to show (RLS scopes everything, and an MVP rendering
+  "112 sessions" is worse than silence). The only true thing is the mechanism.
+REJECTED and why: the flashing-sports montage — 154 assets that do not exist, largest
+  payload in the product, in front of the screen the daily user wants to skip, seen by
+  nobody who needs convincing. Do not resurrect without a public front door AND evidence
+  people reach `/` without an invite.
+Outcome: awaiting Max
+
+## 2026-09-06 — DATA-005 — STRETCH: "Forty Seconds"
+Status: BLOCKED (not backlogged) · The login screen performs the real pipeline — one
+consented 8s clip, waveform, transcript typing at Whisper timing, collapsing to the three
+bullets the athlete received. Frozen as static JSON + mp4, zero API calls.
+Blocker: requires a public front door. `app/api/share/clip/[videoId]/route.ts:15` returns
+401 and there is no such door. Build the door first or do not build this.
+
+## 2026-09-06 — Challenge and cut
+Challenge: `app/athlete/page.tsx:560` makes daily wellness check-in the FIRST thing a
+14-year-old learns about CoachVoice, ahead of the sessions their coach records. That
+ordering teaches the athlete the product is surveillance before it teaches them coaching.
+Cut: `lib/quotes.ts` — ~100 COACH_QUOTES with zero call sites, in a product whose only real
+asset is that the words come from the athlete's actual coach.
+
 ## 2026-09-06 — DATA-002 — Show the coach the last focus point at the moment they press record
 Status: PROPOSED
 Verdict at proposal: BUILD NOW

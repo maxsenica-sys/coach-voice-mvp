@@ -19,6 +19,40 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-06 — UX-004 — Fix the front door, then the intro is free
+Status: PROPOSED · Verdict: BUILD NOW (parts 1-2) · TEST (part 3, Option A)
+Priority: (4 x 4 x 4 x 5) / 2 = 160
+Grounded in: `proxy.ts:54-57,68,93` + `app/page.tsx` (no session check) +
+  `public/manifest.webmanifest:5` — returning coach pays 3 taps + 2 round trips to sign in
+  to a live session. Also `lib/notify.ts:169,235,255,319` link to protected routes and
+  `proxy.ts:62` discards the destination. Verified by the orchestrator.
+The three parts: (1) redirect signed-in users off `/` — GUARD on role being exactly
+  'coach'/'athlete' or you build a redirect loop; (2) carry `?next=` through the auth wall,
+  which is ALSO what makes the intro safe (when `next` is present the intro does not play —
+  that person is interrupted, not a visitor); (3) the intro itself, Option A: montage as
+  BACKGROUND behind an interactive card. Nothing to skip because nothing blocks.
+Gating rule (conjunction, every clause load-bearing): no session AND no `?next=` AND
+  `localStorage['cv_intro_v1']` absent. localStorage NOT profile-cache (that is
+  sessionStorage and dies with the tab). Never cleared on sign-out.
+Rejected: a pre-auth "coach or athlete?" fork — `app/signup/page.tsx:340-347` already is
+  one, and a fork answer contradicting `profiles` is either theatre or a mis-route.
+  Also rejected: a corner "Skip" pill — undercuts the drama AND signals that what follows
+  is worth escaping.
+Outcome: awaiting Max
+
+## 2026-09-06 — UX-005 — STRETCH: move the theatre inside the app
+Status: PROPOSED · Verdict: TEST
+Delete the pre-auth intro; build a 1.2s cold-start moment answering "what changed since I
+last opened this". Same craft, aimed at the person who opens it 4x/week rather than the one
+who opens it once. Only legitimate if strictly non-blocking, <=1.2s, never repeated inside
+6 hours. Test first by logging tab transitions.
+
+## 2026-09-06 — Challenge and cut
+Challenge: the app has demanded a re-login on every cold start since it shipped, and the
+request that surfaced it was about a splash screen.
+Cut: the `mode === 'forgot'` state on `/` (`app/page.tsx:11,102-138`) — 37 lines making the
+front door a two-state screen for the app's rarest action.
+
 ## 2026-09-06 — UX-002 — "Read full session" does not open the session
 Status: IMPLEMENTED (2026-09-06, same day)
 Verdict at proposal: BUILD NOW
