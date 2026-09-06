@@ -53,7 +53,7 @@ export const PEAKS = [
 ]
 
 const MicMark = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+  <svg viewBox="0 0 24 24" width="33" height="33" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
     <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />
     <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" />
   </svg>
@@ -94,11 +94,11 @@ export default function IntroSequence({
 
     if (markEl) {
       markEl.style.opacity = '0'
-      markEl.style.transform = 'translate(-50%, calc(-50% - 4px)) scale(0.7)'
+      markEl.style.transform = 'translate(-50%, calc(-50% - 18px)) scale(0.66)'
     }
     if (wordEl) {
       wordEl.style.opacity = '0'
-      wordEl.style.transform = 'translateY(6px)'
+      wordEl.style.transform = 'translateY(12px)'
     }
     if (hairEl) hairEl.style.transform = 'scaleX(0)'
     bars.current.forEach((b) => { if (b) { b.style.height = '2px'; b.style.opacity = '0' } })
@@ -128,18 +128,18 @@ export default function IntroSequence({
       bars.current.forEach((b, i) => {
         if (!b) return
         b.style.opacity = rising ? '1' : '0'
-        b.style.height = `${Math.max(2, PEAKS[i] * 1.5 * k)}px`
+        b.style.height = `${Math.max(3, PEAKS[i] * 2.1 * k)}px`
       })
 
       const m = t > MARK_AT ? Math.min(1, (t - MARK_AT) / 400) : 0
       const w = t > WORD_AT ? Math.min(1, (t - WORD_AT) / 300) : 0
       if (markEl) {
         markEl.style.opacity = String(m)
-        markEl.style.transform = `translate(-50%, calc(-50% - 4px)) scale(${0.7 + m * 0.3})`
+        markEl.style.transform = `translate(-50%, calc(-50% - 18px)) scale(${0.66 + m * 0.34})`
       }
       if (wordEl) {
         wordEl.style.opacity = String(w)
-        wordEl.style.transform = `translateY(${(1 - w) * 6}px)`
+        wordEl.style.transform = `translateY(${(1 - w) * 12}px)`
       }
 
       if (t < INTRO_MS) raf = requestAnimationFrame(frame)
@@ -161,21 +161,22 @@ export default function IntroSequence({
       {/* The line, and the waveform that grows out of it */}
       <div style={{
         position: 'absolute', top: '50%', left: '50%',
-        width: 'min(78vw, 300px)', height: 92,
+        width: 'min(84vw, 380px)', height: 140,
         transform: 'translate(-50%, -50%)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2,
       }}>
         <div ref={hair} style={{
-          position: 'absolute', left: 0, right: 0, top: '50%', height: 1,
-          background: 'var(--ink-figure)', transformOrigin: 'left', opacity: 0,
+          position: 'absolute', left: 0, right: 0, top: '50%', height: 2,
+          background: 'var(--primary)', transformOrigin: 'left', opacity: 0,
+          borderRadius: 99,
         }} />
         {PEAKS.map((_, i) => (
           <span
             key={i}
             ref={(el) => { bars.current[i] = el }}
             style={{
-              flex: 1, height: 2, minHeight: 2, borderRadius: 99, opacity: 0,
-              background: 'var(--ink-figure)',
+              flex: 1, height: 3, minHeight: 3, borderRadius: 99, opacity: 0,
+              background: 'var(--primary)',
               transition: 'height 110ms cubic-bezier(.22,1,.36,1)',
             }}
           />
@@ -185,8 +186,8 @@ export default function IntroSequence({
       {/* What the sequence resolves into — and the screen's resting state */}
       <div ref={mark} style={{
         position: 'absolute', top: '50%', left: '50%',
-        transform: 'translate(-50%, calc(-50% - 4px)) scale(1)',
-        width: 34, height: 34, borderRadius: 10,
+        transform: 'translate(-50%, calc(-50% - 18px)) scale(1)',
+        width: 68, height: 68, borderRadius: 20,
         background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
         boxShadow: '0 4px 12px rgb(111 142 107 / .40)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -196,9 +197,9 @@ export default function IntroSequence({
       </div>
 
       <div ref={word} style={{
-        position: 'absolute', top: 'calc(50% + 30px)', left: 0, right: 0,
+        position: 'absolute', top: 'calc(50% + 34px)', left: 0, right: 0,
         textAlign: 'center', color: 'var(--on-ink)',
-        fontWeight: 800, fontSize: 15, letterSpacing: '-0.02em',
+        fontWeight: 800, fontSize: 26, letterSpacing: '-0.03em',
         transition: 'opacity 220ms linear, transform 320ms var(--ease-brand)',
       }}>
         CoachVoice

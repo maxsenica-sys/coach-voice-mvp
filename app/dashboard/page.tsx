@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
-import ColdStartSplash from '@/app/components/ColdStartSplash'
+import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
@@ -510,7 +510,7 @@ function DashboardPageInner() {
       const res = await fetch('/api/athletes', { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       if (res.ok) setAthletes((json.athletes ?? json) as Athlete[])
-    } finally { setLoadingAthletes(false) }
+    } finally { setLoadingAthletes(false); markAppReady() }
   }
 
   const fetchUnreadCounts = async () => {

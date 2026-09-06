@@ -118,7 +118,7 @@ export default function Home() {
             resting state of the screen as well as the end of the sequence.
             It never blocks: pointer-events: none, and the card below is live
             from the first frame. Tapping the email field is the skip. */}
-        <div style={{ position: 'relative', height: 168 }}>
+        <div style={{ position: 'relative', height: 224 }}>
           <IntroSequence play={playIntro} />
         </div>
         <p style={{

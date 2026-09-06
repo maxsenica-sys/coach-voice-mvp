@@ -83,18 +83,13 @@ export async function proxy(request: NextRequest) {
     // total. It only ever shows the sign-in screen — no data, no access.
     if (request.nextUrl.searchParams.get('intro') === '1') return response
 
-    const { data: homeProfile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    const homeRole = (homeProfile?.role ?? '').toLowerCase()
-    if (homeRole === 'coach') return NextResponse.redirect(new URL('/dashboard', request.url))
-    if (homeRole === 'athlete') return NextResponse.redirect(new URL('/athlete', request.url))
-    // No role yet (profile row not written). Stay put rather than loop —
-    // same escape as the role check below.
-    return response
+    // Deliberately no role query here. Asking for the role costs a round trip
+    // on the critical path of every cold start, and the redirect target then
+    // asks for it again — two lookups before anything paints. Send everyone to
+    // /dashboard and let the role check below bounce an athlete onward: same
+    // number of lookups for an athlete, one fewer for a coach, and one fewer
+    // before the first byte for both.
+    return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
   // ✅ Logged in: only role-check on protected routes

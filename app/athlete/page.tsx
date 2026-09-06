@@ -7,7 +7,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator from '@/app/components/VideoAnnotator'
 import WellnessSubmit from '@/app/components/WellnessSubmit'
-import ColdStartSplash from '@/app/components/ColdStartSplash'
+import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import { getDailyQuote } from '@/lib/quotes'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
@@ -224,6 +224,7 @@ export default function AthletePage() {
         if (!cancelled) setError(e?.message ?? 'Failed to load')
       } finally {
         if (!cancelled) setLoading(false)
+        markAppReady()
       }
     }
     void load()
