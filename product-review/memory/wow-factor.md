@@ -21,7 +21,7 @@ Outcome: <filled in when Max decides — especially WHY, so the idea can evolve
 ---
 
 ## 2026-09-06 — WOW-001 — Hear It: the coach's actual voice, cut to the sentence
-Status: PROPOSED
+Status: PROTOTYPING (prototype built 2026-09-06)
 Verdict at proposal: PROTOTYPE
 Priority: (5 x 5 x 2 x 3) / 4 = 37.5 — and the agent argued with the MVP-relevance term
 rather than the formula, correctly.
@@ -46,7 +46,15 @@ Risk it named and could not solve: raw audio does not launder the coach. Some co
 be embarrassed to hear themselves played back to a teenager, and a few will be right to be.
 Gateable, not solvable — voice sharing needs its own consent, defaulting off, separate from
 the existing `shared_with_athlete` toggle.
-Outcome: awaiting Max
+Outcome: PROTOTYPE BUILT the same day at /dev/hearit (coach-only, added to the proxy's
+  COACH_ROUTES). It stands on the two existing routes unmodified: POST /api/transcribe
+  already accepts `audio_path` and enforces `coach/<uid>/` ownership, and
+  GET /api/sessions/[id]/audio-url returns the signed URL and mime. No migration, no
+  schema change, no write, nothing in the protected recording path. It guards the known
+  iOS failure with a canPlayType check rather than showing a dead player, and it says
+  plainly in the UI that it re-transcribes and costs a Whisper call.
+  **The decision point is now three coaches' faces, not another agent run.** If nobody
+  asks to hear it again, close this rather than backlogging it.
 
 ## 2026-09-06 — Three more, unargued
 1. One squad recording split by the model into eleven individually-targeted sessions.

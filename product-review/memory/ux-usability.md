@@ -20,7 +20,7 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 ---
 
 ## 2026-09-06 — UX-002 — "Read full session" does not open the session
-Status: PROPOSED
+Status: IMPLEMENTED (2026-09-06, same day)
 Verdict at proposal: BUILD NOW
 Priority: (4 x 5 x 5 x 5) / 1 = 500 — the highest this system has produced
 Grounded in: `app/athlete/page.tsx:818-820` — the primary CTA on the core loop's card is
@@ -32,7 +32,13 @@ Grounded in: `app/athlete/page.tsx:818-820` — the primary CTA on the core loop
   `:635-638` (messages button with NO onClick and a permanently-lit dot).
 Evidence: label-destination integrity; perceived affordance inverted against actual
   interactivity. No explanatory text added — the fix is the destination.
-Outcome: awaiting Max
+Outcome: APPROVED and BUILT. The CTA is a Link to /sessions/[id]; the inert hero card
+  is deleted; and two items from the register's "Not yet reviewed" list went with it —
+  the quotation marks around the AI summary, and the header messages button (wired to
+  the messages tab, dot removed).
+  NOT built, deliberately: the "See your trends ->" lie. Fixing it properly means showing
+  the athlete their own wellness graph, which is the product decision both DATA and UX
+  raised as a challenge — not an agent's call, and not mine.
 
 ## 2026-09-06 — UX-003 — STRETCH: delete the athlete's home and wellness tabs
 Status: PROPOSED · Verdict: TEST

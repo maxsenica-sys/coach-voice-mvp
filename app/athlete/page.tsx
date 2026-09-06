@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator from '@/app/components/VideoAnnotator'
@@ -632,9 +633,14 @@ export default function AthletePage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button style={{ width: 36, height: 36, borderRadius: 10, background: '#FFFFFF', border: '1px solid #E3DED2', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer' }}>
+            {/* Had no onClick at all, under a dot conditioned on
+                sessions.length > 0 — an unread badge that meant "you have a
+                session" and stayed lit forever. There is no athlete-side unread
+                source: /api/messages/unread filters sender_role = 'athlete'
+                against the caller's coach_id, so it is coach-only by
+                construction. Button wired up, dot removed. */}
+            <button onClick={() => setTab('messages')} aria-label="Messages" style={{ width: 36, height: 36, borderRadius: 10, background: '#FFFFFF', border: '1px solid #E3DED2', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer' }}>
               <AthleteIcon name="messages" size={15} strokeWidth={1.8} />
-              {sessions.length > 0 && <span style={{ position: 'absolute', top: 7, right: 7, width: 7, height: 7, borderRadius: '50%', background: '#B55C3E', border: '1.5px solid #FFFFFF' }} />}
             </button>
             <button onClick={logout} style={{ width: 36, height: 36, borderRadius: 10, background: '#FFFFFF', border: '1px solid #E3DED2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
               Out
@@ -794,7 +800,10 @@ export default function AthletePage() {
                 </div>
                 {sessions[0].summary && (
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 13.5, color: '#1F2421', lineHeight: 1.55, position: 'relative', marginBottom: 12 }}>
-                    &ldquo;{sessions[0].summary.slice(0, 120)}{sessions[0].summary.length > 120 ? '…' : ''}&rdquo;
+                    {/* Not in quotation marks. This is GPT-4o-mini's summary of
+                        the recording, not a sentence the coach said — quoting it
+                        told a 14-year-old their coach used these exact words. */}
+                    {sessions[0].summary.slice(0, 120)}{sessions[0].summary.length > 120 ? '…' : ''}
                   </div>
                 )}
                 {/* The one thing to work on next. Everything else on this card
@@ -815,9 +824,14 @@ export default function AthletePage() {
                   </div>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
-                  <button onClick={() => setTab('sessions')} style={{ flex: 1, padding: '9px 0', background: '#1F2421', color: '#FBF8F3', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}>
+                  {/* Opens the session. It used to call setTab('sessions'),
+                      which landed on a tab whose first element re-showed this
+                      same session twenty characters longer and could not be
+                      tapped — three taps to reach the coach's actual words on
+                      the app's most-performed action. */}
+                  <Link href={`/sessions/${sessions[0].id}`} style={{ flex: 1, padding: '9px 0', background: '#1F2421', color: '#FBF8F3', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', textDecoration: 'none' }}>
                     Read full session →
-                  </button>
+                  </Link>
                 </div>
               </div>
               )
@@ -861,31 +875,10 @@ export default function AthletePage() {
         {/* ─── Tab: Sessions ─── */}
         {tab === 'sessions' && (
           <div>
-            {/* Hero card — most recent session from coach */}
-            {sessions.length > 0 && (
-              <div style={{
-                background: 'linear-gradient(135deg, var(--coach-light) 0%, #FBF8F3 100%)',
-                border: '1px solid var(--border)',
-                borderLeft: '4px solid var(--coach-color)',
-                borderRadius: 14,
-                padding: 16,
-                marginBottom: 16,
-              }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--coach-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--coach-color)', display: 'inline-block' }} />
-                  From your coach
-                </div>
-                <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', marginBottom: 4 }}>
-                  {sessions[0].session_name ?? sessions[0].title ?? 'Latest Session'}
-                </div>
-                {sessions[0].summary && (
-                  <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 8 }}>
-                    {sessions[0].summary.slice(0, 140)}{sessions[0].summary.length > 140 ? '…' : ''}
-                  </div>
-                )}
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatSessionDate(sessions[0])}</div>
-              </div>
-            )}
+            {/* The hero card that used to sit here re-showed the most recent
+                session — the one the athlete had just tapped away from — at 140
+                characters instead of 120, in a div with no onClick. The first
+                accordion row below is the same session and is interactive. */}
 
             {sessions.length === 0 ? (
               <div style={{ background: 'linear-gradient(135deg, var(--primary-light) 0%, #e0f2fe 100%)', border: '1px solid var(--border)', borderRadius: 18, padding: 40, textAlign: 'center' }}>
