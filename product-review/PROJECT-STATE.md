@@ -44,7 +44,7 @@ from real production incidents. Checks are `npx tsc --noEmit && npm run lint
 | `/sessions/[id]` | coach **and** athlete | The session page. Summary, focus points, coach notes, audio, videos, image attachments. 622 lines. |
 | `/athlete` | athlete | The athlete's whole app. 6 tabs: `home · sessions · calendar · notes · messages · wellness`. 1,499 lines. Bottom nav on mobile. |
 | `/pdf/session/[id]`, `/pdf/monthly/[athleteId]` | coach | Printable reports |
-| `/share/clip/[videoId]` | public | Shared video clip |
+| `/share/clip/[videoId]` | signed-in | Shared video clip. **Not public** — `app/api/share/clip/[videoId]/route.ts:15` returns 401 without a session. CoachVoice has no public surface at all. |
 | `/reset`, `/auth/callback` | anyone | Password reset |
 
 Route protection is `proxy.ts` (middleware): matcher `['/', '/dashboard/*',
@@ -228,7 +228,14 @@ nothing hardcodes the old hex — every site reads the token.
   closes the loop on whether it was worked on.
 - No session delete and no reassign.
 - Nothing an athlete sees is shareable, and nothing in the product is visible to
-  anyone who does not already have an account.
+  anyone who does not already have an account. There is **no public surface**,
+  which is good for safeguarding and means any growth mechanism has to run
+  through email to adults rather than a link.
+- `/api/transcribe` requests `verbose_json` and returns Whisper's `segments`
+  array with per-sentence timestamps (`app/api/transcribe/route.ts:75,102`).
+  **Nothing consumes it** — those two lines are the only occurrences of
+  `segments` in the repo, and `QuickSessionModal` reads `json.text` only. The
+  app pays for a timestamped map of every recording and discards it.
 - No streaks, no habit loop, no reason to open the app on a day with no session.
 - The coach is the only author. An athlete cannot record anything for their
   coach, only private notes for themselves.
