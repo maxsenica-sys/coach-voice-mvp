@@ -89,7 +89,16 @@ verified defects it surfaced.
 imported by nothing, so its 15 silhouettes reach no bundle (confirmed by
 grepping the built client chunks).
 
-**Watch it on demand: `/?intro=1`.** Needed because the redirect above is
+**Signed-in users get it too, as a cold-start splash** (`ColdStartSplash.tsx`,
+mounted on both role homes). Direction A compressed to 1.24s, over the app while
+it loads, dismissed by any touch. "Cold start" is `sessionStorage` (survives
+backgrounding, resuming, in-app navigation and refresh; dies with the webview)
+AND a 30-minute floor in `localStorage`, because iOS discards backgrounded PWAs
+aggressively and without it a coach flicking to a timer app would get a "cold
+start" every few minutes. Signing in claims the session flag so the sign-in
+sequence and the splash never run back to back.
+
+**Watch the sign-in one on demand: `/?intro=1`.** Needed because the redirect above is
 total — a signed-in user never reaches `/`, so without this exception the
 author of the intro is the one person who can never see it.
 

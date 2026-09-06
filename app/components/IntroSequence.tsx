@@ -43,8 +43,9 @@ const FADE_AT = 1100 // waveform collapses
 const MARK_AT = 1200
 const WORD_AT = 1500
 
-/** Amplitude envelope of a real 8-second coaching clip, reduced to 64 peaks. */
-const PEAKS = [
+/** Amplitude envelope of a real 8-second coaching clip, reduced to 64 peaks.
+ *  Shared with ColdStartSplash so both draw the same voice. */
+export const PEAKS = [
   3, 6, 4, 9, 14, 10, 18, 26, 20, 32, 24, 16, 22, 30, 38, 30,
   22, 14, 20, 28, 22, 15, 10, 17, 25, 34, 27, 19, 12, 8, 14, 21,
   29, 23, 16, 11, 7, 12, 18, 26, 20, 13, 9, 15, 22, 17, 11, 7,

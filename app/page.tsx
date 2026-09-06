@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '../lib/supabase-browser'
 import IntroSequence from '@/app/components/IntroSequence'
+import { SPLASH_SESSION_KEY } from '@/app/components/ColdStartSplash'
 
 type Mode = 'login' | 'forgot'
 
@@ -69,6 +70,11 @@ export default function Home() {
       .select('role')
       .eq('id', data.user.id)
       .single()
+
+    // Claim the cold-start splash before leaving. Whoever just watched the
+    // sign-in sequence should not land on the dashboard and immediately watch a
+    // compressed version of the same thing.
+    try { sessionStorage.setItem(SPLASH_SESSION_KEY, '1') } catch { /* nothing to do */ }
 
     router.push(nextPath || (profile?.role === 'athlete' ? '/athlete' : '/dashboard'))
   }
