@@ -173,14 +173,23 @@ Jakarta Sans for UI + JetBrains Mono. Component classes: `.card`, `.card-lg`,
 `.stat-card`, `.nav-pill`, `.hero-bar`, animations, PWA/safe-area handling,
 44 px minimum tap targets under 768 px.
 
-**Two palettes are live** (was three until 2026-09-06):
-1. the token set above (most of the app), which now also carries an
-   eight-token wellness scale — `--wellness-good|ok|low|none` plus paired
-   `-tint` values, all clearing AA as text,
-2. `/` sign-in — dark browns `#1A0E06 → #2C1810`, amber `rgba(245,158,11)` and
-   indigo `rgba(91,99,245)` glows, all inline, none of them tokens. **This is
-   the one remaining palette divergence, and it is the first screen every user
-   sees.** Nobody has proposed a target design for it.
+**The token set, plus four different grounds in the unauthenticated funnel.**
+A new coach walks `/` → `/signup` → `/signup/confirm` in about ninety seconds
+and sees three unrelated dark gradients; password reset then shows parchment:
+
+1. the token set (most of the app), which now also carries an eight-token
+   wellness scale — `--wellness-good|ok|low|none` plus paired `-tint` values,
+2. `/` — browns `#1A0E06 → #120C06` with amber and indigo glows (`app/page.tsx:54,63-64`),
+3. `/signup` — slate→indigo→violet `#0f172a → #6366f1` (`app/signup/page.tsx:293`),
+4. `/signup/confirm` — mid blue `#1e3a5f → #1d4ed8` (`app/signup/confirm/page.tsx:9`),
+   against `/reset` on `var(--bg)` (`app/reset/page.tsx:28`).
+
+The brand mark is **four different objects** across those screens. The app's real
+logo is the sage tile with a stroked SVG at `app/dashboard/page.tsx:807-812`.
+
+`app/globals.css:558-570` ships `.bg-gradient-sport/coach/athlete` and **nothing
+uses any of them** — the system offered a house gradient and all three auth pages
+invented their own instead.
 
 The five per-metric identity hues in `lib/wellness-config.ts` (`#10b981`,
 `#3b82f6`, `#8b5cf6`, `#f59e0b`, `#ef4444`) survive as **chart fills only**,
@@ -193,7 +202,7 @@ where 3:1 governs. They no longer render as text anywhere.
 | `--text` `#1F2421` on `--bg` `#FBF8F3` | ~15.4:1 | passes everything |
 | `--text-2` `#5D6661` on `--bg` | **5.49:1** | passes AA normal text |
 | `--text-muted` `#6B736D` on `--bg` | **4.61:1** | passes AA (was `#9BA29B` at 2.47:1 until 2026-09-06) |
-| `--primary` `#6F8E6B` on white | **3.65:1** | fails AA normal text; fine as a fill |
+| `--primary` `#6F8E6B` on white | **3.65:1** | fails AA normal text. Fine as a fill — but the code uses it as **text at 10 sites**, several at 11–12px, all failing 1.4.3. `--primary-dark` is the drop-in. |
 | `--primary-dark` `#4F6B4B` on white | 5.94:1 | passes AA normal text |
 
 `--text-muted` is used at 10–13 px for session dates, stat sub-labels, "delta"

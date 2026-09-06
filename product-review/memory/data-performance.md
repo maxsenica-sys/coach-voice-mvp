@@ -19,6 +19,37 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-06 — DATA-002 — Show the coach the last focus point at the moment they press record
+Status: PROPOSED
+Verdict at proposal: BUILD NOW
+Priority: (4 x 4 x 4 x 4) / 2 = 128
+Grounded in: `focus_points` renders on `/sessions/[id]` and nowhere else — zero matches in
+  `app/athletes/[id]/page.tsx`, `app/dashboard/page.tsx`, `/api/sessions/all` and the
+  monthly PDF (orchestrator verified all four). `GET /api/sessions` already returns the
+  column (`app/api/sessions/route.ts:164`), so no new route is needed.
+Evidence: Locke & Latham 2002 — feedback moderates the goal-performance relationship;
+  goals without progress feedback do not change behaviour. The 30-day staleness cutoff and
+  the read-only choice are judgement.
+Note: touches QuickSessionModal (protected). Step-1 presentational UI only. Needs explicit
+  approval, not an agent's judgement.
+Outcome: awaiting Max
+
+## 2026-09-06 — DATA-003 — STRETCH: The Thread
+Status: PROPOSED · Verdict: TEST
+The bet: 6-10 transcripts to GPT-4o-mini, three sentences on what changed, coach-gated in
+draft. The monthly PDF is a photocopier and cannot answer "is she getting better?".
+Serious risk: a transcript corpus has no ground truth about improvement, only about what
+was said. A confidently wrong verdict to a 14-year-old is worse than silence.
+**Check before building anything:** do coaches record the same athlete 6x a month? That is
+queryable today. If not, the whole idea is moot.
+Outcome: awaiting Max
+
+## 2026-09-06 — Challenge and cut
+Challenge: wellness collects five numbers and `computeWellnessAlert` flattens them to one
+mean, so the coach is told "2.6/5" without being told which metric caused it.
+Cut: the duplicated truncated summary on the athlete's sessions hero card.
+(UX independently proposed cutting the same card. Two agents, separate contexts.)
+
 ## 2026-09-05 — DATA-001 — Extract one "what to work on next" line from the transcript and show it on the athlete's home card
 Status: IMPLEMENTED (2026-09-05, same day)
 Verdict at proposal: BUILD NOW

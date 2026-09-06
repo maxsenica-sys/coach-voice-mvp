@@ -19,6 +19,49 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-06 — DESIGN-002 — One auth shell from a gradient the app already draws
+Status: PROPOSED
+Verdict at proposal: BUILD NOW
+Priority: (3 x 3 x 3 x 5) / 2 = 67.5
+Grounded in: FOUR grounds in the ninety-second funnel, not one as the register claimed —
+  `app/page.tsx:54` brown, `app/signup/page.tsx:293` slate-indigo,
+  `app/signup/confirm/page.tsx:9` blue, `app/reset/page.tsx:28` parchment. All verified by
+  the orchestrator. Four different brand marks across those screens. And
+  `globals.css:558-570` ships three gradient utility classes with ZERO usages anywhere.
+Evidence: measured — footer 2.45:1, "Create an account" 3.24:1 and 3.65:1, all failing
+  1.4.3; the tagline at 4.52:1 passes and no failure was claimed for it. Proposed
+  `--grad-ink` (#1F2421 -> #3A4F38, already the coach sidebar) gives 7.58:1 at its
+  lightest point; `--on-ink-2` 4.83:1; `--primary-dark` 5.28-5.94:1. Explicitly rejected
+  `.bg-gradient-coach` because its light stop gives cream only 3.10:1.
+Opinion, labelled: an entry screen changing ground three times in ninety seconds reads as
+  unfinished. Would change its mind if the dark entry is a deliberate "threshold", or if
+  Max thinks the glow is the brand and the parchment is the compromise.
+Honest note the agent volunteered: this does NOT fail the three-second test. Users find the
+  email field today. Brand coherence and contrast, not task completion.
+Outcome: awaiting Max
+
+## 2026-09-06 — DESIGN-003 — STRETCH: retire emoji as iconography
+Status: PROPOSED · Verdict: BACKLOG
+39 pictographic emoji across 11 files, 19 of them on the teenager-facing page, coexisting
+with a 17-glyph stroked SVG set that is duplicated in miniature as `AthleteIcon`. Two icon
+systems, one of them the operating system's. Evidence: per-platform artwork, no
+`currentColor`, no `strokeWidth`, no stable optical size, CLDR screen-reader names.
+Risk the agent named itself: emoji are why /athlete feels warm to a 15-year-old; a
+monochrome set could make it read as an enterprise dashboard. "What I will not defend is
+shipping both."
+Outcome: awaiting Max
+
+## 2026-09-06 — Challenge and cut
+Challenge: the Letter Edition diary identity may be wrong for an athletic product — and
+the codebase defected from it three times in the auth funnel, which is a signal about the
+system rather than the pages.
+Cut: `/signup/confirm` — a whole page and a third palette to say "check your email".
+
+## 2026-09-06 — Corrected the briefing document
+This agent found PROJECT-STATE recorded two live palettes where there are four, and said
+`--primary` was "fine as a fill" when the code uses it as text at 10 sites at 3.24-3.65:1.
+Both corrected. Eight of those ten sites remain open after DESIGN-002.
+
 ## 2026-09-05 — DESIGN-001 — Replace the raw-Tailwind wellness palette with four tokens in the app's own colour family
 Status: IMPLEMENTED (2026-09-05, same day)
 Verdict at proposal: BUILD NOW

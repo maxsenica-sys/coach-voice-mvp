@@ -19,6 +19,36 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-06 — UX-002 — "Read full session" does not open the session
+Status: PROPOSED
+Verdict at proposal: BUILD NOW
+Priority: (4 x 5 x 5 x 5) / 1 = 500 — the highest this system has produced
+Grounded in: `app/athlete/page.tsx:818-820` — the primary CTA on the core loop's card is
+  `onClick={() => setTab('sessions')}`, verified by the orchestrator. It lands on an inert
+  `<div>` hero (`:865-888`) re-showing the same session at 140 chars instead of 120, with
+  scroll-to-top (`:82-84`) guaranteeing they look at it. Real session is 2 more taps.
+  Same defect at `:742` (See your trends -> a blank form; WellnessGraph is coach-only,
+  `app/athletes/[id]/page.tsx:1075`), `:764-768` (five rating-shaped nav buttons), and
+  `:635-638` (messages button with NO onClick and a permanently-lit dot).
+Evidence: label-destination integrity; perceived affordance inverted against actual
+  interactivity. No explanatory text added — the fix is the destination.
+Outcome: awaiting Max
+
+## 2026-09-06 — UX-003 — STRETCH: delete the athlete's home and wellness tabs
+Status: PROPOSED · Verdict: TEST
+All six controls on the athlete home tab are `setTab` routers; the screen holds no content
+but a 120-char truncation. Replace with one scrolling "Today" ordered by obligation; nav
+5 slots -> 3. Risks named honestly: the post-submit dead band, history below the fold, and
+`WellnessSubmit` initialising from `{}` against an upsert on (athlete_id, check_date),
+making silent overwrite easier. Cheap test first: log tab transitions for a week and see
+whether `home` is ever a destination or only ever transit.
+Outcome: awaiting Max
+
+## 2026-09-06 — Challenge and cut
+Challenge: we ask a 15-year-old for five numbers daily and give them nothing back.
+Cut: the sessions-tab hero card. (DATA independently proposed the same cut.)
+Also checked and found fine: messages composer, RSVP row, notes filter chips.
+
 ## 2026-09-05 — UX-001 — The recorder silently pre-selects the most recently added athlete, and the result cannot be undone
 Status: IMPLEMENTED (2026-09-05, same day)
 Verdict at proposal: BUILD NOW

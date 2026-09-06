@@ -45,6 +45,20 @@ Also built in the same pass, from the "Not yet reviewed" list below:
 pointed at the token; the athlete session ordering bug; the metric-pill contrast
 failure; the modal scroll clip.
 
+### Round 2 — 2026-09-06 (first four-agent run)
+
+| ID | Date | Status | One line | Verdict | Priority |
+|---|---|---|---|---|---|
+| UX-002 | 2026-09-06 | PROPOSED | "Read full session" doesn't open the session — it switches tab, onto an inert hero card duplicating what the athlete just tapped away from | BUILD NOW | **500** |
+| DATA-002 | 2026-09-06 | PROPOSED | Show the coach the athlete's last focus point at the moment they press record; `GET /api/sessions` already returns it | BUILD NOW | 128 |
+| DESIGN-002 | 2026-09-06 | PROPOSED | One auth shell — promote the coach sidebar's ink gradient to a token, apply across the four-ground funnel, unify four brand marks, fix two AA failures | BUILD NOW | 67.5 |
+| WOW-001 | 2026-09-06 | PROPOSED | Hear It — persist the Whisper segments the app already computes and discards; every coaching point becomes playable in the coach's real voice | PROTOTYPE | 37.5 |
+| DATA-003 | 2026-09-06 | PROPOSED | STRETCH — The Thread: synthesise 6–10 transcripts into three sentences of what changed, coach-gated | TEST | — |
+| UX-003 | 2026-09-06 | PROPOSED | STRETCH — delete the athlete's home and wellness tabs; one scrolling "Today", nav 5 → 3 | TEST | — |
+| DESIGN-003 | 2026-09-06 | PROPOSED | STRETCH — retire the 39 emoji used as iconography; one shared Icon component | BACKLOG | — |
+
+**#1 today:** UX-002 (BUILD). **#1 ambition:** WOW-001 (PROTOTYPE — one day).
+
 ## Not yet reviewed
 
 Real observations, recorded so they are not lost, but **not** agent proposals.
@@ -53,7 +67,11 @@ An agent may pick any of these up as its own recommendation on a later run.
 | Noted | Area | Observation |
 |---|---|---|
 | ~~2026-09-05 setup~~ | ~~Design~~ | **DONE 2026-09-05** — token raised to `#6B736D` (4.61:1 on `--bg`, 4.89:1 on `--card`); 23 hardcoded `#9BA29B` instances repointed at the token. |
-| 2026-09-05 setup | Design | `/` sign-in is visually a different product: dark browns `#1A0E06 → #2C1810` with amber and indigo glows, all inline, none of them tokens. **Still open** — deliberately not built: no agent has proposed it and there is no agreed target design, so restyling it would be a redesign on nobody's authority. Give it to `visual-design` on a future run. |
+| 2026-09-06 synthesis | Correctness | `app/athlete/page.tsx:797` wraps the GPT-4o-mini summary in `&ldquo;…&rdquo;`, presenting a model paraphrase to a 14-year-old as their coach's direct speech. Folded into UX-002's build outline. |
+| 2026-09-06 DESIGN-002 | Design | `--primary` is used as **text** at 10 sites at 3.24–3.65:1, all failing 1.4.3. DESIGN-002 fixes two; eight remain. |
+| 2026-09-06 DATA+UX | Product | Both agents independently challenged the wellness loop: the coach gets one flattened mean with no indication which metric caused it, and the athlete gets nothing back at all for five taps a day. Neither made it their primary. |
+| 2026-09-06 UX-002 | UX | `app/athlete/page.tsx:635-638` — header messages button has no `onClick` and an unread dot conditioned on `sessions.length > 0`. Folded into UX-002's build outline. |
+| 2026-09-05 setup | Design | `/` sign-in is visually a different product: dark browns `#1A0E06 → #2C1810` with amber and indigo glows, all inline, none of them tokens. **Superseded by DESIGN-002** (2026-09-06), which proposes a target design and finds the divergence is four grounds, not one. |
 | ~~2026-09-05 DESIGN-001~~ | ~~Design~~ | **DONE 2026-09-05** — identity hue moved to a 7 px dot; pill label now `--text`/`--text-2`. The five series hues are untouched as chart fills. |
 | ~~2026-09-05 DATA-001~~ | ~~Correctness~~ | **DONE 2026-09-05** — athlete query now orders `session_date desc nullsFirst:false`, then `created_at desc`, matching the coach side. |
 | ~~2026-09-05 UX-001~~ | ~~UX~~ | **DONE 2026-09-05** — `overflowY: auto` on the backdrop, `maxHeight: 100%` + `overflowY: auto` on the card. |
