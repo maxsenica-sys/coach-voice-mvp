@@ -84,8 +84,14 @@ convergence this system has produced. See "Not yet reviewed" for the three
 verified defects it surfaced.
 
 **#1 today:** the three defect fixes — **all shipped 2026-09-06** (`9708772`).
-**#1 ambition:** Direction A — **live**. B (15 sports) and D (2.25s, 13 swells)
-are built alongside it and switch via one constant in `app/page.tsx`.
+**#1 ambition:** Direction A — **live and verified in a browser**. B and D are
+**banked, not deployed** — `app/components/_banked/IntroSequenceAll.tsx` is
+imported by nothing, so its 15 silhouettes reach no bundle (confirmed by
+grepping the built client chunks).
+
+**Watch it on demand: `/?intro=1`.** Needed because the redirect above is
+total — a signed-in user never reaches `/`, so without this exception the
+author of the intro is the one person who can never see it.
 
 **What shipped:** manifest navy → ink · the `prefers-reduced-motion` layer the
 app never had · signed-in users redirected off `/` · `?next=` carried through

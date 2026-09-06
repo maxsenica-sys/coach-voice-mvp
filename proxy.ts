@@ -78,6 +78,11 @@ export async function proxy(request: NextRequest) {
   // did nothing with it. A coach with a live session was being asked for their
   // password on the way to a screen they were already entitled to.
   if (pathname === '/') {
+    // ?intro=1 is the deliberate exception: it is how the opening sequence gets
+    // watched at all once you are signed in, since this redirect is otherwise
+    // total. It only ever shows the sign-in screen — no data, no access.
+    if (request.nextUrl.searchParams.get('intro') === '1') return response
+
     const { data: homeProfile } = await supabase
       .from('profiles')
       .select('role')

@@ -4,21 +4,16 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '../lib/supabase-browser'
-import IntroSequence, { type IntroVariant } from '@/app/components/IntroSequence'
+import IntroSequence from '@/app/components/IntroSequence'
 
 type Mode = 'login' | 'forgot'
 
-/**
- * Which opening sequence runs. All three are built and interchangeable:
- *   'A'  The Voice      2.10s  waveform  (live)
- *   'B'  The Roll Call  3.20s  15 sport silhouettes
- *   'D'  The Line       2.25s  one stroke swelling into 13 silhouettes
- * Changing this line is the whole switch.
- */
-const INTRO_VARIANT: IntroVariant = 'A'
-
 /** Once per device, ever. Deliberately not cleared on sign-out — replaying an
- *  intro at someone who just signed out is punishment, not branding. */
+ *  intro at someone who just signed out is punishment, not branding.
+ *
+ *  To watch it again at any time: /?intro=1 — which is also the only way to see
+ *  it once you are signed in, since the middleware sends a signed-in user
+ *  straight to their role home and `/` never renders for them. */
 const INTRO_SEEN = 'cv_intro_v1'
 
 export default function Home() {
@@ -44,7 +39,11 @@ export default function Home() {
 
   const [playIntro] = useState(() => {
     if (typeof window === 'undefined') return false
-    if (new URLSearchParams(window.location.search).get('next')) return false
+    const q = new URLSearchParams(window.location.search)
+    // ?intro=1 always plays it, ignoring the once-per-device flag. This is how
+    // the sequence gets watched on demand rather than once and never again.
+    if (q.get('intro') === '1') return true
+    if (q.get('next')) return false
     try {
       return !localStorage.getItem(INTRO_SEEN)
     } catch {
@@ -114,7 +113,7 @@ export default function Home() {
             It never blocks: pointer-events: none, and the card below is live
             from the first frame. Tapping the email field is the skip. */}
         <div style={{ position: 'relative', height: 168 }}>
-          <IntroSequence variant={INTRO_VARIANT} play={playIntro} />
+          <IntroSequence play={playIntro} />
         </div>
         <p style={{
           color: 'var(--on-ink-2)', textAlign: 'center', margin: '0 0 22px',
