@@ -4,7 +4,7 @@
 *instead of* re-reading the repo. Keep it under ~250 lines. Update it when the
 architecture changes, not when a line of CSS changes.
 
-Last verified against the codebase: **2026-09-05** (commit `020fc70`).
+Last verified against the codebase: **2026-09-06** (commit `d033ef8`).
 
 ---
 
@@ -81,6 +81,11 @@ transcript, coach_notes, focus_points (jsonb array of short strings),
 shared_with_athlete, sport_context, audio_path, audio_mime, session_date,
 created_at`.
 
+`focus_points` is now **written automatically**: `makeQuickSummary` in
+`app/api/sessions/route.ts` asks the model for a trailing `NEXT:` line and, when
+the coach said something forward-looking, stores it as a single-element array.
+The coach edits or deletes it on `/sessions/[id]` like any point they typed.
+
 **There are no quantitative session fields.** No reps, no attempts, no
 success/failure counts, no scores, no ratings, no drill records. Every session
 is qualitative: a voice recording, its transcript, an AI summary, optional
@@ -90,7 +95,8 @@ the numbers" recommendation is a **new data-capture surface**, not a
 visualisation of data already sitting there.
 
 `focus_points` is the only structured, forward-looking, athlete-actionable
-field in the system. It renders **only** on `/sessions/[id]`.
+field in the system. It renders on `/sessions/[id]` and, since 2026-09-06, as a
+single line on the athlete's home card under "Take into next session".
 
 ### What wellness holds
 `wellness_checkins`: one row per `(athlete_id, check_date)` —
@@ -136,9 +142,11 @@ Step 2 "review": editable transcript → share-with-athlete toggle (defaults ON)
 → Save. `POST /api/sessions` resolves the sport server-side, generates the
 summary, writes the session, creates the calendar event, sends the email.
 
-The athlete `<select>` defaults to `defaultAthleteId ?? athletes[0]`. Opened
-from the FAB there is no `defaultAthleteId`, so it silently pre-selects the
-first athlete in the roster.
+Since 2026-09-06 the athlete and group pickers are **one-tap chips, with no
+default**. Opened from the FAB the modal opens with no target, and both step-1
+exits (Start Recording, Skip) are disabled until one is picked. There is still
+**no way to delete or reassign a session** once saved — `/api/sessions/[id]`
+exports only `PATCH` and `athlete_id` is not in its allow-list.
 
 ### Athlete receives a session
 `/athlete` home shows "New from Coach" — the session name plus the **first 120
@@ -148,8 +156,9 @@ chars) and below it an accordion list of every session. Opening an accordion
 row reveals: an "Open full session" link, the audio player, the full summary,
 a collapsed transcript, videos, and the athlete's own notes.
 
-Focus points are **not** on either of those screens. They only appear one more
-tap in, on `/sessions/[id]`.
+The extracted next-session line now appears on the home card, unquoted and
+under its own label (the summary above it is presented as the coach speaking).
+The full focus-point list still lives on `/sessions/[id]`.
 
 ---
 
@@ -164,12 +173,18 @@ Jakarta Sans for UI + JetBrains Mono. Component classes: `.card`, `.card-lg`,
 `.stat-card`, `.nav-pill`, `.hero-bar`, animations, PWA/safe-area handling,
 44 px minimum tap targets under 768 px.
 
-**Three palettes are live at once:**
-1. the token set above (most of the app),
+**Two palettes are live** (was three until 2026-09-06):
+1. the token set above (most of the app), which now also carries an
+   eight-token wellness scale — `--wellness-good|ok|low|none` plus paired
+   `-tint` values, all clearing AA as text,
 2. `/` sign-in — dark browns `#1A0E06 → #2C1810`, amber `rgba(245,158,11)` and
-   indigo `rgba(91,99,245)` glows, all inline, none of them tokens,
-3. `lib/wellness-config.ts` — raw Tailwind defaults `#10b981 #3b82f6 #8b5cf6
-   #f59e0b #ef4444`, which is what the athlete sees on the wellness screens.
+   indigo `rgba(91,99,245)` glows, all inline, none of them tokens. **This is
+   the one remaining palette divergence, and it is the first screen every user
+   sees.** Nobody has proposed a target design for it.
+
+The five per-metric identity hues in `lib/wellness-config.ts` (`#10b981`,
+`#3b82f6`, `#8b5cf6`, `#f59e0b`, `#ef4444`) survive as **chart fills only**,
+where 3:1 governs. They no longer render as text anywhere.
 
 **Known contrast measurements** (computed, sRGB, WCAG 2.2 formula):
 
@@ -177,12 +192,13 @@ Jakarta Sans for UI + JetBrains Mono. Component classes: `.card`, `.card-lg`,
 |---|---|---|
 | `--text` `#1F2421` on `--bg` `#FBF8F3` | ~15.4:1 | passes everything |
 | `--text-2` `#5D6661` on `--bg` | **5.49:1** | passes AA normal text |
-| `--text-muted` `#9BA29B` on `--bg` | **2.47:1** | **fails AA (4.5:1) and fails 3:1 large text** |
+| `--text-muted` `#6B736D` on `--bg` | **4.61:1** | passes AA (was `#9BA29B` at 2.47:1 until 2026-09-06) |
 | `--primary` `#6F8E6B` on white | **3.65:1** | fails AA normal text; fine as a fill |
 | `--primary-dark` `#4F6B4B` on white | 5.94:1 | passes AA normal text |
 
 `--text-muted` is used at 10–13 px for session dates, stat sub-labels, "delta"
-strings, quote strips and empty-state copy across every page.
+strings, quote strips and empty-state copy across every page. As of 2026-09-06
+nothing hardcodes the old hex — every site reads the token.
 
 ---
 
@@ -207,4 +223,12 @@ strings, quote strips and empty-state copy across every page.
   input, and it is day-level, not session-level).
 - No trend or progress view over sessions — the athlete sees a reverse-chron
   list, the coach sees a count.
-- No way to carry a focus point from one session into the next.
+- A focus point is extracted into a session but **nothing carries it forward** —
+  the next session does not know the last one set a focus, and nobody ever
+  closes the loop on whether it was worked on.
+- No session delete and no reassign.
+- Nothing an athlete sees is shareable, and nothing in the product is visible to
+  anyone who does not already have an account.
+- No streaks, no habit loop, no reason to open the app on a day with no session.
+- The coach is the only author. An athlete cannot record anything for their
+  coach, only private notes for themselves.

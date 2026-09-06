@@ -66,6 +66,7 @@ has changed. The orchestrator bumps these when it files a report.
 
 | Area | Reviews since last primary |
 |---|---|
+| Ambition / wow factor (new agent 2026-09-06) | 0 |
 | Recorder / QuickSessionModal | 0 |
 | Session save + summariser | 0 |
 | Wellness (submit, graph, alerts) | 0 |
