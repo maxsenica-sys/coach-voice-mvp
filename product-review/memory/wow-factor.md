@@ -20,6 +20,29 @@ Outcome: <filled in when Max decides — especially WHY, so the idea can evolve
 
 ---
 
+## 2026-09-06 — ROUND 3 SHIPPED (commit 9708772)
+
+All three defect fixes built, plus all three intro directions. Direction A is
+live; B and D switch via `INTRO_VARIANT` in `app/page.tsx`.
+
+Two things worth carrying forward:
+
+**The flash margin is the fill, not the cadence.** Max asked for B with 15
+sports and D at half time, which puts them at 7.5Hz and 5.8Hz — both far past
+the 3-flashes-per-second limit, and both safe, because `--ink-figure` sits at a
+7.6% luminance delta and a general flash needs 10%. That margin is the entire
+safety mechanism. `IntroSequence.tsx` says so at the top. Anyone who "improves"
+the figures by brightening them re-introduces a seizure risk for teenagers.
+
+**The silhouettes are mine and they are placeholders.** Recognisable at 150px,
+consistent in weight, not illustration. The design agent called this an
+illustration job, not a coding task, and it was right. Redraw before B or D
+ships for real.
+
+**Still open:** D is built and waiting on one excellent 8-second recording. That
+recording is the experiment; the code is done. If the clip is bland, do not ship
+D — the wow agent named that as a kill condition and it still holds.
+
 ## 2026-09-06 — WOW-002 — "The Line"
 Status: PROPOSED · Verdict: PROTOTYPE
 Priority: (4 x 2 x 2 x 4) / 3 = 21.3 — and it argued with the score correctly: "user value

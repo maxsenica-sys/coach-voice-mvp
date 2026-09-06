@@ -71,10 +71,10 @@ Deliverable: https://claude.ai/code/artifact/f29ad8a2-b5cd-49e8-aedb-be70dd315ce
 
 | ID | Date | Status | One line | Verdict | Priority |
 |---|---|---|---|---|---|
-| UX-004 | 2026-09-06 | PROPOSED | Fix the front door first — signed-in users see the login form on every cold start; then play the intro *behind* a live sign-in card, once per device | BUILD NOW | 160 |
-| DATA-004 | 2026-09-06 | PROPOSED | Treat the opening as a screen to REMOVE, not add: redirect signed-in users, fix the navy manifest splash. Rejects the sports montage outright | BUILD NOW / REJECT montage | 160 |
-| DESIGN-004 | 2026-09-06 | PROPOSED | Three intro directions on one motion envelope (A The Voice / B The Roll Call / C The First Word) + the missing `prefers-reduced-motion` layer | BUILD NOW in two pieces | 24 |
-| WOW-002 | 2026-09-06 | PROPOSED | "The Line" — one stroke that is waveform, silhouette and logo, driven by a real coach's real 8 seconds, playing silent because autoplay is blocked | PROTOTYPE | 21.3 |
+| UX-004 | 2026-09-06 | IMPLEMENTED | Fix the front door first — signed-in users see the login form on every cold start; then play the intro *behind* a live sign-in card, once per device | BUILD NOW | 160 |
+| DATA-004 | 2026-09-06 | IMPLEMENTED | Treat the opening as a screen to REMOVE, not add: redirect signed-in users, fix the navy manifest splash. Rejects the sports montage outright | BUILD NOW / REJECT montage | 160 |
+| DESIGN-004 | 2026-09-06 | IMPLEMENTED | Three intro directions on one motion envelope (A The Voice / B The Roll Call / C The First Word) + the missing `prefers-reduced-motion` layer | BUILD NOW in two pieces | 24 |
+| WOW-002 | 2026-09-06 | BUILT, AWAITING CLIP | "The Line" — one stroke that is waveform, silhouette and logo, driven by a real coach's real 8 seconds, playing silent because autoplay is blocked | PROTOTYPE | 21.3 |
 | DATA-005 | 2026-09-06 | BLOCKED | STRETCH — "Forty Seconds": the login screen performs the pipeline. **Blocked, not backlogged** — needs a public front door that does not exist | — | — |
 | UX-005 | 2026-09-06 | PROPOSED | STRETCH — delete the pre-auth intro; put a 1.2s cold-start moment *inside* the app, aimed at the person who opens it 4×/week | TEST | — |
 | DESIGN-005 | 2026-09-06 | PROPOSED | STRETCH — "The Ten-Second Proof": Direction C with audio. Needs a security review, not a design change | BACKLOG | — |
@@ -83,8 +83,18 @@ Deliverable: https://claude.ai/code/artifact/f29ad8a2-b5cd-49e8-aedb-be70dd315ce
 convergence this system has produced. See "Not yet reviewed" for the three
 verified defects it surfaced.
 
-**#1 today:** the three defect fixes (~25 lines), not the intro.
-**#1 ambition:** Direction A behind a live form; park D until the clip exists.
+**#1 today:** the three defect fixes — **all shipped 2026-09-06** (`9708772`).
+**#1 ambition:** Direction A — **live**. B (15 sports) and D (2.25s, 13 swells)
+are built alongside it and switch via one constant in `app/page.tsx`.
+
+**What shipped:** manifest navy → ink · the `prefers-reduced-motion` layer the
+app never had · signed-in users redirected off `/` · `?next=` carried through
+the auth wall · `/` on `--grad-ink` with the glows and the book emoji gone ·
+two measured AA failures fixed (3.24:1 → 5.28:1, 2.45:1 → 4.83:1).
+
+**Still open:** D needs one excellent 8-second recording — that is the
+experiment, not the code. The silhouettes are placeholders and want an
+illustrator. The rest of DESIGN-002 (signup pages, shared `Icon`) is unbuilt.
 
 ## Not yet reviewed
 
@@ -98,10 +108,10 @@ An agent may pick any of these up as its own recommendation on a later run.
 | 2026-09-06 DESIGN-002 | Design | `--primary` is used as **text** at 10 sites at 3.24–3.65:1, all failing 1.4.3. DESIGN-002 fixes two; eight remain. |
 | 2026-09-06 DATA+UX | Product | **STILL OPEN — the biggest thing this review found that nobody has acted on.** Both agents independently challenged the wellness loop: the coach gets one flattened mean with no indication which metric caused it, and the athlete gets nothing back at all for five taps a day. Neither made it their primary. The athlete's "See your trends →" still opens a blank form; `WellnessGraph` already exists and takes `athleteId`, so showing it there is close to a one-line change — but whether an athlete should see their own trends is a product decision, not a bug fix, so it was left for Max. |
 | ~~2026-09-06 UX-002~~ | ~~UX~~ | **DONE 2026-09-06** — wired to the messages tab, dot removed. |
-| 2026-09-06 ALL FOUR | Defect | **A signed-in user is shown the login form on every cold start.** `/` is in the proxy matcher but no protected-route list (`proxy.ts:13-17,93`), `app/page.tsx` has no session check at all, and the PWA `start_url` is `/`. The middleware holds the user object at the edge and discards it. Verified. |
-| 2026-09-06 UX-004 | Defect | Notification email CTAs point at protected routes (`lib/notify.ts:169,235,255,319`); a lapsed session redirects to `/` and **discards the destination** — no `next` param except password reset. |
-| 2026-09-06 DATA-004 | Defect | `public/manifest.webmanifest` paints navy `#0f2042` / blue `#2563eb` — a retired palette — while `app/manifest.ts` holds the correct `#FBF8F3` / `#1F2421` and is **dead code**. Cold launch shows navy → brown → parchment. 2-line fix, cheapest win in the report. |
-| 2026-09-06 DESIGN-004 | Accessibility | **Zero `prefers-reduced-motion` in the entire codebase.** 7 keyframe sets including a 1.2s *infinite* pulse on the athlete page teenagers open daily. |
+| ~~2026-09-06 ALL FOUR~~ | ~~Defect~~ | **DONE 2026-09-06.** A signed-in user was shown the login form on every cold start. `/` is in the proxy matcher but no protected-route list (`proxy.ts:13-17,93`), `app/page.tsx` has no session check at all, and the PWA `start_url` is `/`. The middleware holds the user object at the edge and discards it. Verified. |
+| ~~2026-09-06 UX-004~~ | ~~Defect~~ | **DONE 2026-09-06** — `?next=` now carried and validated same-origin. Notification email CTAs point at protected routes (`lib/notify.ts:169,235,255,319`); a lapsed session redirects to `/` and **discards the destination** — no `next` param except password reset. |
+| ~~2026-09-06 DATA-004~~ | ~~Defect~~ | **DONE 2026-09-06** — both colours now `#1F2421`. `public/manifest.webmanifest` painted navy `#0f2042` / blue `#2563eb` — a retired palette — while `app/manifest.ts` holds the correct `#FBF8F3` / `#1F2421` and is **dead code**. Cold launch shows navy → brown → parchment. 2-line fix, cheapest win in the report. |
+| ~~2026-09-06 DESIGN-004~~ | ~~Accessibility~~ | **DONE 2026-09-06** — block added, with `.recording-dot::after` handled deliberately so the mic-live indication survives as a steady halo. Was: zero `prefers-reduced-motion` anywhere. 7 keyframe sets including a 1.2s *infinite* pulse on the athlete page teenagers open daily. |
 | 2026-09-06 DATA-004 | Product | Two first-run intros already exist post-auth and PROJECT-STATE missed both: `app/athlete/page.tsx:540-586` and `app/dashboard/page.tsx:1149-1180+`. |
 | 2026-09-05 setup | Design | `/` sign-in is visually a different product: dark browns `#1A0E06 → #2C1810` with amber and indigo glows, all inline, none of them tokens. **Superseded by DESIGN-002** (2026-09-06), which proposes a target design and finds the divergence is four grounds, not one. |
 | ~~2026-09-05 DESIGN-001~~ | ~~Design~~ | **DONE 2026-09-05** — identity hue moved to a 7 px dot; pill label now `--text`/`--text-2`. The five series hues are untouched as chart fills. |
