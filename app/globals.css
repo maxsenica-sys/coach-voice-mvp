@@ -68,6 +68,22 @@
   --font-sans:    'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
 
+  /* Entrance — the ink ground the intro resolves into.
+     Not a new colour: #1F2421 is --text, and this is the exact gradient the
+     coach sidebar already paints. --ink-figure is the silhouette fill, chosen
+     so it sits at a 7.6% relative-luminance delta against --ink-base — under
+     the 10% that WCAG 2.3.1 counts as a flash, which is what makes a fast
+     montage safe at any cadence. Nothing here may be made brighter without
+     redoing that arithmetic: --primary-dark is 11.0% and --primary is 22.1%,
+     and both would flash. */
+  --grad-ink:     linear-gradient(160deg, #1F2421 0%, #3A4F38 100%);
+  --ink-base:     #1F2421;
+  --ink-figure:   #445C42;
+  --on-ink:       #F5ECD7;
+  --on-ink-2:     rgba(245, 236, 215, 0.72);
+  --intro-beat:   400ms;
+  --ease-brand:   cubic-bezier(.22, 1, .36, 1);
+
   /* Shape */
   --radius:       13px;
   --radius-sm:    9px;
@@ -498,6 +514,32 @@ textarea.input { resize: vertical; min-height: 80px; }
   border-radius: 50%;
   background: #EF4444;
   animation: pulse-ring 1.2s ease-out infinite;
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────────
+   The app shipped seven keyframe sets with no opt-out, including a 1.2s
+   infinite pulse on .recording-dot that renders on the athlete page teenagers
+   open daily. This is the escape hatch.
+
+   .recording-dot::after is handled deliberately rather than swept up by the
+   wildcard below: killing it outright would remove the only indication that
+   the mic is live, so it goes from pulsing to a steady halo — still a visible
+   state, no motion. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --intro-beat: 0ms; }
+
+  .recording-dot::after {
+    animation: none;
+    opacity: 0.45;
+    transform: scale(1.35);
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ─── Toast notifications ────────────────────────────────────── */

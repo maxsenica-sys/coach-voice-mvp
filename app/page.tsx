@@ -1,11 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '../lib/supabase-browser'
+import IntroSequence, { type IntroVariant } from '@/app/components/IntroSequence'
 
 type Mode = 'login' | 'forgot'
+
+/**
+ * Which opening sequence runs. All three are built and interchangeable:
+ *   'A'  The Voice      2.10s  waveform  (live)
+ *   'B'  The Roll Call  3.20s  15 sport silhouettes
+ *   'D'  The Line       2.25s  one stroke swelling into 13 silhouettes
+ * Changing this line is the whole switch.
+ */
+const INTRO_VARIANT: IntroVariant = 'A'
+
+/** Once per device, ever. Deliberately not cleared on sign-out — replaying an
+ *  intro at someone who just signed out is punishment, not branding. */
+const INTRO_SEEN = 'cv_intro_v1'
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>('login')
@@ -15,6 +29,33 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const supabase = createSupabaseBrowserClient()
+
+  // `next` is set by the middleware when someone was sent here from a page they
+  // were already trying to open — a session shared by their coach, usually.
+  // They are interrupted, not arriving: no intro plays, and sign-in returns
+  // them to what they asked for rather than to their role's home tab.
+  const [nextPath] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    const raw = new URLSearchParams(window.location.search).get('next') ?? ''
+    // Same-origin paths only — '//evil.com' or 'https://…' would make this an
+    // open redirect.
+    return raw.startsWith('/') && !raw.startsWith('//') ? raw : ''
+  })
+
+  const [playIntro] = useState(() => {
+    if (typeof window === 'undefined') return false
+    if (new URLSearchParams(window.location.search).get('next')) return false
+    try {
+      return !localStorage.getItem(INTRO_SEEN)
+    } catch {
+      return true // private mode: play it, just don't remember
+    }
+  })
+
+  useEffect(() => {
+    if (!playIntro) return
+    try { localStorage.setItem(INTRO_SEEN, '1') } catch { /* nothing to do */ }
+  }, [playIntro])
 
   const signIn = async () => {
     if (!email.trim() || !password.trim()) return setMessage('Please enter your email and password.')
@@ -30,7 +71,7 @@ export default function Home() {
       .eq('id', data.user.id)
       .single()
 
-    router.push(profile?.role === 'athlete' ? '/athlete' : '/dashboard')
+    router.push(nextPath || (profile?.role === 'athlete' ? '/athlete' : '/dashboard'))
   }
 
   const sendResetEmail = async () => {
@@ -51,7 +92,9 @@ export default function Home() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(160deg, #1A0E06 0%, #2C1810 35%, #1E1208 65%, #120C06 100%)',
+      // The ground the intro resolves into, and the one the coach sidebar
+      // already paints. Replaces four unrelated browns.
+      background: 'var(--grad-ink)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -59,36 +102,26 @@ export default function Home() {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Subtle warm glow accents */}
-      <div style={{ position: 'absolute', top: '10%', right: '10%', width: 400, height: 400, background: 'radial-gradient(circle, rgba(245,158,11,.08) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
-      <div style={{ position: 'absolute', bottom: '15%', left: '5%', width: 300, height: 300, background: 'radial-gradient(circle, rgba(91,99,245,.07) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }} />
+      {/* The amber and indigo radial glows that used to sit here were the only
+          two accent hues in the app that appeared nowhere else, at 7-8% alpha,
+          imperceptible at arm's length on a phone. */}
 
       <div style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 1 }}>
 
-        {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          {/* Notebook icon */}
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 60,
-            height: 60,
-            background: 'linear-gradient(135deg, rgba(245,158,11,.25) 0%, rgba(91,99,245,.25) 100%)',
-            borderRadius: 18,
-            marginBottom: 14,
-            border: '1px solid rgba(245,158,11,.3)',
-            backdropFilter: 'blur(8px)',
-          }}>
-            <span style={{ fontSize: 30 }}>📖</span>
-          </div>
-          <h1 style={{ color: '#F5ECD7', fontSize: 28, fontWeight: 800, margin: 0, letterSpacing: -0.4 }}>
-            CoachVoice
-          </h1>
-          <p style={{ color: 'rgba(245,236,215,0.5)', marginTop: 6, fontSize: 13, fontWeight: 500, fontStyle: 'italic' }}>
-            Your private training journal
-          </p>
+        {/* Brand. The mark and wordmark are drawn by the intro, which renders
+            its resolved final frame when it is not animating — so this is the
+            resting state of the screen as well as the end of the sequence.
+            It never blocks: pointer-events: none, and the card below is live
+            from the first frame. Tapping the email field is the skip. */}
+        <div style={{ position: 'relative', height: 168 }}>
+          <IntroSequence variant={INTRO_VARIANT} play={playIntro} />
         </div>
+        <p style={{
+          color: 'var(--on-ink-2)', textAlign: 'center', margin: '0 0 22px',
+          fontSize: 13, fontWeight: 500, fontStyle: 'italic',
+        }}>
+          Your private training journal
+        </p>
 
         {/* Card */}
         <div style={{
@@ -195,7 +228,7 @@ export default function Home() {
 
               <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--text-2)' }}>
                 New to CoachVoice?{' '}
-                <Link href="/signup" style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}>
+                <Link href="/signup" style={{ color: 'var(--primary-dark)', fontWeight: 700, textDecoration: 'none' }}>
                   Create an account
                 </Link>
               </p>
@@ -203,8 +236,8 @@ export default function Home() {
           )}
         </div>
 
-        <p style={{ textAlign: 'center', color: 'rgba(245,236,215,0.3)', fontSize: 12, marginTop: 20 }}>
-          © 2025 CoachVoice. All rights reserved.
+        <p style={{ textAlign: 'center', color: 'var(--on-ink-2)', fontSize: 12, marginTop: 20 }}>
+          © 2026 CoachVoice. All rights reserved.
         </p>
       </div>
     </div>

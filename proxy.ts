@@ -59,8 +59,36 @@ export async function proxy(request: NextRequest) {
   // ✅ Not logged in: block protected routes only
   if (!user) {
     if (isProtectedRoute) {
-      return NextResponse.redirect(new URL('/', request.url))
+      // Carry where they were going. Every notification email links to a
+      // protected route, so without this an athlete who taps "see your session"
+      // on a lapsed session lands on the sign-in form and the session they
+      // asked for is discarded. `next` is also what tells the sign-in page not
+      // to play the intro: that person is interrupted, not a visitor.
+      const next = pathname + request.nextUrl.search
+      return NextResponse.redirect(
+        new URL(`/?next=${encodeURIComponent(next)}`, request.url),
+      )
     }
+    return response
+  }
+
+  // ✅ Logged in and standing on the sign-in page: send them home.
+  // `start_url` is "/" (manifest), so every cold start of the installed app
+  // landed here — and this middleware already had the user object in hand and
+  // did nothing with it. A coach with a live session was being asked for their
+  // password on the way to a screen they were already entitled to.
+  if (pathname === '/') {
+    const { data: homeProfile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    const homeRole = (homeProfile?.role ?? '').toLowerCase()
+    if (homeRole === 'coach') return NextResponse.redirect(new URL('/dashboard', request.url))
+    if (homeRole === 'athlete') return NextResponse.redirect(new URL('/athlete', request.url))
+    // No role yet (profile row not written). Stay put rather than loop —
+    // same escape as the role check below.
     return response
   }
 
