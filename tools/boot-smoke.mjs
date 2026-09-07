@@ -198,6 +198,20 @@ async function assertMiddleware(base) {
 
   r = await go(`${AUTH}; cv_role_hint=athlete`, '/?intro=1')
   check('?intro=1 still renders "/"', r.status === 200, `${r.status} ${r.to}`)
+
+  // Exercises the identity branch. The middleware reads the session with
+  // getClaims() rather than getUser() — local signature verification instead of
+  // a round trip to the Auth server — and getClaims returns {data:null,
+  // error:null} rather than throwing when there is no session at all. If that
+  // case is ever mishandled, a signed-out visitor either 500s here or, worse,
+  // is treated as signed in; both look like "the app opens" until someone
+  // checks. The `next` parameter is what carries an emailed session link
+  // through the sign-in page, so it must survive the bounce.
+  for (const path of ['/dashboard', '/athlete']) {
+    r = await go(null, path)
+    const bounced = r.status === 307 && r.to.includes(`/?next=${encodeURIComponent(path)}`)
+    check(`signed out, ${path} bounces to sign-in carrying ?next=`, bounced, `${r.status} ${r.to}`)
+  }
 }
 
 /* ── 3. what the eye actually sees ─────────────────────────────────────────
