@@ -53,29 +53,30 @@ const COOLDOWN_MS = 15 * 1000
 const DRAW_MS = 240 // the hairline
 
 /**
- * How long each sport holds, in order. Geometric decay from 320ms to 105ms —
+ * How long each sport holds, in order. Geometric decay from 220ms to 70ms —
  * the Marvel title card: the first few turn over slowly enough to read, and by
  * the end it is a thumb riffling a book. The stroke's crossing is tied to the
  * same schedule, so the waveform accelerates with the figures rather than
  * running at its own tempo.
  *
- * The tail used to bottom out at 40ms, which is two frames — fast enough that
- * the last third was a smear rather than a run of sports. 105ms still reads as
- * a riffle and you can still tell what went past.
+ * The tail must not bottom out too low: at 40ms, two frames, the last third
+ * was a smear rather than a run of sports. 70ms is four frames — still a
+ * riffle, and you can still tell what went past. That is the floor; if the
+ * montage needs to be shorter again, drop sports rather than this number.
  */
 const FIG_MS: number[] = (() => {
-  const n = SPORTS.length, first = 320, last = 105
+  const n = SPORTS.length, first = 220, last = 70
   const r = Math.pow(last / first, 1 / (n - 1))
   return Array.from({ length: n }, (_, i) => Math.round(first * Math.pow(r, i)))
 })()
-const MONTAGE_MS = FIG_MS.reduce((a, b) => a + b, 0) // ~2320
+const MONTAGE_MS = FIG_MS.reduce((a, b) => a + b, 0) // ~1850 across 14 sports
 /** Cumulative start time of each sport, for looking up which one is showing. */
 const FIG_AT: number[] = FIG_MS.reduce<number[]>((acc, d, i) => {
   acc.push(i === 0 ? DRAW_MS : acc[i - 1] + FIG_MS[i - 1])
   return acc
 }, [])
 
-const COLLAPSE_AT = DRAW_MS + MONTAGE_MS // ~2560
+const COLLAPSE_AT = DRAW_MS + MONTAGE_MS // ~2090
 const MARK_AT = COLLAPSE_AT + 100 // the logo rises
 const WORD_AT = MARK_AT + 300
 const FLOOR_MS = MARK_AT + 750 // let the logo land before leaving
@@ -92,25 +93,23 @@ export function markAppReady() {
   readyListeners.clear()
 }
 
-/** True at most once per genuinely cold launch. Records the decision as it goes. */
-function isColdStart(): boolean {
-  try {
-    // ?splash=1 forces it, on any page, ignoring both gates. Without this the
-    // only way to see it twice is to wait out the cooldown, which is exactly
-    // what makes a working splash look like a broken one.
-    if (new URLSearchParams(window.location.search).get('splash') === '1') return true
-    if (sessionStorage.getItem(SPLASH_SESSION_KEY)) return false
-    sessionStorage.setItem(SPLASH_SESSION_KEY, '1')
-    const last = Number(localStorage.getItem(SPLASH_LAST_KEY) ?? 0)
-    if (Number.isFinite(last) && Date.now() - last < COOLDOWN_MS) return false
-    localStorage.setItem(SPLASH_LAST_KEY, String(Date.now()))
-    return true
-  } catch {
-    // Private mode or blocked storage. An animation nobody asked for, replayed
-    // on every launch because we could not remember showing it, is worse than
-    // none — so fail closed.
-    return false
-  }
+/** Did the boot shell arm this launch?
+ *
+ *  The decision itself is made by the inline script in app/layout.tsx, before
+ *  the document paints. It has to be: the shell is on screen long before this
+ *  component exists, and two independent answers to "is this a cold start" —
+ *  one of them a second and a half later — would disagree exactly when it
+ *  matters. This reads the answer rather than recomputing it, and the storage
+ *  keys are consumed in one place. */
+function bootArmed(): boolean {
+  return document.documentElement.getAttribute('data-boot') === '1'
+}
+
+/** When the document started painting the shell, so the animation can join a
+ *  timeline already in progress rather than restarting one. */
+function bootAt(): number {
+  const t = (window as unknown as { __cvBootAt?: number }).__cvBootAt
+  return typeof t === 'number' ? t : Date.now()
 }
 
 export default function ColdStartSplash() {
@@ -123,11 +122,17 @@ export default function ColdStartSplash() {
 
   useEffect(() => {
     const el = root.current
-    if (!el || !isColdStart()) return
+    if (!el || !bootArmed()) return
 
     let raf = 0
     const timers: ReturnType<typeof setTimeout>[] = []
-    const started = Date.now()
+    // Everything below is timed from when the shell went up, not from when
+    // this effect ran. Hydration on a phone can take well over a second, and
+    // anchoring here would have added that to the splash instead of spending
+    // it — the animation would start, in full, after the wait it exists to
+    // cover. Anchored to the document, a slow launch simply arrives further
+    // into the sequence, and a very slow one arrives at the resting frame.
+    const started = bootAt()
     let leaving = false
 
     const dismiss = () => {
@@ -137,7 +142,12 @@ export default function ColdStartSplash() {
       timers.forEach(clearTimeout)
       el.style.pointerEvents = 'none'
       el.style.opacity = '0'
-      timers.push(setTimeout(() => { el.hidden = true }, OUT_MS))
+      timers.push(setTimeout(() => {
+        el.hidden = true
+        const d = document.documentElement
+        d.removeAttribute('data-boot')
+        d.removeAttribute('data-boot-anim')
+      }, OUT_MS))
     }
 
     // Leave when the floor has passed AND the page has something to show —
@@ -151,6 +161,10 @@ export default function ColdStartSplash() {
     timers.push(setTimeout(dismiss, CEILING_MS))
 
     el.hidden = false
+    // Hide the static shell only once this one is rendered and in the same
+    // place, so the handover is a repaint of identical pixels rather than a
+    // gap. Both are the resting frame; only this one can move.
+    document.documentElement.setAttribute('data-boot-anim', '1')
     el.addEventListener('pointerdown', dismiss, { once: true })
 
     const cleanup = () => {
@@ -168,7 +182,7 @@ export default function ColdStartSplash() {
       return cleanup
     }
 
-    const start = performance.now()
+    const start = performance.now() - (Date.now() - started)
     const frame = (now: number) => {
       const t = now - start
 
