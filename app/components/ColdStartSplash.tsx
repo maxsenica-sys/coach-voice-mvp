@@ -43,16 +43,40 @@ const SPLASH_VARIANT: 'A' | 'D' = 'D'
 /** Set for the life of the webview. Cleared only when the app is really closed. */
 export const SPLASH_SESSION_KEY = 'cv_splash_session'
 const SPLASH_LAST_KEY = 'cv_splash_at'
-const COOLDOWN_MS = 3 * 60 * 1000
+// Closing the app should replay it; backgrounding should not. sessionStorage
+// already draws exactly that line, so this is now only a short guard against a
+// double-fire inside one launch (a redirect that lands twice, say) rather than
+// a policy. It was 3 minutes, which meant closing the app and reopening it to
+// look at the splash showed nothing — the opposite of what it is for.
+const COOLDOWN_MS = 15 * 1000
 
-const DRAW_MS = 300 // the hairline
-const WAVE_MS = 1250 // the stroke crossing the screen
-const COLLAPSE_AT = DRAW_MS + WAVE_MS // 1550
-const MARK_AT = COLLAPSE_AT + 180 // 1730 — the payoff
-const WORD_AT = MARK_AT + 260 // 1990
-const FLOOR_MS = 2450 // never shorter than this
-const CEILING_MS = 4200 // never longer, however slow the app is
-const OUT_MS = 420 // the fade off
+const DRAW_MS = 240 // the hairline
+
+/**
+ * How long each sport holds, in order. Geometric decay from 300ms to 40ms —
+ * the Marvel title card: the first few turn over slowly enough to read, and by
+ * the end it is a thumb riffling a book. The stroke's crossing is tied to the
+ * same schedule, so the waveform accelerates with the figures rather than
+ * running at its own tempo.
+ */
+const FIG_MS: number[] = (() => {
+  const n = 15, first = 300, last = 40
+  const r = Math.pow(last / first, 1 / (n - 1))
+  return Array.from({ length: n }, (_, i) => Math.round(first * Math.pow(r, i)))
+})()
+const MONTAGE_MS = FIG_MS.reduce((a, b) => a + b, 0) // ~1980
+/** Cumulative start time of each sport, for looking up which one is showing. */
+const FIG_AT: number[] = FIG_MS.reduce<number[]>((acc, d, i) => {
+  acc.push(i === 0 ? DRAW_MS : acc[i - 1] + FIG_MS[i - 1])
+  return acc
+}, [])
+
+const COLLAPSE_AT = DRAW_MS + MONTAGE_MS // ~2220
+const MARK_AT = COLLAPSE_AT + 100 // the logo rises
+const WORD_AT = MARK_AT + 300
+const FLOOR_MS = MARK_AT + 900 // let the logo land before leaving
+const CEILING_MS = 5200 // never longer, however slow the app is
+const OUT_MS = 460 // the fade off
 
 /** Pages call this when their first real data lands. */
 let readyAt = 0
@@ -149,8 +173,9 @@ export default function ColdStartSplash() {
         hair.current.style.opacity = t > COLLAPSE_AT ? String(Math.max(0, 1 - (t - COLLAPSE_AT) / 260)) : '1'
       }
 
-      // The stroke crosses left to right; each bar rises as it is reached.
-      const reach = ((t - DRAW_MS) / WAVE_MS) * PEAKS.length
+      // The stroke crosses left to right, on the montage's clock so the two
+      // accelerate together.
+      const reach = ((t - DRAW_MS) / MONTAGE_MS) * PEAKS.length
       const collapse = t > COLLAPSE_AT ? Math.max(0, 1 - (t - COLLAPSE_AT) / 300) : 1
 
       bars.current.forEach((b, i) => {
@@ -167,10 +192,14 @@ export default function ColdStartSplash() {
         // are --ink-figure. An earlier version tied each figure to a loud peak
         // and showed it for 39ms, which is one or two frames: technically
         // running, invisible in practice.
-        const inStroke = t > DRAW_MS && t < COLLAPSE_AT
-        const active = inStroke
-          ? Math.min(SPORTS.length - 1, Math.floor(((t - DRAW_MS) / WAVE_MS) * SPORTS.length))
-          : -1
+        // Which sport is up, from the accelerating schedule rather than an
+        // even division — that ramp is the whole effect.
+        let active = -1
+        if (t > DRAW_MS && t < COLLAPSE_AT) {
+          for (let i = FIG_AT.length - 1; i >= 0; i--) {
+            if (t >= FIG_AT[i]) { active = i; break }
+          }
+        }
         figs.current.forEach((f, i) => {
           if (f) f.style.opacity = i === active ? '1' : '0'
         })
@@ -179,8 +208,11 @@ export default function ColdStartSplash() {
       const m = t > MARK_AT ? Math.min(1, (t - MARK_AT) / 420) : 0
       const w = t > WORD_AT ? Math.min(1, (t - WORD_AT) / 380) : 0
       if (mark.current) {
+        // Rises as it grows, rather than just fading up in place.
+        const rise = (1 - m) * 46
         mark.current.style.opacity = String(m)
-        mark.current.style.transform = `translate(-50%, calc(-50% - 26px)) scale(${0.62 + m * 0.38})`
+        mark.current.style.transform =
+          `translate(-50%, calc(-50% - 34px + ${rise}px)) scale(${0.55 + m * 0.45})`
       }
       if (word.current) {
         word.current.style.opacity = String(w)
@@ -253,23 +285,23 @@ export default function ColdStartSplash() {
       {/* The mark — the thing the whole sequence exists to arrive at */}
       <div ref={mark} style={{
         position: 'absolute', top: '50%', left: '50%',
-        transform: 'translate(-50%, calc(-50% - 26px)) scale(0.62)',
-        width: 88, height: 88, borderRadius: 26, opacity: 0,
+        transform: 'translate(-50%, calc(-50% - 34px + 46px)) scale(0.55)',
+        width: 118, height: 118, borderRadius: 34, opacity: 0,
         background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
-        boxShadow: '0 14px 40px rgb(111 142 107 / .45)',
+        boxShadow: '0 20px 56px rgb(111 142 107 / .48)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'opacity 240ms linear, transform 520ms var(--ease-brand)',
+        transition: 'opacity 260ms linear, transform 620ms var(--ease-brand)',
       }}>
-        <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round">
+        <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round">
           <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />
           <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" />
         </svg>
       </div>
 
       <div ref={word} style={{
-        position: 'absolute', top: 'calc(50% + 44px)', left: 0, right: 0,
+        position: 'absolute', top: 'calc(50% + 62px)', left: 0, right: 0,
         textAlign: 'center', color: 'var(--on-ink)', opacity: 0,
-        fontWeight: 800, fontSize: 32, letterSpacing: '-0.035em',
+        fontWeight: 800, fontSize: 38, letterSpacing: '-0.04em',
         transform: 'translateY(14px)',
         transition: 'opacity 300ms linear, transform 520ms var(--ease-brand)',
       }}>
