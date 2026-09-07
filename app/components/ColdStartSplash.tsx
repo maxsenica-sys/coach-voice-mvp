@@ -23,8 +23,8 @@
  *
  * WCAG 2.3.1 permits three flashes per second; a flash is a luminance swing of
  * 10% or more over a large area. That ceiling binds the *silhouettes*, which
- * are full-height and change every ~170ms, so they stay at --ink-figure (7.6%
- * against the ink ground).
+ * are full-height and change as fast as every 105ms, so they stay at
+ * --ink-figure (7.6% against the ink ground).
  *
  * It does not bind the waveform. Each bar rises once, and the whole stroke is
  * thin slivers rather than a large field, so brightness there costs nothing —
@@ -53,29 +53,33 @@ const COOLDOWN_MS = 15 * 1000
 const DRAW_MS = 240 // the hairline
 
 /**
- * How long each sport holds, in order. Geometric decay from 300ms to 40ms —
+ * How long each sport holds, in order. Geometric decay from 320ms to 105ms —
  * the Marvel title card: the first few turn over slowly enough to read, and by
  * the end it is a thumb riffling a book. The stroke's crossing is tied to the
  * same schedule, so the waveform accelerates with the figures rather than
  * running at its own tempo.
+ *
+ * The tail used to bottom out at 40ms, which is two frames — fast enough that
+ * the last third was a smear rather than a run of sports. 105ms still reads as
+ * a riffle and you can still tell what went past.
  */
 const FIG_MS: number[] = (() => {
-  const n = 15, first = 300, last = 40
+  const n = SPORTS.length, first = 320, last = 105
   const r = Math.pow(last / first, 1 / (n - 1))
   return Array.from({ length: n }, (_, i) => Math.round(first * Math.pow(r, i)))
 })()
-const MONTAGE_MS = FIG_MS.reduce((a, b) => a + b, 0) // ~1980
+const MONTAGE_MS = FIG_MS.reduce((a, b) => a + b, 0) // ~2320
 /** Cumulative start time of each sport, for looking up which one is showing. */
 const FIG_AT: number[] = FIG_MS.reduce<number[]>((acc, d, i) => {
   acc.push(i === 0 ? DRAW_MS : acc[i - 1] + FIG_MS[i - 1])
   return acc
 }, [])
 
-const COLLAPSE_AT = DRAW_MS + MONTAGE_MS // ~2220
+const COLLAPSE_AT = DRAW_MS + MONTAGE_MS // ~2560
 const MARK_AT = COLLAPSE_AT + 100 // the logo rises
 const WORD_AT = MARK_AT + 300
-const FLOOR_MS = MARK_AT + 900 // let the logo land before leaving
-const CEILING_MS = 5200 // never longer, however slow the app is
+const FLOOR_MS = MARK_AT + 750 // let the logo land before leaving
+const CEILING_MS = 5600 // never longer, however slow the app is
 const OUT_MS = 460 // the fade off
 
 /** Pages call this when their first real data lands. */
