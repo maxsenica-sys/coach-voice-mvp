@@ -1,0 +1,45 @@
+'use client'
+
+/* GENERATED FILE — do not edit by hand.
+ *
+ *   node tools/register-silhouettes.mjs
+ *
+ * Poses live in tools/silhouette-poses.json, the anatomy in
+ * tools/build-silhouettes.mjs, the framing in tools/register-silhouettes.mjs.
+ * Editing this file directly loses the change on the next run and, worse,
+ * breaks the registration the whole montage depends on.
+ */
+
+/**
+ * The twelve sport silhouettes in the opening montage.
+ *
+ * Chosen for prop strength, not for coverage. Olympic pictogram practice is
+ * blunt about why: a sport is recognised by the ball, racket, stick or board
+ * it uses, and the ones people fail to name — trampoline, surfing — are the
+ * ones with no distinctive object. So swimming, gymnastics and rugby are out,
+ * and archery, weightlifting and cycling are in, because a drawn bow, a
+ * barbell and a bicycle are unmistakable at a glance. Golf was cut for the
+ * opposite reason to the ones that never made it: the pose is legible but
+ * static, and both arms fuse into a single limb at this weight.
+ *
+ * Each figure is a single <path> of overlapping subpaths under nonzero fill,
+ * so limbs, torso, hands and feet fuse into one solid mass rather than reading
+ * as assembled parts. Limbs carry a belly and taper toward the joint, joints
+ * are ellipses offset toward the extensor side, and the neck is long enough to
+ * leave daylight between head and shoulder — a head sitting on the shoulder
+ * mass is what read as a snowman in the first set. The prop is drawn boldly
+ * and separately; it is doing most of the identifying.
+ *
+ * Every figure carries a transform measured in a real browser so all twelve
+ * share one frame. At montage speed the eye reads consecutive frames as
+ * motion, so an unregistered set makes the head jump between sports — which is
+ * both more salient than the sport and the single thing that made the previous
+ * set read as a flicker book.
+ *
+ * They render in --ink-figure, which is a safety constraint rather than a
+ * style choice: at montage speed these are large-area elements changing faster
+ * than three times a second, and WCAG 2.3.1 only permits that below a 10%
+ * relative-luminance swing. --ink-figure sits at 7.6% against the ink ground;
+ * --primary-dark is 11.0% and --primary is 22.1%, and either would flash for
+ * an audience aged 13-18. Detail can grow. Brightness cannot.
+ */
