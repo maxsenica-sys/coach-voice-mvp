@@ -21,6 +21,28 @@ function looksSignedIn(request: NextRequest) {
   return request.cookies.getAll().some((c) => /^sb-.*-auth-token/.test(c.name))
 }
 
+/** Which home to send someone to from "/", remembered from the last time this
+ *  middleware actually looked the role up.
+ *
+ *  A routing hint, never a permission. It only ever chooses between two
+ *  destinations that both run the full authoritative check below, so a stale or
+ *  hand-edited value costs one redirect and grants nothing — the same bargain
+ *  `looksSignedIn` already makes. Access control still comes from
+ *  `getUser()` plus the `profiles` lookup, and from RLS underneath that. */
+const ROLE_HINT = 'cv_role_hint'
+
+function rememberRole(response: NextResponse, role: string) {
+  if (role !== 'coach' && role !== 'athlete') return response
+  response.cookies.set(ROLE_HINT, role, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 180,
+  })
+  return response
+}
+
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
@@ -38,11 +60,20 @@ export async function proxy(request: NextRequest) {
   // turns out to be stale, /dashboard bounces back to /?next=… below, and the
   // `next` guard stops that becoming a loop.
   //
-  // No role lookup either: the destination checks the role anyway and sends an
-  // athlete onward, so asking here would just be a third round trip.
+  // Still no role *lookup* here — that would be a third round trip, and the
+  // destination re-checks the role regardless. Which home to guess at is the
+  // hint's job instead. Sending everyone to /dashboard meant every
+  // athlete cold start was "/" → /dashboard → /athlete: three navigations and
+  // four Supabase round trips (getUser + profiles, twice) before the first byte
+  // of paintable HTML. Nothing branded can cover that wait, because the boot
+  // shell in the layout is inside HTML that has not been sent yet — which is
+  // the blank screen the shell was built to remove. With the hint an athlete
+  // goes straight to /athlete, and the wasted hop and half those round trips
+  // disappear.
   const q = request.nextUrl.searchParams
   if (pathname === '/' && !q.has('next') && q.get('intro') !== '1' && looksSignedIn(request)) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+    const home = request.cookies.get(ROLE_HINT)?.value === 'athlete' ? '/athlete' : '/dashboard'
+    return NextResponse.redirect(new URL(home, request.url))
   }
 
   // Supabase response must be returned so cookies are forwarded
@@ -110,13 +141,18 @@ export async function proxy(request: NextRequest) {
       return response
     }
 
+    // Written on whatever we return, so the hint is refreshed by the very
+    // request that proved it — including the redirects, which is how someone
+    // who lands on the wrong home once never lands there again.
     if (isCoachRoute && role !== 'coach') {
-      return NextResponse.redirect(new URL('/athlete', request.url))
+      return rememberRole(NextResponse.redirect(new URL('/athlete', request.url)), role)
     }
 
     if (isAthleteRoute && role !== 'athlete') {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
+      return rememberRole(NextResponse.redirect(new URL('/dashboard', request.url)), role)
     }
+
+    return rememberRole(response, role)
   }
 
   return response

@@ -79,8 +79,14 @@ export default function IntroSequence({
   useEffect(() => { done.current = onDone }, [onDone])
 
   useEffect(() => {
-    if (!play) return
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    // The mark and the wordmark are held invisible from first paint by the
+    // `html[data-intro]` rule in app/layout.tsx — see the note there. Dropping
+    // the attribute hands them back to their own styles, so it has to happen on
+    // every path out of here, including the ones that never animate.
+    const release = () => document.documentElement.removeAttribute('data-intro')
+
+    if (!play) { release(); return }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { release(); return }
 
     const markEl = mark.current
     const wordEl = word.current
@@ -105,6 +111,9 @@ export default function IntroSequence({
 
     // Force the rewind to land before the transitions come back.
     void document.body.offsetHeight
+    // Safe now: the pre-animation frame lives in inline styles, so removing the
+    // attribute cannot make anything appear.
+    release()
     if (markEl) markEl.style.transition = 'opacity 200ms linear, transform 320ms var(--ease-brand)'
     if (wordEl) wordEl.style.transition = 'opacity 220ms linear, transform 320ms var(--ease-brand)'
 
@@ -183,8 +192,10 @@ export default function IntroSequence({
         ))}
       </div>
 
-      {/* What the sequence resolves into — and the screen's resting state */}
-      <div ref={mark} style={{
+      {/* What the sequence resolves into — and the screen's resting state.
+          Both carry cv-intro-figure so the layout's pre-paint rule can hold
+          them back before this component exists. */}
+      <div ref={mark} className="cv-intro-figure" style={{
         position: 'absolute', top: '50%', left: '50%',
         transform: 'translate(-50%, calc(-50% - 18px)) scale(1)',
         width: 68, height: 68, borderRadius: 20,
@@ -196,7 +207,7 @@ export default function IntroSequence({
         <MicMark />
       </div>
 
-      <div ref={word} style={{
+      <div ref={word} className="cv-intro-figure" style={{
         position: 'absolute', top: 'calc(50% + 34px)', left: 0, right: 0,
         textAlign: 'center', color: 'var(--on-ink)',
         fontWeight: 800, fontSize: 26, letterSpacing: '-0.03em',

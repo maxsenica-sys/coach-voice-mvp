@@ -1,12 +1,61 @@
 import type { Metadata, Viewport } from 'next'
-import { Plus_Jakarta_Sans } from 'next/font/google'
+import { Plus_Jakarta_Sans, Newsreader, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 
+/* ── Type ──────────────────────────────────────────────────────────────────
+ *
+ * All three families are loaded here, self-hosted, rather than through the
+ * `@import url(fonts.googleapis.com/…)` that used to sit at the top of
+ * globals.css. That import had two problems, and they pulled in opposite
+ * directions:
+ *
+ *   In production it did not survive the build at all. An `@import url()` after
+ *   `@import "tailwindcss"` is dropped by the Tailwind v4 / Lightning CSS
+ *   pipeline — `grep -r fonts.googleapis .next` returns nothing — so the only
+ *   family that ever loaded was Plus Jakarta Sans, which next/font was already
+ *   serving. Every `var(--font-display)` heading on the dashboard, the athlete
+ *   pages and the session pages was silently falling back to Georgia, and
+ *   `var(--font-mono)` to the system monospace. Production did not look like
+ *   development, where the import does load.
+ *
+ *   In development, where it does load, it is the worst thing on the critical
+ *   path: an `@import` nested inside the stylesheet is invisible to the browser's
+ *   preload scanner, so it is only discovered after the app CSS has downloaded
+ *   and parsed, and it then blocks rendering while a fresh DNS lookup, TCP
+ *   connection and TLS handshake to fonts.googleapis.com resolve — followed by a
+ *   second connection to fonts.gstatic.com for the files themselves.
+ *
+ * Self-hosting fixes both. The files come from our own origin as part of the
+ * build, they are covered by the service worker's `/_next/static/*` CacheFirst
+ * rule (the custom `runtimeCaching` array in next.config.ts replaces next-pwa's
+ * defaults, so Google Fonts were never cached by it either), and `display:
+ * swap` means text paints immediately in the fallback regardless.
+ *
+ * Only Newsreader is preloaded. It carries the first heading on every screen,
+ * so a swap there is visible. JetBrains Mono appears on a handful of 10-11px
+ * labels and does not deserve a request competing with the app bundle.
+ */
 const jakartaSans = Plus_Jakarta_Sans({
   variable: '--font-jakarta',
   subsets: ['latin'],
   weight: ['400', '500', '600', '700', '800'],
   display: 'swap',
+})
+
+const newsreader = Newsreader({
+  variable: '--font-newsreader',
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  style: ['normal', 'italic'], // headings use both; see --font-display
+  display: 'swap',
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: '--font-jetbrains',
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  display: 'swap',
+  preload: false,
 })
 
 export const viewport: Viewport = {
@@ -86,7 +135,24 @@ html[data-boot-anim] #cv-boot { display: none }
   bottom: calc(env(safe-area-inset-bottom) + 34px);
   text-align: center; color: rgba(245, 236, 215, .72);
   font-size: 13px; font-style: italic;
-}`
+}
+
+/* ── The intro's pre-animation frame ───────────────────────────────────────
+ *
+ * IntroSequence renders the frame it *resolves into* — the mark and the
+ * wordmark, fully opaque — because that is also the resting state of "/" for
+ * anyone who has already seen the sequence. That markup is what the server
+ * sends, so on a cold start the browser paints "CoachVoice" the moment the
+ * HTML lands and then holds it there for the whole JavaScript download. Only
+ * once the component hydrated did its effect rewind the two elements to
+ * invisible and start the animation — so the wordmark appeared, sat, blinked
+ * out, and animated back in. That is the title flashing before the intro.
+ *
+ * Hiding them here costs nothing and cannot be late: the attribute is set by
+ * the script below, before the body paints, and the rule applies at first
+ * paint. The effect then owns the two elements through inline styles and drops
+ * the attribute. */
+html[data-intro] .cv-intro-figure { opacity: 0 }`
 
 const BOOT_JS = `/* Runs before the body paints, so the shell is either up or never was — there
  * is no frame in which the wrong thing is on screen.
@@ -108,6 +174,39 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
     var d = document.documentElement
     var forced = location.search.indexOf('splash=1') > -1
     var path = location.pathname
+
+    /* ── The intro on "/" ──────────────────────────────────────────────────
+     *
+     * Decided here for exactly the reason the shell is: IntroSequence ships
+     * its resolved frame in the server markup, so if this waited for
+     * hydration the wordmark would already have been on screen for the whole
+     * download. See the data-intro rule in BOOT_CSS.
+     *
+     * The storage key is consumed here and nowhere else — the page reads the
+     * attribute rather than asking the same question a second time, the same
+     * arrangement ColdStartSplash has with data-boot.
+     *
+     * Reduced motion is checked here rather than in the component so that the
+     * resolved frame simply paints and is never hidden at all. */
+    if (path === '/' && !forced) {
+      var q = new URLSearchParams(location.search)
+      var play
+      if (q.get('intro') === '1') play = true        // watch it again, on demand
+      else if (q.get('next')) play = false           // interrupted, not arriving
+      else {
+        // Blocked storage plays it and simply cannot remember, which is what
+        // the page did before this moved here.
+        try { play = !localStorage.getItem('cv_intro_v1') } catch (e) { play = true }
+      }
+      if (play && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        try { localStorage.setItem('cv_intro_v1', '1') } catch (e) { /* nothing to do */ }
+        d.setAttribute('data-intro', '1')
+        // Dead-man's switch, as below. Never leave the brand invisible.
+        setTimeout(function () { d.removeAttribute('data-intro') }, 6400)
+      }
+      return
+    }
+
     // Deliberately not a regular expression: this whole script lives inside a
     // template literal, which eats a backslash before the JavaScript engine
     // ever sees it. The first version used /^\\/(dashboard|athlete)\\b/ here and
@@ -133,7 +232,13 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    // The font variables go on <html>, not <body>. globals.css resolves
+    // --font-display/-sans/-mono from them in a `:root` block, and a var() that
+    // is unresolved at that point makes the whole declaration invalid at
+    // computed value time — taking the literal fallbacks down with it and
+    // dropping every screen into the browser's default serif. Same trap the
+    // boot shell's wordmark hit; see BOOT_CSS above.
+    <html lang="en" className={`${jakartaSans.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}>
       <head>
         {/* PWA / Apple home screen */}
         <meta name="mobile-web-app-capable" content="yes" />
@@ -159,7 +264,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <style dangerouslySetInnerHTML={{ __html: BOOT_CSS }} />
         <script dangerouslySetInnerHTML={{ __html: BOOT_JS }} />
       </head>
-      <body className={jakartaSans.variable}>
+      <body>
         {/* The first painted frame on a cold start. See BOOT_CSS. */}
         <div id="cv-boot" aria-hidden="true">
           <div className="m">

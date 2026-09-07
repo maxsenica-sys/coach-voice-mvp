@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '../lib/supabase-browser'
@@ -8,14 +8,6 @@ import IntroSequence from '@/app/components/IntroSequence'
 import { SPLASH_SESSION_KEY } from '@/app/components/ColdStartSplash'
 
 type Mode = 'login' | 'forgot'
-
-/** Once per device, ever. Deliberately not cleared on sign-out — replaying an
- *  intro at someone who just signed out is punishment, not branding.
- *
- *  To watch it again at any time: /?intro=1 — which is also the only way to see
- *  it once you are signed in, since the middleware sends a signed-in user
- *  straight to their role home and `/` never renders for them. */
-const INTRO_SEEN = 'cv_intro_v1'
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>('login')
@@ -38,24 +30,20 @@ export default function Home() {
     return raw.startsWith('/') && !raw.startsWith('//') ? raw : ''
   })
 
+  // Decided before the document painted, by the inline script in app/layout.tsx
+  // — once per device, ever, and never for someone arriving on a `next` link.
+  // Read rather than recomputed for the reason ColdStartSplash reads data-boot:
+  // the answer had to be known long before this component existed, and two
+  // independent answers would disagree exactly when it matters. The `cv_intro_v1`
+  // key is consumed there and nowhere else.
+  //
+  // To watch it again at any time: /?intro=1 — which is also the only way to see
+  // it once you are signed in, since the middleware sends a signed-in user
+  // straight to their role home and `/` never renders for them.
   const [playIntro] = useState(() => {
     if (typeof window === 'undefined') return false
-    const q = new URLSearchParams(window.location.search)
-    // ?intro=1 always plays it, ignoring the once-per-device flag. This is how
-    // the sequence gets watched on demand rather than once and never again.
-    if (q.get('intro') === '1') return true
-    if (q.get('next')) return false
-    try {
-      return !localStorage.getItem(INTRO_SEEN)
-    } catch {
-      return true // private mode: play it, just don't remember
-    }
+    return document.documentElement.getAttribute('data-intro') === '1'
   })
-
-  useEffect(() => {
-    if (!playIntro) return
-    try { localStorage.setItem(INTRO_SEEN, '1') } catch { /* nothing to do */ }
-  }, [playIntro])
 
   const signIn = async () => {
     if (!email.trim() || !password.trim()) return setMessage('Please enter your email and password.')
