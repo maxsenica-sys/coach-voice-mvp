@@ -99,9 +99,24 @@ export async function proxy(request: NextRequest) {
     },
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // ── Identity, without a round trip where possible ────────────────────────
+  //
+  // `getUser()` ALWAYS calls the Auth server — that is its contract, and it is
+  // why it was the first half of the cold-start stall. `getClaims()` verifies
+  // the token's signature locally against a cached JWKS instead, and only falls
+  // back to a network call when the project still signs with the legacy shared
+  // secret. So this is never slower than what it replaces, and once the project
+  // is on asymmetric (ECC/RSA) signing keys it costs nothing at all.
+  //
+  // This is not a weaker check. The token is still cryptographically verified
+  // and its expiry enforced; the verification simply happens here rather than
+  // in Supabase. What it cannot see is a session revoked in the last few
+  // minutes — the trade the whole Supabase SSR guidance makes for middleware,
+  // and RLS still refuses that token's data on every actual query.
+  const { data: claimsData } = await supabase.auth.getClaims()
+  const claims = claimsData?.claims
+  const userId = typeof claims?.sub === 'string' ? claims.sub : ''
+  const user = userId ? { id: userId } : null
 
   const isCoachRoute = COACH_ROUTES.some((r) => startsWithRoute(pathname, r))
   const isAthleteRoute = ATHLETE_ROUTES.some((r) => startsWithRoute(pathname, r))
@@ -126,13 +141,27 @@ export async function proxy(request: NextRequest) {
 
   // ✅ Logged in: only role-check on protected routes
   if (isProtectedRoute) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .maybeSingle()
+    // The role travels in the token, put there by the custom access token hook
+    // in migration 022. That removes the second blocking call: a `profiles`
+    // lookup that measured 501ms on average and 1088ms at p95 on this project,
+    // paid before any HTML could be sent.
+    //
+    // The fallback is not decoration. The claim is absent until the hook is
+    // enabled in the dashboard, and absent from tokens minted before it was —
+    // every already-signed-in user, until their token next refreshes. Without
+    // the fallback this would lock all of them out of their own app. It also
+    // means this file can ship and be correct before anyone touches Supabase.
+    const claimedRole = typeof claims?.user_role === 'string' ? claims.user_role : ''
+    let role = claimedRole.toLowerCase()
 
-    const role = (profile?.role ?? '').toLowerCase()
+    if (!role) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle()
+      role = (profile?.role ?? '').toLowerCase()
+    }
 
     // Role check passed — allow through
 
