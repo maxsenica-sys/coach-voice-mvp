@@ -86,6 +86,49 @@ switches to the Edge runtime which has no FormData file support.
 - Always run `npx tsc --noEmit` before committing
 - Push directly to `main` (no branches or PRs)
 
+## ⚠️ Startup / first-paint changes must be verified in a browser
+
+`tsc --noEmit`, `eslint` and `next build` **all pass on every startup bug this
+project has had**. They cannot see a wordmark that flashes before the intro, a
+stylesheet whose fonts the build silently dropped, or a boot script whose route
+match never matched. Each of those shipped green.
+
+So if a change touches what the user sees in the first second, run:
+
+```bash
+npm run verify:boot            # reuses the current .next
+npm run verify:boot -- --build # forces a fresh production build first
+```
+
+`tools/boot-smoke.mjs` drives real Chromium against a production build and
+asserts on the cold-start timeline: the brand must not be painted in the first
+500ms, the sequence must resolve, a returning visit must show the resting frame,
+reduced motion and dead JavaScript must never leave the brand invisible, the
+font tokens must resolve to real families, the `/` fast path must route
+correctly, and the console and network must be clean.
+
+**Files that require it:** `app/layout.tsx`, `app/page.tsx`, `app/globals.css`,
+`proxy.ts`, `app/components/IntroSequence.tsx`,
+`app/components/ColdStartSplash.tsx`, `next.config.ts`, and anything touching
+fonts, routing, caching or the service worker.
+
+**When you fix a startup bug, add the check that would have caught it**, then
+prove the check works by breaking the fix on purpose and watching that check go
+red. A check that has never failed is not known to work — this is how we learned
+that the "no third-party `@import`" check had to inspect the *source*, because
+the Tailwind build drops the import before any check of the build output can see
+it. The `boot-verifier` subagent (`.claude/agents/boot-verifier.md`) does all of
+this; hand it the change rather than re-deriving the method.
+
+Two rules that came out of these bugs and are easy to re-break:
+
+- **Never put an `@import url(https://…)` in a CSS file.** Fonts go through
+  `next/font` in `app/layout.tsx`, which self-hosts them onto our own origin.
+- **`next/font` variable classes go on `<html>`, not `<body>`.** `globals.css`
+  resolves `--font-display/-sans/-mono` in a `:root` block, and a `var()` that is
+  unresolved there is invalid at computed value time — it takes the literal
+  fallbacks down with it and drops the whole app into the default serif.
+
 ---
 
 ## ⚠️ MANDATORY: Pre-commit code review checklist

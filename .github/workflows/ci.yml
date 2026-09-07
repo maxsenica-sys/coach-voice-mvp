@@ -44,3 +44,15 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
           SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
           OPENAI_API_KEY: placeholder-openai-key
+
+      - name: Install Chromium for the boot smoke test
+        run: npx playwright install --with-deps chromium
+
+      # The gate the other three cannot be. Typecheck, lint and build all pass
+      # on a wordmark that flashes before the intro, on a stylesheet whose fonts
+      # the build silently dropped, and on a boot script whose route match never
+      # matched — every one of which shipped. This drives a real browser against
+      # the build above and asserts on what the first second looks like.
+      # Reuses the .next produced by the Build step rather than rebuilding.
+      - name: Boot smoke test
+        run: npm run verify:boot
