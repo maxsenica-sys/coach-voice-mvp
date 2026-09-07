@@ -84,7 +84,40 @@ switches to the Edge runtime which has no FormData file support.
 - Never modify component files (QuickSessionModal, MessagingPanel, WellnessSubmit,
   Calendar, VideoAnnotator) unless the task is specifically a bug fix in that component
 - Always run `npx tsc --noEmit` before committing
-- Push directly to `main` (no branches or PRs)
+- Work on a branch, open a PR, and **merge it yourself once it is green** — see
+  the merge policy below. (This line used to read "push directly to `main`, no
+  branches or PRs". That stopped being true once CI existed; the gate is the
+  point.)
+
+## ⚠️ Merge policy — merge your own green PRs without asking
+
+Max asked for this explicitly on 2026-09-07: *"instead of waiting for me, why
+don't you just merge automatically?"* Treat it as standing authorization. Do not
+open a PR and then sit waiting for a human to press the button.
+
+**`main` is production.** There is no staging; Vercel deploys `main` on merge. So
+this authorization is to merge *green* work, not to merge faster. Every condition
+below must hold, and you check them yourself rather than assuming:
+
+- The PR is one **you** opened in this session.
+- **CI is green on the current head commit** — read the check run, and if a green
+  result looks implausible (finished suspiciously fast, a step you added has
+  never run here before) read the job log and confirm the steps actually
+  executed. A green you have not understood is not green.
+- `mergeable_state` is `clean` — no conflict.
+- No unaddressed review comment or requested change.
+- For anything touching startup, `npm run verify:boot` passes (see above).
+
+**Never auto-merge:** someone else's PR; a PR you were only asked to watch; one
+with red or still-running CI; one with an open change-request; or a change you
+flagged as needing a human eye (a visible design change, a schema migration, a
+security-relevant decision). In those cases say what is blocking and let Max
+decide — that is a judgement call, not a merge.
+
+Use a **merge commit**, not squash — that is how #3 and #5 landed and it keeps
+the individual commits readable.
+
+After merging: confirm it merged, delete nothing else, and stop the PR watch.
 
 ## ⚠️ Startup / first-paint changes must be verified in a browser
 

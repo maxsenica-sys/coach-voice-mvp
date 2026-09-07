@@ -75,6 +75,16 @@ original bug. It only went red incidentally (the sandbox blocks the network).
 The rule had to be asserted against the **source**. A check that has never been
 seen to fail is not known to work.
 
+**Standing instruction from Max, same day: merge your own green PRs without
+asking.** Recorded as a merge policy in CLAUDE.md. The guardrails matter more
+than the permission — `main` is production with no staging, so the authorization
+is to merge *green* work, not to merge sooner. Check CI on the current head
+yourself, and if a green looks implausible read the job log: CI on this PR
+reported success in 87 seconds and that seemed far too short for a build plus a
+Chromium download plus a browser harness. It turned out to be genuine — the
+harness reuses the `.next` from the Build step instead of rebuilding, so it ran
+in 16 seconds — but the log was the only way to know that rather than assume it.
+
 **Not changed, flagged instead:** `reloadOnOnline: true` in `next.config.ts`
 reloads the page on the browser's `online` event. On a phone that connects a
 moment after launch that is a second cold start stacked on the first, and it fits
