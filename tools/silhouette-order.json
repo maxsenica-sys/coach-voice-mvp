@@ -1,0 +1,16 @@
+[
+  { "name": "Archery",       "art": "archery" },
+  { "name": "Cycling",       "art": "cycling" },
+  { "name": "Basketball",    "art": "basketball" },
+  { "name": "Ice hockey",    "art": "ice-hockey" },
+  { "name": "Javelin",       "art": "javelin" },
+  { "name": "Rowing",        "art": "rowing" },
+  { "name": "Football",      "art": "football" },
+  { "name": "Skiing",        "art": "skiing" },
+  { "name": "Tennis",        "art": "tennis" },
+  { "name": "Boxing",        "art": "boxing" },
+  { "name": "Baseball",      "art": "baseball" },
+  { "name": "Cricket",       "art": "cricket" },
+  { "name": "Skateboarding", "art": "skateboarding" },
+  { "name": "Weightlifting", "art": "weightlifting" }
+]

@@ -4,37 +4,37 @@
  *
  *   node tools/register-silhouettes.mjs
  *
- * Poses live in tools/silhouette-poses.json, the anatomy in
- * tools/build-silhouettes.mjs, the framing in tools/register-silhouettes.mjs.
+ * Artwork lives in tools/silhouette-art/, the montage order in
+ * tools/silhouette-order.json, the framing in tools/register-silhouettes.mjs.
  * Editing this file directly loses the change on the next run and, worse,
  * breaks the registration the whole montage depends on.
  */
 
 /**
- * The twelve sport silhouettes in the opening montage.
+ * The fourteen sport silhouettes in the opening montage.
  *
- * Chosen for prop strength, not for coverage. Olympic pictogram practice is
- * blunt about why: a sport is recognised by the ball, racket, stick or board
- * it uses, and the ones people fail to name — trampoline, surfing — are the
- * ones with no distinctive object. So swimming, gymnastics and rugby are out,
- * and archery, weightlifting and cycling are in, because a drawn bow, a
- * barbell and a bicycle are unmistakable at a glance. Golf was cut for the
- * opposite reason to the ones that never made it: the pose is legible but
- * static, and both arms fuse into a single limb at this weight.
+ * Drawn against tools/SILHOUETTE-BRIEF.md, which asked for prop strength over
+ * coverage: a sport is recognised by the bow, the bike, the barbell or the bat
+ * far more than by the body's shape, and the sports people fail to name —
+ * trampoline, surfing — are the ones with no distinctive object.
  *
- * Each figure is a single <path> of overlapping subpaths under nonzero fill,
- * so limbs, torso, hands and feet fuse into one solid mass rather than reading
- * as assembled parts. Limbs carry a belly and taper toward the joint, joints
- * are ellipses offset toward the extensor side, and the neck is long enough to
- * leave daylight between head and shoulder — a head sitting on the shoulder
- * mass is what read as a snowman in the first set. The prop is drawn boldly
- * and separately; it is doing most of the identifying.
+ * Each athlete is a single `<path>`, all limbs fused into one mass. The prop
+ * follows as separate paths and may be stroked. A ground band at opacity 0.45
+ * is the one element allowed to be dimmer than the figure.
  *
- * Every figure carries a transform measured in a real browser so all twelve
- * share one frame. At montage speed the eye reads consecutive frames as
- * motion, so an unregistered set makes the head jump between sports — which is
- * both more salient than the sport and the single thing that made the previous
- * set read as a flicker book.
+ * Every figure carries a translation measured in a real browser. At roughly
+ * 150ms a frame the eye does not see fourteen pictures, it sees one figure
+ * changing, so anything that moves between frames reads as motion — an
+ * unregistered set makes the athlete jump around the screen and turns a morph
+ * into a flicker book. The pass centres the athlete, then backs off wherever
+ * doing so would push a prop out of shot. Elements the artwork already draws
+ * past the frame edge — ground bands, oars, the barbell — were meant to bleed
+ * and do not constrain the placement.
+ *
+ * The order alternates facing direction so consecutive frames read as one
+ * figure turning rather than as a stamp repeated, opens on the tallest and
+ * least ambiguous figure, and closes on the only front-facing one, arms
+ * overhead, which is where the mark rises from.
  *
  * They render in --ink-figure, which is a safety constraint rather than a
  * style choice: at montage speed these are large-area elements changing faster

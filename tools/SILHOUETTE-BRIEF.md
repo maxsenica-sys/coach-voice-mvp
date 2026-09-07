@@ -3,6 +3,24 @@
 Paste everything below the line into Claude Design (or any illustrator).
 It is written to be self-contained — it assumes no knowledge of this repo.
 
+## Status
+
+A first set landed and is live: fourteen drawings in `tools/silhouette-art/`,
+named in montage order by `tools/silhouette-order.json`. They replaced the
+generated figures entirely.
+
+Against the twelve asked for below, the set that came back drops **volleyball**
+and **sprinting** and adds **baseball, ice hockey, javelin** and
+**skateboarding**. That is a fair trade — sprinting is the one sport in the
+original list with no prop at all, which is exactly what the brief says tests
+badly — but volleyball is worth asking for again: it is the sport this app's
+first users actually play.
+
+One defect to fix rather than live with: **cricket has no bat.** The batter's
+raised hand grips nothing, and the only cricket-specific object in the frame is
+the stumps. At a tenth of a second, next to a baseball frame that does have a
+bat, it reads as baseball twice. Everything else in the set is sound.
+
 What comes back gets dropped into `tools/silhouette-art/<sport>.svg` and framed
 by `node tools/register-silhouettes.mjs`, which measures each drawing in a real
 browser and applies the transform that keeps all twelve on one optical centre.
