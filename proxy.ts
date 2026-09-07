@@ -9,11 +9,17 @@ function startsWithRoute(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(route + '/')
 }
 
-const COACH_ROUTES = ['/dashboard', '/athletes']
+// /dev holds the Hear It prototype — coach-only, same as the dashboard.
+const COACH_ROUTES = ['/dashboard', '/athletes', '/dev']
 const ATHLETE_ROUTES = ['/athlete']
 // Signed-in but role-agnostic: a session page serves the owning coach and the
 // athlete it was shared with. The route itself checks which of the two you are.
 const SHARED_ROUTES = ['/sessions']
+
+/** Is there a Supabase auth cookie at all? Cheap, local, no network. */
+function looksSignedIn(request: NextRequest) {
+  return request.cookies.getAll().some((c) => /^sb-.*-auth-token/.test(c.name))
+}
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
@@ -21,6 +27,22 @@ export async function proxy(request: NextRequest) {
   // ✅ Let invite/reset callbacks pass without middleware interference
   if (pathname.startsWith('/reset') || pathname.startsWith('/auth/callback')) {
     return NextResponse.next()
+  }
+
+  // ✅ The app's entry point, handled before any network call.
+  //
+  // `start_url` is "/", so this runs on every cold start. Validating the
+  // session here cost a round trip to Supabase's auth server, and then
+  // /dashboard immediately did the same again — two auth calls before a single
+  // pixel. The cookie's presence is enough to redirect optimistically; if it
+  // turns out to be stale, /dashboard bounces back to /?next=… below, and the
+  // `next` guard stops that becoming a loop.
+  //
+  // No role lookup either: the destination checks the role anyway and sends an
+  // athlete onward, so asking here would just be a third round trip.
+  const q = request.nextUrl.searchParams
+  if (pathname === '/' && !q.has('next') && q.get('intro') !== '1' && looksSignedIn(request)) {
+    return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
   // Supabase response must be returned so cookies are forwarded
@@ -58,7 +80,15 @@ export async function proxy(request: NextRequest) {
   // ✅ Not logged in: block protected routes only
   if (!user) {
     if (isProtectedRoute) {
-      return NextResponse.redirect(new URL('/', request.url))
+      // Carry where they were going. Every notification email links to a
+      // protected route, so without this an athlete who taps "see your session"
+      // on a lapsed session lands on the sign-in form and the session they
+      // asked for is discarded. `next` is also what tells the sign-in page not
+      // to play the intro: that person is interrupted, not a visitor.
+      const next = pathname + request.nextUrl.search
+      return NextResponse.redirect(
+        new URL(`/?next=${encodeURIComponent(next)}`, request.url),
+      )
     }
     return response
   }
@@ -93,5 +123,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/dashboard/:path*', '/athletes/:path*', '/athlete/:path*', '/sessions/:path*', '/reset'],
+  matcher: ['/', '/dashboard/:path*', '/athletes/:path*', '/athlete/:path*', '/sessions/:path*', '/dev/:path*', '/reset'],
 }

@@ -52,7 +52,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const { data: session } = await admin
     .from('sessions')
-    .select('id, coach_id, athlete_id, session_name, title, summary, transcript, coach_notes, focus_points, shared_with_athlete, sport_context, audio_path, audio_mime, created_at')
+    .select('id, coach_id, athlete_id, session_name, title, summary, transcript, coach_notes, focus_points, shared_with_athlete, sport_context, audio_path, audio_mime, session_date, created_at')
     .eq('id', id)
     .maybeSingle()
 
@@ -116,6 +116,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         focus_points: Array.isArray(session.focus_points) ? session.focus_points : [],
         shared_with_athlete: session.shared_with_athlete,
         sport_context: session.sport_context,
+        session_date: session.session_date,
         created_at: session.created_at,
         audio_url: audioUrl,
         audio_mime: session.audio_mime,

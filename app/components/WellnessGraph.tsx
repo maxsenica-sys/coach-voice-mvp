@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import {
-  WELLNESS_METRICS, metricColor, scoreLabel, overallWellnessScore, overallScoreColor,
+  WELLNESS_METRICS, metricColor, scoreLabel, overallWellnessScore, overallScoreColor, overallScoreTint,
   type MetricKey, type WellnessCheckin as Checkin,
 } from '@/lib/wellness-config'
 import { fmtShortDate as fmtDate } from '@/lib/date-utils'
@@ -33,8 +33,8 @@ function LineChart({ checkins, activeMetrics }: { checkins: Checkin[], activeMet
       {/* Grid */}
       {gridLines.map((v) => (
         <g key={v}>
-          <line x1={PL} y1={yScale(v)} x2={W - PR} y2={yScale(v)} stroke="#e2e8f0" strokeWidth="1" />
-          <text x={PL - 4} y={yScale(v) + 4} textAnchor="end" fontSize="9" fill="#94a3b8">{v}</text>
+          <line x1={PL} y1={yScale(v)} x2={W - PR} y2={yScale(v)} stroke="var(--border-soft)" strokeWidth="1" />
+          <text x={PL - 4} y={yScale(v) + 4} textAnchor="end" fontSize="9" fill="var(--text-2)">{v}</text>
         </g>
       ))}
 
@@ -43,7 +43,7 @@ function LineChart({ checkins, activeMetrics }: { checkins: Checkin[], activeMet
         const step = Math.max(1, Math.floor(checkins.length / 6))
         if (i % step !== 0 && i !== checkins.length - 1) return null
         return (
-          <text key={c.id} x={xScale(i)} y={H - 4} textAnchor="middle" fontSize="9" fill="#94a3b8">
+          <text key={c.id} x={xScale(i)} y={H - 4} textAnchor="middle" fontSize="9" fill="var(--text-2)">
             {fmtDate(c.check_date)}
           </text>
         )
@@ -87,7 +87,7 @@ function ScoreBar({ metricKey, label, icon, color, score, inverted }: { metricKe
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <span style={{ fontSize: 14, width: 18, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', width: 56, flexShrink: 0 }}>{label}</span>
-      <div style={{ flex: 1, height: 7, background: '#f1f5f9', borderRadius: 99, overflow: 'hidden' }}>
+      <div style={{ flex: 1, height: 7, background: 'var(--border-soft)', borderRadius: 99, overflow: 'hidden' }}>
         <div style={{
           height: '100%', width: `${fillPct}%`,
           background: `linear-gradient(90deg, ${color}aa, ${color})`,
@@ -155,7 +155,7 @@ export default function WellnessGraph({ athleteId }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 38, height: 38, borderRadius: 10,
-            background: overallScore !== null ? overallColor + '22' : '#f1f5f9',
+            background: overallScore !== null ? overallScoreTint(overallScore) : 'var(--border-soft)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 20,
           }}>
@@ -174,7 +174,7 @@ export default function WellnessGraph({ athleteId }: Props) {
         {overallScore !== null && (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center',
-            background: overallColor + '15', borderRadius: 10, padding: '6px 12px',
+            background: overallScoreTint(overallScore), borderRadius: 10, padding: '6px 12px',
           }}>
             <span style={{ fontSize: 20, fontWeight: 800, color: overallColor, lineHeight: 1 }}>{overallScore}</span>
             <span style={{ fontSize: 10, color: overallColor, fontWeight: 600, marginTop: 1 }}>/ 5</span>
@@ -245,21 +245,30 @@ export default function WellnessGraph({ athleteId }: Props) {
                 <div style={{ marginTop: 12 }}>
                   {/* Metric toggle pills */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                    {METRICS.map(({ key, label, color }) => (
-                      <button
-                        key={key}
-                        onClick={() => toggleMetric(key)}
-                        style={{
-                          padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600,
-                          border: `1.5px solid ${activeMetrics.has(key) ? color : 'var(--border)'}`,
-                          background: activeMetrics.has(key) ? color + '18' : 'transparent',
-                          color: activeMetrics.has(key) ? color : 'var(--text-muted)',
-                          cursor: 'pointer', transition: 'all 0.12s',
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
+                    {METRICS.map(({ key, label, color }) => {
+                      const on = activeMetrics.has(key)
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => toggleMetric(key)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 5,
+                            padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600,
+                            border: `1.5px solid ${on ? color : 'var(--border)'}`,
+                            background: on ? 'var(--card)' : 'transparent',
+                            // The five series hues identify a line on the chart,
+                            // where they are fills governed by 3:1. As pill text
+                            // they measured 2.00-3.78:1, so the identity moves to
+                            // the dot and the label takes a legible colour.
+                            color: on ? 'var(--text)' : 'var(--text-2)',
+                            cursor: 'pointer', transition: 'all 0.12s',
+                          }}
+                        >
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: on ? color : 'var(--border)', flexShrink: 0 }} />
+                          {label}
+                        </button>
+                      )
+                    })}
                   </div>
 
                   <div style={{ borderRadius: 10, overflow: 'hidden', background: 'var(--bg)', padding: '10px 4px 4px' }}>

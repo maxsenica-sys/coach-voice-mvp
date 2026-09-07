@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
+import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
@@ -13,6 +14,7 @@ import { apiMutate } from '@/lib/api-client'
 import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
 import { activeCount } from '@/lib/athlete-status'
+import { formatSessionDate, sessionDate, sessionISODate, todayISODate } from '@/lib/session-date'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -29,7 +31,7 @@ interface Group {
 }
 interface Session {
   id: string; session_name: string | null; summary: string | null
-  shared_with_athlete: boolean; created_at: string
+  shared_with_athlete: boolean; session_date?: string | null; created_at: string
   athlete_id: string; athletes?: { id: string; first_name: string; last_name: string; email: string }
 }
 
@@ -508,7 +510,7 @@ function DashboardPageInner() {
       const res = await fetch('/api/athletes', { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       if (res.ok) setAthletes((json.athletes ?? json) as Athlete[])
-    } finally { setLoadingAthletes(false) }
+    } finally { setLoadingAthletes(false); markAppReady() }
   }
 
   const fetchUnreadCounts = async () => {
@@ -769,7 +771,10 @@ function DashboardPageInner() {
   })
   const activeAthletes = athletes.filter(a => a.athlete_user_id)
   const recentSessions = allSessions.slice(0, 3)
-  const thisWeek = allSessions.filter(s => Date.now() - new Date(s.created_at).getTime() < 7 * 86400000)
+  const thisWeek = allSessions.filter(s => {
+    const d = sessionDate(s)
+    return d !== null && Date.now() - d.getTime() < 7 * 86400000
+  })
   const totalUnreadAll = Object.values(unreadCounts).reduce((a: number, b: number) => a + b, 0)
 
   const calTitle = calMode === 'personal'
@@ -790,6 +795,10 @@ function DashboardPageInner() {
   // ── Render ────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
+
+      {/* Shows only on a genuinely cold launch, over the dashboard while it
+          loads. Any touch dismisses it; it never delays anything. */}
+      <ColdStartSplash />
 
       {/* ════════ DESKTOP SIDEBAR ════════ */}
       {!isMobile && (
@@ -894,7 +903,7 @@ function DashboardPageInner() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center', letterSpacing: 0.2,
               }}>{coachInitials}</div>
               <div>
-                <div style={{ fontSize: 9.5, fontWeight: 700, color: '#9BA29B', letterSpacing: 1, textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase' }}>
                   {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2421', marginTop: 1 }}>{coachName || 'Coach'}</div>
@@ -972,7 +981,7 @@ function DashboardPageInner() {
                     selectedDay={homeSelectedDay}
                     onSelectDay={setHomeSelectedDay}
                     headerAction={
-                      <button onClick={() => setTab('calendar')} style={{ fontSize: 10, color: '#9BA29B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                      <button onClick={() => setTab('calendar')} style={{ fontSize: 10, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0, flexShrink: 0, whiteSpace: 'nowrap' }}>
                         Calendar <Icon name="arrow" size={9} />
                       </button>
                     }
@@ -984,7 +993,7 @@ function DashboardPageInner() {
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>Today</div>
-                      <div style={{ fontSize: 10, color: '#9BA29B' }}>{todayEvents.length} event{todayEvents.length !== 1 ? 's' : ''}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{todayEvents.length} event{todayEvents.length !== 1 ? 's' : ''}</div>
                     </div>
                     <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E3DED2', overflow: 'hidden' }}>
                       {todayEvents.map((ev, i) => {
@@ -999,9 +1008,9 @@ function DashboardPageInner() {
                               {dh !== null ? (
                                 <>
                                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 500, color: '#1F2421', lineHeight: 1, letterSpacing: -0.4 }}>{dh}:{mins}</div>
-                                  <div style={{ fontSize: 9, color: '#9BA29B', marginTop: 2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{ampm}</div>
+                                  <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{ampm}</div>
                                 </>
-                              ) : <div style={{ fontSize: 12, color: '#9BA29B' }}>—</div>}
+                              ) : <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</div>}
                             </div>
                             <div style={{ width: 1, alignSelf: 'stretch', background: '#EFEAE0', flexShrink: 0 }} />
                             <div style={{ width: 32, height: 32, borderRadius: '50%', background: _toneColors[i % 3], color: '#fff', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1036,15 +1045,15 @@ function DashboardPageInner() {
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
                     <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>Recent sessions</div>
-                    <button onClick={() => setTab('sessions')} style={{ fontSize: 10, color: '#9BA29B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
+                    <button onClick={() => setTab('sessions')} style={{ fontSize: 10, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
                       All <Icon name="arrow" size={9} />
                     </button>
                   </div>
                   {loadingSessions ? (
-                    <div style={{ color: '#9BA29B', textAlign: 'center', padding: 20, fontSize: 14 }}>Loading…</div>
+                    <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 20, fontSize: 14 }}>Loading…</div>
                   ) : recentSessions.length === 0 ? (
                     <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E3DED2', padding: '24px', textAlign: 'center' }}>
-                      <div style={{ color: '#9BA29B', fontSize: 14, marginBottom: 12 }}>No sessions yet.</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 12 }}>No sessions yet.</div>
                       <button className="btn btn-primary" onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }} style={{ gap: 6 }}>
                         <Icon name="mic" size={15} /> Record your first session
                       </button>
@@ -1056,7 +1065,13 @@ function DashboardPageInner() {
                         const initials = a ? `${a.first_name[0] ?? ''}${a.last_name[0] ?? ''}`.toUpperCase() : '?'
                         const tone = _toneColors[i % 3]
                         const ago = (() => {
-                          const diff = Date.now() - new Date(s.created_at).getTime()
+                          // A session recorded today keeps the precise "3h";
+                          // a backdated one counts whole days from the day it
+                          // happened, not the minute it was typed up.
+                          const happened = sessionDate(s)
+                          const sameDay = sessionISODate(s) === todayISODate()
+                          const from = happened && !sameDay ? happened : new Date(s.created_at)
+                          const diff = Date.now() - from.getTime()
                           const h = Math.floor(diff / 3600000)
                           if (h < 1) return 'just now'
                           if (h < 24) return `${h}h`
@@ -1078,7 +1093,7 @@ function DashboardPageInner() {
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                                 <span style={{ fontWeight: 700, fontSize: 12.5, color: '#1F2421' }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</span>
-                                <span style={{ fontSize: 10, color: '#9BA29B' }}>· {ago}</span>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>· {ago}</span>
                               </div>
                               <div style={{ fontSize: 11.5, color: '#5D6661', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.session_name ?? 'Session'}</div>
                             </div>
@@ -1097,7 +1112,7 @@ function DashboardPageInner() {
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>Athletes</div>
-                      <button onClick={() => setTab('athletes')} style={{ fontSize: 10, color: '#9BA29B', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
+                      <button onClick={() => setTab('athletes')} style={{ fontSize: 10, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
                         Roster <Icon name="arrow" size={9} />
                       </button>
                     </div>
@@ -1118,16 +1133,16 @@ function DashboardPageInner() {
                             {wellnessScore !== null ? (
                               <div title={`Wellness ${wellnessScore}/5`} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
-                                <span style={{ fontSize: 9.5, fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
+                                <span style={{ fontSize: 11, fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
                               </div>
                             ) : (
-                              <div style={{ fontSize: 9, color: status === 'INVITED' ? '#C9933A' : '#9BA29B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{status === 'INVITED' ? 'Pending' : 'Active'}</div>
+                              <div style={{ fontSize: 9, color: status === 'INVITED' ? '#C9933A' : 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{status === 'INVITED' ? 'Pending' : 'Active'}</div>
                             )}
                           </div>
                         )
                       })}
-                      <button onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ minWidth: 78, background: 'transparent', borderRadius: 14, border: '1.5px dashed #E3DED2', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: '#9BA29B', cursor: 'pointer', flexShrink: 0 }}>
-                        <div style={{ width: 42, height: 42, borderRadius: '50%', border: '1.5px dashed #9BA29B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <button onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ minWidth: 78, background: 'transparent', borderRadius: 14, border: '1.5px dashed #E3DED2', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0 }}>
+                        <div style={{ width: 42, height: 42, borderRadius: '50%', border: '1.5px dashed var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <Icon name="plus" size={18} />
                         </div>
                         <div style={{ fontSize: 11, fontWeight: 600 }}>Invite</div>
@@ -1149,7 +1164,7 @@ function DashboardPageInner() {
                         <p style={{ margin: '6px 0 0', fontSize: 13, color: '#5D6661' }}>
                           Complete these steps to get started with your first athlete.
                         </p>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: completedCount > 0 ? 'var(--primary)' : '#9BA29B', marginTop: 6, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: completedCount > 0 ? 'var(--primary)' : 'var(--text-muted)', marginTop: 6, textTransform: 'uppercase', letterSpacing: 0.6 }}>
                           {completedCount} of 3 complete
                         </div>
                       </div>
@@ -1279,7 +1294,7 @@ function DashboardPageInner() {
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{a.email}</div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
-                              {last ? `Last session ${new Date(last.created_at).toLocaleDateString()}` : 'No sessions yet'}
+                              {last ? `Last session ${formatSessionDate(last, {})}` : 'No sessions yet'}
                               {count > 0 && ` · ${count} total`}
                             </div>
                           </div>
@@ -1456,7 +1471,7 @@ function DashboardPageInner() {
                                   {s.session_name && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>— {s.session_name}</span>}
                                   {s.shared_with_athlete && <span className="badge badge-active" style={{ fontSize: 10 }}>Shared</span>}
                                 </div>
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{new Date(s.created_at).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{formatSessionDate(s, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</div>
                                 {s.summary && <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{s.summary}</div>}
                               </div>
                               <span className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 10px', flexShrink: 0, gap: 4 }}>

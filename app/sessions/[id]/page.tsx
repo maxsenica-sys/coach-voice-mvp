@@ -17,6 +17,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
+import { formatSessionDate } from '@/lib/session-date'
 
 type FocusPoint = string
 
@@ -30,6 +31,7 @@ type SessionDetail = {
   coach_notes: string | null
   focus_points: FocusPoint[]
   shared_with_athlete: boolean
+  session_date?: string | null
   sport_context: string | null
   created_at: string
   audio_url: string | null
@@ -280,7 +282,7 @@ export default function SessionDetailPage() {
     )
   }
 
-  const dateLabel = new Date(session.created_at).toLocaleDateString(undefined, {
+  const dateLabel = formatSessionDate(session, {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   })
   const heading = session.session_name || session.title || 'Coaching session'

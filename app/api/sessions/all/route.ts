@@ -41,12 +41,14 @@ export async function GET(req: NextRequest) {
       summary,
       shared_with_athlete,
       sport_context,
+      session_date,
       created_at,
       athlete_id,
       audio_path,
       athletes!inner(id, first_name, last_name, email)
     `)
     .eq('coach_id', user.id)
+    .order('session_date', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 

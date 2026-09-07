@@ -2,16 +2,19 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator from '@/app/components/VideoAnnotator'
 import WellnessSubmit from '@/app/components/WellnessSubmit'
+import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import { getDailyQuote } from '@/lib/quotes'
 import { WELLNESS_METRICS, metricColor } from '@/lib/wellness-config'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { apiMutate } from '@/lib/api-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
+import { formatSessionDate } from '@/lib/session-date'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -21,6 +24,8 @@ type SessionRow = {
   title: string | null
   summary: string | null
   transcript: string | null
+  focus_points?: string[] | null
+  session_date?: string | null
   shared_with_athlete: boolean
   created_at: string | null
   sport_context: string | null
@@ -175,9 +180,14 @@ export default function AthletePage() {
         const [{ data: sessData }, notesRes] = await Promise.all([
           athRecord
             ? supabase.from('sessions')
-                .select('id, session_name, title, summary, transcript, shared_with_athlete, created_at, sport_context, audio_path, audio_mime')
+                .select('id, session_name, title, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime')
                 .eq('athlete_id', athRecord.id)
                 .eq('shared_with_athlete', true)
+                // By when the session happened, not when the row was written —
+                // matching the coach side. Ordering by created_at alone put a
+                // backdated session at the top of the athlete's list as though
+                // it had happened tonight.
+                .order('session_date', { ascending: false, nullsFirst: false })
                 .order('created_at', { ascending: false })
             : Promise.resolve({ data: [] as SessionRow[] }),
           fetch('/api/athlete-notes', { cache: 'no-store' }),
@@ -216,6 +226,7 @@ export default function AthletePage() {
         if (!cancelled) setError(e?.message ?? 'Failed to load')
       } finally {
         if (!cancelled) setLoading(false)
+        markAppReady()
       }
     }
     void load()
@@ -541,7 +552,7 @@ export default function AthletePage() {
       <div className="bg-grain" style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 20px' }}>
         <div style={{ width: '100%', maxWidth: 440 }}>
           <div style={{ marginBottom: 32 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#9BA29B', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, fontFamily: 'monospace' }}>{onboardDate}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, fontFamily: 'monospace' }}>{onboardDate}</div>
             <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 34, letterSpacing: -0.8, lineHeight: 1.1, color: '#1F2421' }}>
               Welcome to CoachVoice,<br/>
               <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{onboardFirstName}.</span>
@@ -573,12 +584,17 @@ export default function AthletePage() {
             Let's go →
           </button>
         </div>
+        <ColdStartSplash />
       </div>
     )
   }
 
   return (
     <div className="bg-grain" style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+
+      {/* Shows only on a genuinely cold launch, over the page while it loads.
+          Any touch dismisses it; it never delays anything. */}
+      <ColdStartSplash />
 
       {/* Action failure banner */}
       {actionError && (
@@ -617,7 +633,7 @@ export default function AthletePage() {
               {(athleteName.split(' ')[0]?.[0] ?? 'A').toUpperCase()}{(athleteName.split(' ')[1]?.[0] ?? '').toUpperCase()}
             </div>
             <div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#9BA29B', letterSpacing: 1, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase' }}>
                 {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2421', marginTop: 1 }}>
@@ -626,9 +642,14 @@ export default function AthletePage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button style={{ width: 36, height: 36, borderRadius: 10, background: '#FFFFFF', border: '1px solid #E3DED2', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer' }}>
+            {/* Had no onClick at all, under a dot conditioned on
+                sessions.length > 0 — an unread badge that meant "you have a
+                session" and stayed lit forever. There is no athlete-side unread
+                source: /api/messages/unread filters sender_role = 'athlete'
+                against the caller's coach_id, so it is coach-only by
+                construction. Button wired up, dot removed. */}
+            <button onClick={() => setTab('messages')} aria-label="Messages" style={{ width: 36, height: 36, borderRadius: 10, background: '#FFFFFF', border: '1px solid #E3DED2', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer' }}>
               <AthleteIcon name="messages" size={15} strokeWidth={1.8} />
-              {sessions.length > 0 && <span style={{ position: 'absolute', top: 7, right: 7, width: 7, height: 7, borderRadius: '50%', background: '#B55C3E', border: '1.5px solid #FFFFFF' }} />}
             </button>
             <button onClick={logout} style={{ width: 36, height: 36, borderRadius: 10, background: '#FFFFFF', border: '1px solid #E3DED2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
               Out
@@ -812,16 +833,41 @@ export default function AthletePage() {
                         </span>
                       )}
                       <div style={{ fontSize: 9.5, fontWeight: 700, color: '#9BA29B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                        {fmtDate(s.created_at)}
+                        {formatSessionDate(s)}
                       </div>
                       <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 500, color: '#1F2421', lineHeight: 1.3, marginTop: 3, paddingRight: i === 0 ? 62 : 0 }}>
                         {s.session_name ?? s.title ?? 'Coaching session'}
                       </div>
                       {s.summary && (
+                        // Deliberately not in quotation marks: this is the model's
+                        // summary of the recording, not words the coach said.
                         <div style={{ fontSize: 13, color: '#5D6661', lineHeight: 1.55, marginTop: 6, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                           {s.summary.replace(/^[•\s]+/, '')}
                         </div>
                       )}
+
+                      {/* The one thing to work on next, on the newest session
+                          only. Everything else here recaps what happened; this
+                          is the only line that says what to do about it, so it
+                          belongs where the athlete already looks rather than a
+                          tap deeper. */}
+                      {i === 0 && (() => {
+                        const points = s.focus_points
+                        const next = Array.isArray(points) && typeof points[0] === 'string' && points[0].trim()
+                          ? points[0].trim()
+                          : null
+                        if (!next) return null
+                        return (
+                          <div style={{ marginTop: 9, padding: '9px 11px', background: 'var(--coach-light)', border: '1px solid #EBCBBC', borderRadius: 9 }}>
+                            <div style={{ fontSize: 9, fontWeight: 800, color: '#B55C3E', letterSpacing: '0.11em', textTransform: 'uppercase', marginBottom: 3 }}>
+                              Take into next session
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1F2421', lineHeight: 1.45 }}>
+                              {next}
+                            </div>
+                          </div>
+                        )
+                      })()}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 9, fontSize: 11, fontWeight: 700, color: 'var(--primary)' }}>
                         {s.audio_path && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#B55C3E', marginRight: 4 }}>
@@ -918,7 +964,7 @@ export default function AthletePage() {
                           <div>
                             <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{s.session_name ?? s.title ?? 'Session'}</div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                              <span>{fmtDateTime(s.created_at)}</span>
+                              <span>{formatSessionDate(s)}</span>
                               {s.sport_context && <span>· {s.sport_context}</span>}
                               {sNotes.length > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
@@ -1460,7 +1506,7 @@ export default function AthletePage() {
                 padding: '6px 0',
                 border: 'none', background: 'none', cursor: 'pointer',
                 position: 'relative',
-                color: active ? '#1F2421' : '#9BA29B',
+                color: active ? '#1F2421' : 'var(--text-muted)',
                 transition: 'all 0.15s ease',
               }}>
                 {active && <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', width: 18, height: 2, background: '#1F2421', borderRadius: 2 }} />}

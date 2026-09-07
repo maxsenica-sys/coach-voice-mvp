@@ -31,6 +31,22 @@
   --energy:       #B8883A;
   --energy-light: #F6E9CC;
 
+  /* Wellness state scale — good / ok / low / no-data.
+     These render as *text* (scores on the coach's roster strip, the athlete
+     profile and the wellness graph), so they are chosen to clear WCAG AA 4.5:1
+     on --card and on their paired light tint, which the previous raw-Tailwind
+     values (#10b981 2.54:1, #f59e0b 2.15:1, #ef4444 3.76:1) did not. Two are
+     existing tokens reused; the other two are deeper members of hue families
+     the app already ships, so no new hue is introduced. */
+  --wellness-good:      #4F6B4B;  /* 5.94:1 on white · 4.93:1 on --success-light */
+  --wellness-good-tint: #E6ECDF;
+  --wellness-ok:        #7E5A1C;  /* 6.24:1 on white · 5.18:1 on --warning-light */
+  --wellness-ok-tint:   #F6E9CC;
+  --wellness-low:       #A54034;  /* 6.21:1 on white · 4.80:1 on --danger-light  */
+  --wellness-low-tint:  #F4DED3;
+  --wellness-none:      #5D6661;  /* 5.93:1 on white · 4.95:1 on --border-soft   */
+  --wellness-none-tint: #EFEAE0;
+
   /* Semantic */
   --danger:       #B0473A;
   --danger-light: #F4DED3;
@@ -42,12 +58,31 @@
   /* Typography */
   --text:         #1F2421;
   --text-2:       #5D6661;
-  --text-muted:   #9BA29B;
+  /* Was #9BA29B — 2.47:1 on --bg, failing AA (4.5:1) and even the 3:1 large-text
+     floor, while carrying session dates, stat sub-labels and empty-state copy at
+     10-13px on every page. #6B736D measures 4.61:1 on --bg and 4.89:1 on --card. */
+  --text-muted:   #6B736D;
 
   /* Fonts */
   --font-display: 'Newsreader', 'Georgia', serif;
   --font-sans:    'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Entrance — the ink ground the intro resolves into.
+     Not a new colour: #1F2421 is --text, and this is the exact gradient the
+     coach sidebar already paints. --ink-figure is the silhouette fill, chosen
+     so it sits at a 7.6% relative-luminance delta against --ink-base — under
+     the 10% that WCAG 2.3.1 counts as a flash, which is what makes a fast
+     montage safe at any cadence. Nothing here may be made brighter without
+     redoing that arithmetic: --primary-dark is 11.0% and --primary is 22.1%,
+     and both would flash. */
+  --grad-ink:     linear-gradient(160deg, #1F2421 0%, #3A4F38 100%);
+  --ink-base:     #1F2421;
+  --ink-figure:   #445C42;
+  --on-ink:       #F5ECD7;
+  --on-ink-2:     rgba(245, 236, 215, 0.72);
+  --intro-beat:   400ms;
+  --ease-brand:   cubic-bezier(.22, 1, .36, 1);
 
   /* Shape */
   --radius:       13px;
@@ -479,6 +514,32 @@ textarea.input { resize: vertical; min-height: 80px; }
   border-radius: 50%;
   background: #EF4444;
   animation: pulse-ring 1.2s ease-out infinite;
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────────
+   The app shipped seven keyframe sets with no opt-out, including a 1.2s
+   infinite pulse on .recording-dot that renders on the athlete page teenagers
+   open daily. This is the escape hatch.
+
+   .recording-dot::after is handled deliberately rather than swept up by the
+   wildcard below: killing it outright would remove the only indication that
+   the mic is live, so it goes from pulsing to a steady halo — still a visible
+   state, no motion. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --intro-beat: 0ms; }
+
+  .recording-dot::after {
+    animation: none;
+    opacity: 0.45;
+    transform: scale(1.35);
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ─── Toast notifications ────────────────────────────────────── */

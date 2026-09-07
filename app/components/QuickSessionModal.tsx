@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { apiMutate } from '@/lib/api-client'
+import { formatSessionDate, todayISODate, yesterdayISODate } from '@/lib/session-date'
 
 interface Athlete {
   id: string
@@ -28,9 +29,18 @@ interface QuickSessionModalProps {
 
 export default function QuickSessionModal({ athletes, groups, defaultAthleteId, defaultGroupId, coachSport = '', onClose, onSaved }: QuickSessionModalProps) {
   const [mode, setMode] = useState<'athlete' | 'group'>(defaultGroupId ? 'group' : 'athlete')
-  const [athleteId, setAthleteId] = useState(defaultAthleteId ?? athletes[0]?.id ?? '')
-  const [groupId, setGroupId] = useState(defaultGroupId ?? groups[0]?.id ?? '')
+  // No fallback to athletes[0]/groups[0]. The roster arrives ordered
+  // created_at desc, so that fallback silently attributed a session to whoever
+  // was added to the roster most recently — a different person each time the
+  // roster grew. Sharing defaults on, so save then emailed that athlete and
+  // their caretakers, and a session can be neither deleted nor reassigned.
+  // Opened without a target, the modal now opens with no target.
+  const [athleteId, setAthleteId] = useState(defaultAthleteId ?? '')
+  const [groupId, setGroupId] = useState(defaultGroupId ?? '')
   const [sessionName, setSessionName] = useState('')
+  // Sessions are often written up after the fact — the day before's training
+  // logged over breakfast. Defaults to today; the picker moves it back.
+  const [sessionDate, setSessionDate] = useState(todayISODate())
   const [transcript, setTranscript] = useState('')
   const [audioPath, setAudioPath] = useState<string | null>(null)
   const [audioMime, setAudioMime] = useState<string | null>(null)
@@ -179,6 +189,10 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
 
   const save = async () => {
     if (!transcript.trim()) { setError('Please record or type a transcript.'); return }
+    // Saving a cleared date would quietly file the session under today, which
+    // is the exact mistake the picker exists to prevent.
+    if (!sessionDate) { setError('Pick the date this session happened.'); return }
+    if (sessionDate > todayISODate()) { setError('A session date cannot be in the future.'); return }
     setSaving(true)
     setError('')
 
@@ -193,15 +207,16 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
             session_name: sessionName.trim() || null,
             transcript: transcript.trim(),
             shared_with_athlete: shareWithAthlete,
-            session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
+            session_date: sessionDate,
             sport_context: coachSport || null,
             audio_path: audioPath,
             audio_mime: audioMime,
           }),
         })
-        if (!res.ok) throw new Error((await res.json())?.error ?? 'Failed to save')
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? 'Failed to save')
       } else {
         // Group session: save one session per member
+        if (!groupId) { setError('Select a group.'); setSaving(false); return }
         const group = groups.find((g) => g.id === groupId)
         if (!group || group.member_ids.length === 0) { setError('This group has no members.'); setSaving(false); return }
 
@@ -219,7 +234,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   session_name: sessionName.trim() ? `[${group.name}] ${sessionName.trim()}` : `[${group.name}] Session`,
                   transcript: transcript.trim(),
                   shared_with_athlete: shareWithAthlete,
-                  session_date: new Intl.DateTimeFormat('en-CA').format(new Date()),
+                  session_date: sessionDate,
                   sport_context: coachSport || null,
                   audio_path: audioPath,
                   audio_mime: audioMime,
@@ -254,6 +269,21 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     }
   }
 
+  // Recomputed per render rather than held in state: a modal left open across
+  // midnight would otherwise cap the picker at yesterday.
+  const today = todayISODate()
+  const sessionDateLabel = !sessionDate
+    ? 'Pick the day this session happened'
+    : sessionDate === today
+      ? 'Today'
+      : sessionDate === yesterdayISODate()
+        ? 'Yesterday'
+        : formatSessionDate({ session_date: sessionDate }, { weekday: 'long', month: 'short', day: 'numeric' })
+
+  // The chips are the only live control until a target is picked, which is what
+  // makes the required choice self-evident without a line of instructional text.
+  const hasTarget = mode === 'athlete' ? !!athleteId : !!groupId
+
   const groupMembers = groups.find((g) => g.id === groupId)?.member_ids ?? []
   const groupMemberNames = groupMembers
     .map((id) => athletes.find((a) => a.id === id))
@@ -271,8 +301,12 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       justifyContent: 'center',
       zIndex: 300,
       padding: 20,
+      // The review step runs ~600px. Without this the card clipped
+      // unscrollably on a short viewport, or with the keyboard raised over the
+      // transcript textarea — .card-lg sets no max-height of its own.
+      overflowY: 'auto',
     }}>
-      <div className="card-lg" style={{ width: '100%', maxWidth: 560, padding: 32, position: 'relative' }}>
+      <div className="card-lg" style={{ width: '100%', maxWidth: 560, padding: 32, position: 'relative', maxHeight: '100%', overflowY: 'auto' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
@@ -321,33 +355,79 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 )}
               </div>
 
+              {/* Chips rather than a native <select>. A select hides the current
+                  value's meaning behind an interaction and costs a wheel drag;
+                  with no pre-selection the target has to be visible, not
+                  discovered. Same filled-chip treatment as the mode toggle
+                  above, so the pattern is already familiar in this modal. */}
               {mode === 'athlete' ? (
                 athletes.length === 0 ? (
                   <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '10px 0' }}>
                     No athletes yet — add one first before recording a session.
                   </div>
                 ) : (
-                  <select
-                    className="input"
-                    value={athleteId}
-                    onChange={(e) => setAthleteId(e.target.value)}
-                  >
-                    {athletes.map((a) => (
-                      <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>
-                    ))}
-                  </select>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 132, overflowY: 'auto' }}>
+                    {athletes.map((a) => {
+                      const on = athleteId === a.id
+                      return (
+                        <button
+                          key={a.id}
+                          onClick={() => setAthleteId(on ? '' : a.id)}
+                          aria-pressed={on}
+                          style={{
+                            minHeight: 40,
+                            padding: '8px 14px',
+                            borderRadius: 999,
+                            border: '1.5px solid',
+                            borderColor: on ? 'var(--primary)' : 'var(--border)',
+                            background: on ? 'var(--primary)' : 'var(--card)',
+                            color: on ? '#fff' : 'var(--text)',
+                            fontSize: 14,
+                            fontWeight: on ? 700 : 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {a.first_name} {a.last_name}
+                        </button>
+                      )
+                    })}
+                  </div>
                 )
               ) : (
                 <div>
-                  <select
-                    className="input"
-                    value={groupId}
-                    onChange={(e) => setGroupId(e.target.value)}
-                  >
-                    {groups.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name} ({g.member_ids.length} athletes)</option>
-                    ))}
-                  </select>
+                  {groups.length === 0 && (
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '10px 0' }}>
+                      No squads yet — create one first, or record for an individual athlete.
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 132, overflowY: 'auto' }}>
+                    {groups.map((g) => {
+                      const on = groupId === g.id
+                      return (
+                        <button
+                          key={g.id}
+                          onClick={() => setGroupId(on ? '' : g.id)}
+                          aria-pressed={on}
+                          style={{
+                            minHeight: 40,
+                            padding: '8px 14px',
+                            borderRadius: 999,
+                            border: '1.5px solid',
+                            borderColor: on ? 'var(--primary)' : 'var(--border)',
+                            background: on ? 'var(--primary)' : 'var(--card)',
+                            color: on ? '#fff' : 'var(--text)',
+                            fontSize: 14,
+                            fontWeight: on ? 700 : 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {g.name} ({g.member_ids.length})
+                        </button>
+                      )
+                    })}
+                  </div>
                   {groupMemberNames.length > 0 && (
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
                       Session will be saved for: {groupMemberNames.join(', ')}
@@ -357,15 +437,30 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
               )}
             </div>
 
-            {/* Session name */}
-            <div>
-              <label className="label">Session name (optional)</label>
-              <input
-                className="input"
-                placeholder="e.g. Tackling drills, Speed work"
-                value={sessionName}
-                onChange={(e) => setSessionName(e.target.value)}
-              />
+            {/* Session name + date */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ flex: '2 1 220px', minWidth: 0 }}>
+                <label className="label">Session name (optional)</label>
+                <input
+                  className="input"
+                  placeholder="e.g. Tackling drills, Speed work"
+                  value={sessionName}
+                  onChange={(e) => setSessionName(e.target.value)}
+                />
+              </div>
+              <div style={{ flex: '1 1 150px', minWidth: 0 }}>
+                <label className="label">Session date</label>
+                <input
+                  className="input"
+                  type="date"
+                  value={sessionDate}
+                  max={today}
+                  onChange={(e) => setSessionDate(e.target.value)}
+                />
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>
+                  {sessionDateLabel}
+                </div>
+              </div>
             </div>
 
             {/* Record button */}
@@ -400,6 +495,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   <button
                     className="btn btn-primary btn-lg"
                     onClick={startRecording}
+                    disabled={!hasTarget}
                     style={{ width: 200, fontSize: 16 }}
                   >
                     🎙 Start Recording
@@ -408,6 +504,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   <button
                     className="btn btn-ghost"
                     onClick={() => setStep('review')}
+                    disabled={!hasTarget}
                     style={{ fontSize: 13 }}
                   >
                     Skip — type transcript manually →
@@ -464,6 +561,23 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
             }}>
               <span>✨</span>
               <span>AI summary will be generated automatically when you save.</span>
+            </div>
+
+            {/* Session date — the save happens on this step, so it stays
+                editable here for anyone who skipped straight to typing. */}
+            <div>
+              <label className="label">Session date</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  className="input"
+                  type="date"
+                  value={sessionDate}
+                  max={today}
+                  onChange={(e) => setSessionDate(e.target.value)}
+                  style={{ maxWidth: 190 }}
+                />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{sessionDateLabel}</span>
+              </div>
             </div>
 
             {/* Share toggle */}

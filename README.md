@@ -68,6 +68,17 @@ the recording or transcription path.
 npm run deploy
 ```
 
-Pushes straight to `main`; Vercel builds and deploys from there. Preview
-deployments on pull requests will fail until the six environment variables are
-added to Vercel's Preview scope — they are currently Production-only.
+Pushes straight to `main`; Vercel builds and deploys from there.
+
+Preview deployments are **off for `claude/*` branches** (`vercel.json`,
+`git.deploymentEnabled`). Vercel's Git integration deploys every branch it sees
+by default, and those previews fail on arrival: the six environment variables
+are scoped Production-only, so a Preview build has no Supabase URL and dies
+prerendering `/athlete`. The result was a red X on every agent PR that said
+nothing about the code. CI still runs typecheck, lint and build on those
+branches, which is the check that actually matters.
+
+To get working previews instead of no previews, add the six variables to
+Vercel's Preview scope and drop the `git` block. To turn previews off for
+*every* branch rather than just `claude/*`, that's Vercel → Settings → Git,
+not this file.

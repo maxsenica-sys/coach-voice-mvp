@@ -72,7 +72,7 @@ export async function PATCH(
     .update(updates)
     .eq('id', id)
     .eq('coach_id', user.id)
-    .select('id, athlete_id, session_name, title, summary, shared_with_athlete, sport_context, created_at')
+    .select('id, athlete_id, session_name, title, summary, shared_with_athlete, sport_context, session_date, created_at')
     .single()
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
@@ -81,7 +81,10 @@ export async function PATCH(
   // itself already exists (created at save time), so this normally just updates
   // visibility; the insert path only runs for sessions predating that change.
   if (typeof updates.shared_with_athlete === 'boolean' && data) {
-    const dateStr = new Intl.DateTimeFormat('en-CA').format(new Date(data.created_at))
+    // Keep the event on the day the session happened. Reading created_at here
+    // would drag a backdated session's calendar entry forward to the day it was
+    // saved the first time sharing is toggled on.
+    const dateStr = data.session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date(data.created_at))
     const isFirstShare = await syncSessionCalendarEvent({
       supabase,
       sessionId: data.id,
