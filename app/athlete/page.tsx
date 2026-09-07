@@ -7,6 +7,7 @@ import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator from '@/app/components/VideoAnnotator'
 import WellnessSubmit from '@/app/components/WellnessSubmit'
 import { getDailyQuote } from '@/lib/quotes'
+import { WELLNESS_METRICS, metricColor } from '@/lib/wellness-config'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { apiMutate } from '@/lib/api-client'
@@ -55,6 +56,7 @@ function AthleteIcon({ name, size = 20, strokeWidth = 2 }: { name: string; size?
     case 'calendar': return <svg {...p}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     case 'messages': return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     case 'mic':      return <svg {...p}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    case 'video':    return <svg {...p}><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
     case 'pencil':   return <svg {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
     default:         return null
   }
@@ -638,10 +640,13 @@ export default function AthletePage() {
       <main ref={mainRef} style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '16px' : '28px 20px', overflowY: 'auto', paddingBottom: isMobile ? 'max(100px, calc(80px + env(safe-area-inset-bottom)))' : undefined }}>
         {/* No athlete record — show join form */}
         {error === 'no-athlete-record' && (
-          <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 16, padding: 24, marginBottom: 20 }}>
-            <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 6, color: '#92400e' }}>🔗 Connect to your coach</div>
-            <p style={{ fontSize: 14, color: '#78350f', marginBottom: 16, margin: '0 0 16px' }}>
-              Your account isn't linked to a coach yet. Enter your coach's invite code below to get started.
+          // Was a saturated amber gradient from the retired palette.
+          <div style={{ background: 'var(--warning-light)', border: '1px solid #E4CE9A', borderRadius: 14, padding: 20, marginBottom: 20 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 19, marginBottom: 6, color: '#1F2421' }}>
+              Connect to your coach
+            </div>
+            <p style={{ fontSize: 13.5, color: '#5D6661', lineHeight: 1.6, margin: '0 0 16px' }}>
+              Your account isn&rsquo;t linked to a coach yet. Enter the invite code they gave you to get started.
             </p>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <input
@@ -698,130 +703,152 @@ export default function AthletePage() {
 
         {/* ─── Tab: Home ─── */}
         {tab === 'home' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
 
-            {/* Greeting */}
+            {/* ── Greeting ── */}
             <div>
               <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, letterSpacing: -0.8, lineHeight: 1.05, color: '#1F2421' }}>
                 Welcome back,<br/>
                 <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{athleteName.split(' ')[0] || 'Athlete'}.</span>
               </h1>
               <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#5D6661', lineHeight: 1.5 }}>
-                {sessions.length} session{sessions.length !== 1 ? 's' : ''} from your coach
+                {sessions.length === 0
+                  ? 'Nothing from your coach yet.'
+                  : `${sessions.length} session${sessions.length !== 1 ? 's' : ''} from your coach`}
               </p>
             </div>
 
-            {/* Wellness check-in card */}
+            {/* ── Today's check-in: the one thing to do here each day ──
+                Was a gradient panel with emoji tiles. Now a single card using
+                the same metric colours and bars as the coach's view, so a score
+                means the same thing on both sides of the app. */}
             {athleteId && (
-              todayWellness ? (
-                <div style={{ background: 'var(--primary-light)', border: '1px solid #CBD7C0', borderRadius: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--primary)', marginBottom: 10 }}>✓ Check-in complete</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                    {([
-                      { key: 'energy', label: 'Energy' },
-                      { key: 'mood', label: 'Mood' },
-                      { key: 'sleep_q', label: 'Sleep' },
-                      { key: 'soreness', label: 'Soreness' },
-                      { key: 'stress', label: 'Stress' },
-                    ] as const).map(m => (
-                      todayWellness[m.key] != null && (
-                        <span key={m.key} style={{ background: '#FFFFFF', border: '1px solid #CBD7C0', borderRadius: 8, padding: '4px 10px', fontSize: 12, fontWeight: 600, color: '#4F6B4B' }}>
-                          {m.label} {todayWellness[m.key]}/5
-                        </span>
-                      )
-                    ))}
-                  </div>
-                  <button onClick={() => setTab('wellness')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer', padding: 0, fontWeight: 600 }}>
-                    See your trends →
-                  </button>
-                </div>
-              ) : (
-                <div style={{ background: 'linear-gradient(135deg, var(--primary-light) 0%, #FBF8F3 100%)', border: '1px solid var(--border)', borderLeft: '4px solid var(--primary)', borderRadius: 14, padding: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--primary)', boxShadow: '0 0 0 2px rgba(111,142,107,0.25)' }} />
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Daily Check-in</span>
-                    </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span>
-                  </div>
-                  <div style={{ fontSize: 17, fontWeight: 600, color: '#1F2421', marginBottom: 12 }}>How are you feeling today?</div>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                    {([
-                      { icon: '⚡', label: 'Energy' },
-                      { icon: '😊', label: 'Mood' },
-                      { icon: '🌙', label: 'Sleep' },
-                      { icon: '💪', label: 'Soreness' },
-                      { icon: '🧠', label: 'Stress' },
-                    ] as const).map(m => (
-                      <button key={m.label} onClick={() => setTab('wellness')} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: '#FFFFFF', border: '1px solid #E3DED2', borderRadius: 10, padding: '8px 2px', cursor: 'pointer' }}>
-                        <span style={{ fontSize: 18 }}>{m.icon}</span>
-                        <span style={{ fontSize: 10, color: '#5D6661', fontWeight: 600 }}>{m.label}</span>
+              <div className="card" style={{ padding: 16 }}>
+                {todayWellness ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 13 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                        Checked in today
+                      </span>
+                      <span style={{ flex: 1 }} />
+                      <button onClick={() => setTab('wellness')} style={{ background: 'none', border: 'none', color: '#9BA29B', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                        Trends →
                       </button>
-                    ))}
-                  </div>
-                  <button className="btn btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setTab('wellness')}>
-                    Check in now →
-                  </button>
-                </div>
-              )
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                      {WELLNESS_METRICS.map(({ key, label }) => {
+                        const score = todayWellness[key] as number | null
+                        const pct = score ? (score / 5) * 100 : 0
+                        return (
+                          <div key={key}>
+                            <div style={{ height: 4, background: '#EFEAE0', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ width: `${pct}%`, height: '100%', background: metricColor(key, score), borderRadius: 2 }} />
+                            </div>
+                            <div style={{ fontSize: 9, color: '#9BA29B', marginTop: 5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {label}
+                            </div>
+                            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#1F2421', marginTop: 1 }}>{score ?? '—'}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                        Daily check-in
+                      </span>
+                      <span style={{ flex: 1 }} />
+                      <span style={{ fontSize: 10.5, color: '#9BA29B' }}>
+                        {new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                      </span>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 400, color: '#1F2421', marginBottom: 13, letterSpacing: '-0.01em' }}>
+                      How are you feeling today?
+                    </div>
+                    <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '11px' }} onClick={() => setTab('wellness')}>
+                      Check in
+                    </button>
+                    <div style={{ fontSize: 11, color: '#9BA29B', marginTop: 9, textAlign: 'center' }}>
+                      Takes about twenty seconds. Your coach sees the scores, not who said what to whom.
+                    </div>
+                  </>
+                )}
+              </div>
             )}
 
-            {/* New from coach — most recent session */}
+            {/* ── From your coach ──
+                Previously one session in a decorated card, with the rest hidden
+                behind a tab. This is the reason the app exists, so it gets a
+                real list — and each row opens the full session. */}
             {sessions.length > 0 && (
-              <div style={{ background: 'linear-gradient(135deg, #F4DED3 0%, #FCF9F2 100%)', borderRadius: 16, padding: '14px 14px 14px 16px', border: '1px solid #EBCBBC', position: 'relative', overflow: 'hidden' }}>
-                <div style={{ position: 'absolute', top: -28, right: -28, width: 100, height: 100, borderRadius: '50%', border: '1.5px dashed #B55C3E', opacity: 0.25 }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, position: 'relative' }}>
-                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#B55C3E' }} />
-                  <span style={{ fontSize: 9.5, fontWeight: 800, color: '#B55C3E', letterSpacing: 1.2, textTransform: 'uppercase' }}>
-                    New from Coach · {fmtDate(sessions[0].created_at)}
-                  </span>
-                </div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 500, color: '#1F2421', lineHeight: 1.35, letterSpacing: -0.2, marginBottom: 4, fontStyle: 'italic', position: 'relative' }}>
-                  {sessions[0].session_name ?? sessions[0].title ?? 'Latest Session'}
-                </div>
-                {sessions[0].summary && (
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 13.5, color: '#1F2421', lineHeight: 1.55, position: 'relative', marginBottom: 12 }}>
-                    &ldquo;{sessions[0].summary.slice(0, 120)}{sessions[0].summary.length > 120 ? '…' : ''}&rdquo;
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                    From your coach
                   </div>
-                )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
-                  <button onClick={() => setTab('sessions')} style={{ flex: 1, padding: '9px 0', background: '#1F2421', color: '#FBF8F3', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}>
-                    Read full session →
-                  </button>
+                  {sessions.length > 3 && (
+                    <button onClick={() => setTab('sessions')} style={{ background: 'none', border: 'none', color: '#9BA29B', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                      All {sessions.length} →
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {sessions.slice(0, 3).map((s, i) => (
+                    <a
+                      key={s.id}
+                      href={`/sessions/${s.id}`}
+                      className="card"
+                      style={{ padding: '13px 15px', textDecoration: 'none', color: 'inherit', display: 'block', position: 'relative' }}
+                    >
+                      {/* The newest one is the only thing marked — an unread-ish
+                          cue that doesn't need its own panel. */}
+                      {i === 0 && (
+                        <span style={{ position: 'absolute', top: 13, right: 15, display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#B55C3E' }} />
+                          <span style={{ fontSize: 8.5, fontWeight: 800, color: '#B55C3E', letterSpacing: '0.1em' }}>NEWEST</span>
+                        </span>
+                      )}
+                      <div style={{ fontSize: 9.5, fontWeight: 700, color: '#9BA29B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                        {fmtDate(s.created_at)}
+                      </div>
+                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 500, color: '#1F2421', lineHeight: 1.3, marginTop: 3, paddingRight: i === 0 ? 62 : 0 }}>
+                        {s.session_name ?? s.title ?? 'Coaching session'}
+                      </div>
+                      {s.summary && (
+                        <div style={{ fontSize: 13, color: '#5D6661', lineHeight: 1.55, marginTop: 6, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                          {s.summary.replace(/^[•\s]+/, '')}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 9, fontSize: 11, fontWeight: 700, color: 'var(--primary)' }}>
+                        {s.audio_path && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#B55C3E', marginRight: 4 }}>
+                            <AthleteIcon name="mic" size={10} strokeWidth={2.4} />
+                            <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.06em' }}>AUDIO</span>
+                          </span>
+                        )}
+                        Read session →
+                      </div>
+                    </a>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Quick stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-              {[
-                { label: 'Sessions', value: sessions.length, color: '#6F8E6B', delta: 'from coach', onClick: () => setTab('sessions') },
-                { label: 'My Notes', value: notes.length, color: '#B55C3E', delta: 'private', onClick: () => setTab('notes') },
-                { label: 'Last Session', value: sessions[0] ? fmtDate(sessions[0].created_at) : '—', color: '#C9933A', delta: sessions[0] ? 'most recent' : 'none yet', onClick: () => setTab('sessions') },
-              ].map((s, idx) => (
-                <button key={s.label} onClick={s.onClick} style={{
-                  background: '#FFFFFF', borderRadius: 14, padding: '11px 10px 10px',
-                  border: '1px solid #E3DED2', cursor: 'pointer', textAlign: 'left',
-                  gridColumn: isMobile && idx === 2 ? 'span 3' : undefined,
-                  position: 'relative', overflow: 'hidden',
-                }}>
-                  <div style={{ position: 'absolute', top: 0, left: 10, right: 10, height: 2, background: s.color, borderRadius: '0 0 4px 4px' }} />
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: isMobile ? 24 : 28, fontWeight: 500, color: '#1F2421', lineHeight: 1, letterSpacing: -1, marginTop: 4 }}>{s.value}</div>
-                  <div style={{ fontSize: 9.5, fontWeight: 700, color: '#5D6661', marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.6 }}>{s.label}</div>
-                  <div style={{ fontSize: 9, color: '#9BA29B', marginTop: 3, fontWeight: 600 }}>{s.delta}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* Add a private note CTA */}
-            <button onClick={() => setTab('notes')} style={{ width: '100%', padding: '11px 13px', background: 'transparent', borderRadius: 12, border: '1.5px dashed #E3DED2', display: 'flex', alignItems: 'center', gap: 9, color: '#5D6661', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-              <div style={{ width: 26, height: 26, borderRadius: 7, background: '#EFEAE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661' }}>
+            {/* ── Private notes ── */}
+            <button onClick={() => setTab('notes')} style={{ width: '100%', padding: '12px 14px', background: 'transparent', borderRadius: 12, border: '1.5px dashed #E3DED2', display: 'flex', alignItems: 'center', gap: 10, color: '#5D6661', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: '#EFEAE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', flexShrink: 0 }}>
                 <AthleteIcon name="pencil" size={12} strokeWidth={2} />
               </div>
-              <span style={{ flex: 1, textAlign: 'left' }}>Add a private note…</span>
-              <div style={{ fontSize: 9, fontWeight: 700, color: '#B55C3E', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ flex: 1, textAlign: 'left' }}>
+                Add a private note
+                {notes.length > 0 && <span style={{ color: '#9BA29B', fontWeight: 500 }}> · {notes.length} saved</span>}
+              </span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: '#B55C3E', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                 <AthleteIcon name="mic" size={10} strokeWidth={2.4} /> VOICE
-              </div>
+              </span>
             </button>
 
           </div>
@@ -830,38 +857,30 @@ export default function AthletePage() {
         {/* ─── Tab: Sessions ─── */}
         {tab === 'sessions' && (
           <div>
-            {/* Hero card — most recent session from coach */}
+            {/* The newest session used to be repeated in a hero card directly
+                above the list that starts with it. Home surfaces what's new;
+                this tab is the full record, so it's just the record. */}
             {sessions.length > 0 && (
-              <div style={{
-                background: 'linear-gradient(135deg, var(--coach-light) 0%, #FBF8F3 100%)',
-                border: '1px solid var(--border)',
-                borderLeft: '4px solid var(--coach-color)',
-                borderRadius: 14,
-                padding: 16,
-                marginBottom: 16,
-              }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--coach-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--coach-color)', display: 'inline-block' }} />
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, gap: 10 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
                   From your coach
                 </div>
-                <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', marginBottom: 4 }}>
-                  {sessions[0].session_name ?? sessions[0].title ?? 'Latest Session'}
+                <div style={{ fontSize: 11, color: '#9BA29B', fontWeight: 600 }}>
+                  {sessions.length} session{sessions.length !== 1 ? 's' : ''}
                 </div>
-                {sessions[0].summary && (
-                  <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 8 }}>
-                    {sessions[0].summary.slice(0, 140)}{sessions[0].summary.length > 140 ? '…' : ''}
-                  </div>
-                )}
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(sessions[0].created_at)}</div>
               </div>
             )}
 
             {sessions.length === 0 ? (
-              <div style={{ background: 'linear-gradient(135deg, var(--primary-light) 0%, #e0f2fe 100%)', border: '1px solid var(--border)', borderRadius: 18, padding: 40, textAlign: 'center' }}>
-                <div style={{ fontSize: 48, marginBottom: 14 }}>📋</div>
-                <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8, color: 'var(--text)' }}>No sessions yet</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 14, maxWidth: 300, margin: '0 auto' }}>
-                  Your coach will share sessions with you here after each training. Keep grinding! 💪
+              <div className="card" style={{ padding: 32, textAlign: 'center' }}>
+                <div style={{ color: '#C4C9C2', display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+                  <AthleteIcon name="book" size={30} strokeWidth={1.5} />
+                </div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: '#1F2421', marginBottom: 6 }}>
+                  No sessions yet
+                </div>
+                <div style={{ color: '#5D6661', fontSize: 13, maxWidth: 290, margin: '0 auto', lineHeight: 1.6 }}>
+                  After a training session your coach records their notes here. You&rsquo;ll see the summary, and can play back what they said.
                 </div>
               </div>
             ) : (
@@ -890,16 +909,27 @@ export default function AthletePage() {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                          <div style={{ width: 44, height: 44, borderRadius: 12, background: isOpen ? 'linear-gradient(135deg, #6F8E6B 0%, #4F6B4B 100%)' : 'var(--athlete-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0, transition: 'all 0.2s ease', boxShadow: isOpen ? '0 4px 12px rgb(111 142 107 / .3)' : 'none' }}>
-                            🎙️
+                          {/* Was an emoji microphone in a gradient tile. The
+                              coach side uses drawn icons throughout; matching
+                              that keeps one visual language across both. */}
+                          <div style={{ width: 40, height: 40, borderRadius: 11, background: isOpen ? '#6F8E6B' : 'var(--athlete-light)', color: isOpen ? '#FBF8F3' : '#4F6B4B', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s ease' }}>
+                            <AthleteIcon name="mic" size={17} strokeWidth={2} />
                           </div>
                           <div>
-                            <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{s.session_name ?? s.title ?? 'Session'}</div>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                              {fmtDateTime(s.created_at)}
-                              {s.sport_context ? ` · ${s.sport_context}` : ''}
-                              {sNotes.length > 0 && ` · 📝 ${sNotes.length}`}
-                              {sVideos.length > 0 && ` · 🎬 ${sVideos.length}`}
+                            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{s.session_name ?? s.title ?? 'Session'}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                              <span>{fmtDateTime(s.created_at)}</span>
+                              {s.sport_context && <span>· {s.sport_context}</span>}
+                              {sNotes.length > 0 && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                  · <AthleteIcon name="pencil" size={10} strokeWidth={2.2} /> {sNotes.length}
+                                </span>
+                              )}
+                              {sVideos.length > 0 && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                  · <AthleteIcon name="video" size={10} strokeWidth={2.2} /> {sVideos.length}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
