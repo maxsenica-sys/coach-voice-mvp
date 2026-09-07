@@ -6,6 +6,94 @@ new dated entry per session/PR — don't rewrite history above.
 
 ---
 
+## 2026-09-07 — Cold-start delay + the title flash, and a harness so it stops recurring (PR #6)
+
+Branch `claude/app-startup-delay-l4qgkp`. Not yet merged.
+
+**The ask.** "Black screen for two to three seconds, then all the opening parts
+get rushed, and the title of the app flashes before the introduction."
+
+Three separate causes, not one. Each was proved against a production build.
+
+**1. The title flash — `IntroSequence` server-renders its resolved frame.** The
+component renders the frame it *resolves into* (the mark and the wordmark, fully
+opaque) because that is also the resting state of `/` once you have seen the
+sequence. The rewind to invisible only happened inside `useEffect`. So the
+browser painted the title the moment the HTML landed, held it for the whole
+~870 KB JS download, then blinked it out and animated it back in.
+`.next/server/app/index.html` shipped the mark at `scale(1)` with no
+`opacity:0` — visible straight out of the build.
+
+Fixed the way the boot shell already works: the inline pre-paint script in
+`app/layout.tsx` now owns the decision, sets `data-intro` on `<html>`, and a
+rule in `BOOT_CSS` holds the two `.cv-intro-figure` elements back from the first
+paint. The component drops the attribute once it owns them via inline styles.
+`cv_intro_v1` is consumed in one place only; `app/page.tsx` reads the attribute
+rather than asking the same question a second time. Reduced motion is checked
+*before* the attribute is set, so that frame simply paints.
+
+**2. The black screen is mostly a middleware waterfall.** `start_url` is `/`,
+and `/` sent everyone to `/dashboard`, which looked the role up and bounced
+athletes to `/athlete` — three navigations and four Supabase round trips
+(`getUser` + `profiles`, twice) before the first byte of paintable HTML. **The
+boot shell cannot cover this**: it lives inside HTML that has not been sent yet.
+A `cv_role_hint` cookie, written by the middleware whenever it does look the role
+up, sends athletes straight to `/athlete`. It is a routing hint and never a
+permission — it selects between two destinations that both run the full
+authoritative check, so a forged value costs one redirect and grants nothing.
+
+**3. Two of three fonts never loaded in production.** `globals.css` opened with
+an `@import url(fonts.googleapis.com/…)`. An `@import url()` after
+`@import "tailwindcss"` **does not survive the Tailwind v4 build** —
+`grep -r fonts.googleapis .next` returned nothing. Only Plus Jakarta Sans was
+reaching the browser, so every `var(--font-display)` heading across the
+dashboard, athlete and session pages had been falling back to Georgia, and
+production did not look like development. In dev, where it does load, it is the
+worst thing on the critical path: nested in the stylesheet, invisible to the
+preload scanner, render-blocking behind two fresh connections.
+
+Newsreader and JetBrains Mono are now self-hosted by `next/font`. **The variable
+classes had to move to `<html>`, not `<body>`** — `globals.css` resolves the
+tokens in a `:root` block, and a `var()` unresolved there is invalid at computed
+value time and takes the literal fallbacks with it. Same trap already documented
+for the boot shell's wordmark.
+
+**The real fix is `tools/boot-smoke.mjs`.** The user's actual complaint was that
+we keep re-fixing the same issue. The reason is structural: `tsc`, `eslint` and
+`next build` are the only gates, and **all three pass on all three bugs above**.
+The harness drives real Chromium against a production build and asserts on the
+first second — 36 checks covering the flash, the resting state, `?intro=1`,
+`?next=`, reduced motion, dead JavaScript, font-token resolution, the `/` fast
+path, the boot shell, and console/network cleanliness. `npm run verify:boot`,
+wired into CI after the build step, and driven by the `boot-verifier` subagent.
+
+**Mutation-test your checks.** Removing the pre-paint rule correctly failed
+"brand is NOT painted in the first 500ms". But re-adding the Google Fonts import
+did **not** fail the check written for it — the build drops the import before
+any build-output check can see it, so that check could never have caught the
+original bug. It only went red incidentally (the sandbox blocks the network).
+The rule had to be asserted against the **source**. A check that has never been
+seen to fail is not known to work.
+
+**Standing instruction from Max, same day: merge your own green PRs without
+asking.** Recorded as a merge policy in CLAUDE.md. The guardrails matter more
+than the permission — `main` is production with no staging, so the authorization
+is to merge *green* work, not to merge sooner. Check CI on the current head
+yourself, and if a green looks implausible read the job log: CI on this PR
+reported success in 87 seconds and that seemed far too short for a build plus a
+Chromium download plus a browser harness. It turned out to be genuine — the
+harness reuses the `.next` from the Build step instead of rebuilding, so it ran
+in 16 seconds — but the log was the only way to know that rather than assume it.
+
+**Not changed, flagged instead:** `reloadOnOnline: true` in `next.config.ts`
+reloads the page on the browser's `online` event. On a phone that connects a
+moment after launch that is a second cold start stacked on the first, and it fits
+the "black screen, then everything rushes" description. Left alone — it is a
+deliberate setting and there is no evidence it is firing. First place to look if
+the delay persists.
+
+---
+
 ## 2026-09-05 — Session date selection (PR #3)
 
 Branch `claude/session-date-selection-recording-ku9dvl`. Not yet merged.

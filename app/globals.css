@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;1,400;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 /* ─── Design tokens — CoachVoice · Letter Edition ──────────────── */
@@ -63,10 +62,17 @@
      10-13px on every page. #6B736D measures 4.61:1 on --bg and 4.89:1 on --card. */
   --text-muted:   #6B736D;
 
-  /* Fonts */
-  --font-display: 'Newsreader', 'Georgia', serif;
-  --font-sans:    'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  --font-mono:    'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+  /* Fonts — all three are self-hosted by next/font in app/layout.tsx, which is
+     what defines these three variables. They used to name the families as bare
+     strings and rely on a Google Fonts @import at the top of this file; that
+     import was dropped entirely by the Tailwind v4 build, so Newsreader and
+     JetBrains Mono never loaded in production and every heading below rendered
+     in Georgia. The full story is in the comment above the font declarations in
+     the layout. The literal fallbacks are kept behind each variable so that a
+     font that fails to load still lands somewhere deliberate. */
+  --font-display: var(--font-newsreader), 'Georgia', serif;
+  --font-sans:    var(--font-jakarta), system-ui, -apple-system, sans-serif;
+  --font-mono:    var(--font-jetbrains), 'IBM Plex Mono', ui-monospace, monospace;
 
   /* Entrance — the ink ground the intro resolves into.
      Not a new colour: #1F2421 is --text, and this is the exact gradient the
