@@ -2,21 +2,55 @@
 
 import { useState } from 'react'
 import { WELLNESS_METRICS, metricColor, metricTint } from '@/lib/wellness-config'
+import { apiMutate } from '@/lib/api-client'
+
+/** Today's check-in, when there already is one. Shaped to accept a row
+ *  straight from GET /api/wellness, where every metric is nullable. */
+export interface WellnessEntry {
+  energy?: number | null
+  mood?: number | null
+  sleep_q?: number | null
+  soreness?: number | null
+  stress?: number | null
+  notes?: string | null
+}
 
 interface Props {
   athleteId: string
+  /**
+   * Today's row, if the athlete has already checked in. Without this the form
+   * opened blank every time: an athlete who checked in at 8am and came back at
+   * 6pm was shown five empty rows and a button that refused to save until all
+   * five were re-entered — the app's own record of the day, presented as if it
+   * had never happened.
+   */
+  initial?: WellnessEntry | null
   onSaved?: () => void
 }
 
 const METRICS = WELLNESS_METRICS
-const LABELS: Record<number, string> = { 1: '1', 2: '2', 3: '3', 4: '4', 5: '5' }
 
-export default function WellnessSubmit({ athleteId, onSaved }: Props) {
-  const [scores, setScores] = useState<Record<string, number>>({})
-  const [notes, setNotes] = useState('')
+function seedScores(entry?: WellnessEntry | null): Record<string, number> {
+  if (!entry) return {}
+  const out: Record<string, number> = {}
+  for (const m of METRICS) {
+    const v = (entry as Record<string, unknown>)[m.key]
+    if (typeof v === 'number') out[m.key] = v
+  }
+  return out
+}
+
+export default function WellnessSubmit({ athleteId, initial, onSaved }: Props) {
+  // Seeded once, on mount. Deliberately not synced to `initial` afterwards:
+  // re-seeding on every parent refetch would overwrite an answer the athlete
+  // was part-way through changing.
+  const [scores, setScores] = useState<Record<string, number>>(() => seedScores(initial))
+  const [notes, setNotes] = useState(initial?.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+
+  const editing = METRICS.every((m) => seedScores(initial)[m.key] !== undefined)
 
   const setScore = (key: string, val: number) => {
     setScores((prev) => ({ ...prev, [key]: val }))
@@ -29,16 +63,15 @@ export default function WellnessSubmit({ athleteId, onSaved }: Props) {
     setSaving(true)
     setError('')
     try {
-      const res = await fetch('/api/wellness', {
+      await apiMutate('/api/wellness', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ athlete_id: athleteId, ...scores, notes: notes.trim() || null }),
       })
-      if (!res.ok) { const j = await res.json(); throw new Error(j.error) }
       setSaved(true)
       onSaved?.()
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to save')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to save')
     } finally {
       setSaving(false)
     }
@@ -46,9 +79,13 @@ export default function WellnessSubmit({ athleteId, onSaved }: Props) {
 
   return (
     <div className="card" style={{ padding: 20 }}>
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Daily Wellness Check-in</div>
-      <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 18 }}>
-        Rate yourself 1–5. Takes 30 seconds.
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
+        {editing ? 'Change your answers' : 'Daily Wellness Check-in'}
+      </div>
+      <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-muted)', marginBottom: 18 }}>
+        {editing
+          ? 'You checked in today. Update anything that has changed.'
+          : 'Rate yourself 1–5. Takes 30 seconds.'}
       </div>
 
       {METRICS.map((m) => (
@@ -113,7 +150,7 @@ export default function WellnessSubmit({ athleteId, onSaved }: Props) {
           background: 'var(--success-light)', border: '1px solid #CBD7C0', borderRadius: 8,
           padding: '10px 14px', fontSize: 13, fontWeight: 600, color: 'var(--success)',
         }}>
-          ✓ Check-in saved! Your coach can now see your wellness data.
+          ✓ Saved. Your coach can see your wellness scores.
         </div>
       ) : (
         <button
@@ -122,7 +159,7 @@ export default function WellnessSubmit({ athleteId, onSaved }: Props) {
           onClick={handleSubmit}
           disabled={saving}
         >
-          {saving ? 'Saving…' : 'Submit check-in'}
+          {saving ? 'Saving…' : editing ? 'Save changes' : 'Submit check-in'}
         </button>
       )}
     </div>

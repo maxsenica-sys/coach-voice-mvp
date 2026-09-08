@@ -42,13 +42,14 @@ const SPLASH_VARIANT: 'A' | 'D' = 'D'
 
 /** Set for the life of the webview. Cleared only when the app is really closed. */
 export const SPLASH_SESSION_KEY = 'cv_splash_session'
-const SPLASH_LAST_KEY = 'cv_splash_at'
-// Closing the app should replay it; backgrounding should not. sessionStorage
-// already draws exactly that line, so this is now only a short guard against a
-// double-fire inside one launch (a redirect that lands twice, say) rather than
-// a policy. It was 3 minutes, which meant closing the app and reopening it to
-// look at the splash showed nothing — the opposite of what it is for.
-const COOLDOWN_MS = 15 * 1000
+// The rest of the cold-start decision — the `cv_splash_at` cooldown floor and
+// how long it is — lives as literals in the inline script in app/layout.tsx,
+// because that script runs before the document paints and cannot import.
+// Copies used to sit here too (`SPLASH_LAST_KEY`, `COOLDOWN_MS`) and drifted
+// out of agreement with the real ones while nothing read them: lint does not
+// flag an unused module-level const, so they looked authoritative for as long
+// as nobody checked. Do not reintroduce them. One source of truth, in
+// layout.tsx.
 
 const DRAW_MS = 240 // the hairline
 
@@ -79,7 +80,18 @@ const FIG_AT: number[] = FIG_MS.reduce<number[]>((acc, d, i) => {
 const COLLAPSE_AT = DRAW_MS + MONTAGE_MS // ~2090
 const MARK_AT = COLLAPSE_AT + 100 // the logo rises
 const WORD_AT = MARK_AT + 300
-const FLOOR_MS = MARK_AT + 750 // let the logo land before leaving
+/**
+ * The floor is now a guard against a *flash*, not a scheduled wait.
+ *
+ * It used to be MARK_AT + 750 — about 2.9s — and it was honoured even when the
+ * app had been ready for two seconds, which made the splash a toll rather than
+ * a cover: the faster the app loaded, the more of the user's time it took. The
+ * sequence's full length is still available to a slow launch, because a slow
+ * launch simply never reaches leaveWhenReady early. See leaveWhenReady.
+ */
+const FLOOR_MS = 900
+/** From the collapse: 100ms into the mark, 420ms for it to rise, a beat to land. */
+const MARK_LAND_MS = 720
 const CEILING_MS = 5600 // never longer, however slow the app is
 const OUT_MS = 460 // the fade off
 
@@ -134,6 +146,11 @@ export default function ColdStartSplash() {
     // into the sequence, and a very slow one arrives at the resting frame.
     const started = bootAt()
     let leaving = false
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    // The frame loop measures `t` from here. It is a `let` rather than a
+    // `const` because leaveWhenReady pulls it forward — see below.
+    let start = performance.now() - (Date.now() - started)
 
     const dismiss = () => {
       if (leaving) return
@@ -150,11 +167,34 @@ export default function ColdStartSplash() {
       }, OUT_MS))
     }
 
-    // Leave when the floor has passed AND the page has something to show —
-    // or at the ceiling, whichever comes first.
+    // Leave once the page has something to show — but never so fast that the
+    // splash is a flash, and never so slow that it outlives the wait it exists
+    // to cover.
+    //
+    // The old version scheduled dismissal at a fixed ~2.9s floor and then sat
+    // there even if the app had signalled ready at 700ms. That is the failure
+    // this fixes: a splash is a cover for a wait, and the moment it outlives
+    // the wait it stops being craft and becomes a toll.
+    //
+    // So when the app is ready before the sequence has reached its collapse,
+    // the *timeline* jumps forward rather than the clock waiting for it. The
+    // stroke gathers, the mark rises, the word lands — the brand moment plays
+    // in full, just now instead of in two seconds. Jumping to COLLAPSE_AT
+    // rather than straight to MARK_AT costs 100ms and buys the gesture that
+    // earns the mark; cutting to the mark makes it pop in from nothing.
     const leaveWhenReady = () => {
       const waited = Date.now() - started
-      timers.push(setTimeout(dismiss, Math.max(0, FLOOR_MS - waited)))
+      let delay: number
+      if (reduced) {
+        // No timeline to skew — the resting frame is all there is.
+        delay = 0
+      } else if (waited < COLLAPSE_AT) {
+        start = performance.now() - COLLAPSE_AT
+        delay = MARK_LAND_MS
+      } else {
+        delay = COLLAPSE_AT + MARK_LAND_MS - waited
+      }
+      timers.push(setTimeout(dismiss, Math.max(0, delay, FLOOR_MS - waited)))
     }
     if (readyAt) leaveWhenReady()
     else readyListeners.add(leaveWhenReady)
@@ -175,14 +215,17 @@ export default function ColdStartSplash() {
     }
 
     // No motion: the mark, held, then out. The brand moment survives; the
-    // movement does not.
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // movement does not. Note that this branch used to sit *after* the floor
+    // timer was scheduled at ~2.9s, so the person who had asked their OS for
+    // less motion got the longest wait of anyone — a frozen ink screen for
+    // three seconds. With the floor at 900ms and leaveWhenReady's `reduced`
+    // path leaving as soon as the app is ready, they now get the shortest.
+    if (reduced) {
       if (mark.current) mark.current.style.opacity = '1'
       if (word.current) { word.current.style.opacity = '1'; word.current.style.transform = 'none' }
       return cleanup
     }
 
-    const start = performance.now() - (Date.now() - started)
     const frame = (now: number) => {
       const t = now - start
 
@@ -204,7 +247,7 @@ export default function ColdStartSplash() {
       })
 
       if (SPLASH_VARIANT === 'D') {
-        // A continuous montage under the stroke: all 15 sports across the
+        // A continuous montage under the stroke: all 14 sports across the
         // 1250ms crossing, ~83ms each. That is 12 changes a second — Max's
         // original "0.1 second" cadence — and it is safe only because these
         // are --ink-figure. An earlier version tied each figure to a loud peak

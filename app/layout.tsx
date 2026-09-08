@@ -61,8 +61,15 @@ const jetbrainsMono = JetBrains_Mono({
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // No maximumScale / userScalable. Locking zoom is normally done to stop iOS
+  // auto-zooming when a form field is focused, but globals.css:590 already
+  // solves that properly by setting .input to 16px — below which is the only
+  // thing that triggers the auto-zoom. The lock bought nothing and cost a lot:
+  // the app is a `display: standalone` PWA, so there is no browser zoom UI to
+  // fall back on, and with text-size-adjust: 100% there is no inflation
+  // either. That left dozens of sites of sub-11px text with no mechanism of
+  // any kind by which a user could enlarge them. WCAG 2.2 SC 1.4.4 requires
+  // 200%. Do not put these back without solving 1.4.4 another way.
   themeColor: '#1F2421',   // matches manifest + globals.css --text
 }
 
@@ -218,11 +225,35 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
       if (sessionStorage.getItem('cv_splash_session')) return
       sessionStorage.setItem('cv_splash_session', '1')
       var last = Number(localStorage.getItem('cv_splash_at') || 0)
-      if (Date.now() - last < 15000) return
+      // Thirty minutes, not fifteen seconds. sessionStorage alone does not
+      // draw the line it looks like it draws: iOS discards a backgrounded PWA
+      // webview aggressively, so a coach who flicks to a timer app and comes
+      // back gets a brand new session and a full replay. The floor was cut to
+      // 15s so the splash could be watched by closing and reopening the app,
+      // which reinstated exactly that. Use ?splash=1 for that instead — it is
+      // right there on the line above and it does not consume the keys.
+      if (Date.now() - last < 1800000) return
       localStorage.setItem('cv_splash_at', String(Date.now()))
     }
     window.__cvBootAt = Date.now()
     d.setAttribute('data-boot', '1')
+    // The escape has to exist from the first painted frame.
+    //
+    // ColdStartSplash attaches its own pointerdown handler, but only after
+    // hydration — roughly a megabyte of JavaScript too late. Until then the
+    // thing on screen is #cv-boot, a fixed, full-bleed, z-index 9000 div with
+    // no listener on it, so every tap during precisely the window this shell
+    // exists to cover landed on an inert element and was thrown away.
+    //
+    // Removing the attributes here takes the shell down and also disarms the
+    // animated splash, which reads data-boot to decide whether this was a cold
+    // start at all — so one tap means "no splash", not "shell now, animation
+    // in a second". Both paths end at the same two removals, so they cannot
+    // disagree.
+    window.addEventListener('pointerdown', function () {
+      d.removeAttribute('data-boot')
+      d.removeAttribute('data-boot-anim')
+    }, { once: true, capture: true })
     setTimeout(function () {
       d.removeAttribute('data-boot')
       d.removeAttribute('data-boot-anim')

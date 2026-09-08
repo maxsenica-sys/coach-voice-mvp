@@ -9,14 +9,20 @@ import VideoAnnotator from '@/app/components/VideoAnnotator'
 import WellnessSubmit from '@/app/components/WellnessSubmit'
 import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import { getDailyQuote } from '@/lib/quotes'
-import { WELLNESS_METRICS, metricColor } from '@/lib/wellness-config'
+import {
+  WELLNESS_METRICS, metricColor,
+  overallWellnessScore, overallScoreColor,
+  type WellnessCheckin,
+} from '@/lib/wellness-config'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
-import { apiMutate } from '@/lib/api-client'
+import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
 import { formatSessionDate } from '@/lib/session-date'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
+
+type WellnessRow = WellnessCheckin
 
 type SessionRow = {
   id: string
@@ -67,6 +73,148 @@ function AthleteIcon({ name, size = 20, strokeWidth = 2 }: { name: string; size?
   }
 }
 
+/** Local date key (YYYY-MM-DD), matching what the API stores in check_date. */
+function dateKey(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA').format(d)
+}
+
+/**
+ * The athlete's own fourteen days, and one sentence about them.
+ *
+ * This is the return half of the wellness loop. Until now the athlete gave the
+ * app five numbers a day and got nothing back at all: "Trends →" led to a
+ * blank form. That is the configuration the monitoring literature describes as
+ * the one that fails — athletes stop answering honestly when they cannot see
+ * the data being used — so this is not decoration on top of the alert, it is
+ * the alert's data quality.
+ *
+ * Deliberately NOT WellnessGraph, which is mounted for the coach on the
+ * athlete profile. That chart plots five ordinal series, two of them inverted,
+ * as continuous lines in a 520x150 box. A coach with context can read it. A
+ * fourteen-year-old cannot answer "so what do I do?" from it. One sentence
+ * beats it.
+ */
+function WellnessHistory({ rows }: { rows: WellnessRow[] }) {
+  const DAYS = 14
+
+  const cells = useMemo(() => {
+    const byDate = new Map(rows.map((r) => [r.check_date, r]))
+    const out: { key: string; date: Date; row: WellnessRow | undefined }[] = []
+    for (let i = DAYS - 1; i >= 0; i--) {
+      const d = new Date()
+      d.setHours(12, 0, 0, 0)
+      d.setDate(d.getDate() - i)
+      const key = dateKey(d)
+      out.push({ key, date: d, row: byDate.get(key) })
+    }
+    return out
+  }, [rows])
+
+  const sentence = useMemo(() => {
+    const present = cells.filter((c) => c.row)
+    // Below this there is not enough to say anything true about a trend.
+    if (present.length < 5) {
+      return { text: 'Keep checking in — after a week we can show you what is changing.', tone: 'quiet' as const }
+    }
+
+    // Only energy and sleep are eligible to be named.
+    //
+    // `mood` and `stress` are excluded on purpose: telling an unaccompanied
+    // teenager that their mood is their worst number and falling is a clinical
+    // statement, and the channel for that already exists and has an adult on
+    // the other end (the coach alert, and the caretaker email). They still
+    // count toward the dots and toward the coach's alert — they are just not
+    // narrated back to the child.
+    //
+    // `soreness` is excluded for a different and more boring reason: the app
+    // contradicts itself about which direction it runs. WELLNESS_METRICS marks
+    // it `inverted` and every scoring function computes `6 - raw`, but the
+    // form's own hint tells the athlete "1 = very sore, 5 = no soreness",
+    // which is the opposite. Until that is settled, a sentence about soreness
+    // could confidently tell an athlete the reverse of the truth. See the note
+    // filed in product-review/REGISTER.md.
+    const ELIGIBLE = ['energy', 'sleep_q'] as const
+
+    const meanOf = (subset: typeof cells, key: (typeof ELIGIBLE)[number]) => {
+      const vals = subset
+        .map((c) => c.row?.[key])
+        .filter((v): v is number => typeof v === 'number')
+      return vals.length >= 2 ? vals.reduce((a, b) => a + b, 0) / vals.length : null
+    }
+
+    const recent = cells.slice(7)
+    const prior = cells.slice(0, 7)
+
+    let worst: { key: (typeof ELIGIBLE)[number]; now: number; was: number; drop: number } | null = null
+    let compared = false
+    for (const key of ELIGIBLE) {
+      const now = meanOf(recent, key)
+      const was = meanOf(prior, key)
+      if (now === null || was === null) continue
+      compared = true
+      const drop = was - now
+      if (drop >= 0.75 && (!worst || drop > worst.drop)) worst = { key, now, was, drop }
+    }
+
+    // Five check-ins is enough to be worth saying something, but they can all
+    // sit in the same week — in which case there is no previous week to
+    // compare against and "nothing much has moved" would be an assertion we
+    // have not earned. Say the true thing instead.
+    if (!compared) {
+      return { text: 'A few more days and we can show you what is changing week to week.', tone: 'quiet' as const }
+    }
+    if (!worst) {
+      return { text: 'Nothing much has moved this week. That is usually a good sign.', tone: 'quiet' as const }
+    }
+    const label = WELLNESS_METRICS.find((m) => m.key === worst.key)?.label ?? worst.key
+    return {
+      text: `${label} is your biggest drop this week — averaging ${worst.now.toFixed(1)} out of 5, down from ${worst.was.toFixed(1)} the week before.`,
+      tone: 'flag' as const,
+    }
+  }, [cells])
+
+  return (
+    <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 11 }}>
+        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+          Your check-ins
+        </span>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)' }}>Last 14 days</span>
+      </div>
+
+      <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+        {cells.map((c, i) => {
+          const score = overallWellnessScore(c.row ?? null)
+          const isToday = i === cells.length - 1
+          return (
+            <div key={c.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div
+                title={`${c.date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}${c.row ? '' : ' — no check-in'}`}
+                style={{
+                  width: '100%', height: 26, borderRadius: 5,
+                  background: c.row ? overallScoreColor(score) : 'transparent',
+                  border: c.row ? 'none' : '1.5px dashed var(--border)',
+                  boxShadow: isToday ? '0 0 0 2px var(--bg), 0 0 0 3.5px var(--text-2)' : 'none',
+                }}
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{
+        fontSize: 'var(--fs-3)',
+        lineHeight: 1.5,
+        fontWeight: sentence.tone === 'flag' ? 600 : 500,
+        color: sentence.tone === 'flag' ? 'var(--text)' : 'var(--text-2)',
+      }}>
+        {sentence.text}
+      </div>
+    </div>
+  )
+}
+
 export default function AthletePage() {
   const router = useRouter()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
@@ -94,7 +242,8 @@ export default function AthletePage() {
   const [athleteId, setAthleteId] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null)
-  const [todayWellness, setTodayWellness] = useState<Record<string, any> | null>(null)
+  const [todayWellness, setTodayWellness] = useState<WellnessRow | null>(null)
+  const [wellnessHistory, setWellnessHistory] = useState<WellnessRow[]>([])
   const [sport, setSport] = useState(() => readCachedProfile()?.sport ?? '')
   const [error, setError] = useState('')
   // Failures from actions that used to fail silently (RSVP, deletes, annotation
@@ -249,18 +398,34 @@ export default function AthletePage() {
     if (tab === 'calendar' && athleteId) fetchCalendar(calMonth)
   }, [tab, athleteId, calMonth, fetchCalendar])
 
-  // ── Today's wellness ──────────────────────────────────────
-  useEffect(() => {
+  // ── The athlete's own wellness history ────────────────────
+  //
+  // This used to fetch `days=1` and keep only today's row, which is why the
+  // athlete could give this app five numbers a day and never be shown one
+  // back. Three weeks is enough for a 14-day strip plus the previous week to
+  // compare against, and the API has always allowed it — the RLS policy is
+  // scoped to the athlete's own rows, so this is their data, not a new
+  // permission.
+  //
+  // It also used a raw `fetch().then(r => r.json())` with no `res.ok` check:
+  // CLAUDE.md checklist item 1, the bug class where a non-2xx silently becomes
+  // empty data and the UI reports it as "no check-ins yet".
+  const loadWellness = useCallback(async () => {
     if (!athleteId) return
-    const today = new Intl.DateTimeFormat('en-CA').format(new Date())
-    fetch(`/api/wellness?athlete_id=${athleteId}&days=1`)
-      .then(r => r.json())
-      .then(j => {
-        const entry = (j.checkins ?? []).find((c: any) => c.check_date === today) ?? null
-        setTodayWellness(entry)
-      })
-      .catch(() => {})
+    try {
+      const j = await apiJson<{ checkins?: WellnessRow[] }>(
+        `/api/wellness?athlete_id=${athleteId}&days=21`,
+      )
+      const rows = j.checkins ?? []
+      const today = new Intl.DateTimeFormat('en-CA').format(new Date())
+      setWellnessHistory(rows)
+      setTodayWellness(rows.find((c) => c.check_date === today) ?? null)
+    } catch {
+      // Non-fatal: the card falls back to its "check in" state.
+    }
   }, [athleteId])
+
+  useEffect(() => { void loadWellness() }, [loadWellness])
 
   // ── Load messages ─────────────────────────────────────────
   useEffect(() => {
@@ -552,12 +717,12 @@ export default function AthletePage() {
       <div className="bg-grain" style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 20px' }}>
         <div style={{ width: '100%', maxWidth: 440 }}>
           <div style={{ marginBottom: 32 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, fontFamily: 'monospace' }}>{onboardDate}</div>
-            <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 34, letterSpacing: -0.8, lineHeight: 1.1, color: '#1F2421' }}>
+            <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, fontFamily: 'monospace' }}>{onboardDate}</div>
+            <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 34, letterSpacing: -0.8, lineHeight: 1.1, color: 'var(--text)' }}>
               Welcome to CoachVoice,<br/>
               <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{onboardFirstName}.</span>
             </h1>
-            <p style={{ margin: '12px 0 0', fontSize: 14, color: '#5D6661', lineHeight: 1.6, maxWidth: 340 }}>
+            <p style={{ margin: '12px 0 0', fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, maxWidth: 340 }}>
               Your coach has set up your training profile. Here's how to get started.
             </p>
           </div>
@@ -567,18 +732,18 @@ export default function AthletePage() {
               { icon: '📋', title: 'View your sessions', desc: 'After each session, your coach will share notes and feedback here.' },
               { icon: '💬', title: 'Message your coach', desc: "Ask questions, share how you're feeling, stay connected." },
             ].map((step, i) => (
-              <div key={i} style={{ background: '#FFFFFF', border: '1px solid #E3DED2', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: '#F4F1EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{step.icon}</div>
+              <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{step.icon}</div>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1F2421', marginBottom: 4 }}>{step.title}</div>
-                  <div style={{ fontSize: 13, color: '#5D6661', lineHeight: 1.55 }}>{step.desc}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 4 }}>{step.title}</div>
+                  <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.55 }}>{step.desc}</div>
                 </div>
               </div>
             ))}
           </div>
           <button
             className="btn btn-primary btn-lg"
-            style={{ width: '100%', fontSize: 16, padding: '14px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: '100%', fontSize: 'var(--fs-4)', padding: '14px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             onClick={dismissOnboarding}
           >
             Let's go →
@@ -603,17 +768,17 @@ export default function AthletePage() {
           style={{
             position: 'fixed', left: 12, right: 12, bottom: 78, zIndex: 2000,
             maxWidth: 520, margin: '0 auto',
-            background: '#B55C3E', color: '#fff',
+            background: 'var(--coach-color)', color: '#fff',
             borderRadius: 12, padding: '12px 14px',
             display: 'flex', alignItems: 'flex-start', gap: 10,
-            boxShadow: '0 6px 24px rgba(0,0,0,0.18)', fontSize: 13, lineHeight: 1.5,
+            boxShadow: '0 6px 24px rgba(0,0,0,0.18)', fontSize: 'var(--fs-3)', lineHeight: 1.5,
           }}
         >
           <span style={{ flex: 1 }}>{actionError}</span>
           <button
             onClick={() => setActionError('')}
             aria-label="Dismiss"
-            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 'var(--fs-4)', lineHeight: 1, padding: 0, flexShrink: 0 }}
           >
             ×
           </button>
@@ -625,18 +790,18 @@ export default function AthletePage() {
         position: 'sticky', top: 0, zIndex: 100,
         background: 'rgba(251,248,243,0.94)',
         backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: '1px solid #E3DED2',
+        borderBottom: '1px solid var(--border)',
       }}>
         <div style={{ maxWidth: 1000, margin: '0 auto', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: '#6F8E6B', color: '#fff', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: 'var(--primary)', color: '#fff', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {(athleteName.split(' ')[0]?.[0] ?? 'A').toUpperCase()}{(athleteName.split(' ')[1]?.[0] ?? '').toUpperCase()}
             </div>
             <div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase' }}>
                 {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
               </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2421', marginTop: 1 }}>
+              <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)', marginTop: 1 }}>
                 {athleteName || 'Athlete'}{sport ? ` · ${sport}` : ''}
               </div>
             </div>
@@ -648,10 +813,10 @@ export default function AthletePage() {
                 source: /api/messages/unread filters sender_role = 'athlete'
                 against the caller's coach_id, so it is coach-only by
                 construction. Button wired up, dot removed. */}
-            <button onClick={() => setTab('messages')} aria-label="Messages" style={{ width: 36, height: 36, borderRadius: 10, background: '#FFFFFF', border: '1px solid #E3DED2', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer' }}>
+            <button onClick={() => setTab('messages')} aria-label="Messages" style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', cursor: 'pointer' }}>
               <AthleteIcon name="messages" size={15} strokeWidth={1.8} />
             </button>
-            <button onClick={logout} style={{ width: 36, height: 36, borderRadius: 10, background: '#FFFFFF', border: '1px solid #E3DED2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+            <button onClick={logout} style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', cursor: 'pointer', fontSize: 'var(--fs-1)', fontWeight: 600 }}>
               Out
             </button>
           </div>
@@ -662,11 +827,11 @@ export default function AthletePage() {
         {/* No athlete record — show join form */}
         {error === 'no-athlete-record' && (
           // Was a saturated amber gradient from the retired palette.
-          <div style={{ background: 'var(--warning-light)', border: '1px solid #E4CE9A', borderRadius: 14, padding: 20, marginBottom: 20 }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 19, marginBottom: 6, color: '#1F2421' }}>
+          <div style={{ background: 'var(--warning-light)', border: '1px solid var(--warning-border)', borderRadius: 14, padding: 20, marginBottom: 20 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 'var(--fs-5)', marginBottom: 6, color: 'var(--text)' }}>
               Connect to your coach
             </div>
-            <p style={{ fontSize: 13.5, color: '#5D6661', lineHeight: 1.6, margin: '0 0 16px' }}>
+            <p style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.6, margin: '0 0 16px' }}>
               Your account isn&rsquo;t linked to a coach yet. Enter the invite code they gave you to get started.
             </p>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -681,7 +846,7 @@ export default function AthletePage() {
                 {joinLoading ? 'Joining…' : 'Join Team →'}
               </button>
             </div>
-            {joinMsg && <p style={{ marginTop: 10, fontSize: 13, color: joinMsg.includes('Success') ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{joinMsg}</p>}
+            {joinMsg && <p style={{ marginTop: 10, fontSize: 'var(--fs-3)', color: joinMsg.includes('Success') ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{joinMsg}</p>}
           </div>
         )}
 
@@ -704,11 +869,11 @@ export default function AthletePage() {
                   borderRadius: 999,
                   border: tab === t.key ? 'none' : '1px solid var(--border)',
                   background: tab === t.key
-                    ? 'linear-gradient(135deg, #6F8E6B 0%, #4F6B4B 100%)'
+                    ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)'
                     : 'var(--card)',
                   color: tab === t.key ? '#fff' : 'var(--text-2)',
                   fontWeight: tab === t.key ? 800 : 600,
-                  fontSize: 13,
+                  fontSize: 'var(--fs-3)',
                   cursor: 'pointer',
                   transition: 'all 0.18s cubic-bezier(.34,1.56,.64,1)',
                   boxShadow: tab === t.key ? '0 3px 12px rgb(111 142 107 / .30)' : 'var(--shadow-sm)',
@@ -728,11 +893,11 @@ export default function AthletePage() {
 
             {/* ── Greeting ── */}
             <div>
-              <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, letterSpacing: -0.8, lineHeight: 1.05, color: '#1F2421' }}>
+              <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 'var(--fs-6)', letterSpacing: -0.8, lineHeight: 1.05, color: 'var(--text)' }}>
                 Welcome back,<br/>
                 <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{athleteName.split(' ')[0] || 'Athlete'}.</span>
               </h1>
-              <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#5D6661', lineHeight: 1.5 }}>
+              <p style={{ margin: '8px 0 0', fontSize: 'var(--fs-2)', color: 'var(--text-2)', lineHeight: 1.5 }}>
                 {sessions.length === 0
                   ? 'Nothing from your coach yet.'
                   : `${sessions.length} session${sessions.length !== 1 ? 's' : ''} from your coach`}
@@ -748,11 +913,11 @@ export default function AthletePage() {
                 {todayWellness ? (
                   <>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 13 }}>
-                      <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                      <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--primary-dark)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
                         Checked in today
                       </span>
                       <span style={{ flex: 1 }} />
-                      <button onClick={() => setTab('wellness')} style={{ background: 'none', border: 'none', color: '#9BA29B', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                      <button onClick={() => setTab('wellness')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 'var(--fs-1)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
                         Trends →
                       </button>
                     </div>
@@ -762,13 +927,13 @@ export default function AthletePage() {
                         const pct = score ? (score / 5) * 100 : 0
                         return (
                           <div key={key}>
-                            <div style={{ height: 4, background: '#EFEAE0', borderRadius: 2, overflow: 'hidden' }}>
+                            <div style={{ height: 4, background: 'var(--border-soft)', borderRadius: 2, overflow: 'hidden' }}>
                               <div style={{ width: `${pct}%`, height: '100%', background: metricColor(key, score), borderRadius: 2 }} />
                             </div>
-                            <div style={{ fontSize: 9, color: '#9BA29B', marginTop: 5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {label}
                             </div>
-                            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#1F2421', marginTop: 1 }}>{score ?? '—'}</div>
+                            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text)', marginTop: 1 }}>{score ?? '—'}</div>
                           </div>
                         )
                       })}
@@ -777,22 +942,29 @@ export default function AthletePage() {
                 ) : (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                      <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--primary-dark)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
                         Daily check-in
                       </span>
                       <span style={{ flex: 1 }} />
-                      <span style={{ fontSize: 10.5, color: '#9BA29B' }}>
+                      <span style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)' }}>
                         {new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
                       </span>
                     </div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 400, color: '#1F2421', marginBottom: 13, letterSpacing: '-0.01em' }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-5)', fontWeight: 400, color: 'var(--text)', marginBottom: 13, letterSpacing: '-0.01em' }}>
                       How are you feeling today?
                     </div>
                     <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '11px' }} onClick={() => setTab('wellness')}>
                       Check in
                     </button>
-                    <div style={{ fontSize: 11, color: '#9BA29B', marginTop: 9, textAlign: 'center' }}>
-                      Takes about twenty seconds. Your coach sees the scores, not who said what to whom.
+                    <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 9, textAlign: 'center' }}>
+                      {/* Was: "Your coach sees the scores, not who said what to
+                          whom." That sentence describes messaging, not
+                          wellness — and it was the only thing a 13-year-old
+                          was told about where their health data goes. What
+                          actually happens, verified in
+                          app/api/wellness/route.ts:92-105: the coach can read
+                          every score, and a low run emails them automatically. */}
+                      Takes about twenty seconds. Your coach can see these scores, and if they stay low your coach gets an email.
                     </div>
                   </>
                 )}
@@ -806,11 +978,11 @@ export default function AthletePage() {
             {sessions.length > 0 && (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                  <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
                     From your coach
                   </div>
                   {sessions.length > 3 && (
-                    <button onClick={() => setTab('sessions')} style={{ background: 'none', border: 'none', color: '#9BA29B', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                    <button onClick={() => setTab('sessions')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 'var(--fs-1)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
                       All {sessions.length} →
                     </button>
                   )}
@@ -828,20 +1000,20 @@ export default function AthletePage() {
                           cue that doesn't need its own panel. */}
                       {i === 0 && (
                         <span style={{ position: 'absolute', top: 13, right: 15, display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#B55C3E' }} />
-                          <span style={{ fontSize: 8.5, fontWeight: 800, color: '#B55C3E', letterSpacing: '0.1em' }}>NEWEST</span>
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--coach-color)' }} />
+                          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--coach-color)', letterSpacing: '0.1em' }}>NEWEST</span>
                         </span>
                       )}
-                      <div style={{ fontSize: 9.5, fontWeight: 700, color: '#9BA29B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                         {formatSessionDate(s)}
                       </div>
-                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 500, color: '#1F2421', lineHeight: 1.3, marginTop: 3, paddingRight: i === 0 ? 62 : 0 }}>
+                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-4)', fontWeight: 500, color: 'var(--text)', lineHeight: 1.3, marginTop: 3, paddingRight: i === 0 ? 62 : 0 }}>
                         {s.session_name ?? s.title ?? 'Coaching session'}
                       </div>
                       {s.summary && (
                         // Deliberately not in quotation marks: this is the model's
                         // summary of the recording, not words the coach said.
-                        <div style={{ fontSize: 13, color: '#5D6661', lineHeight: 1.55, marginTop: 6, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.55, marginTop: 6, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                           {s.summary.replace(/^[•\s]+/, '')}
                         </div>
                       )}
@@ -858,21 +1030,21 @@ export default function AthletePage() {
                           : null
                         if (!next) return null
                         return (
-                          <div style={{ marginTop: 9, padding: '9px 11px', background: 'var(--coach-light)', border: '1px solid #EBCBBC', borderRadius: 9 }}>
-                            <div style={{ fontSize: 9, fontWeight: 800, color: '#B55C3E', letterSpacing: '0.11em', textTransform: 'uppercase', marginBottom: 3 }}>
+                          <div style={{ marginTop: 9, padding: '9px 11px', background: 'var(--coach-light)', border: '1px solid var(--coach-border)', borderRadius: 9 }}>
+                            <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--coach-on-light)', letterSpacing: '0.11em', textTransform: 'uppercase', marginBottom: 3 }}>
                               Take into next session
                             </div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1F2421', lineHeight: 1.45 }}>
+                            <div style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.45 }}>
                               {next}
                             </div>
                           </div>
                         )
                       })()}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 9, fontSize: 11, fontWeight: 700, color: 'var(--primary)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 9, fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--primary-dark)' }}>
                         {s.audio_path && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#B55C3E', marginRight: 4 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--coach-color)', marginRight: 4 }}>
                             <AthleteIcon name="mic" size={10} strokeWidth={2.4} />
-                            <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.06em' }}>AUDIO</span>
+                            <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, letterSpacing: '0.06em' }}>AUDIO</span>
                           </span>
                         )}
                         Read session →
@@ -884,15 +1056,15 @@ export default function AthletePage() {
             )}
 
             {/* ── Private notes ── */}
-            <button onClick={() => setTab('notes')} style={{ width: '100%', padding: '12px 14px', background: 'transparent', borderRadius: 12, border: '1.5px dashed #E3DED2', display: 'flex', alignItems: 'center', gap: 10, color: '#5D6661', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
-              <div style={{ width: 26, height: 26, borderRadius: 7, background: '#EFEAE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D6661', flexShrink: 0 }}>
+            <button onClick={() => setTab('notes')} style={{ width: '100%', padding: '12px 14px', background: 'transparent', borderRadius: 12, border: '1.5px dashed var(--border)', display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-2)', fontSize: 'var(--fs-2)', fontWeight: 600, cursor: 'pointer' }}>
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', flexShrink: 0 }}>
                 <AthleteIcon name="pencil" size={12} strokeWidth={2} />
               </div>
               <span style={{ flex: 1, textAlign: 'left' }}>
                 Add a private note
-                {notes.length > 0 && <span style={{ color: '#9BA29B', fontWeight: 500 }}> · {notes.length} saved</span>}
+                {notes.length > 0 && <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}> · {notes.length} saved</span>}
               </span>
-              <span style={{ fontSize: 9, fontWeight: 700, color: '#B55C3E', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+              <span style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--coach-color)', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                 <AthleteIcon name="mic" size={10} strokeWidth={2.4} /> VOICE
               </span>
             </button>
@@ -908,10 +1080,10 @@ export default function AthletePage() {
                 this tab is the full record, so it's just the record. */}
             {sessions.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, gap: 10 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
                   From your coach
                 </div>
-                <div style={{ fontSize: 11, color: '#9BA29B', fontWeight: 600 }}>
+                <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', fontWeight: 600 }}>
                   {sessions.length} session{sessions.length !== 1 ? 's' : ''}
                 </div>
               </div>
@@ -919,13 +1091,13 @@ export default function AthletePage() {
 
             {sessions.length === 0 ? (
               <div className="card" style={{ padding: 32, textAlign: 'center' }}>
-                <div style={{ color: '#C4C9C2', display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+                <div style={{ color: 'var(--text-muted)', display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
                   <AthleteIcon name="book" size={30} strokeWidth={1.5} />
                 </div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: '#1F2421', marginBottom: 6 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--text)', marginBottom: 6 }}>
                   No sessions yet
                 </div>
-                <div style={{ color: '#5D6661', fontSize: 13, maxWidth: 290, margin: '0 auto', lineHeight: 1.6 }}>
+                <div style={{ color: 'var(--text-2)', fontSize: 'var(--fs-3)', maxWidth: 290, margin: '0 auto', lineHeight: 1.6 }}>
                   After a training session your coach records their notes here. You&rsquo;ll see the summary, and can play back what they said.
                 </div>
               </div>
@@ -958,12 +1130,12 @@ export default function AthletePage() {
                           {/* Was an emoji microphone in a gradient tile. The
                               coach side uses drawn icons throughout; matching
                               that keeps one visual language across both. */}
-                          <div style={{ width: 40, height: 40, borderRadius: 11, background: isOpen ? '#6F8E6B' : 'var(--athlete-light)', color: isOpen ? '#FBF8F3' : '#4F6B4B', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s ease' }}>
+                          <div style={{ width: 40, height: 40, borderRadius: 11, background: isOpen ? 'var(--primary)' : 'var(--athlete-light)', color: isOpen ? 'var(--bg)' : 'var(--primary-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s ease' }}>
                             <AthleteIcon name="mic" size={17} strokeWidth={2} />
                           </div>
                           <div>
                             <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{s.session_name ?? s.title ?? 'Session'}</div>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                               <span>{formatSessionDate(s)}</span>
                               {s.sport_context && <span>· {s.sport_context}</span>}
                               {sNotes.length > 0 && (
@@ -979,8 +1151,8 @@ export default function AthletePage() {
                             </div>
                           </div>
                         </div>
-                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: isOpen ? '#6F8E6B' : 'var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
-                          <span style={{ color: isOpen ? '#fff' : 'var(--text-muted)', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>{isOpen ? '▲' : '▼'}</span>
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: isOpen ? 'var(--primary)' : 'var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
+                          <span style={{ color: isOpen ? '#fff' : 'var(--text-muted)', fontSize: 'var(--fs-1)', fontWeight: 900, lineHeight: 1 }}>{isOpen ? '▲' : '▼'}</span>
                         </div>
                       </button>
 
@@ -995,7 +1167,7 @@ export default function AthletePage() {
                               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                               gap: 8, marginTop: 14, padding: '10px 13px', borderRadius: 10,
                               background: 'var(--primary-light)', color: 'var(--primary-dark)',
-                              textDecoration: 'none', fontSize: 13, fontWeight: 700,
+                              textDecoration: 'none', fontSize: 'var(--fs-3)', fontWeight: 700,
                             }}
                           >
                             Open full session
@@ -1007,7 +1179,7 @@ export default function AthletePage() {
                           {/* Recording from the session */}
                           {s.audio_path && (
                             <div style={{ marginTop: 16 }}>
-                              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--coach-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--coach-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
                                 <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--coach-color)', display: 'inline-block' }} />
                                 Recording
                               </div>
@@ -1018,7 +1190,7 @@ export default function AthletePage() {
                           {/* Coach summary */}
                           {s.summary && (
                             <div style={{ marginTop: 16 }}>
-                              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--coach-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--coach-color)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
                                 <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--coach-color)', display: 'inline-block' }} />
                                 Coach Summary
                               </div>
@@ -1031,10 +1203,10 @@ export default function AthletePage() {
                           {/* Full transcript (collapsed) */}
                           {s.transcript && (
                             <details style={{ marginTop: 12 }}>
-                              <summary style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', cursor: 'pointer', padding: '8px 0' }}>
+                              <summary style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text-2)', cursor: 'pointer', padding: '8px 0' }}>
                                 View full transcript
                               </summary>
-                              <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-2)', marginTop: 8, padding: '12px 14px', background: 'var(--border-soft)', borderRadius: 8, whiteSpace: 'pre-wrap' }}>
+                              <div style={{ fontSize: 'var(--fs-3)', lineHeight: 1.7, color: 'var(--text-2)', marginTop: 8, padding: '12px 14px', background: 'var(--border-soft)', borderRadius: 8, whiteSpace: 'pre-wrap' }}>
                                 {s.transcript}
                               </div>
                             </details>
@@ -1043,7 +1215,7 @@ export default function AthletePage() {
                           {/* Videos */}
                           {sVideos.length > 0 && (
                             <div style={{ marginTop: 16 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+                              <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
                                 Videos ({sVideos.length})
                               </div>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1075,10 +1247,10 @@ export default function AthletePage() {
                           {/* My private notes for this session */}
                           <div style={{ marginTop: 20 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                 My Private Notes
                               </div>
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Only you can see these</span>
+                              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)' }}>Only you can see these</span>
                             </div>
 
                             {sNotes.map((n) => (
@@ -1110,7 +1282,7 @@ export default function AthletePage() {
                                   className="btn btn-athlete"
                                   onClick={() => saveNote(s.id)}
                                   disabled={noteSaving || !noteText.trim()}
-                                  style={{ padding: '8px 12px', fontSize: 13 }}
+                                  style={{ padding: '8px 12px', fontSize: 'var(--fs-3)' }}
                                 >
                                   {noteSaving ? '…' : 'Save'}
                                 </button>
@@ -1131,13 +1303,13 @@ export default function AthletePage() {
         {tab === 'messages' && (
           <div className="card" style={{ padding: 20 }}>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Messages from your coach</div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 18 }}>All messages between you and your coach stay private here.</div>
+            <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-muted)', marginBottom: 18 }}>All messages between you and your coach stay private here.</div>
 
             {/* Message list */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16, minHeight: 120 }}>
-              {msgLoading && <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 20 }}>Loading…</div>}
+              {msgLoading && <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-3)', padding: 20 }}>Loading…</div>}
               {!msgLoading && messages.length === 0 && (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 30 }}>No messages yet. Send your coach a message below!</div>
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-3)', padding: 30 }}>No messages yet. Send your coach a message below!</div>
               )}
               {messages.map((msg: any) => {
                 const isAthlete = msg.sender_role === 'athlete'
@@ -1156,12 +1328,12 @@ export default function AthletePage() {
                       {msg.msg_type === 'video' && msg.media_url && <video src={msg.media_url} controls style={{ maxWidth: 280, maxHeight: 180, borderRadius: 10, display: 'block' }} />}
                       {msg.msg_type === 'audio' && msg.media_url && (
                         <div style={{ padding: '6px 4px' }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: isAthlete ? 'rgba(255,255,255,0.8)' : 'var(--text-2)' }}>🎤 Voice message</div>
+                          <div style={{ fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 4, color: isAthlete ? 'rgba(255,255,255,0.8)' : 'var(--text-2)' }}>🎤 Voice message</div>
                           <audio controls src={msg.media_url} style={{ height: 36, width: 220 }} />
                         </div>
                       )}
                     </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, paddingLeft: isAthlete ? 0 : 4, paddingRight: isAthlete ? 4 : 0 }}>
+                    <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 2, paddingLeft: isAthlete ? 0 : 4, paddingRight: isAthlete ? 4 : 0 }}>
                       {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
@@ -1190,7 +1362,7 @@ export default function AthletePage() {
               <button
                 onClick={sendMessage}
                 disabled={!msgText.trim() || msgSending}
-                style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: msgText.trim() ? 'var(--athlete-color)' : 'var(--border)', color: '#fff', cursor: msgText.trim() ? 'pointer' : 'not-allowed', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}
+                style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: msgText.trim() ? 'var(--athlete-color)' : 'var(--border)', color: '#fff', cursor: msgText.trim() ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}
               >↑</button>
             </div>
           </div>
@@ -1199,7 +1371,19 @@ export default function AthletePage() {
         {/* ─── Tab: Wellness ─── */}
         {tab === 'wellness' && athleteId && (
           <div style={{ maxWidth: 520 }}>
-            <WellnessSubmit athleteId={athleteId} onSaved={() => {}} />
+            {/* The history goes above the form on purpose: this tab is reached
+                from a control labelled "Trends →", and it used to answer that
+                with a blank form and nothing else. */}
+            <WellnessHistory rows={wellnessHistory} />
+            <WellnessSubmit
+              athleteId={athleteId}
+              initial={todayWellness}
+              // Was `() => {}`. Because nothing re-read the data after a save,
+              // an athlete could check in and then find the home card still
+              // asking them to check in — the app refusing to acknowledge, in
+              // the same session, something it had just stored.
+              onSaved={() => { void loadWellness() }}
+            />
           </div>
         )}
 
@@ -1219,7 +1403,7 @@ export default function AthletePage() {
               </div>
               {calSaveMsg && (
                 <div style={{
-                  fontSize: 13, fontWeight: 700,
+                  fontSize: 'var(--fs-3)', fontWeight: 700,
                   color: calSaveMsg.includes('Failed') ? 'var(--danger)' : 'var(--success)',
                   background: calSaveMsg.includes('Failed') ? 'var(--danger-light)' : 'var(--success-light)',
                   border: `1px solid ${calSaveMsg.includes('Failed') ? 'var(--danger)' : 'var(--success)'}`,
@@ -1246,15 +1430,15 @@ export default function AthletePage() {
             {/* RSVP Section */}
             {rsvpEvents.length > 0 && (
               <div style={{ marginTop: 20 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Events needing your response</div>
+                <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Events needing your response</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {rsvpEvents.map((evt: any) => {
                     const status = rsvpMap[evt.id]
                     return (
                       <div key={evt.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700 }}>{evt.title}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(evt.event_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}{evt.event_time ? ` at ${evt.event_time}` : ''}</div>
+                          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700 }}>{evt.title}</div>
+                          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)' }}>{new Date(evt.event_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}{evt.event_time ? ` at ${evt.event_time}` : ''}</div>
                         </div>
                         <div style={{ display: 'flex', gap: 6 }}>
                           {(['yes', 'maybe', 'no'] as const).map((s) => (
@@ -1266,7 +1450,7 @@ export default function AthletePage() {
                                 borderColor: status === s ? (s === 'yes' ? 'var(--success)' : s === 'no' ? 'var(--danger)' : 'var(--warning)') : 'var(--border)',
                                 background: status === s ? (s === 'yes' ? 'var(--success-light)' : s === 'no' ? 'var(--danger-light)' : 'var(--warning-light)') : 'transparent',
                                 color: status === s ? (s === 'yes' ? 'var(--success)' : s === 'no' ? 'var(--danger)' : 'var(--warning)') : 'var(--text-2)',
-                                fontWeight: status === s ? 700 : 400, fontSize: 12, cursor: 'pointer',
+                                fontWeight: status === s ? 700 : 400, fontSize: 'var(--fs-2)', cursor: 'pointer',
                               }}
                             >
                               {s === 'yes' ? '✓ Going' : s === 'maybe' ? '? Maybe' : '✗ No'}
@@ -1288,8 +1472,8 @@ export default function AthletePage() {
           <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: isMobile ? 'column' : undefined, gridTemplateColumns: isMobile ? undefined : '220px 1fr', gap: isMobile ? 12 : 20 }}>
             {/* Filter sidebar */}
             <div className="card" style={{ padding: 16, height: 'fit-content' }}>
-              {!isMobile && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }}>Filter by session</div>}
-              {isMobile && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Filter by session</div>}
+              {!isMobile && <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }}>Filter by session</div>}
+              {isMobile && <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Filter by session</div>}
               <div style={isMobile ? { display: 'flex', flexWrap: 'wrap', gap: 6 } : undefined}>
                 <button
                   onClick={() => setNoteFilter(null)}
@@ -1302,7 +1486,7 @@ export default function AthletePage() {
                     background: !noteFilter ? 'var(--athlete-light)' : 'transparent',
                     color: !noteFilter ? 'var(--athlete-color)' : 'var(--text)',
                     fontWeight: !noteFilter ? 700 : 400,
-                    fontSize: 13,
+                    fontSize: 'var(--fs-3)',
                     cursor: 'pointer',
                     textAlign: 'left',
                     marginBottom: isMobile ? 0 : 6,
@@ -1326,7 +1510,7 @@ export default function AthletePage() {
                         background: noteFilter === s.id ? 'var(--athlete-light)' : 'transparent',
                         color: noteFilter === s.id ? 'var(--athlete-color)' : 'var(--text)',
                         fontWeight: noteFilter === s.id ? 700 : 400,
-                        fontSize: 13,
+                        fontSize: 'var(--fs-3)',
                         cursor: 'pointer',
                         textAlign: 'left',
                         marginBottom: isMobile ? 0 : 4,
@@ -1343,7 +1527,7 @@ export default function AthletePage() {
             <div>
               {/* Add note form */}
               <div className="card" style={{ padding: 20, marginBottom: 16 }}>
-                <div className="section-title" style={{ marginBottom: 6, fontSize: 16 }}>Add a note</div>
+                <div className="section-title" style={{ marginBottom: 6, fontSize: 'var(--fs-4)' }}>Add a note</div>
                 <div className="section-sub" style={{ marginBottom: 12 }}>
                   Your notes are 100% private — coaches cannot see them.
                 </div>
@@ -1427,7 +1611,7 @@ export default function AthletePage() {
                 <label className="label">Type</label>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {['reminder', 'goal', 'other'].map((t) => (
-                    <button key={t} onClick={() => setEventForm({ ...eventForm, event_type: t })} className={`badge badge-${t}`} style={{ cursor: 'pointer', border: `1.5px solid ${eventForm.event_type === t ? 'currentColor' : 'transparent'}`, padding: '5px 12px', fontSize: 12 }}>
+                    <button key={t} onClick={() => setEventForm({ ...eventForm, event_type: t })} className={`badge badge-${t}`} style={{ cursor: 'pointer', border: `1.5px solid ${eventForm.event_type === t ? 'currentColor' : 'transparent'}`, padding: '5px 12px', fontSize: 'var(--fs-2)' }}>
                       {t.charAt(0).toUpperCase() + t.slice(1)}
                     </button>
                   ))}
@@ -1443,7 +1627,7 @@ export default function AthletePage() {
               </div>
             </div>
             {calSaveMsg && (
-              <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: calSaveMsg.includes('added') ? 'var(--success-light)' : 'var(--danger-light)', color: calSaveMsg.includes('added') ? 'var(--success)' : 'var(--danger)', fontSize: 13, fontWeight: 600 }}>
+              <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: calSaveMsg.includes('added') ? 'var(--success-light)' : 'var(--danger-light)', color: calSaveMsg.includes('added') ? 'var(--success)' : 'var(--danger)', fontSize: 'var(--fs-3)', fontWeight: 600 }}>
                 {calSaveMsg}
               </div>
             )}
@@ -1464,7 +1648,7 @@ export default function AthletePage() {
           background: 'rgba(251,248,243,0.94)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          borderTop: '1px solid #E3DED2',
+          borderTop: '1px solid var(--border)',
           display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 2,
           alignItems: 'center',
           padding: '8px 6px',
@@ -1485,17 +1669,17 @@ export default function AthletePage() {
                     style={{
                       width: 46, height: 46,
                       borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #B55C3E 0%, #8E3F27 100%)',
-                      border: '2px solid #FFFFFF',
+                      background: 'linear-gradient(135deg, var(--coach-color) 0%, var(--coach-on-light) 100%)',
+                      border: '2px solid var(--card)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(181,92,62,0.35), 0 0 0 3px #FBF8F3',
+                      boxShadow: '0 4px 14px rgba(181,92,62,0.35), 0 0 0 3px var(--bg)',
                       color: '#fff',
                     }}
                   >
                     <AthleteIcon name="mic" size={18} strokeWidth={2.2} />
                   </button>
-                  <span style={{ fontSize: 9, color: '#B55C3E', fontWeight: 600, lineHeight: 1 }}>Wellness</span>
+                  <span style={{ fontSize: 'var(--fs-1)', color: 'var(--coach-color)', fontWeight: 600, lineHeight: 1 }}>Wellness</span>
                 </div>
               )
             }
@@ -1506,12 +1690,12 @@ export default function AthletePage() {
                 padding: '6px 0',
                 border: 'none', background: 'none', cursor: 'pointer',
                 position: 'relative',
-                color: active ? '#1F2421' : 'var(--text-muted)',
+                color: active ? 'var(--text)' : 'var(--text-muted)',
                 transition: 'all 0.15s ease',
               }}>
-                {active && <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', width: 18, height: 2, background: '#1F2421', borderRadius: 2 }} />}
+                {active && <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', width: 18, height: 2, background: 'var(--text)', borderRadius: 2 }} />}
                 <AthleteIcon name={item.icon} size={18} strokeWidth={active ? 2.2 : 1.8} />
-                <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, lineHeight: 1 }}>{item.label}</span>
+                <span style={{ fontSize: 'var(--fs-1)', fontWeight: active ? 700 : 500, lineHeight: 1 }}>{item.label}</span>
               </button>
             )
           })}
@@ -1543,16 +1727,16 @@ function NoteCard({
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: isEditing ? 10 : 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)' }}>
             {new Date(note.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </span>
-          {note.note_type === 'voice' && <span className="badge badge-session" style={{ fontSize: 10 }}>🎙️ Voice</span>}
-          {sessionName && <span className="badge badge-athlete" style={{ fontSize: 10 }}>{sessionName}</span>}
+          {note.note_type === 'voice' && <span className="badge badge-session" style={{ fontSize: 'var(--fs-1)' }}>🎙️ Voice</span>}
+          {sessionName && <span className="badge badge-athlete" style={{ fontSize: 'var(--fs-1)' }}>{sessionName}</span>}
         </div>
         {!isEditing && (
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-            <button className="btn btn-ghost" onClick={onStartEdit} style={{ padding: '4px 8px', fontSize: 12 }}>Edit</button>
-            <button className="btn btn-danger" onClick={onDelete} style={{ padding: '4px 8px', fontSize: 12 }}>Delete</button>
+            <button className="btn btn-ghost" onClick={onStartEdit} style={{ padding: '4px 8px', fontSize: 'var(--fs-2)' }}>Edit</button>
+            <button className="btn btn-danger" onClick={onDelete} style={{ padding: '4px 8px', fontSize: 'var(--fs-2)' }}>Delete</button>
           </div>
         )}
       </div>

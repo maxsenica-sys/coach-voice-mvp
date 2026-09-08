@@ -137,3 +137,52 @@ short viewport or with the keyboard raised. Could not be confirmed from code alo
 one-line fix for whoever next touches the file.
 
 Not examined this run: `/athlete`, messaging, wellness, calendar, onboarding.
+
+---
+
+## 2026-09-09 — UX-006 · the cold-start splash is a toll, not a cover
+
+**Proposed.** Priority 160, BUILD NOW. Tied with DATA-006 on score; the orchestrator
+ranked DATA-006 first (it fixes something untrue rather than something slow) but
+recommended **building both in the same sitting** — disjoint files, both Effort 2.
+
+The splash blocks the app for a minimum of **3,399 ms** on every cold start, on both
+role homes. `FLOOR_MS = MARK_AT + 750 = 2939` plus `OUT_MS = 460`
+(`ColdStartSplash.tsx:82-84`); ceiling 6,060 ms. Three defects behind it:
+
+1. `leaveWhenReady` (`:155-157`) schedules dismissal at `FLOOR_MS` even when
+   `markAppReady()` already fired — the wait outlives the thing it covered. The
+   comment at `app/athlete/page.tsx:594-595` ("it never delays anything") is false
+   in both clauses.
+2. **The first painted frame has no dismiss handler.** The `pointerdown` escape is
+   on the React root (`:168`), which exists only after hydration; what is actually
+   on screen is `#cv-boot` (`layout.tsx:164-173`, `z-index: 9000`) with no
+   listener. Taps during the exact window the shell was built to cover are swallowed.
+3. The cooldown was cut from 30 minutes to **15 seconds** (`layout.tsx:122`), so
+   any return after 15s away replays it. `COOLDOWN_MS` (`:51`) is dead code.
+
+Reduced-motion users get the worst version: the floor/ceiling timers are scheduled
+*before* the early return at `:179-184`, so they hold a frozen ink screen for 2.94s.
+
+Fix: jump the timeline to `MARK_AT` when ready fires, drop the floor to ~900ms,
+move the escape into `BOOT_JS` (three lines, pre-paint, zero bundle), restore the
+30-minute cooldown and delete the dead constant.
+
+**⚠️ Lesson — I got a number wrong.** I derived every timing from
+`SPORTS.length = 15`. The array has **14**, and the source comment at
+`ColdStartSplash.tsx:72` said "~1850 across 14 sports" — I overrode a correct
+comment with a miscount. The orchestrator caught it: `MONTAGE_MS = 1849`,
+`FLOOR_MS = 2939`, minimum 3,399ms. The finding survived, but **count the array,
+do not eyeball it** — especially when a comment disagrees with you.
+
+**UX-007 (STRETCH, TEST)** — delete the splash by deleting the wait: a
+server-rendered `/record` as the PWA `start_url`. Needs sign-off to touch the
+protected recording path. Gate: log the first user action after launch for a week;
+if "record" is under half, wrong bet.
+
+**Checked and found fine:** UX-002 survived the design pass (`:823` is still a real
+`Link`); UX-001 survived (`QuickSessionModal.tsx:375,410,497`).
+**Challenged:** holding the splash until ready means the worse the network, the
+longer the coach stares at ink.
+**Cut:** the 14-sport montage from the cold-start splash — 1,849ms of the floor, and
+the splash is the only importer of the 113 KB `sportSilhouettes.tsx`.

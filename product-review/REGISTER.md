@@ -95,7 +95,10 @@ it loads, dismissed by any touch. "Cold start" is `sessionStorage` (survives
 backgrounding, resuming, in-app navigation and refresh; dies with the webview)
 AND a 30-minute floor in `localStorage`, because iOS discards backgrounded PWAs
 aggressively and without it a coach flicking to a timer app would get a "cold
-start" every few minutes. Signing in claims the session flag so the sign-in
+start" every few minutes. **Correction, 2026-09-09:** that floor was later cut to
+**15 seconds** (`app/layout.tsx:122`) so the author could watch the splash by
+reopening the app, which reinstates exactly the replay problem the paragraph above
+describes. UX-006 proposes restoring 30 minutes and using `?splash=1` instead. Signing in claims the session flag so the sign-in
 sequence and the splash never run back to back.
 
 **Watch the sign-in one on demand: `/?intro=1`.** Needed because the redirect above is
@@ -111,6 +114,105 @@ two measured AA failures fixed (3.24:1 → 5.28:1, 2.45:1 → 4.83:1).
 experiment, not the code. The silhouettes are placeholders and want an
 illustrator. The rest of DESIGN-002 (signup pages, shared `Icon`) is unbuilt.
 
+### Round 4 — 2026-09-09 · normal full review
+
+Report: `product-review/reports/2026-09-09-coach-voice-review.md`
+Reviewed against `d70258e`. PROJECT-STATE was refreshed before dispatch — it was
+thirteen commits stale and had missed the entire entrance subsystem.
+
+| ID | Date | Status | One line | Verdict | Priority |
+|---|---|---|---|---|---|
+| DATA-006 | 2026-09-09 | IMPLEMENTED | Close the athlete's wellness return loop — "Trends →" is a dead end, the form is blank even after checking in, and the home card never refreshes | BUILD NOW | **160** |
+| UX-006 | 2026-09-09 | IMPLEMENTED | The cold-start splash holds the app for 3.4 s minimum, waits past `markAppReady`, and the first painted frame has no dismiss handler at all | BUILD NOW | **160** |
+| DESIGN-006 | 2026-09-09 | IMPLEMENTED | The athlete design pass re-typed the design system by hand — 65 hex literals, 60 exact token duplicates; repoint them, add a type scale with an 11 px floor, and lint the page | BUILD NOW | 80 |
+| WOW-003 | 2026-09-09 | PROPOSED | The Callback — make a focus point a durable thread the summariser closes out of the coach's own next recording, paid off in the coach's real voice | PROTOTYPE | 24 |
+| DATA-007 | 2026-09-09 | PROPOSED | STRETCH — Ten Seconds Back: the athlete answers the session, three taps plus an optional 10 s voice reply | TEST | — |
+| UX-007 | 2026-09-09 | PROPOSED | STRETCH — delete the splash by deleting the wait: a server-rendered `/record` as the PWA `start_url` | TEST | — |
+| DESIGN-007 | 2026-09-09 | PROPOSED | STRETCH — an ink-native athlete app, keeping the promise the entrance spends 1.24 s making | TEST | — |
+
+**The convergence this round:** three of four agents independently described the
+same structural fact — **CoachVoice is a one-way pipe and nothing in it ever
+closes a loop.** DATA-006 (the athlete gives five numbers a day and gets nothing
+back), WOW-003 (the coach says something and never learns whether it landed) and
+DATA-007 (the athlete cannot answer a session at all) are one thesis at three
+sizes. DATA-006 is its one-day version; WOW-003 is its three-week version.
+
+**A second, narrower convergence:** DATA-006 and DESIGN-006 both land on
+`app/athlete/page.tsx:755` for unrelated reasons — the "Trends →" button is both
+broken (navigates to a blank form) and unreadable (2.47:1 at 10.5 px).
+
+**A disagreement left unresolved:** UX-006 wants the entrance to shrink (3.4 s of
+every cold start); DESIGN-007 wants the identity it establishes to extend into the
+app. Both defensible, not reconcilable by the orchestrator.
+
+**#1 today:** DATA-006 — chosen over UX-006 on judgement, not arithmetic (they tie
+at 160). UX-006 fixes something slow; DATA-006 fixes something untrue, and it is
+the loop the safeguarding alert's data quality rests on. **Recommended: build both
+in the same sitting** — disjoint files, both Effort 2, neither blocks the other.
+
+**#1 ambition:** WOW-003, via the `/dev/callback` one-day test. DESIGN-007 and
+UX-007 are each one prerequisite away from being decidable (a timestamp query; a
+sign-off to touch the protected recording path), so neither was ready to be picked.
+
+### Round 4 — what was built, 2026-09-09
+
+All three BUILD NOW items shipped the same day, plus the defects the
+orchestrator found while verifying them. Validated by `npx tsc --noEmit`,
+`npm run lint` and `npm run build` (the repo has no test suite).
+
+| ID | Built as |
+|---|---|
+| DATA-006 | Wellness fetch `days=1` -> `days=21` and moved onto `apiJson`; `wellnessHistory` state; a real `onSaved` that refetches so the home card flips without a reload; `WellnessSubmit` takes an `initial` prop and prefills, with "Change your answers" / "Save changes" copy; new `WellnessHistory` component above the form — a 14-day strip plus one deterministically computed sentence; the privacy line under the check-in button replaced with what the API actually does |
+| UX-006 | `FLOOR_MS` 2939 -> 900 and `leaveWhenReady` now pulls the *timeline* forward to `COLLAPSE_AT` instead of waiting for it; the pointerdown escape moved into `BOOT_JS` so it exists from the first painted frame; cooldown 15s -> 30min; dead `COOLDOWN_MS` and `SPLASH_LAST_KEY` deleted; the reduced-motion branch now leaves as soon as the app is ready instead of holding the old floor |
+| DESIGN-006 | All 65 hex literals in `app/athlete/page.tsx` repointed at tokens (zero remain); six type-scale tokens `--fs-1..6` with an 11px floor, with 76 declarations migrated and every sub-11px site gone; `--coach-on-light`, `--coach-border`, `--warning-border`, `--surface-2` added; `.badge-coach` fixed too; **the `no-restricted-syntax` lint rule is live**, scoped to `app/athlete/**` |
+
+**Measured effect of UX-006**, time until the app is touchable on a cold start:
+
+| App ready at | Before | After |
+|---|---|---|
+| 100ms | 2939ms | **900ms** (the floor) |
+| 700ms (typical) | 2939ms | **1420ms** |
+| 2500ms | 2939ms | **2809ms** |
+| reduced motion, 700ms | 2939ms | **900ms** |
+| never (ceiling) | 6060ms | 6060ms |
+
+The splash now shortens as the app gets faster, which is the property it was
+missing — and a tap during the boot shell dismisses it outright rather than
+being swallowed.
+
+**Also fixed, beyond the three recommendations:**
+
+- `--primary` as text at the three athlete-page sites (3.65:1, failing 1.4.3)
+  -> `--primary-dark` (5.94:1). DESIGN-006 deliberately left these to avoid two
+  colour decisions in one review; with the lint rule in they were adjacent.
+  **Seven sites remain elsewhere in the repo.**
+- The PWA zoom lock (`maximumScale: 1`, `userScalable: false`) removed —
+  DESIGN-006's "What I'd challenge". `globals.css:590` already handles the iOS
+  form-field auto-zoom this was presumably for, and WCAG 2.2 SC 1.4.4 needs
+  200%.
+- `WellnessSubmit` moved off raw `fetch` onto `apiMutate` (its `await res.json()`
+  could throw on a non-JSON error body, and `new Error(j.error)` could be
+  `Error(undefined)`).
+- The `ColdStartSplash` comment claiming 15 sports corrected to 14.
+
+**The lint rule was verified to actually fire**, not merely to pass: reinserting
+a single `#9BA29B` produces `no-restricted-syntax` at that line, and removing it
+returns the file to zero violations. A guard that matches nothing is worse than
+no guard.
+
+**Not built, and why.** The three STRETCH items (DATA-007, UX-007, DESIGN-007)
+and WOW-003 are bets, not fixes: two are gated on a decision or a measurement
+that has not happened, one needs sign-off to touch the recording path CLAUDE.md
+protects, and WOW-003's own recommendation is to spend one day on
+`/dev/callback` before committing to it. The three "What I'd cut" proposals were
+also left — cutting the composite wellness score, the cold-start montage and the
+NEWEST badge are product decisions for Max, not defects.
+
+**Orchestrator corrections to agent output:** UX-006 computed its timings from
+`SPORTS.length = 15`; the array has 14, so the floor is 2,939 ms and the minimum
+on screen 3,399 ms (not 3,069 / 3,529). Every DESIGN-006 contrast ratio and hex
+count reproduced exactly. Full detail in the report's CORRECTIONS section.
+
 ## Not yet reviewed
 
 Real observations, recorded so they are not lost, but **not** agent proposals.
@@ -121,6 +223,13 @@ An agent may pick any of these up as its own recommendation on a later run.
 | ~~2026-09-05 setup~~ | ~~Design~~ | **DONE 2026-09-05** — token raised to `#6B736D` (4.61:1 on `--bg`, 4.89:1 on `--card`); 23 hardcoded `#9BA29B` instances repointed at the token. |
 | ~~2026-09-06 synthesis~~ | ~~Correctness~~ | **DONE 2026-09-06** — quotation marks removed with UX-002. |
 | 2026-09-06 DESIGN-002 | Design | `--primary` is used as **text** at 10 sites at 3.24–3.65:1, all failing 1.4.3. DESIGN-002 fixes two; eight remain. |
+| 2026-09-09 orchestrator | Correctness | Raw `fetch` with no `res.ok` check at `app/athlete/page.tsx:256` (the wellness mount fetch) — a live violation of checklist item 1 in `CLAUDE.md`, which exists because a non-2xx silently becomes empty data. Found while verifying DATA-006; folded into that build outline. |
+| 2026-09-09 orchestrator | Dead code | `COOLDOWN_MS` and `SPLASH_LAST_KEY` (`ColdStartSplash.tsx:45,51`) are declared and never used — the live cooldown and storage key are literals in `app/layout.tsx:121-123`. `npm run lint` does not flag either. |
+| 2026-09-09 DESIGN-006 | Accessibility | The installed PWA disables zoom entirely (`app/layout.tsx:15-16` `maximumScale: 1`, `userScalable: false`, manifest `display: standalone`) while carrying 66 sites of sub-11 px text — no mechanism by which a user can enlarge any of it. WCAG 2.2 SC 1.4.4 requires 200%. `globals.css:590` already solves the iOS form-field auto-zoom this was presumably for. Two-line fix. Raised as a challenge, never proposed against. |
+| 2026-09-09 DESIGN-006 | Design | `--coach-color` has no safe use as text on its own light tint: 3.56:1 on `--coach-light` versus 4.60:1 on white. A gap in the token set rather than a mistake on one line. `--coach-on-light: #8E3F27` (5.62:1) is the proposed fill. |
+| 2026-09-09 build | Correctness | **The app contradicts itself about which way soreness runs.** `WELLNESS_METRICS` marks `soreness` and `stress` `inverted: true`, and every scoring function (`metricColor`, `metricTint`, `scoreLabel`, `overallWellnessScore`) computes `6 - raw` — so a raw 5 scores as *bad*. But the form's own hint tells the athlete "1 = very sore, 5 = no soreness", i.e. raw 5 is *good*, and PROJECT-STATE records the same reading. One of the two is wrong. This decides the colour of a dot, the coach's alert threshold and whether a caretaker email fires, so it is not cosmetic. Not fixed in the DATA-006 build: flipping it either way changes alerting behaviour and needs a decision, not a guess. The new athlete-facing sentence sidesteps it by naming only `energy` and `sleep_q`. |
+| 2026-09-09 build | Process | `npm run lint` reports **135 pre-existing errors** across 53 files (mostly `no-explicit-any` in API routes). CLAUDE.md lists lint as a mandatory pre-commit gate, but a gate that has been red for a long time cannot fail a bad commit — which is part of why the `#9BA29B` regression got in. The DESIGN-006 rule works only because it is scoped to a file with zero violations. |
+| 2026-09-09 orchestrator | Process | PROJECT-STATE is 316 lines against its own ~250-line budget after today's refresh, and wants a deliberate trim rather than further growth. |
 | 2026-09-06 DATA+UX | Product | **STILL OPEN — the biggest thing this review found that nobody has acted on.** Both agents independently challenged the wellness loop: the coach gets one flattened mean with no indication which metric caused it, and the athlete gets nothing back at all for five taps a day. Neither made it their primary. The athlete's "See your trends →" still opens a blank form; `WellnessGraph` already exists and takes `athleteId`, so showing it there is close to a one-line change — but whether an athlete should see their own trends is a product decision, not a bug fix, so it was left for Max. |
 | ~~2026-09-06 UX-002~~ | ~~UX~~ | **DONE 2026-09-06** — wired to the messages tab, dot removed. |
 | ~~2026-09-06 ALL FOUR~~ | ~~Defect~~ | **DONE 2026-09-06.** A signed-in user was shown the login form on every cold start. `/` is in the proxy matcher but no protected-route list (`proxy.ts:13-17,93`), `app/page.tsx` has no session check at all, and the PWA `start_url` is `/`. The middleware holds the user object at the edge and discards it. Verified. |
@@ -142,17 +251,23 @@ has changed. The orchestrator bumps these when it files a report.
 | Area | Reviews since last primary |
 |---|---|
 | Ambition / wow factor | 0 |
-| Recorder / QuickSessionModal | 0 |
-| Session save + summariser | 0 |
+| Entrance / splash / boot shell | 0 |
 | Wellness (submit, graph, alerts) | 0 |
 | Athlete home + sessions | 0 |
-| Session page `/sessions/[id]` | 1 |
-| Coach dashboard home | 1 |
-| Athlete profile `/athletes/[id]` | 1 |
-| Messaging | 1 |
-| Calendar / DayWheel | 1 |
-| Groups / squads | 1 |
-| Onboarding: signup, join, invite | 1 |
-| Sign-in `/` | 0 |
-| PDF reports | 1 |
-| Video annotation | 1 |
+| Recorder / QuickSessionModal | 1 |
+| Session save + summariser | 1 |
+| Sign-in `/` | 1 |
+| Session page `/sessions/[id]` | 2 |
+| Coach dashboard home | 2 |
+| Athlete profile `/athletes/[id]` | 2 |
+| Messaging | 2 |
+| Calendar / DayWheel | 2 |
+| Groups / squads | 2 |
+| Onboarding: signup, join, invite | 2 |
+| PDF reports | 2 |
+| Video annotation | 2 |
+
+Areas at 2 after this round. Nothing has hit the 4+ audit trigger yet, but
+messaging, calendar, groups, PDF and video annotation have now gone four rounds
+without being anyone's primary subject and are the obvious candidates for the
+next deliberate untouched-area audit.

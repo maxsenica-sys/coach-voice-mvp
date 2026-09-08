@@ -130,3 +130,49 @@ Outcome: APPROVED and BUILT. `makeQuickSummary` now returns `{summary, next}`; t
 side orders by `session_date` (`app/api/sessions/route.ts:126-128`,
 `app/api/sessions/all/route.ts:50-52`). Since `020fc70` a backdated session appears at the
 top of the athlete's list as if it happened tonight. This is a bug for whoever owns it.
+
+---
+
+## 2026-09-09 — DATA-006 · the athlete's wellness return loop
+
+**Proposed.** Priority 160, BUILD NOW. **Chosen as #1 today by the orchestrator**,
+over a UX recommendation that tied on score.
+
+The athlete submits five numbers a day and the product returns nothing. Verified:
+"Trends →" (`app/athlete/page.tsx:755-756`) only calls `setTab('wellness')`, and
+that tab renders exactly `<WellnessSubmit onSaved={() => {}} />` (`:1200-1202`) —
+no history, no chart. The form does not prefill (`WellnessSubmit.tsx:15`) and gates
+on all five (`:27`), so an athlete who checked in at 8am is shown five empty rows
+at 6pm. `setTodayWellness` has one call site (`:253-263`, deps `[athleteId]`), so
+the home card never updates in-session. `WellnessGraph` is coach-only
+(`app/athletes/[id]/page.tsx:1075`); RLS has always allowed the athlete to read
+their own rows (`017_rls_initplan_and_roles.sql:223-226`). The data, the permission
+and the API all exist — only the screen is missing.
+
+Recommended: `days=1` → `days=21`, a real `onSaved`, prefill, and a 14-day dot
+strip with one deterministically computed sentence. Explicitly **rejected** mounting
+`WellnessGraph` on the athlete side despite the register calling it a one-line
+change: five inverted ordinal series in a 520×150 box is unreadable on a phone by a
+14-year-old. Restricted the flagged metric to energy/sleep/soreness — telling an
+unaccompanied minor their mood is their worst number is a clinical statement, and
+the coach channel already exists for it.
+
+Evidence: Neupert, Cotterill & Jobson (IJSPP 2019) — non-compliance with self-report
+monitoring is driven by absence of feedback and perceived non-use, and produces
+dishonest rather than merely missing data. The return loop is the alert's data
+quality, not a nice-to-have on top of it.
+
+**Orchestrator verified every claim here against the code.** It also found the mount
+fetch is a raw `fetch().then(r => r.json())` with no `res.ok` check — a live
+`CLAUDE.md` checklist-1 violation — and folded `apiJson` into the build outline.
+
+**DATA-007 (STRETCH, TEST)** — "Ten Seconds Back": the athlete answers the session
+with three taps plus an optional 10s voice reply. First athlete-authored data in the
+product. Touches the protected recording path, so it needs explicit approval; test
+the tap-only version first.
+
+**Challenged:** the daily check-in cadence — this reverses my own 2026-09-05
+position that the check-in "earns its place as it stands". Ask on training days and
+the morning after, not on an empty Sunday.
+**Cut:** the composite `overallWellnessScore` — a mean of five non-commensurate
+ordinal items, two inverted, that lets 5/5 energy cancel 1/5 soreness.

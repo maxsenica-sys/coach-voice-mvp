@@ -181,3 +181,60 @@ this agent numbered itself DESIGN-003 and declined to re-propose either. Correct
 register now holds agent output only, and unreviewed observations sit in a separate
 section. Both seeded items (`--text-muted` at 2.47:1; the sign-in page's separate visual
 identity) are there, unproposed, and available to pick up.
+
+---
+
+## 2026-09-09 — DESIGN-006 · the design pass re-typed the system by hand
+
+**Proposed.** Priority 80, BUILD NOW.
+
+The 2026-09-07 athlete design pass (`199761b`) did not use the token layer — it
+copied it. `app/athlete/page.tsx` holds **65 hex literals, 60 of them
+byte-for-byte duplicates of existing tokens** (`#5D6661`×12, `#1F2421`×12,
+`#B55C3E`×8, `#9BA29B`×8, `#E3DED2`×6, …). Repo-wide: 96 in
+`app/dashboard/page.tsx`, 177 across the four page files. All counts verified by
+the orchestrator.
+
+The eight `#9BA29B` at 2.47:1 are the symptom PROJECT-STATE already recorded.
+**The finding is the mechanism** — a hand-copied value forks silently and nothing
+catches it. Three unrecorded failures arrived through the same door:
+
+| Site | Pair | Ratio |
+|---|---|---|
+| `:861-862` "Take into next session", 9px | `#B55C3E` on `--coach-light` | **3.56:1 — fails 1.4.3** |
+| `:1010`, `:1021` (for contrast) | `#B55C3E` on white | 4.60:1 passes |
+| `:922` empty-state icon | `#C4C9C2` on `--card` | 1.68:1 |
+
+The 3.56:1 one is the single forward-looking line the product has — what DATA-001
+was built to produce — placed in the one spot on the page where `--coach-color`
+does not clear AA.
+
+Also: **no font-size tokens exist at all.** 361 inline `fontSize` declarations
+across 26 distinct values; **66 below 11px**, 22 of them on `/athlete`.
+
+Recommended, in order: a type scale with an 11px floor · repoint the 60 duplicates ·
+add `--coach-on-light: #8E3F27` (5.62:1, a value already in the file at `:1488`) ·
+**and a `no-restricted-syntax` lint rule banning hex literals, scoped to the athlete
+page and widened one page at a time.** The rule is the part worth fighting for —
+everything else is 90 mechanical edits any pass would eventually make; the rule is
+what makes this the last time this recommendation is written.
+
+Kept the evidence/opinion split honest: the 11px floor is **opinion** dressed in
+HIG/Material citations (neither is a conformance requirement, no WCAG SC sets an
+absolute size) — what would change my mind is watching a teenager read the home card
+in daylight without squinting, which nobody has done.
+
+Orchestrator reproduced every ratio and count exactly, including against the recorded
+table. Deliberately left `--primary`-as-text (3.65:1, 10 sites) alone — two colour
+decisions in one review is one too many, and the lint rule surfaces them next.
+
+**DESIGN-007 (STRETCH, TEST)** — an ink-native `/athlete`. `--on-ink` on
+`--ink-base` is 13.40:1 and composited `--on-ink-2` 7.60:1, so secondary text gains
+2 points where the app keeps failing. Risk: `--coach-color` is 3.43:1 on ink and
+must be re-derived. Gated on one unrun query — when athletes actually open the app.
+
+**Challenged:** the PWA disables zoom entirely (`layout.tsx:15-16`,
+`display: standalone`) with 66 sites of sub-11px text — WCAG 2.2 SC 1.4.4, and
+`globals.css:590` already solves the iOS auto-zoom it was for. Two-line fix.
+**Cut:** the "NEWEST" badge (`:831-832`) — the smallest type in the app, spent
+saying the first item in a reverse-chronological list is the newest.

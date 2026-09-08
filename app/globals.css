@@ -7,6 +7,7 @@
   --card:         #FFFFFF;
   --border:       #E3DED2;
   --border-soft:  #EFEAE0;
+  --surface-2:    #F4F1EB;   /* tinted tile behind an icon or step number */
 
   /* Primary — sage green (general interactive) */
   --primary:      #6F8E6B;
@@ -16,6 +17,16 @@
   /* Coach — warm rust / stamp */
   --coach-color:  #B55C3E;
   --coach-light:  #F4DED3;
+  /* --coach-color is safe as text on white (4.60:1) but NOT on its own light
+     tint: #B55C3E on --coach-light measures 3.56:1, failing 1.4.3. That gap in
+     the token set is why the one forward-looking line the product produces —
+     "TAKE INTO NEXT SESSION" on the athlete's home card — shipped at 9px and
+     3.56:1, and why .badge-coach failed too. #8E3F27 is 5.62:1 on --coach-light
+     and 7.27:1 on white, and is not a new hue: it was already in the app as
+     the dark stop of the athlete wellness FAB gradient. Use this, not
+     --coach-color, for rust text on any rust-tinted ground. */
+  --coach-on-light: #8E3F27;
+  --coach-border: #EBCBBC;   /* decorative hairline on --coach-light */
 
   /* Athlete — sage (mirrors primary) */
   --athlete-color:#6F8E6B;
@@ -51,6 +62,7 @@
   --danger-light: #F4DED3;
   --warning:      #B8883A;
   --warning-light:#F6E9CC;
+  --warning-border:#E4CE9A;  /* decorative hairline on --warning-light */
   --success:      #5D8257;
   --success-light:#E6ECDF;
 
@@ -73,6 +85,28 @@
   --font-display: var(--font-newsreader), 'Georgia', serif;
   --font-sans:    var(--font-jakarta), system-ui, -apple-system, sans-serif;
   --font-mono:    var(--font-jetbrains), 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Type scale — the first size tokens this app has had.
+     Before these, styling was 361 inline fontSize declarations across 26
+     distinct values (8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13 …), of
+     which 66 were below 11px. Six steps replace all of it.
+
+     --fs-1 is a floor, and it is deliberately 11px rather than 9. Apple HIG's
+     smallest built-in style is Caption 2 at 11pt and Material 3's smallest
+     role is labelSmall at 11sp; neither is a conformance requirement, so this
+     is a judgement, not a standard. The judgement: a product whose stated feel
+     is clean and deliberate should not ship 8.5px uppercase to a fifteen-year-
+     old on a bus, and weight and letter-spacing are not substitutes for size —
+     at 9px, fontWeight 800 thickens strokes into each other.
+
+     If a label does not fit at --fs-1, the label is too long. Do not add a
+     smaller step. */
+  --fs-1:         11px;  /* eyebrows, badges, micro-labels, nav */
+  --fs-2:         12px;  /* secondary/meta */
+  --fs-3:         13px;  /* body */
+  --fs-4:         16px;  /* card titles, lead */
+  --fs-5:         19px;  /* section headings */
+  --fs-6:         30px;  /* display */
 
   /* Entrance — the ink ground the intro resolves into.
      Not a new colour: #1F2421 is --text, and this is the exact gradient the
@@ -328,7 +362,7 @@ textarea.input { resize: vertical; min-height: 80px; }
 }
 .badge-active   { background: var(--success-light); color: var(--success);       border: 1px solid #CBD7C0; }
 .badge-invited  { background: var(--warning-light); color: #8B6621;               border: 1px solid #E4CE9A; }
-.badge-coach    { background: var(--coach-light);   color: var(--coach-color);   border: 1px solid #EBCBBC; }
+.badge-coach    { background: var(--coach-light);   color: var(--coach-on-light); border: 1px solid #EBCBBC; }
 .badge-athlete  { background: var(--athlete-light); color: var(--athlete-color); border: 1px solid #CBD7C0; }
 .badge-session  { background: var(--primary-light); color: var(--primary);       border: 1px solid #CBD7C0; }
 .badge-homework { background: var(--warning-light); color: #8B6621;               border: 1px solid #E4CE9A; }

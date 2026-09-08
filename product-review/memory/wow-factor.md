@@ -127,3 +127,55 @@ Outcome: PROTOTYPE BUILT the same day at /dev/hearit (coach-only, added to the p
 3. The athlete's first authored artefact: a 15-second voice reply on a focus point, sealed
    until the coach next opens the recorder for them.
 
+---
+
+## 2026-09-09 — WOW-003 · The Callback
+
+**Proposed, PROTOTYPE.** Priority 24 — and it is meant to lose the arithmetic.
+**Chosen as #1 ambition by the orchestrator.**
+
+The gap: CoachVoice has no memory. A `NEXT:` line is written to `focus_points`
+(`app/api/sessions/route.ts:242,256`), rendered twice, and then dies.
+`QuickSessionModal` fetches no prior session data at all. Nobody ever finds out
+whether what the coach said landed. So the honest description is "it turns my talking
+into notes for the kid" — a transcription utility, and CoachNow already does that at
+a million users.
+
+The idea: make a focus point a durable thread. `sessions.segments jsonb` (022) +
+`focus_threads` (023); teach `makeQuickSummary` to receive 1–3 open threads and
+return `TOUCHED: <id> | landed|progress|struggling | <verbatim sentence>`. **The
+verbatim requirement is the mechanism, not a style rule** — a quote that is not a
+substring of the transcript is dropped (fabrication guard), and one that is maps
+straight onto a Whisper segment and therefore an audio offset. No alignment work.
+Payoff: after Save the coach lands on the Callback — three to five dated rows of her
+*own voice*, each playable, all about one thing. One button: send it.
+
+Moat: everyone else in this market competes on video, which requires the coach to
+deliberately shoot and tag. Nobody threads the spoken cue, because nobody else has a
+per-athlete longitudinal voice corpus accruing as a byproduct of normal behaviour.
+And it backfills from `transcript` rows already in Postgres — full on day one.
+
+Safeguarding: my first version was a shareable vertical video. **Killed outright on
+the first hard limit** — a minor's name plus an adult's assessment of her performance,
+pushed to a public surface by the minor herself. What survives is email-only to
+athlete + registered caretakers, coach-gated, athlete's own content only, zero
+wellness data, no streaks, adults carry the virality. `struggling` is coach-only and
+phrased as a note about the coaching, never about the kid.
+
+**Cheapest version: `/dev/callback`, one day.** `/dev` auth already exists from
+WOW-001. One gpt-4o-mini call over one real athlete's existing transcripts, text only,
+no schema, no writes. It answers the only question that gates the build: does the
+model find a real thread, or invent a flattering one? Then show one coach her own
+athlete. **The test is not whether she likes it — it is whether she asks to send it to
+the athlete's mum.** If she doesn't, close this rather than backlog it.
+
+Absorbs rather than competes with the register: DATA-002 (128, unbuilt) is its step 1;
+WOW-001's segment persistence is its dependency; DATA-003 is aiming at the same
+territory and thinking too small — a season summary is a document nobody asked for,
+while closing *one* loop is an event.
+
+**The orchestrator's synthesis put this and DATA-006 on the same thesis** — CoachVoice
+is a one-way pipe and nothing in it closes a loop — with DATA-006 as the one-day
+version and this as the three-week version. Worth remembering: the strongest case for
+an ambitious idea here was that a conservative agent independently found the same
+structural fact on a different screen.
