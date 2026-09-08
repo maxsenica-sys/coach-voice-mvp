@@ -32,6 +32,7 @@
  */
 
 import { spawn, execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import net from 'node:net'
@@ -87,13 +88,26 @@ async function waitForServer(base, ms = 90_000) {
   return false
 }
 
+/**
+ * An explicit executablePath ONLY when playwright cannot find the browser
+ * itself. Returning null is the good case: it means "let playwright launch its
+ * own browser its own way".
+ *
+ * This used to return `playwrightChromium.executablePath()` whenever that file
+ * existed, which is almost always — so the launch nearly always went through
+ * the explicit path. On Windows that fails outright with `spawn UNKNOWN`, even
+ * though the string is byte-for-byte the path playwright would have used, and
+ * even though launching with no executablePath at all works fine on the same
+ * machine. The override was doing nothing except breaking one platform.
+ *
+ * The fallback below is the case it was actually written for: a sandboxed CI
+ * image that ships browsers under PLAYWRIGHT_BROWSERS_PATH in a versioned
+ * directory playwright's own resolver may not match.
+ */
 function findChromium(playwrightChromium) {
   try {
-    const p = playwrightChromium.executablePath()
-    if (existsSync(p)) return p
+    if (existsSync(playwrightChromium.executablePath())) return null
   } catch { /* fall through to the shared install below */ }
-  // The sandboxed CI image ships browsers under PLAYWRIGHT_BROWSERS_PATH with a
-  // versioned directory name that playwright's own resolver may not match.
   const base = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers'
   if (!existsSync(base)) return null
   for (const d of readdirSync(base)) {
@@ -364,6 +378,39 @@ async function assertBoot(base) {
     const notApp = await shellState(await browser.newContext(), '/signup')
     check('a non-app page arms nothing', !notApp.boot && !notApp.intro && notApp.display === 'none', JSON.stringify(notApp))
 
+    /* ── the way out of the first painted frame ──
+     *
+     * The shell is fixed, full-bleed and z-index 9000, and it is on screen
+     * before any of the app's JavaScript has run. ColdStartSplash attaches a
+     * pointerdown handler that dismisses it — but only once React has
+     * hydrated, which is the whole megabyte this shell exists to cover. So for
+     * the entire window that matters, a tap landed on an inert div and was
+     * thrown away: the user pressed the screen, nothing happened, and they
+     * pressed it again.
+     *
+     * The escape now lives in the inline pre-paint script, so it exists from
+     * the first frame. This check is deliberately hostile to that fix: it taps
+     * without ever waiting for hydration or for the React splash to mount. If
+     * the handler goes back to being attached in the component, this fails. */
+    const escCtx = await browser.newContext()
+    const esc = await escCtx.newPage()
+    await esc.goto(base + '/?splash=1', { waitUntil: 'commit' })
+    await esc.waitForSelector('#cv-boot', { state: 'attached' })
+    const armed = await esc.evaluate(() => document.documentElement.hasAttribute('data-boot'))
+    await esc.mouse.down()
+    await esc.mouse.up()
+    const afterTap = await esc.evaluate(() => ({
+      boot: document.documentElement.hasAttribute('data-boot'),
+      display: getComputedStyle(document.getElementById('cv-boot')).display,
+    }))
+    check('the boot shell arms before hydration', armed)
+    check(
+      'one tap on the first painted frame dismisses the shell',
+      !afterTap.boot && afterTap.display === 'none',
+      JSON.stringify(afterTap),
+    )
+    await escCtx.close()
+
     /* ── nothing broken on the way in ── */
     heading('Console and network on "/"')
     const clean = await browser.newContext()
@@ -383,11 +430,28 @@ async function assertBoot(base) {
 }
 
 /* ── main ──────────────────────────────────────────────────────────────────*/
+// Run Next through node against its own entrypoint rather than through `npx`.
+//
+// `npx` cannot be spawned on Windows: there is no extensionless `npx` for the
+// OS to exec (ENOENT), and reaching for `npx.cmd` instead trades that for
+// EINVAL, because current Node refuses to execFile/spawn a .cmd without
+// `shell: true`. Either way the harness dies before a single check runs and
+// reports "1 of 1 checks failed" for a reason that has nothing to do with the
+// app. CI is ubuntu-latest so this never surfaced there — but the person most
+// likely to run verify:boot by hand is the one who just changed startup, and
+// CLAUDE.md asks them to run it locally before opening the PR, so a harness
+// that only works on Linux is a gate that gets skipped.
+//
+// Resolving the binary is also more correct than `npx` was: it runs the `next`
+// this project installed, with no PATH lookup and no shell to quote through.
+const require = createRequire(import.meta.url)
+const NEXT_BIN = require.resolve('next/dist/bin/next')
+
 let server
 try {
   if (FORCE_BUILD || !existsSync(join(NEXT_DIR, 'server', 'app'))) {
     console.log('Building (production)…')
-    execFileSync('npx', ['next', 'build'], { stdio: 'inherit', env: { ...process.env, ...BUILD_ENV } })
+    execFileSync(process.execPath, [NEXT_BIN, 'build'], { stdio: 'inherit', env: { ...process.env, ...BUILD_ENV } })
   } else {
     console.log('Using the existing .next build (pass --build to rebuild).')
   }
@@ -396,7 +460,7 @@ try {
 
   const port = await freePort()
   const base = `http://127.0.0.1:${port}`
-  server = spawn('npx', ['next', 'start', '-p', String(port)], {
+  server = spawn(process.execPath, [NEXT_BIN, 'start', '-p', String(port)], {
     env: { ...process.env, ...BUILD_ENV }, stdio: 'ignore', detached: true,
   })
   if (!(await waitForServer(base))) throw new Error(`server never came up on ${base}`)
