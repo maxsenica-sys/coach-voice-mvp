@@ -111,6 +111,19 @@ export interface WellnessCheckin {
   soreness: number | null
   stress: number | null
   notes: string | null
+  /**
+   * The soreness follow-up, added 2026-09-09. Both nullable and both absent
+   * for every row written before then.
+   *
+   * `soreness_score` is a 0-10 Numeric Rating Scale where **more is worse** —
+   * the opposite direction to `soreness` above, which runs 5 = no soreness
+   * like every other daily metric. They answer different questions and must
+   * never be averaged together. None of the scoring functions in this file
+   * touch `soreness_score`, and that is deliberate.
+   */
+  soreness_score?: number | null
+  /** Region ids from lib/body-map.ts. Only ever set above the map threshold. */
+  soreness_areas?: string[] | null
 }
 
 /** Average of each metric's normalised (inverted metrics flipped) 1-5 value. */

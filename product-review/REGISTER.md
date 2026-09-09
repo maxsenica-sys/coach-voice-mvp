@@ -401,6 +401,56 @@ detection or FormData construction — and it cannot block or alter a save. The
 prompt never pre-fills the transcript and never gates the recording: a coach who
 wants to talk about something else just talks about something else.
 
+### Round 8 — 2026-09-09 · injury tracking and the body map
+
+Max, in his own words: *"can you do the injury one and a way for athletes to
+select a body? imagine a full selectable skeletal muscle system that can be
+selected based on soreness, ONLY if they tick yes. if no, then no need. Also a
+scale for them to select, if soreness is above a 4 then the image pops up."*
+
+| Built | What |
+|---|---|
+| **Injuries** | Migration `025` — a real object with a status, a start date and an expected return, owned by the coach. `INJURY_STATUSES` records **availability**, not medicine: Out / Modified / Cleared. Coach panel on the athlete profile; the athlete sees the same facts on their home, read-only |
+| **The body map** | `lib/body-map.ts` (regions as geometry data, mirrored so the two sides cannot drift) and `app/components/BodyMap.tsx` — front and back, every region a real button with `aria-pressed` and a side-correct label |
+| **The gated soreness flow** | Migration `026`. Sore? → 0-10 → the map, only from 4 up. On the daily check-in |
+
+**The scale decision, because this project has been bitten by it before.** The
+existing `soreness` metric runs **5 = no soreness**, like every other daily
+metric, and an `inverted` flag once added on top of that ran the safeguarding
+alert backwards for weeks. "Above a 4" only makes sense on a more-is-worse
+scale, so the follow-up got its own: a 0-10 Numeric Rating Scale, which is what
+physios and athletes already use and where 4 is the conventional mild/moderate
+boundary. **The two are attached to different questions and are never averaged.**
+None of the scoring functions in `lib/wellness-config.ts` touch
+`soreness_score`, deliberately. Both migrations say so in a comment, and so
+does the type.
+
+**The gating is the feature, not the map.** An athlete with nothing wrong taps
+"No" and is finished. Mild soreness gets a number and no map, because "where"
+is not worth asking when the answer changes nothing a coach would do. A body
+map shown to everyone every morning is a form, and forms get abandoned.
+
+**Sides are derived, never typed.** In a front view the shape on the viewer's
+left is the athlete's *right*; in a back view it is their left. `lib/body-map.ts`
+computes that from the view rather than trusting thirty hand-written labels,
+because telling a coach the wrong hamstring is the exact failure this is for.
+
+**What it refuses to be.** No diagnosis field, no treatment field, no free-text
+body description anywhere. `body_area` is validated against the region
+vocabulary server-side, so the table cannot accumulate a coach's guesses about
+what is wrong with a child's knee. The athlete can read their own record and
+never write it: the pressure on a young athlete to declare themselves fit is
+the whole reason injury tracking exists, and a button that let them clear
+themselves to play would hand that pressure a mechanism. Enforced twice — in
+the route and in the row-level policy.
+
+**Attendance** was approved in the same message and is **not** built here. It
+is the next one.
+
+**Judgement call, flagged.** This modifies `WellnessSubmit`, which `CLAUDE.md`
+lists as a protected component. The instruction to add a soreness follow-up to
+the daily check-in cannot be carried out anywhere else.
+
 ## Not yet reviewed
 
 Real observations, recorded so they are not lost, but **not** agent proposals.

@@ -23,6 +23,8 @@ import { formatSessionDate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import type { MessageRow, RsvpEvent } from '@/lib/api-types'
 import { SESSION_RESPONSES, type SessionResponse } from '@/lib/session-response'
+import { injuryStatusOption, openInjuries, type Injury } from '@/lib/injury'
+import { regionLabel } from '@/lib/body-map'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -302,6 +304,16 @@ export default function AthletePage() {
   const [transcripts, setTranscripts] = useState<Record<string, string | null>>({})
   const [transcriptBusy, setTranscriptBusy] = useState<string | null>(null)
 
+  /**
+   * What the coach has recorded about this athlete's availability.
+   *
+   * Read-only here, and shown without being asked for. An athlete finding out
+   * from a team sheet that they have been marked unavailable is the failure
+   * the injury feature exists to prevent, so the record has to be visible to
+   * the person it is about.
+   */
+  const [injuries, setInjuries] = useState<Injury[]>([])
+
   // Messaging (athlete → coach)
   const [messages, setMessages] = useState<MessageRow[]>([])
   const [msgText, setMsgText] = useState('')
@@ -431,6 +443,23 @@ export default function AthletePage() {
   // It also used a raw `fetch().then(r => r.json())` with no `res.ok` check:
   // CLAUDE.md checklist item 1, the bug class where a non-2xx silently becomes
   // empty data and the UI reports it as "no check-ins yet".
+  const loadInjuries = useCallback(async () => {
+    if (!athleteId) return
+    try {
+      const j = await apiJson<{ injuries?: Injury[] }>(
+        `/api/injuries?athlete_id=${athleteId}`,
+        { cache: 'no-store' },
+      )
+      setInjuries(j.injuries ?? [])
+    } catch {
+      // Not worth an error banner on the athlete's home: the panel simply
+      // does not render, which is the same as having no injuries logged.
+      setInjuries([])
+    }
+  }, [athleteId])
+
+  useEffect(() => { void loadInjuries() }, [loadInjuries])
+
   const loadWellness = useCallback(async () => {
     if (!athleteId) return
     try {
@@ -1046,6 +1075,55 @@ export default function AthletePage() {
                 )}
               </div>
             )}
+
+            {/* ── Your availability ──
+                Only when there is something open. It states the coach's
+                decision plainly rather than softening it, because an athlete
+                who has been marked out should not have to work that out from a
+                euphemism — and it never uses the word injury as a verdict on
+                them, only on a body part. */}
+            {(() => {
+              const open = openInjuries(injuries)
+              if (open.length === 0) return null
+              return (
+                <div>
+                  <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 9 }}>
+                    Your availability
+                  </div>
+                  <div className="card" style={{ padding: '13px 15px' }}>
+                    {open.map((i, idx) => {
+                      const opt = injuryStatusOption(i.status)
+                      return (
+                        <div key={i.id} style={{ marginTop: idx === 0 ? 0 : 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)' }}>
+                              {regionLabel(i.body_area)}
+                            </span>
+                            {opt && (
+                              <span style={{
+                                padding: '3px 9px', borderRadius: 999,
+                                background: opt.tint, color: opt.color,
+                                fontSize: 'var(--fs-1)', fontWeight: 800,
+                              }}>
+                                {opt.meaning}
+                              </span>
+                            )}
+                          </div>
+                          {i.expected_return && (
+                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 4 }}>
+                              Your coach has you back around {i.expected_return}.
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                    <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
+                      Your coach set this. Talk to them if it does not match how you feel.
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* ── Training rhythm ──
                 Twelve weeks of work, so the athlete can see it accumulating.

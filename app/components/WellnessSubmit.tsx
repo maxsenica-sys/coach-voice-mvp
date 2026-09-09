@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { WELLNESS_METRICS, metricColor, metricTint } from '@/lib/wellness-config'
 import { apiMutate } from '@/lib/api-client'
+import BodyMap from '@/app/components/BodyMap'
+import { BODY_MAP_THRESHOLD, isBodyRegion } from '@/lib/body-map'
 
 /** Today's check-in, when there already is one. Shaped to accept a row
  *  straight from GET /api/wellness, where every metric is nullable. */
@@ -13,6 +15,9 @@ export interface WellnessEntry {
   soreness?: number | null
   stress?: number | null
   notes?: string | null
+  /** 0-10 Numeric Rating Scale, MORE IS WORSE. Not the same scale as `soreness`. */
+  soreness_score?: number | null
+  soreness_areas?: string[] | null
 }
 
 interface Props {
@@ -46,6 +51,32 @@ export default function WellnessSubmit({ athleteId, initial, onSaved }: Props) {
   // was part-way through changing.
   const [scores, setScores] = useState<Record<string, number>>(() => seedScores(initial))
   const [notes, setNotes] = useState(initial?.notes ?? '')
+
+  /**
+   * The soreness follow-up, in three steps that each unlock the next.
+   *
+   * Sore? -> how bad (0-10) -> where, but only from BODY_MAP_THRESHOLD up.
+   *
+   * The gating is the feature. An athlete with nothing wrong taps "No" and is
+   * finished; a body map shown to everyone every morning is a form, and forms
+   * get abandoned. Mild soreness gets a number and no map, because "where" is
+   * not worth asking when the answer changes nothing a coach would do.
+   *
+   * The 0-10 scale here runs the OPPOSITE way to the five metrics above, where
+   * 5 is always the good end. That is deliberate: this is the Numeric Rating
+   * Scale athletes and physios already use, and 4 is its conventional mild /
+   * moderate boundary. The two are never averaged — see migration 026.
+   */
+  const [sore, setSore] = useState<boolean | null>(() => {
+    if (initial?.soreness_score != null) return true
+    return null
+  })
+  const [soreScore, setSoreScore] = useState<number | null>(initial?.soreness_score ?? null)
+  const [soreAreas, setSoreAreas] = useState<string[]>(
+    () => (initial?.soreness_areas ?? []).filter(isBodyRegion),
+  )
+
+  const showBodyMap = sore === true && soreScore !== null && soreScore >= BODY_MAP_THRESHOLD
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -66,7 +97,18 @@ export default function WellnessSubmit({ athleteId, initial, onSaved }: Props) {
       await apiMutate('/api/wellness', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ athlete_id: athleteId, ...scores, notes: notes.trim() || null }),
+        body: JSON.stringify({
+          athlete_id: athleteId,
+          ...scores,
+          notes: notes.trim() || null,
+          // "No soreness" clears both fields rather than leaving yesterday's
+          // answer attached to today's row.
+          soreness_score: sore === true ? soreScore : null,
+          // Areas only travel when the map was actually shown. Below the
+          // threshold there is nothing to send, and a stale selection from a
+          // worse day must not ride along.
+          soreness_areas: showBodyMap && soreAreas.length ? soreAreas : null,
+        }),
       })
       setSaved(true)
       onSaved?.()
@@ -129,6 +171,120 @@ export default function WellnessSubmit({ athleteId, initial, onSaved }: Props) {
           </div>
         </div>
       ))}
+
+      {/* ── Soreness follow-up ──
+          Three steps, each unlocking the next, and every one of them skippable
+          by answering "No" at the top. See the note on the state above for why
+          the gate matters more than the map. */}
+      <div style={{
+        marginBottom: 16, padding: '13px 14px',
+        borderRadius: 'var(--radius-sm)', background: 'var(--bg)',
+        border: '1px solid var(--border-soft)',
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
+          Are you sore anywhere today?
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[
+            { v: false, label: 'No' },
+            { v: true, label: 'Yes' },
+          ].map((opt) => {
+            const on = sore === opt.v
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                aria-pressed={on}
+                onClick={() => {
+                  setSore(opt.v)
+                  setSaved(false)
+                  // Answering "No" clears the follow-up rather than hiding it,
+                  // so a mind changed twice cannot leave a stale body map
+                  // attached to a day the athlete said they were fine.
+                  if (!opt.v) { setSoreScore(null); setSoreAreas([]) }
+                }}
+                style={{
+                  flex: 1, minHeight: 44, borderRadius: 8,
+                  border: `1.5px solid ${on ? 'var(--primary-dark)' : 'var(--border)'}`,
+                  background: on ? 'var(--primary-light)' : 'var(--card)',
+                  color: on ? 'var(--primary-dark)' : 'var(--text-2)',
+                  fontFamily: 'inherit', fontSize: 15, fontWeight: on ? 800 : 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {sore === true && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+              How bad is it?
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, marginBottom: 8 }}>
+              0 is nothing, 10 is the worst it has been. Here more is worse — the
+              opposite of the five questions above.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(11, 1fr)', gap: 3 }}>
+              {Array.from({ length: 11 }, (_, v) => {
+                const on = soreScore === v
+                const bad = v >= BODY_MAP_THRESHOLD
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={on}
+                    aria-label={`${v} out of 10`}
+                    onClick={() => {
+                      setSoreScore(v)
+                      setSaved(false)
+                      // Dropping back below the threshold discards the areas:
+                      // they were an answer to a question no longer being asked.
+                      if (v < BODY_MAP_THRESHOLD) setSoreAreas([])
+                    }}
+                    style={{
+                      minHeight: 44, borderRadius: 7,
+                      border: on
+                        ? `2px solid ${bad ? 'var(--wellness-low)' : 'var(--wellness-ok)'}`
+                        : '1px solid var(--border)',
+                      background: on
+                        ? (bad ? 'var(--wellness-low-tint)' : 'var(--wellness-ok-tint)')
+                        : 'var(--card)',
+                      color: on
+                        ? (bad ? 'var(--wellness-low)' : 'var(--wellness-ok)')
+                        : 'var(--text-2)',
+                      fontFamily: 'inherit', fontSize: 13, fontWeight: on ? 800 : 600,
+                      cursor: 'pointer', padding: 0,
+                    }}
+                  >
+                    {v}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {showBodyMap && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
+              Where?
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+              Tap anywhere that hurts. You can pick more than one.
+            </div>
+            <BodyMap selected={soreAreas} onChange={(next) => { setSoreAreas(next); setSaved(false) }} />
+          </div>
+        )}
+
+        {sore === true && soreScore !== null && !showBodyMap && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
+            Noted. We only ask where it hurts from {BODY_MAP_THRESHOLD} upwards.
+          </div>
+        )}
+      </div>
 
       {/* Notes */}
       <div style={{ marginBottom: 16 }}>
