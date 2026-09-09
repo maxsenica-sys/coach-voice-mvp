@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
-import { getSportTerminologyHint } from '@/lib/sports'
+import {
+  buildSummaryPrompt,
+  parseSummaryResponse,
+  EMPTY_SUMMARY,
+  type QuickSummary,
+} from '@/lib/summary-prompt'
 import { notifySessionShared } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
 
@@ -28,53 +33,13 @@ function createSupabase(req: NextRequest) {
   return { supabase, cookiesToSet }
 }
 
-// Returns the athlete-facing bullets and, separately, the one thing to carry
-// into the next session. The forward-looking instruction is already in the
-// transcript — coaches say it out loud — so it is extracted from the summary
-// call that was being made anyway rather than captured from the coach, who has
-// no spare taps courtside.
-interface QuickSummary {
-  summary: string | null
-  next: string | null
-}
-
-const EMPTY_SUMMARY: QuickSummary = { summary: null, next: null }
-
-// Anything longer than this is the model writing prose rather than the coach's
-// one instruction, so it is dropped rather than shown. The prompt asks for 90.
-const MAX_NEXT_LENGTH = 120
-
-/**
- * Did the coach actually say this athlete's name in this recording?
- *
- * This is the guard that makes per-athlete summaries safe, and it deliberately
- * runs in code rather than being left to the model. A squad recording is saved
- * as one session per member — the same transcript, posted N times — so without
- * a hard gate, asking the model to "write this for Ana" on a transcript that
- * never mentions Ana invites it to invent a point and attribute it to her. A
- * fabricated coaching instruction, addressed to a named child, is the worst
- * output this product could produce.
- *
- * So: no name in the transcript, no personalisation, and the summary is byte-
- * for-byte the prompt that shipped before this existed.
- *
- * `\b` is not used because it is defined on ASCII word characters, so it
- * misfires on names like "Zoë" or "Łukasz". This tests for a non-letter (or a
- * string edge) either side instead, under the `u` flag.
- */
-function transcriptNames(transcript: string, firstName: string | null | undefined): boolean {
-  const name = (firstName ?? '').trim()
-  // One-letter "names" are almost always placeholder roster data and would
-  // match far too much prose.
-  if (name.length < 2) return false
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  try {
-    return new RegExp(`(^|[^\\p{L}])${escaped}([^\\p{L}]|$)`, 'iu').test(transcript)
-  } catch {
-    return false
-  }
-}
-
+// The summariser's prompt, its name gate and its response parser now live in
+// `lib/summary-prompt.ts`. They moved because this file imports `next/server`,
+// which meant the most consequential text in the product could not be executed
+// — let alone checked — outside a running server. What stays here is the part
+// that genuinely needs one: the API key and the fetch.
+//
+// See tools/prompt-rig.mjs for what is asserted about that prompt on every commit.
 async function makeQuickSummary(
   transcript: string,
   sport?: string | null,
@@ -83,76 +48,7 @@ async function makeQuickSummary(
   const key = process.env.OPENAI_API_KEY
   if (!key) return EMPTY_SUMMARY
 
-  // The sport matters more than it looks. The transcript comes from Whisper
-  // transcribing a coach talking, often near a noisy court, so sport jargon
-  // arrives mangled ("set" as "sat", "libero" as "libro"). Without knowing the
-  // sport the model guesses from context and gets terminology subtly wrong —
-  // the "summary references the wrong thing" problem. Naming the sport and its
-  // vocabulary lets it read through the mishearings instead of inventing.
-  const trimmedSport = (sport ?? '').trim()
-  const terminology = trimmedSport ? getSportTerminologyHint(trimmedSport) : ''
-
-  const sportBlock = trimmedSport
-    ? `SPORT: ${trimmedSport}\n` +
-      (terminology ? `Common terms in this sport: ${terminology.slice(0, 400)}\n` : '') +
-      `Interpret ambiguous or misheard words as ${trimmedSport} terminology where that is the plausible reading. Never introduce terms from a different sport.\n`
-    : `SPORT: not specified. Keep the language general — do NOT assume a particular sport, and do not use sport-specific jargon that isn't already in the transcript.\n`
-
-  // Personalisation, gated on the coach having actually said the name. When the
-  // name is absent this is the empty string and the prompt is exactly the one
-  // that shipped before — same words, same output.
-  //
-  // Why this matters: a squad recording fans out to one session per member,
-  // each running this same summariser over the identical transcript. Today a
-  // coach who talks for four minutes about eleven athletes pays for eleven
-  // model calls and gets eleven copies of one paragraph, none of which is about
-  // the athlete reading it. The work was already being done; it was just being
-  // done eleven times with the same answer.
-  //
-  // Note the shape of the interpolation below: when `named` is false this block
-  // is the empty string and the prompt is character-for-character the one that
-  // shipped before personalisation existed — not merely equivalent. Worth
-  // preserving deliberately, because it means this feature cannot regress the
-  // summary an individually-recorded athlete already gets. There is a check
-  // for it in the PR description.
-  const named = transcriptNames(transcript, athleteName)
-  const addressee = (athleteName ?? '').trim()
-  const personalBlock = named
-    ? `
-
-WHO THIS IS FOR
-You are writing this for ${addressee}, and the coach used their name in the recording. This may be a talk to a whole squad; if so, every member gets their own version of this summary.
-Lead with the point the coach addressed to ${addressee}, in the coach's own words. Then give the points meant for everyone.
-Never mention any other athlete by name — not in a bullet, not in the NEXT line. Refer to the rest of the group as "the group" or "the team".
-Never attribute a point to ${addressee} that the coach did not address to them. If their name appears only in a greeting, a register or a list, write only the points meant for everyone and personalise nothing.`
-    : ''
-
-  const prompt = `
-You are summarising a coach's spoken notes from a training session, for the athlete to read afterwards.${personalBlock}
-
-${sportBlock}
-WHAT YOU ARE READING
-The text below is an automatic transcript of the coach talking out loud, not a written report. Expect run-on sentences, filler, self-corrections and misheard words. Read it for intent — the coach's actual coaching points — and quietly ignore transcription noise.
-
-WRITE
-2–5 bullets, each starting with •, each a short specific coaching point in the coach's own voice. Prefer what the athlete should DO next over abstract praise. Aim for under 300 characters total.
-
-THEN, ON A FINAL SEPARATE LINE
-If — and only if — the coach said something about what to work on next time, add one line in exactly this form:
-NEXT: <the one thing to work on next session>
-Under 90 characters, an instruction the athlete can act on, in the coach's own words. One thing, not several.
-If the coach did not say anything forward-looking, omit this line entirely. Do not invent one, do not restate a bullet as a NEXT line, and do not write "NEXT: none".
-
-NEVER
-- Never state anything the coach did not say. If the transcript is too garbled or too short to summarise, output only: • Recording too unclear to summarise.
-- Never write empty categories, "N/A", "None", or placeholders — omit the point instead.
-- Never invent drills, numbers, scores or names that are not in the transcript.
-- Never repeat the whole transcript back; this is a summary.
-- No preamble, no heading, no sign-off. Bullets only.
-
-TRANSCRIPT
-${transcript}
-`.trim()
+  const prompt = buildSummaryPrompt(transcript, sport, athleteName)
 
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -172,27 +68,7 @@ ${transcript}
 
     const json = await res.json()
     const content: string = json?.choices?.[0]?.message?.content?.trim() || ''
-    if (!content) return EMPTY_SUMMARY
-
-    // Split the trailing NEXT: line off the bullets. Everything before it is
-    // the summary exactly as it was before this existed, so a response without
-    // the line behaves identically to the old one.
-    const lines = content.split('\n')
-    const nextIndex = lines.findIndex((l) => l.trim().toUpperCase().startsWith('NEXT:'))
-    if (nextIndex === -1) return { summary: content, next: null }
-
-    const next = lines[nextIndex].trim().slice('NEXT:'.length).trim()
-    const summary = lines.slice(0, nextIndex).join('\n').trim() || null
-
-    // A missing, over-long or placeholder line is dropped rather than shown:
-    // this is rendered to a 14-year-old as an instruction, so a bad one is
-    // worse than none.
-    const usable =
-      next.length > 0 &&
-      next.length <= MAX_NEXT_LENGTH &&
-      !/^(none|n\/a|nothing)\b/i.test(next)
-
-    return { summary, next: usable ? next : null }
+    return parseSummaryResponse(content)
   } catch {
     return EMPTY_SUMMARY
   }

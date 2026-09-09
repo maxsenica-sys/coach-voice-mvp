@@ -28,69 +28,22 @@
  *   needs "last session 19 days ago" to act on. Telling a child the same thing
  *   tells them their coach has forgotten them, which is not theirs to carry.
  *
+ * The arithmetic lives in `lib/training-spine.ts`, not here. Node can strip
+ * TypeScript but cannot parse JSX, so anything exported from this file is
+ * unreachable from `tools/clock-rig.mjs` — and the bucketing had a real DST bug
+ * that only running it could find. This file draws; that file computes.
+ *
  * Contrast: the --primary-dark fill on the --border-soft track measures 4.95:1.
  * WCAG 1.4.11 requires 3:1 for a graphical object whose distinction carries
  * meaning, and fill-versus-track is the entire message here.
  */
-import { calendarDaysBetween, sessionDate, type SessionDateFields } from '@/lib/session-date'
-
-const WEEKS = 12
-
-/** Local midnight on the Monday of the week containing `d`. */
-function startOfWeek(d: Date): Date {
-  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  // getDay() is 0 for Sunday; shift so Monday is 0.
-  const dow = (x.getDay() + 6) % 7
-  // setDate with a negative value rolls back across month and year boundaries
-  // correctly. Never subtract a hardcoded day count.
-  x.setDate(x.getDate() - dow)
-  return x
-}
-
-export interface SpineData {
-  /** Session count per week, oldest first, always WEEKS long. */
-  weeks: number[]
-  /** Sessions inside the twelve-week window. */
-  total: number
-  /** Sessions in the current (last) bucket. */
-  thisWeek: number
-  /** Whole days since the most recent session of all, or null if there are none. */
-  daysSinceLast: number | null
-}
-
-/** Bucket sessions into the last twelve weeks. Exported for testing by eye. */
-export function buildSpine(sessions: SessionDateFields[], now = new Date()): SpineData {
-  const currentWeekStart = startOfWeek(now)
-  const firstWeekStart = new Date(currentWeekStart)
-  firstWeekStart.setDate(firstWeekStart.getDate() - 7 * (WEEKS - 1))
-
-  const weeks = new Array<number>(WEEKS).fill(0)
-  let total = 0
-  let latest: Date | null = null
-
-  for (const s of sessions) {
-    const d = sessionDate(s)
-    if (!d) continue
-    if (!latest || d.getTime() > latest.getTime()) latest = d
-
-    // Calendar days, not elapsed milliseconds — see calendarDaysBetween. A
-    // straight ms division put a Monday session in the previous week's bucket
-    // either side of a DST change.
-    const offset = calendarDaysBetween(firstWeekStart, d)
-    if (offset < 0) continue
-    const idx = Math.floor(offset / 7)
-    if (idx >= WEEKS) continue
-    weeks[idx] += 1
-    total += 1
-  }
-
-  return {
-    weeks,
-    total,
-    thisWeek: weeks[WEEKS - 1],
-    daysSinceLast: latest ? Math.max(0, calendarDaysBetween(latest, now)) : null,
-  }
-}
+import {
+  buildSpine,
+  SPINE_GAP_DAYS,
+  SPINE_MIN_SESSIONS,
+  SPINE_WEEKS,
+  type SessionDateFields,
+} from '@/lib/training-spine'
 
 export default function TrainingSpine({
   sessions,
@@ -104,18 +57,18 @@ export default function TrainingSpine({
   const { weeks, total, thisWeek, daysSinceLast } = buildSpine(sessions)
 
   // A chart of one or two bars says nothing. Render nothing instead.
-  if (total < 3) return null
+  if (total < SPINE_MIN_SESSIONS) return null
 
   const peak = Math.max(...weeks, 1)
 
   const sentence =
-    `${total} session${total === 1 ? '' : 's'} over ${WEEKS} weeks` +
+    `${total} session${total === 1 ? '' : 's'} over ${SPINE_WEEKS} weeks` +
     (thisWeek > 0 ? ` · ${thisWeek} this week` : '')
 
   // Coach-only. See the note at the top of this file about why the athlete
   // never sees their own gap.
   const gapNote =
-    variant === 'coach' && daysSinceLast !== null && daysSinceLast >= 14
+    variant === 'coach' && daysSinceLast !== null && daysSinceLast >= SPINE_GAP_DAYS
       ? `Last session ${daysSinceLast} days ago`
       : null
 

@@ -34,6 +34,24 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
+      # The three rigs below are fast, need no browser and no network, and each
+      # one exists because a bug of that class already shipped green. They run
+      # before the build so a safeguarding or clock failure is reported in
+      # seconds rather than behind two minutes of compilation.
+      #
+      # These are hard gates, unlike lint. They have no backlog to excuse.
+      - name: Safeguarding rules
+        run: npm run verify:safeguard
+
+      # Runs the app's real date logic under nine timezones. Note that this job
+      # runs in UTC, which is exactly why it is needed: the DST bucketing bug
+      # this rig was written for passed in UTC and failed in six other zones.
+      - name: Clock rig
+        run: npm run verify:clock
+
+      - name: Prompt rig
+        run: npm run verify:prompt
+
       # `next build` prerenders /athlete, which constructs a Supabase client at
       # module scope and throws without these. They are placeholders — the build
       # never makes a network call — so no real secrets belong in CI.

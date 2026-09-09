@@ -28,9 +28,32 @@ Next.js 16 App Router · React 19 · TypeScript · Tailwind v4 + a hand-written
 token layer in `app/globals.css` · Supabase (Postgres 17, auth, storage,
 realtime) · OpenAI Whisper + GPT-4o-mini · Resend email · Vercel · PWA.
 
-No test suite. `CLAUDE.md` carries a mandatory pre-commit checklist derived
-from real production incidents. Checks are `npx tsc --noEmit && npm run lint
-&& npm run build`.
+`CLAUDE.md` carries a mandatory pre-commit checklist derived from real
+production incidents. Checks are `npx tsc --noEmit && npm run lint &&
+npm run verify && npm run build`, plus `npm run verify:boot` for anything on the
+startup path.
+
+**There is still no unit-test suite, but there are now four rigs**, and they are
+the shape this project's failures actually take — every bug it has shipped
+passed the type checker, the linter and the build:
+
+| Rig | Runs |
+|---|---|
+| `verify:safeguard` | 5 static rules over `app/` and `lib/`: every route authenticates, the service-role key never reaches a browser bundle, private buckets are never made public, coach-attention data never reaches an athlete surface, wellness reads are always scoped. Prints its KNOWN GAPS and its one justified auth exemption on every run |
+| `verify:clock` | The real date logic under 9 timezones, every day of a year — 37,035 assertions. CI runs in UTC, which is exactly why this exists |
+| `verify:prompt` | The summariser: two pinned golden prompts, the name gate over recorded transcripts, and the response parser over recorded model replies. `--live` calls the real model, opt-in, not in CI |
+| `verify:boot` | Real Chromium against a production build, asserting the cold-start timeline |
+
+Every rule in all three new rigs was verified by breaking the code on purpose
+and watching that specific rule go red.
+
+A consequence worth knowing when reading the tree: **pure logic now lives in
+`lib/`, not in components or routes.** Node can strip TypeScript but cannot
+parse JSX, so anything exported from a `.tsx` is unreachable from a rig.
+`lib/training-spine.ts`, `lib/attention.ts` and `lib/summary-prompt.ts` were
+extracted for exactly that reason — the last of these took the prompt out of
+`app/api/sessions/route.ts`, which had made the most consequential text in the
+product impossible to execute outside a running server.
 
 ---
 
