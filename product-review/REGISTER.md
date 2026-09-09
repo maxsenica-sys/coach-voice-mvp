@@ -227,7 +227,7 @@ An agent may pick any of these up as its own recommendation on a later run.
 | 2026-09-09 orchestrator | Dead code | `COOLDOWN_MS` and `SPLASH_LAST_KEY` (`ColdStartSplash.tsx:45,51`) are declared and never used — the live cooldown and storage key are literals in `app/layout.tsx:121-123`. `npm run lint` does not flag either. |
 | 2026-09-09 DESIGN-006 | Accessibility | The installed PWA disables zoom entirely (`app/layout.tsx:15-16` `maximumScale: 1`, `userScalable: false`, manifest `display: standalone`) while carrying 66 sites of sub-11 px text — no mechanism by which a user can enlarge any of it. WCAG 2.2 SC 1.4.4 requires 200%. `globals.css:590` already solves the iOS form-field auto-zoom this was presumably for. Two-line fix. Raised as a challenge, never proposed against. |
 | 2026-09-09 DESIGN-006 | Design | `--coach-color` has no safe use as text on its own light tint: 3.56:1 on `--coach-light` versus 4.60:1 on white. A gap in the token set rather than a mistake on one line. `--coach-on-light: #8E3F27` (5.62:1) is the proposed fill. |
-| 2026-09-09 build | Correctness | **The app contradicts itself about which way soreness runs.** `WELLNESS_METRICS` marks `soreness` and `stress` `inverted: true`, and every scoring function (`metricColor`, `metricTint`, `scoreLabel`, `overallWellnessScore`) computes `6 - raw` — so a raw 5 scores as *bad*. But the form's own hint tells the athlete "1 = very sore, 5 = no soreness", i.e. raw 5 is *good*, and PROJECT-STATE records the same reading. One of the two is wrong. This decides the colour of a dot, the coach's alert threshold and whether a caretaker email fires, so it is not cosmetic. Not fixed in the DATA-006 build: flipping it either way changes alerting behaviour and needs a decision, not a guess. The new athlete-facing sentence sidesteps it by naming only `energy` and `sleep_q`. |
+| ~~2026-09-09 build~~ | ~~Correctness~~ | **RESOLVED 2026-09-09 (`4d0929e`) — it was not a contradiction to decide, it was a bug.** `inverted: true` means "a higher raw score is worse" by the flag's own definition, but both hints ask the athlete the other way round, so `6 - raw` flipped answers that were already correct. Because `overallWellnessScore` feeds `computeWellnessAlert`, **the safeguarding alert ran backwards**: 4/4/4 with no soreness and no stress scored 2.8 and tripped the coach email; 2/2/2 while very sore and very stressed scored 3.2 and did not. Fixed by deleting the flag, not by rewriting the hints — the hints predate it (initial commit vs `e32ac64`), so stored data is already right and needs no migration. Original note: **the app contradicts itself about which way soreness runs.** `WELLNESS_METRICS` marks `soreness` and `stress` `inverted: true`, and every scoring function (`metricColor`, `metricTint`, `scoreLabel`, `overallWellnessScore`) computes `6 - raw` — so a raw 5 scores as *bad*. But the form's own hint tells the athlete "1 = very sore, 5 = no soreness", i.e. raw 5 is *good*, and PROJECT-STATE records the same reading. One of the two is wrong. This decides the colour of a dot, the coach's alert threshold and whether a caretaker email fires, so it is not cosmetic. Not fixed in the DATA-006 build: flipping it either way changes alerting behaviour and needs a decision, not a guess. The new athlete-facing sentence sidesteps it by naming only `energy` and `sleep_q`. |
 | 2026-09-09 build | Process | `npm run lint` reports **135 pre-existing errors** across 53 files (mostly `no-explicit-any` in API routes). CLAUDE.md lists lint as a mandatory pre-commit gate, but a gate that has been red for a long time cannot fail a bad commit — which is part of why the `#9BA29B` regression got in. The DESIGN-006 rule works only because it is scoped to a file with zero violations. |
 | 2026-09-09 orchestrator | Process | PROJECT-STATE is 316 lines against its own ~250-line budget after today's refresh, and wants a deliberate trim rather than further growth. |
 | 2026-09-06 DATA+UX | Product | **STILL OPEN — the biggest thing this review found that nobody has acted on.** Both agents independently challenged the wellness loop: the coach gets one flattened mean with no indication which metric caused it, and the athlete gets nothing back at all for five taps a day. Neither made it their primary. The athlete's "See your trends →" still opens a blank form; `WellnessGraph` already exists and takes `athleteId`, so showing it there is close to a one-line change — but whether an athlete should see their own trends is a product decision, not a bug fix, so it was left for Max. |
@@ -241,6 +241,31 @@ An agent may pick any of these up as its own recommendation on a later run.
 | ~~2026-09-05 DESIGN-001~~ | ~~Design~~ | **DONE 2026-09-05** — identity hue moved to a 7 px dot; pill label now `--text`/`--text-2`. The five series hues are untouched as chart fills. |
 | ~~2026-09-05 DATA-001~~ | ~~Correctness~~ | **DONE 2026-09-05** — athlete query now orders `session_date desc nullsFirst:false`, then `created_at desc`, matching the coach side. |
 | ~~2026-09-05 UX-001~~ | ~~UX~~ | **DONE 2026-09-05** — `overflowY: auto` on the backdrop, `maxHeight: 100%` + `overflowY: auto` on the card. |
+
+### Round 4 follow-through — 2026-09-09
+
+Max: *"do all of the suggestions"*. Four items, all landed on `main` except the
+last, which cannot be done from here.
+
+| Item | Outcome |
+|---|---|
+| Finish the token migration | `886f5d4`. All 96 hex literals in `app/dashboard/page.tsx` on tokens; lint rule widened to both role homes and proved to fire there. Found **two more live AA failures** nobody had measured: `#C9933A` on the INVITED label at 2.72:1 and `#9A7229` on the Unread stat at 4.36:1 — the app had no amber *text* token at all, so `--energy-dark` (5.35:1) was added. `--primary` as text eliminated repo-wide (7 sites). `GROUP_COLORS` moved to `lib/group-colors.ts` — it is colour data, not a token. |
+| Clear the lint backlog | `a6b953a`. **135 errors → 31.** 46 `catch (e: any)` → `unknown` behind `lib/errors.ts`; the Supabase cookie shape typed once in `lib/supabase-route.ts` instead of redeclared `any` in 25 route files; 12 unescaped entities. Type-only, no behaviour change. |
+| Audit the untouched areas | `052e6a2`. Five findings, all fixed — see below. |
+| Apply the auto-mode proposal | **NOT DONE.** The `/auto-mode-setup` schema is internal to the CLI; there is no example of it on disk to copy, and writing a guessed key layout would look configured while doing nothing. Re-run `/auto-mode-setup` without `--propose` to have the command apply its own proposal. |
+
+**What the audit found**, in areas that had gone four rounds without being any
+agent's primary subject:
+
+| Finding | Severity |
+|---|---|
+| Photo upload on the athlete profile reloads the athlete with no `res.ok` check. The upload and PATCH have already succeeded at that point, so a failed reload threw and reported **"Photo upload failed" for a photo that saved** | Checklist item 1; user is told a success failed |
+| Two session-video loads (athlete page, athlete profile) with no `res.ok` — a non-2xx rendered "no videos" for a session that has them; one had no catch at all | Checklist item 1 |
+| `#ef4444` as error text in `MessagingPanel` at **3.76:1** — the "could not load messages" state and the recording indicator, the two places you most need to read | Fails 1.4.3 |
+| `--primary` as text in `DayWheel` at **3.65:1** | Fails 1.4.3 |
+
+The pattern worth noting: **every one of these was in code no agent had ever
+made its primary subject.** The coverage counters below were right.
 
 ## Coverage
 

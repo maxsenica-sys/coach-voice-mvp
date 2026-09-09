@@ -140,7 +140,12 @@ single line on the athlete's home card under "Take into next session".
 ### What wellness holds
 `wellness_checkins`: one row per `(athlete_id, check_date)` —
 `energy, mood, sleep_q, soreness, stress`, each 1–5, plus free `notes`.
-`soreness` and `stress` are inverted (5 = good). Athlete submits; coach reads.
+`soreness` and `stress` read 5 = good, like every other metric — the scale was
+written so 5 is always the good end. They carried `inverted: true` in
+`lib/wellness-config.ts` until 2026-09-09, which made every scoring function
+compute `6 - raw` on answers that were already the right way round and ran the
+safeguarding alert backwards. Deleted, not migrated: the hints predate the flag,
+so the stored data was always 5-is-good. Athlete submits; coach reads.
 Low scores fire caretaker alerts (`/api/wellness/alert`).
 
 **Wellness and session data never meet.** Nothing joins a check-in to a
@@ -202,6 +207,13 @@ The full focus-point list still lives on `/sessions/[id]`.
 ---
 
 ## Design system, as it actually is
+
+**Both role homes are now fully tokenised** and `eslint.config.mjs` bans
+six-digit hex literals under `app/athlete/**` and `app/dashboard/**` — verified
+to fire, not merely to pass. Still outside the glob: `app/athletes/[id]`,
+`app/sessions/[id]` and the components. Type sizes come from `--fs-1`..`--fs-6`
+with an 11px floor; neither role home has text below 11px. `--primary` is no
+longer used as text anywhere (it was 3.65:1 at 10 sites).
 
 `app/globals.css` defines a coherent "Letter Edition" token set: ivory/parchment
 surfaces (`--bg #FBF8F3`, `--card #FFFFFF`, `--border #E3DED2`), sage primary
