@@ -83,7 +83,7 @@ switches to the Edge runtime which has no FormData file support.
 - Never modify `app/api/` files when working on UI features
 - Never modify component files (QuickSessionModal, MessagingPanel, WellnessSubmit,
   Calendar, VideoAnnotator) unless the task is specifically a bug fix in that component
-- Always run `npx tsc --noEmit` before committing
+- Always run `npx tsc --noEmit` and `npm run verify` before committing
 - Work on a branch, open a PR, and **merge it yourself once it is green** — see
   the merge policy below. (This line used to read "push directly to `main`, no
   branches or PRs". That stopped being true once CI existed; the gate is the
@@ -172,6 +172,58 @@ Two rules that came out of these bugs and are easy to re-break:
   resolves `--font-display/-sans/-mono` in a `:root` block, and a `var()` that is
   unresolved there is invalid at computed value time — it takes the literal
   fallbacks down with it and drops the whole app into the default serif.
+
+---
+
+## ⚠️ Three rigs that run the code instead of type-checking it
+
+`npm run verify` — safeguarding rules, then the clock rig, then the prompt rig.
+All three are hard gates in CI. None needs a browser, a network or a key, and
+together they take a few seconds.
+
+They exist for one reason, and it is the same reason `verify:boot` exists:
+
+> **Every bug this project has shipped passed `tsc`, `eslint` and `next build`.**
+
+That was true of the wordmark that flashed before the intro, of the stylesheet
+whose fonts the build silently dropped, and of the boot script whose route match
+never matched. It was true again of a date bug that put a session in the wrong
+week in London and New York while passing in UTC, and of a name test that
+matched "Ana" inside "Anastasia". A type checker cannot hold an opinion about
+March in London, and every string type-checks.
+
+| Command | What it runs | The bug class it exists for |
+|---|---|---|
+| `npm run verify:safeguard` | 5 static rules over `app/` and `lib/` | A new route ships with no auth check; the service-role key reaches a browser bundle; a private bucket is made public; coach-attention data reaches an athlete screen; a wellness query loses its scope |
+| `npm run verify:clock` | The real date logic under 9 timezones, every day of a year | Anything that divides milliseconds by 86,400,000. CI runs in UTC, which is precisely why this cannot be left to CI's own clock |
+| `npm run verify:prompt` | The summariser prompt, its name gate and its response parser | A silent edit to the most consequential text in the product; a personalised summary written for a child the coach never named |
+
+### The rules that keep them honest
+
+- **They import the real modules, never a copy.** A rig that tests a replica
+  proves the replica is self-consistent and drifts the first time the source
+  changes. This is why pure logic lives in `lib/` and not in a `.tsx` — Node can
+  strip TypeScript but cannot parse JSX, so anything exported from a component
+  file is unreachable. **If a component computes something whose correctness is
+  not obvious by reading it, move the computation to `lib/`.**
+- **A check that has never failed is not known to work.** Every rule in all
+  three rigs has been verified by breaking the code on purpose and watching that
+  specific rule go red. Do the same for any rule you add, and say so.
+- **`safeguard-check` prints its KNOWN GAPS on every run.** A static scanner
+  cannot decide most of what matters about a product used by children. The gaps
+  are listed so a green tick is never mistaken for coverage it does not have —
+  do not delete them, add to them.
+- **An unauthenticated route needs a written reason.** `UNAUTHENTICATED_BY_DESIGN`
+  in `tools/safeguard-check.mjs` takes a sentence per exemption and prints it
+  every run. The list is currently one entry long. Keep it that way.
+- **After a deliberate prompt change**, `node tools/prompt-rig.mjs --update-golden`
+  rewrites the pinned prompts. Review that diff like code — it is the text a
+  fifteen-year-old reads.
+- **`--live` is opt-in and not in CI.** It calls the real model with a real key
+  and reports rather than gates, because model output is not deterministic.
+
+Add a fixture by appending to `tools/prompt-fixtures/transcripts.json`. No code
+change is needed, and a transcript with a `why` line is worth more than a rule.
 
 ---
 

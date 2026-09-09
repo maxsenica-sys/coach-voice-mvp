@@ -290,6 +290,36 @@ round and neither visible to `tsc`, `lint` or `next build`:
 pre-existing count, unchanged), `npm run build` (passes), and
 `npm run verify:boot` (**40/40**, run because both role homes were touched).
 
+### Round 6 — 2026-09-09c · tooling, not product
+
+Max: *"more useful to the process. I want creativity, not enhancement."* No
+agents were run: the four review agents are briefed to review the *product* and
+are forbidden from touching app files, so they are the wrong instrument for
+development tooling. Three rigs were built instead.
+
+| Item | What it is |
+|---|---|
+| `npm run verify:safeguard` | The safeguarding rules — previously prose in `CLAUDE.md`, PROJECT-STATE and file-header comments — as five enforced static rules, each citing where the rule is written. Unauthenticated routes need a written, printed exemption; the list is one entry long |
+| `npm run verify:clock` | The app's real date logic under 9 timezones, every day of a year. Catches the class of bug that put a session in the wrong week in London and New York while passing in UTC |
+| `npm run verify:prompt` | Two pinned golden prompts, the name gate over six recorded transcripts, and the response parser over six recorded model replies. `--live` calls the real model, opt-in |
+
+All three are hard gates in CI, take seconds, and need no browser, network or
+key. **Every rule in all three was proved by breaking the code on purpose and
+watching that specific rule go red** — including reintroducing the original DST
+bug, which failed in the six zones that observe daylight saving and passed in
+UTC, Kolkata and Kiritimati.
+
+Three supporting extractions, all behaviour-preserving: `lib/training-spine.ts`,
+`lib/attention.ts` and `lib/summary-prompt.ts`. The last takes the summariser
+prompt out of `app/api/sessions/route.ts`, which drops that route by 124 lines
+and makes the most consequential text in the product executable — and therefore
+checkable — outside a running server.
+
+**The rule this establishes:** if a component computes something whose
+correctness is not obvious by reading it, the computation belongs in `lib/`.
+Node can strip TypeScript but cannot parse JSX, so logic in a `.tsx` is logic no
+rig can reach.
+
 ## Not yet reviewed
 
 Real observations, recorded so they are not lost, but **not** agent proposals.
@@ -305,6 +335,7 @@ An agent may pick any of these up as its own recommendation on a later run.
 | 2026-09-09 DESIGN-006 | Accessibility | The installed PWA disables zoom entirely (`app/layout.tsx:15-16` `maximumScale: 1`, `userScalable: false`, manifest `display: standalone`) while carrying 66 sites of sub-11 px text — no mechanism by which a user can enlarge any of it. WCAG 2.2 SC 1.4.4 requires 200%. `globals.css:590` already solves the iOS form-field auto-zoom this was presumably for. Two-line fix. Raised as a challenge, never proposed against. |
 | 2026-09-09 DESIGN-006 | Design | `--coach-color` has no safe use as text on its own light tint: 3.56:1 on `--coach-light` versus 4.60:1 on white. A gap in the token set rather than a mistake on one line. `--coach-on-light: #8E3F27` (5.62:1) is the proposed fill. |
 | ~~2026-09-09 build~~ | ~~Correctness~~ | **RESOLVED 2026-09-09 (`4d0929e`) — it was not a contradiction to decide, it was a bug.** `inverted: true` means "a higher raw score is worse" by the flag's own definition, but both hints ask the athlete the other way round, so `6 - raw` flipped answers that were already correct. Because `overallWellnessScore` feeds `computeWellnessAlert`, **the safeguarding alert ran backwards**: 4/4/4 with no soreness and no stress scored 2.8 and tripped the coach email; 2/2/2 while very sore and very stressed scored 3.2 and did not. Fixed by deleting the flag, not by rewriting the hints — the hints predate it (initial commit vs `e32ac64`), so stored data is already right and needs no migration. Original note: **the app contradicts itself about which way soreness runs.** `WELLNESS_METRICS` marks `soreness` and `stress` `inverted: true`, and every scoring function (`metricColor`, `metricTint`, `scoreLabel`, `overallWellnessScore`) computes `6 - raw` — so a raw 5 scores as *bad*. But the form's own hint tells the athlete "1 = very sore, 5 = no soreness", i.e. raw 5 is *good*, and PROJECT-STATE records the same reading. One of the two is wrong. This decides the colour of a dot, the coach's alert threshold and whether a caretaker email fires, so it is not cosmetic. Not fixed in the DATA-006 build: flipping it either way changes alerting behaviour and needs a decision, not a guess. The new athlete-facing sentence sidesteps it by naming only `energy` and `sleep_q`. |
+| 2026-09-09c tooling | Process | The three new rigs are hard gates; lint is still advisory in CI with 31 pre-existing errors. Clearing those 31 and making lint blocking is now the only soft gate left. |
 | 2026-09-09 build | Process | `npm run lint` reports **135 pre-existing errors** across 53 files (mostly `no-explicit-any` in API routes). CLAUDE.md lists lint as a mandatory pre-commit gate, but a gate that has been red for a long time cannot fail a bad commit — which is part of why the `#9BA29B` regression got in. The DESIGN-006 rule works only because it is scoped to a file with zero violations. |
 | 2026-09-09 orchestrator | Process | PROJECT-STATE is 316 lines against its own ~250-line budget after today's refresh, and wants a deliberate trim rather than further growth. |
 | 2026-09-09 WOW-004 | **Safeguarding** | **A group session shows every member the whole squad transcript.** `QuickSessionModal.tsx:227-249` writes the identical `transcript` to one session row per member; `app/athlete/page.tsx:332` selects it and renders it under "View full transcript". Any critical remark a coach makes about one named child in a squad talk is readable by every other child in that squad, today. WOW-004 reduces the *summary* leak — the prompt forbids naming other athletes — but does not touch the transcript underneath it. There is no flag distinguishing a group session from an individual one, so suppressing it needs one (`sessions.group_id`). Not cosmetic, and arguably more urgent than anything built this round. |

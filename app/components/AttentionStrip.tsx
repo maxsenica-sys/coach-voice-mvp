@@ -23,50 +23,19 @@
  *    these athletes". A part-time volunteer coach with 24 athletes will always
  *    have a long tail, and a reprimand is not a gift.
  *
+ * The selection rule and its thresholds live in `lib/attention.ts`, not here —
+ * a rule about which children appear on a screen is exactly the kind of thing
+ * that should be callable by a test rig rather than trapped in JSX.
+ *
  * Coach-only, always. No athlete sees this component or anything derived from
  * it — a ranking of a coach's attention across a squad of children is exactly
  * the comparison between kids the product forbids. If this ever becomes
  * athlete-facing it becomes "who does coach like best". Do not move it.
  */
-import type { CoverageRow } from '@/app/api/athletes/coverage/route'
-
-/**
- * How long a silence has to be before it is worth mentioning. Judgement, not a
- * finding: a fortnight is long enough that a coach would agree it had been a
- * while, and short enough to still be actionable within a season.
- */
-const QUIET_AFTER_DAYS = 14
-
-/**
- * A never-recorded athlete only appears once they have been on the roster this
- * long. Without it, adding an athlete puts them straight into a list of people
- * you are neglecting, which is both untrue and annoying.
- */
-const GRACE_DAYS = 7
-
-/** Never show more than this many. A queue you cannot finish is a nag. */
-const MAX_SHOWN = 6
-
-/** The athletes worth surfacing, already ordered longest-gap first by the API. */
-export function selectQuiet(coverage: CoverageRow[]): CoverageRow[] {
-  return coverage
-    .filter((r) =>
-      r.days_since === null
-        ? (r.days_on_roster ?? 0) >= GRACE_DAYS
-        : r.days_since >= QUIET_AFTER_DAYS,
-    )
-    .slice(0, MAX_SHOWN)
-}
+import { gapLabel, selectQuiet, type CoverageRow } from '@/lib/attention'
 
 function initials(r: CoverageRow): string {
   return `${r.first_name[0] ?? ''}${r.last_name[0] ?? ''}`.toUpperCase() || '?'
-}
-
-/** "24 days" / "no sessions yet" — the label under a face. */
-function gapLabel(r: CoverageRow): string {
-  if (r.days_since === null) return 'no sessions yet'
-  if (r.days_since === 1) return '1 day'
-  return `${r.days_since} days`
 }
 
 export default function AttentionStrip({

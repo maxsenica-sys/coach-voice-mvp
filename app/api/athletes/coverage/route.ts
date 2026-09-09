@@ -31,20 +31,9 @@ import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { errorMessage } from '@/lib/errors'
 import { calendarDaysBetween, sessionDate } from '@/lib/session-date'
+import type { CoverageRow } from '@/lib/attention'
 
-export interface CoverageRow {
-  athlete_id: string
-  first_name: string
-  last_name: string
-  /** ISO date of their most recent session, or null if they have never had one. */
-  last_session_date: string | null
-  /** Whole days since that session. Null when they have never had one. */
-  days_since: number | null
-  /** Total sessions ever recorded for this athlete. Not capped at 50. */
-  session_count: number
-  /** Days since the coach added them to the roster. Null if unknown. */
-  days_on_roster: number | null
-}
+
 
 /**
  * Whole calendar days between a past date and today, floored at 0.

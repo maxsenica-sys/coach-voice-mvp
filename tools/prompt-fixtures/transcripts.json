@@ -1,0 +1,88 @@
+{
+  "_comment": "Recorded coaching transcripts used to check the summariser prompt. Add a case by appending an object here — no code change needed. Names are invented; nothing here is a real athlete. Keep transcripts realistic: run-on sentences, filler and Whisper mishearings are the point, because that is what the model actually receives.",
+  "cases": [
+    {
+      "id": "squad-two-named",
+      "why": "The case Team Talk exists for: one squad talk naming two athletes, saved once per member.",
+      "transcript": "Right, good session everyone. Ana, your first step is still late, you're waiting for the ball instead of reading the setter. Jonas, that was the best you've blocked all year, genuinely. And everybody, the back row is silent out there, I want to hear you calling. Next week we're going to work on serve receive.",
+      "sport": "Volleyball",
+      "roster": ["Ana", "Jonas", "Ellie", "Marta"],
+      "expectPersonalised": { "Ana": true, "Jonas": true, "Ellie": false, "Marta": false }
+    },
+    {
+      "id": "individual-unnamed",
+      "why": "The ordinary one-to-one recording where the coach never says the name. Must produce the pre-personalisation prompt exactly.",
+      "transcript": "Okay so today was decent, the platform is holding up much better under pressure but you're still dropping your elbow on the follow through. Work on keeping it locked. Next session let's do twenty minutes on that.",
+      "sport": "Volleyball",
+      "roster": ["Ana"],
+      "expectPersonalised": { "Ana": false }
+    },
+    {
+      "id": "substring-trap",
+      "why": "Anastasia is on the roster and Ana is not mentioned. A naive word-boundary test personalises Ana's summary off Anastasia's name.",
+      "transcript": "Anastasia was excellent in the middle today, really quick off the mark, and the rest of you need to match that energy.",
+      "sport": "Volleyball",
+      "roster": ["Ana", "Anastasia"],
+      "expectPersonalised": { "Ana": false, "Anastasia": true }
+    },
+    {
+      "id": "accented-name",
+      "why": "ASCII word boundaries do not work on non-ASCII letters. Zoe must not match Zoë, and Zoë must match itself.",
+      "transcript": "Zoë covered the tip really well in the second half, that is exactly the read I want to see.",
+      "sport": "Volleyball",
+      "roster": ["Zoë", "Zoe", "Łukasz"],
+      "expectPersonalised": { "Zoë": true, "Zoe": false, "Łukasz": false }
+    },
+    {
+      "id": "no-sport",
+      "why": "Sport is resolved server-side and can still come back null. The prompt must take the general branch rather than guessing a sport.",
+      "transcript": "Good work today, much better tempo than last week, keep the intensity up.",
+      "sport": null,
+      "roster": [],
+      "expectPersonalised": {}
+    },
+    {
+      "id": "garbled",
+      "why": "Whisper output from a noisy sports hall. The prompt must still be well formed; the model is instructed to bail rather than invent.",
+      "transcript": "uh so yeah the the thing with the with the sat was was not not great um libro",
+      "sport": "Volleyball",
+      "roster": ["Ana"],
+      "expectPersonalised": { "Ana": false }
+    }
+  ],
+  "replies": [
+    {
+      "id": "bullets-with-next",
+      "content": "• Read the setter instead of waiting for the ball.\n• The back row is silent — call for it.\nNEXT: Read the setter early on serve receive.",
+      "expect": { "hasSummary": true, "next": "Read the setter early on serve receive." }
+    },
+    {
+      "id": "bullets-no-next",
+      "content": "• Platform is holding up under pressure.\n• Elbow is dropping on the follow through.",
+      "expect": { "hasSummary": true, "next": null }
+    },
+    {
+      "id": "next-too-long",
+      "why": "A NEXT line over the limit is the model writing prose. It is dropped rather than shown to a child as an instruction.",
+      "content": "• Good session.\nNEXT: Work on keeping the elbow locked through the follow through and also read the setter earlier and call louder in the back row and keep your feet moving throughout.",
+      "expect": { "hasSummary": true, "next": null }
+    },
+    {
+      "id": "next-placeholder",
+      "why": "The prompt forbids 'NEXT: none' but models do it anyway.",
+      "content": "• Good session.\nNEXT: none",
+      "expect": { "hasSummary": true, "next": null }
+    },
+    {
+      "id": "unclear-bailout",
+      "why": "The instructed output for a transcript too garbled to summarise.",
+      "content": "• Recording too unclear to summarise.",
+      "expect": { "hasSummary": true, "next": null }
+    },
+    {
+      "id": "empty",
+      "content": "",
+      "expect": { "hasSummary": false, "next": null }
+    }
+  ]
+}
