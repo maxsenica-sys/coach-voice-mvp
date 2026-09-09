@@ -8,8 +8,8 @@
  * the screen keeps. 2.1 seconds, no assets, no dependency.
  *
  * Directions B (15 sport silhouettes) and D (one stroke swelling into
- * silhouettes) are built and kept in `_banked/IntroSequenceAll.tsx`. Nothing
- * imports that file, so its silhouettes never reach this bundle.
+ * silhouettes) were explored and deleted. Unshipped alternatives do not live
+ * in this repo — see the note on prototypes in CLAUDE.md.
  *
  * ── Two rules this component exists under ──────────────────────────────────
  *

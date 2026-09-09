@@ -78,6 +78,27 @@ switches to the Edge runtime which has no FormData file support.
 > If a new session-save path is added, reuse `lib/session-calendar-sync.ts` and
 > `lib/notify.ts` rather than re-inlining that logic.
 
+## ⚠️ No prototypes, demos or banked alternatives in this repo
+
+Max, 2026-09-09: *"get rid of the prototype, i dont want that or anything like
+that in the future."* Standing instruction, not a one-off cleanup.
+
+`/dev/hearit` and `app/components/_banked/` are deleted. Nothing replaces them.
+
+What this rules out:
+
+- A route that exists to demonstrate an idea rather than to be used — `/dev/*`
+  of any kind, "playground" pages, anything coach-only-because-it-is-unfinished.
+- Unshipped alternatives kept "banked" in the tree. A design direction that lost
+  is deleted; git remembers it if anyone ever wants it back.
+- Dead code retained because it might be useful later. It will not be, and it
+  costs every reader who has to work out whether it is live.
+
+An idea is either built into the product properly or it is written down in
+`product-review/` and not built. There is no third state where it half-exists in
+the codebase. If something genuinely needs trying against real users, it ships
+behind a real decision, to real users, not as a parallel page nobody maintains.
+
 ## General rules
 
 - Never modify `app/api/` files when working on UI features
