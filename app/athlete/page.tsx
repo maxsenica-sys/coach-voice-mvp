@@ -22,6 +22,7 @@ import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile 
 import { formatSessionDate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import type { MessageRow, RsvpEvent } from '@/lib/api-types'
+import { SESSION_RESPONSES, type SessionResponse } from '@/lib/session-response'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -45,6 +46,8 @@ type SessionRow = {
    */
   group_id: string | null
   focus_points?: string[] | null
+  /** How this athlete answered — null until they tap one. See lib/session-response.ts. */
+  athlete_response?: string | null
   session_date?: string | null
   shared_with_athlete: boolean
   created_at: string | null
@@ -347,7 +350,7 @@ export default function AthletePage() {
         const [{ data: sessData }, notesRes] = await Promise.all([
           athRecord
             ? supabase.from('sessions')
-                .select('id, session_name, title, summary, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime, group_id')
+                .select('id, session_name, title, summary, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime, group_id, athlete_response')
                 .eq('athlete_id', athRecord.id)
                 .eq('shared_with_athlete', true)
                 // By when the session happened, not when the row was written —
@@ -659,6 +662,30 @@ export default function AthletePage() {
       setActionError(errorMessage(e, 'Could not load that transcript'))
     } finally {
       setTranscriptBusy(null)
+    }
+  }
+
+  /**
+   * Answer a session, or take the answer back by tapping the same chip again.
+   *
+   * Optimistic: the chip fills immediately and reverts if the write fails.
+   * This is a one-tap gesture on a phone, often on a bus with bad signal, and
+   * a chip that waits for a round trip before acknowledging a tap gets tapped
+   * twice.
+   */
+  const respondToSession = async (sessionId: string, next: SessionResponse) => {
+    const current = sessions.find((s) => s.id === sessionId)?.athlete_response ?? null
+    const value = current === next ? null : next
+    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, athlete_response: value } : s)))
+    try {
+      await apiMutate(`/api/sessions/${sessionId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response: value }),
+      })
+    } catch (e: unknown) {
+      setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, athlete_response: current } : s)))
+      setActionError(errorMessage(e, 'Could not send that to your coach'))
     }
   }
 
@@ -1096,6 +1123,53 @@ export default function AthletePage() {
                           </div>
                         )
                       })()}
+                      {/* ── Answer your coach ──
+                          The first thing an athlete can say back in this
+                          product. Everything else here is the coach speaking.
+
+                          Buttons inside a Link, so each one stops the card's
+                          navigation: tapping a chip must answer, not open the
+                          session. Only on the newest card — a list of old
+                          sessions each asking to be rated is homework, and the
+                          point of this is that it costs ten seconds once. */}
+                      {i === 0 && (
+                        <div
+                          style={{ marginTop: 10 }}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                        >
+                          <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 6 }}>
+                            {s.athlete_response ? 'You told your coach' : 'Tell your coach'}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {SESSION_RESPONSES.map((opt) => {
+                              const on = s.athlete_response === opt.value
+                              return (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  aria-pressed={on}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); void respondToSession(s.id, opt.value) }}
+                                  style={{
+                                    padding: '7px 12px', minHeight: 34, borderRadius: 999,
+                                    border: `1px solid ${on ? opt.color : 'var(--border)'}`,
+                                    background: on ? opt.tint : 'var(--card)',
+                                    color: on ? opt.color : 'var(--text-2)',
+                                    // fontFamily, not the `font` shorthand: `font`
+                                    // resets fontSize and fontWeight, and in a
+                                    // style object the later key wins.
+                                    fontFamily: 'inherit',
+                                    fontSize: 'var(--fs-2)', fontWeight: on ? 800 : 600,
+                                    cursor: 'pointer', lineHeight: 1.2,
+                                  }}
+                                >
+                                  {opt.label}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 9, fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--primary-dark)' }}>
                         {s.audio_path && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--coach-color)', marginRight: 4 }}>

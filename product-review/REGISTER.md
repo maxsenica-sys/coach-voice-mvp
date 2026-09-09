@@ -356,6 +356,51 @@ handler had lost its null narrowing. Two structural lint errors were real too �
 page set state synchronously inside an effect on its invalid-link path. None of
 these were type errors before, because `any` is not a type.
 
+### Round 7 — 2026-09-09 · features only
+
+Max: *"After all of this is done, i want FEATURES exclusively."* Three, chosen
+to be one thing rather than three: **the loop three separate agents said this
+product does not have.**
+
+| ID | Status | Built as |
+|---|---|---|
+| DATA-007 | IMPLEMENTED | **Ten Seconds Back.** Migration `024` adds `athlete_response` / `athlete_responded_at`; `POST /api/sessions/[id]/respond` is the first write an athlete makes to a coach-owned row, so it proves ownership *and* that the session is actually shared before writing. Three chips — "Got it", "Working on it", "Not sure what you mean" — on the athlete's newest home card and on `/sessions/[id]`. Optimistic, and tapping the same chip again clears it |
+| DATA-002 | IMPLEMENTED | **Last time you said.** New `GET /api/athletes/[id]/last-focus` returns the most recent session that actually *carries* a focus point (not simply the last session, which often has none) plus how the athlete answered it. Shown read-only in the recorder the moment an athlete is picked |
+| DESIGN-009 | IMPLEMENTED | **The Focus Card.** `app/components/FocusCard.tsx` renders the focus point as a 1080×1350 ink image the athlete saves to their camera roll, via the share sheet with a download fallback |
+
+**Why these three together.** DATA-007 is the athlete answering; DATA-002 is the
+coach hearing the answer at the only moment it can change what they say. Neither
+is worth much alone — a response nobody reads is a survey, and a prompt with
+nothing behind it is a reminder. Together they are the first closed loop in the
+product: *coach sets a focus → athlete answers it → coach sees the answer before
+recording again.*
+
+**The value is in the third option.** "Not sure what you mean" is the one that
+earns the feature. A coach currently cannot distinguish a point that worked from
+a point that was never understood, and a fifteen-year-old will not send a message
+saying "I don't get it" — the social cost is too high. One tap is cheap enough
+that they will. It is phrased to put the ambiguity on the message rather than on
+the reader, deliberately.
+
+**Free text was left out on purpose.** A text box invites a conversation the
+messaging feature already handles, and invites a child to write something they
+may not want a permanent record of. Three buttons cannot be misused.
+
+**The Focus Card's safeguarding ceiling is the design, not a limitation.** The
+image carries the coaching sentence, the date and the wordmark — no name, no
+surname, no photograph, no coach name, no URL, no session id. It is built to be
+shareable *because* it carries nothing worth protecting. A screenshot already
+achieves the same distribution today with worse typography and strictly more
+identifying detail on screen. Added to the safeguard check's KNOWN GAPS, because
+that constraint lives in canvas drawing code and no static rule can hold it.
+
+**Judgement call, flagged.** DATA-002 adds a read-only panel to
+`QuickSessionModal`, which `CLAUDE.md` lists as a protected component. It touches
+none of the protected functions — not `startRecording`, `stopAndTranscribe`, MIME
+detection or FormData construction — and it cannot block or alter a save. The
+prompt never pre-fills the transcript and never gates the recording: a coach who
+wants to talk about something else just talks about something else.
+
 ## Not yet reviewed
 
 Real observations, recorded so they are not lost, but **not** agent proposals.
@@ -378,7 +423,7 @@ An agent may pick any of these up as its own recommendation on a later run.
 | ~~2026-09-09 UX-009~~ | ~~Correctness~~ | **ADDRESSED 2026-09-09** — the receipt reports what was actually created by diffing the session list around the refetch, so a partial save now reads "Saved for 7 athletes" rather than looking identical to a full one. |
 | ~~2026-09-09 DATA-008~~ | ~~Correctness~~ | **DONE 2026-09-09** — the roster cards now read `last_session_date` and `session_count` from the coverage route, which counts every session server-side. `recentSessions` and `thisWeek` still use the 50-row list, which is correct for both. |
 | ~~2026-09-09 DESIGN-008~~ | ~~Design~~ | **DONE 2026-09-09** — `stableTone(id)` in `lib/group-colors.ts` hashes the row id (FNV-1a), so an athlete keeps one colour everywhere and adding a teammate re-colours nobody. |
-| 2026-09-06 DATA+UX | Product | **STILL OPEN — the biggest thing this review found that nobody has acted on.** Both agents independently challenged the wellness loop: the coach gets one flattened mean with no indication which metric caused it, and the athlete gets nothing back at all for five taps a day. Neither made it their primary. The athlete's "See your trends →" still opens a blank form; `WellnessGraph` already exists and takes `athleteId`, so showing it there is close to a one-line change — but whether an athlete should see their own trends is a product decision, not a bug fix, so it was left for Max. |
+| ~~2026-09-06 DATA+UX~~ | ~~Product~~ | **PARTLY CLOSED.** The athlete's own wellness return loop landed in round 4 (a 14-day strip and one computed sentence). The coach still gets one flattened mean with no indication which metric caused it — `overallWellnessScore` — and that half is still open. Original note: **the biggest thing this review found that nobody has acted on.** Both agents independently challenged the wellness loop: the coach gets one flattened mean with no indication which metric caused it, and the athlete gets nothing back at all for five taps a day. Neither made it their primary. The athlete's "See your trends →" still opens a blank form; `WellnessGraph` already exists and takes `athleteId`, so showing it there is close to a one-line change — but whether an athlete should see their own trends is a product decision, not a bug fix, so it was left for Max. |
 | ~~2026-09-06 UX-002~~ | ~~UX~~ | **DONE 2026-09-06** — wired to the messages tab, dot removed. |
 | ~~2026-09-06 ALL FOUR~~ | ~~Defect~~ | **DONE 2026-09-06.** A signed-in user was shown the login form on every cold start. `/` is in the proxy matcher but no protected-route list (`proxy.ts:13-17,93`), `app/page.tsx` has no session check at all, and the PWA `start_url` is `/`. The middleware holds the user object at the edge and discards it. Verified. |
 | ~~2026-09-06 UX-004~~ | ~~Defect~~ | **DONE 2026-09-06** — `?next=` now carried and validated same-origin. Notification email CTAs point at protected routes (`lib/notify.ts:169,235,255,319`); a lapsed session redirects to `/` and **discards the destination** — no `next` param except password reset. |

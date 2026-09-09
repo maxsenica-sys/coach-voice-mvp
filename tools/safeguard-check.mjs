@@ -253,6 +253,7 @@ const KNOWN_GAPS = [
   'Whether the transcript withholding is correct for sessions saved BEFORE `sessions.group_id` existed. Those rows are null, so they are not identifiable as squad sessions. They are covered from the other end — the athlete client no longer selects transcripts at all — but SG6 is what enforces that, and a future direct fetch could reintroduce the leak for historic rows without tripping the group check.',
   'Whether a route\'s ownership check is *correct* — SG1 proves a route authenticates, not that it then scopes the query to the right coach.',
   'Whether row-level security policies in Supabase actually match what the routes assume. The policies live in migrations and are enforced by the database, not by anything this scanner reads.',
+  'What the Focus Card image actually contains. It is built to carry the coaching sentence, the date and the wordmark and nothing else — no name, no photo, no URL, no session id — because it is designed to leave the app. That constraint lives in canvas drawing code and cannot be checked by reading source shape, so it has to be re-read by a human whenever app/components/FocusCard.tsx changes.',
   'What the AI summariser writes about a child. `tools/prompt-rig.mjs` covers the prompt; nothing covers a model\'s output on an unseen transcript.',
 ]
 
