@@ -6,6 +6,8 @@ import { formatSessionDate, todayISODate, yesterdayISODate } from '@/lib/session
 import { errorMessage } from '@/lib/errors'
 import { responseOption } from '@/lib/session-response'
 import type { LastFocus } from '@/app/api/athletes/[id]/last-focus/route'
+import { SUPPORTED_RECORDING_TYPES, transcribeFile } from '@/lib/audio-mime'
+import { newRecordingId, patchRecording, putRecording, deleteRecording, type PendingRecording } from '@/lib/recording-queue'
 
 interface Athlete {
   id: string
@@ -87,6 +89,16 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
    */
   const [lastFocus, setLastFocus] = useState<LastFocus | null>(null)
 
+  /**
+   * The id of this recording's row in the local queue, once it has one.
+   *
+   * Set the moment the recorder stops, before any network call. Everything
+   * after that updates the same row, and the row is deleted when the session
+   * finally saves. Null means either no recording was made (the coach typed a
+   * transcript) or the device has no usable local storage.
+   */
+  const queuedIdRef = useRef<string | null>(null)
+
   useEffect(() => {
     if (mode !== 'athlete' || !athleteId) { setLastFocus(null); return }
     let cancelled = false
@@ -119,13 +131,11 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       }
       tick()
 
-      // mp4/AAC first: iOS Safari cannot decode WebM at all, so a WebM recording
-    // made in Chrome played back as an endless spinner on an iPhone. Every
-    // browser that can play WebM can also play mp4, so preferring it makes a
-    // recording playable everywhere. isTypeSupported still guards the choice,
-    // and WebM stays as the fallback for browsers that can't record mp4.
-    const supported = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
-      const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
+      // The candidate list and its order now live in lib/audio-mime.ts, so the
+      // offline replay path cannot drift from this one. The order is unchanged
+      // and load-bearing: mp4 first because iOS Safari cannot decode WebM at
+      // all, and isTypeSupported still guards the choice.
+      const mimeType = SUPPORTED_RECORDING_TYPES.find((t) => MediaRecorder.isTypeSupported(t)) ?? ''
       const mr = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32000 })
       chunksRef.current = []
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
@@ -154,9 +164,48 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     const blob = new Blob(chunksRef.current, { type: mimeType })
     if (blob.size < 1000) { setStep('review'); return }
 
+    // ── The recording is durable from here ──────────────────────────────
+    // Written to IndexedDB before anything touches the network, because this
+    // blob is the only irreplaceable thing in the flow. A sports hall has no
+    // signal, and until now a failed upload — or iOS discarding a backgrounded
+    // PWA — destroyed forty seconds the coach cannot say again.
+    //
+    // Best-effort: if local storage is unavailable this returns false and the
+    // flow behaves exactly as it did before the queue existed.
+    const queueId = newRecordingId()
+    const group = groups.find((g) => g.id === groupId)
+    const athlete = athletes.find((a) => a.id === athleteId)
+    const queued: PendingRecording = {
+      id: queueId,
+      createdAt: Date.now(),
+      blob,
+      mimeType,
+      mode,
+      athleteId: mode === 'athlete' ? athleteId : null,
+      groupId: mode === 'group' ? groupId : null,
+      // Snapshotted so a queued recording survives the squad being renamed.
+      groupName: group?.name ?? null,
+      memberIds: mode === 'group' ? (group?.member_ids ?? []) : [],
+      targetLabel: mode === 'group'
+        ? (group?.name ?? 'Squad')
+        : athlete ? `${athlete.first_name} ${athlete.last_name}` : 'an athlete',
+      sessionName,
+      sessionDate,
+      coachSport: coachSport || null,
+      shareWithAthlete,
+      stage: 'captured',
+      audioPath: null,
+      transcript: null,
+      // Not yet: the coach has not seen the review step, let alone agreed to
+      // save. See the note on `ready` in lib/recording-queue.ts.
+      ready: false,
+      attempts: 0,
+      lastError: null,
+    }
+    if (await putRecording(queued)) queuedIdRef.current = queueId
+
     setTranscribing(true)
     try {
-      const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
       let uploadedPath: string | null = null
 
       // Upload straight to Supabase Storage with a signed URL. Only the path then
@@ -183,7 +232,9 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         fd.append('audio_path', uploadedPath)
       } else {
         // Fallback for when the signed upload is unavailable. Works under 4.5MB.
-        fd.append('file', new File([blob], `recording.${ext}`, { type: mimeType }))
+        // The filename extension comes from lib/audio-mime.ts — Whisper reads
+        // the codec from it, and it must match what was actually recorded.
+        fd.append('file', transcribeFile(blob, mimeType))
       }
       if (coachSport) fd.append('sport', coachSport)
 
@@ -206,6 +257,16 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         setAudioPath(uploadedPath)
         setAudioMime(mimeType)
       }
+
+      // Record what was achieved, so a later retry resumes rather than paying
+      // for the upload and the transcription again.
+      if (queuedIdRef.current) {
+        await patchRecording(queuedIdRef.current, {
+          audioPath: uploadedPath,
+          transcript: typeof json.text === 'string' ? json.text : null,
+          stage: json.text ? 'transcribed' : uploadedPath ? 'uploaded' : 'captured',
+        })
+      }
     } catch (e: unknown) {
       setError(errorMessage(e, 'Transcription failed. You can type the transcript manually.'))
     } finally {
@@ -222,6 +283,21 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     if (sessionDate > todayISODate()) { setError('A session date cannot be in the future.'); return }
     setSaving(true)
     setError('')
+
+    // Mark the queued recording as wanted BEFORE attempting the network, and
+    // with the coach's final answers on it. If the save fails from here the row
+    // is already complete and `ready`, so the drainer can finish it later
+    // without the coach re-entering anything.
+    if (queuedIdRef.current) {
+      await patchRecording(queuedIdRef.current, {
+        ready: true,
+        transcript: transcript.trim(),
+        sessionName,
+        sessionDate,
+        shareWithAthlete,
+        audioPath,
+      })
+    }
 
     try {
       if (mode === 'athlete') {
@@ -294,10 +370,23 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         }
       }
 
+      // Saved for real — the local copy has done its job.
+      if (queuedIdRef.current) {
+        await deleteRecording(queuedIdRef.current)
+        queuedIdRef.current = null
+      }
+
       onSaved()
       onClose()
     } catch (e: unknown) {
-      setError(errorMessage(e, 'Failed to save session'))
+      // The recording is not lost. It is on this device, marked ready, and the
+      // pending panel on the dashboard will retry it — so the message says that
+      // rather than implying the last forty seconds are gone.
+      setError(
+        queuedIdRef.current
+          ? `${errorMessage(e, 'Could not save that')} — the recording is saved on this phone and will send when you are back online.`
+          : errorMessage(e, 'Failed to save session'),
+      )
     } finally {
       setSaving(false)
     }
@@ -601,6 +690,13 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                     // Stop any lingering mic stream before re-recording
                     streamRef.current?.getTracks().forEach(t => t.stop())
                     streamRef.current = null
+                    // Re-recording is an explicit decision to discard, so the
+                    // queued copy goes with it rather than lingering as an
+                    // abandoned blob the coach never meant to keep.
+                    if (queuedIdRef.current) {
+                      void deleteRecording(queuedIdRef.current)
+                      queuedIdRef.current = null
+                    }
                     setStep('record')
                     setTranscript('')
                     setAudioPath(null)

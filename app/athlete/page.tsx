@@ -25,6 +25,7 @@ import type { MessageRow, RsvpEvent } from '@/lib/api-types'
 import { SESSION_RESPONSES, type SessionResponse } from '@/lib/session-response'
 import { injuryStatusOption, openInjuries, type Injury } from '@/lib/injury'
 import { regionLabel } from '@/lib/body-map'
+import { SUPPORTED_RECORDING_TYPES, audioExtension } from '@/lib/audio-mime'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -626,13 +627,12 @@ export default function AthletePage() {
   const startNoteRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      // mp4/AAC first: iOS Safari cannot decode WebM at all, so a WebM recording
-    // made in Chrome played back as an endless spinner on an iPhone. Every
-    // browser that can play WebM can also play mp4, so preferring it makes a
-    // recording playable everywhere. isTypeSupported still guards the choice,
-    // and WebM stays as the fallback for browsers that can't record mp4.
-    const supported = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
-      const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
+      // The candidate list and its order live in lib/audio-mime.ts. It was
+      // duplicated here and in QuickSessionModal, which is how two recorders
+      // eventually start disagreeing about which browser gets mp4. Order
+      // unchanged and still load-bearing — mp4 first because iOS Safari cannot
+      // decode WebM at all.
+      const mimeType = SUPPORTED_RECORDING_TYPES.find((t) => MediaRecorder.isTypeSupported(t)) ?? ''
       const recorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32000 })
       mediaRecRef.current = recorder
       noteChunksRef.current = []
@@ -643,8 +643,9 @@ export default function AthletePage() {
         setNoteTranscribing(true)
         try {
           const fd = new FormData()
-          const ext = blob.type.includes('mp4') ? 'mp4' : blob.type.includes('ogg') ? 'ogg' : 'webm'
-          fd.append('file', new File([blob], `note.${ext}`, { type: blob.type }))
+          // Same extension mapping as every other capture path — Whisper
+          // reads the codec from the filename.
+          fd.append('file', new File([blob], `note.${audioExtension(blob.type)}`, { type: blob.type }))
           if (sport) fd.append('sport', sport)
           const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
           const json = await res.json().catch(() => ({}))
