@@ -372,7 +372,10 @@ export default function SessionDetailPage() {
           <h1 style={{
             fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 'clamp(26px, 5.5vw, 36px)',
             lineHeight: 1.1, letterSpacing: '-0.015em', margin: 0, color: 'var(--text)',
-            textWrap: 'balance' as any,
+            // `text-wrap: balance` is CSS the React type definitions do not
+            // know about yet. Widening the property is honest; `as any` on the
+            // value silenced the whole style object.
+            textWrap: 'balance' as React.CSSProperties['textWrap'],
           }}>
             {heading}
           </h1>

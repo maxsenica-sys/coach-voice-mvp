@@ -63,7 +63,14 @@ export async function sendEmail({ to, subject, html, fromName, fromEmail, replyT
     }
 
     const result = await res.json().catch(() => ({}))
-    return { ok: true, id: (result as any)?.id }
+    // Resend returns `{ id }` on success. Narrowed rather than cast: the
+    // value is genuinely unknown here (it is a parsed JSON body), and the id
+    // is only ever logged, so a missing one must not throw.
+    const id =
+      result && typeof result === 'object' && 'id' in result && typeof result.id === 'string'
+        ? result.id
+        : undefined
+    return { ok: true, id }
   } catch (e: unknown) {
     return { ok: false, error: errorMessage(e, 'Email send failed') }
   }

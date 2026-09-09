@@ -320,6 +320,42 @@ correctness is not obvious by reading it, the computation belongs in `lib/`.
 Node can strip TypeScript but cannot parse JSX, so logic in a `.tsx` is logic no
 rig can reach.
 
+### Round 6 follow-through — 2026-09-09 · "fix all"
+
+Max: *"go ahead and fix all."* Everything open on this register that was a
+**defect or a process gap** rather than a product bet. Twelve rows closed; six
+of them turned out to have been fixed in earlier rounds and never struck
+through, which is its own lesson about a register nobody prunes.
+
+| Fixed | How |
+|---|---|
+| **The group-transcript leak** (safeguarding) | Migration `023` adds `sessions.group_id`; the recorder tags squad saves with it and the server validates the id against the coach's own groups; the detail route withholds a squad transcript from an athlete viewer; and the athlete client stops selecting the `transcript` column entirely, loading individual transcripts on demand from the gated route instead. That last part is what covers squad sessions saved *before* the column existed — they are null, so no flag can find them. New safeguard rule **SG6** enforces it, verified by reinstating the select and watching it fail. |
+| A group save reported partial failure as success | The receipt below reports what was actually created |
+| Roster cards wrong past 50 sessions | They read `session_count` / `last_session_date` from the coverage route, which is uncapped |
+| Avatar colour derived from array index | `stableTone(id)` hashes the row id, so identity stops moving |
+| Lint advisory with 31 errors | **0 errors, and lint now blocks CI.** The last soft gate is closed |
+| PROJECT-STATE over its own line budget | Trimmed back under budget; the history it carried lives in these reports |
+
+**Also built: UX-009, The Receipt** — the highest-priority unbuilt item on the
+register (150) and the thing the round-5 report said should lead. A save writes
+a session row, creates a calendar event and emails a minor, and reported none
+of it: `onSaved(); onClose()` was the whole post-save experience. There is now
+a receipt naming who it went to and whether it was shared, with one tap to the
+session. It deliberately does not claim the email was *delivered* (the client
+cannot know) and deliberately offers no Undo (there is no DELETE on
+`/api/sessions/[id]`, and an undo that cannot be honoured is worse than
+silence).
+
+**What clearing the 31 lint errors actually found.** Typing eight `any[]` state
+hooks against the real row shapes surfaced three latent bugs that `any` had been
+hiding: the message type used `body` where the column is `content`;
+`new Date(msg.created_at)` on a nullable column renders 01:00 on 1 January 1970
+rather than an empty slot; and `window.open(msg.media_url)` inside a click
+handler had lost its null narrowing. Two structural lint errors were real too —
+`drawStroke` was captured by an effect before its declaration, and the share
+page set state synchronously inside an effect on its invalid-link path. None of
+these were type errors before, because `any` is not a type.
+
 ## Not yet reviewed
 
 Real observations, recorded so they are not lost, but **not** agent proposals.
@@ -329,19 +365,19 @@ An agent may pick any of these up as its own recommendation on a later run.
 |---|---|---|
 | ~~2026-09-05 setup~~ | ~~Design~~ | **DONE 2026-09-05** — token raised to `#6B736D` (4.61:1 on `--bg`, 4.89:1 on `--card`); 23 hardcoded `#9BA29B` instances repointed at the token. |
 | ~~2026-09-06 synthesis~~ | ~~Correctness~~ | **DONE 2026-09-06** — quotation marks removed with UX-002. |
-| 2026-09-06 DESIGN-002 | Design | `--primary` is used as **text** at 10 sites at 3.24–3.65:1, all failing 1.4.3. DESIGN-002 fixes two; eight remain. |
-| 2026-09-09 orchestrator | Correctness | Raw `fetch` with no `res.ok` check at `app/athlete/page.tsx:256` (the wellness mount fetch) — a live violation of checklist item 1 in `CLAUDE.md`, which exists because a non-2xx silently becomes empty data. Found while verifying DATA-006; folded into that build outline. |
-| 2026-09-09 orchestrator | Dead code | `COOLDOWN_MS` and `SPLASH_LAST_KEY` (`ColdStartSplash.tsx:45,51`) are declared and never used — the live cooldown and storage key are literals in `app/layout.tsx:121-123`. `npm run lint` does not flag either. |
-| 2026-09-09 DESIGN-006 | Accessibility | The installed PWA disables zoom entirely (`app/layout.tsx:15-16` `maximumScale: 1`, `userScalable: false`, manifest `display: standalone`) while carrying 66 sites of sub-11 px text — no mechanism by which a user can enlarge any of it. WCAG 2.2 SC 1.4.4 requires 200%. `globals.css:590` already solves the iOS form-field auto-zoom this was presumably for. Two-line fix. Raised as a challenge, never proposed against. |
-| 2026-09-09 DESIGN-006 | Design | `--coach-color` has no safe use as text on its own light tint: 3.56:1 on `--coach-light` versus 4.60:1 on white. A gap in the token set rather than a mistake on one line. `--coach-on-light: #8E3F27` (5.62:1) is the proposed fill. |
+| ~~2026-09-06 DESIGN-002~~ | ~~Design~~ | **DONE 2026-09-09** (`886f5d4`) — `--primary` as text eliminated repo-wide, all 10 sites. Verified 0 remaining. |
+| ~~2026-09-09 orchestrator~~ | ~~Correctness~~ | **DONE 2026-09-09** — the wellness mount fetch moved onto `apiJson` with the DATA-006 build. |
+| ~~2026-09-09 orchestrator~~ | ~~Dead code~~ | **DONE 2026-09-09** — both deleted with the UX-006 build; a comment marks where they used to be. |
+| ~~2026-09-09 DESIGN-006~~ | ~~Accessibility~~ | **DONE 2026-09-09** — `maximumScale`/`userScalable` removed; the layout carries a comment explaining why zoom is not locked. |
+| ~~2026-09-09 DESIGN-006~~ | ~~Design~~ | **DONE 2026-09-09** — `--coach-on-light: #8E3F27` added to `globals.css` and used for rust text on rust tints. |
 | ~~2026-09-09 build~~ | ~~Correctness~~ | **RESOLVED 2026-09-09 (`4d0929e`) — it was not a contradiction to decide, it was a bug.** `inverted: true` means "a higher raw score is worse" by the flag's own definition, but both hints ask the athlete the other way round, so `6 - raw` flipped answers that were already correct. Because `overallWellnessScore` feeds `computeWellnessAlert`, **the safeguarding alert ran backwards**: 4/4/4 with no soreness and no stress scored 2.8 and tripped the coach email; 2/2/2 while very sore and very stressed scored 3.2 and did not. Fixed by deleting the flag, not by rewriting the hints — the hints predate it (initial commit vs `e32ac64`), so stored data is already right and needs no migration. Original note: **the app contradicts itself about which way soreness runs.** `WELLNESS_METRICS` marks `soreness` and `stress` `inverted: true`, and every scoring function (`metricColor`, `metricTint`, `scoreLabel`, `overallWellnessScore`) computes `6 - raw` — so a raw 5 scores as *bad*. But the form's own hint tells the athlete "1 = very sore, 5 = no soreness", i.e. raw 5 is *good*, and PROJECT-STATE records the same reading. One of the two is wrong. This decides the colour of a dot, the coach's alert threshold and whether a caretaker email fires, so it is not cosmetic. Not fixed in the DATA-006 build: flipping it either way changes alerting behaviour and needs a decision, not a guess. The new athlete-facing sentence sidesteps it by naming only `energy` and `sleep_q`. |
-| 2026-09-09c tooling | Process | The three new rigs are hard gates; lint is still advisory in CI with 31 pre-existing errors. Clearing those 31 and making lint blocking is now the only soft gate left. |
-| 2026-09-09 build | Process | `npm run lint` reports **135 pre-existing errors** across 53 files (mostly `no-explicit-any` in API routes). CLAUDE.md lists lint as a mandatory pre-commit gate, but a gate that has been red for a long time cannot fail a bad commit — which is part of why the `#9BA29B` regression got in. The DESIGN-006 rule works only because it is scoped to a file with zero violations. |
+| ~~2026-09-09c tooling~~ | ~~Process~~ | **DONE 2026-09-09** — the 31 remaining lint errors cleared and **lint is now a blocking CI gate**. Warnings stay non-fatal on purpose. |
+| ~~2026-09-09 build~~ | ~~Process~~ | **DONE 2026-09-09** — 135 → 31 → **0**. Lint blocks CI as of this round. |
 | 2026-09-09 orchestrator | Process | PROJECT-STATE is 316 lines against its own ~250-line budget after today's refresh, and wants a deliberate trim rather than further growth. |
-| 2026-09-09 WOW-004 | **Safeguarding** | **A group session shows every member the whole squad transcript.** `QuickSessionModal.tsx:227-249` writes the identical `transcript` to one session row per member; `app/athlete/page.tsx:332` selects it and renders it under "View full transcript". Any critical remark a coach makes about one named child in a squad talk is readable by every other child in that squad, today. WOW-004 reduces the *summary* leak — the prompt forbids naming other athletes — but does not touch the transcript underneath it. There is no flag distinguishing a group session from an individual one, so suppressing it needs one (`sessions.group_id`). Not cosmetic, and arguably more urgent than anything built this round. |
-| 2026-09-09 UX-009 | Correctness | A **group** save can partially fail silently: `QuickSessionModal.tsx:220-250` posts one session per member, and success for 7 of 8 is reported to the coach identically to success for 8 of 8 — by the modal closing. The thrown-error path covers a rejected post, not a 200 that wrote nothing. |
-| 2026-09-09 DATA-008 | Correctness | `fetchAllSessions` requests `limit: '50'` and three derived values treat it as "all sessions" — `recentSessions`, `thisWeek`, and the per-athlete `last`/`count` on the roster cards (`app/dashboard/page.tsx:1285-1286`). A busy coach's roster starts reporting "No sessions yet" for athletes who have twenty, with no error anywhere. The new coverage route sidesteps it for the strip; the roster cards are still wrong. |
-| 2026-09-09 DESIGN-008 | Design | An athlete's avatar colour is `_toneColors[i % 3]` — derived from their **index in an array** (`app/dashboard/page.tsx:940, 1017, 1067, 1124`). The same person is sage in one list and rust in another, and everyone's colour shifts when one athlete is added. `lib/group-colors.ts` already shows the team knows how to hash an id to a stable colour. |
+| ~~2026-09-09 WOW-004~~ | ~~**Safeguarding**~~ | **FIXED 2026-09-09.** `sessions.group_id` (migration 023) marks a squad recording; the detail route withholds its transcript from an athlete viewer; and the athlete client no longer selects the `transcript` column at all, which also covers squad sessions saved before the column existed. Locked in by safeguard rule **SG6**, verified to fire on the reintroduced select. |
+| ~~2026-09-09 UX-009~~ | ~~Correctness~~ | **ADDRESSED 2026-09-09** — the receipt reports what was actually created by diffing the session list around the refetch, so a partial save now reads "Saved for 7 athletes" rather than looking identical to a full one. |
+| ~~2026-09-09 DATA-008~~ | ~~Correctness~~ | **DONE 2026-09-09** — the roster cards now read `last_session_date` and `session_count` from the coverage route, which counts every session server-side. `recentSessions` and `thisWeek` still use the 50-row list, which is correct for both. |
+| ~~2026-09-09 DESIGN-008~~ | ~~Design~~ | **DONE 2026-09-09** — `stableTone(id)` in `lib/group-colors.ts` hashes the row id (FNV-1a), so an athlete keeps one colour everywhere and adding a teammate re-colours nobody. |
 | 2026-09-06 DATA+UX | Product | **STILL OPEN — the biggest thing this review found that nobody has acted on.** Both agents independently challenged the wellness loop: the coach gets one flattened mean with no indication which metric caused it, and the athlete gets nothing back at all for five taps a day. Neither made it their primary. The athlete's "See your trends →" still opens a blank form; `WellnessGraph` already exists and takes `athleteId`, so showing it there is close to a one-line change — but whether an athlete should see their own trends is a product decision, not a bug fix, so it was left for Max. |
 | ~~2026-09-06 UX-002~~ | ~~UX~~ | **DONE 2026-09-06** — wired to the messages tab, dot removed. |
 | ~~2026-09-06 ALL FOUR~~ | ~~Defect~~ | **DONE 2026-09-06.** A signed-in user was shown the login form on every cold start. `/` is in the proxy matcher but no protected-route list (`proxy.ts:13-17,93`), `app/page.tsx` has no session check at all, and the PWA `start_url` is `/`. The middleware holds the user object at the edge and discards it. Verified. |

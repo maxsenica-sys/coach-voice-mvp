@@ -19,6 +19,7 @@ import {
 } from '@/lib/wellness-config'
 import { formatSessionDate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
+import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 
 interface Athlete {
   id: string; first_name: string; last_name: string
@@ -42,6 +43,12 @@ interface Session {
 interface SessionVideo {
   id: string; session_id: string; file_name: string | null
   annotations: AnnotationStroke[]; signedUrl: string | null; created_at: string
+  /**
+   * Whether the athlete can see this video. The coach toggles it per video.
+   * It was missing from this interface while three separate call sites cast
+   * their way around the gap — including the toggle that writes it.
+   */
+  shared_with_athlete: boolean
 }
 
 // ── SVG Icon (reused from dashboard) ────────────────────────────
@@ -83,8 +90,8 @@ function buildSessionEmailHtml(sessionName: string, summary: string, athleteName
 
 interface CaretakerPanelProps {
   athleteId: string; athleteName: string
-  caretakers: any[]; setCaretakers: (v: any[]) => void
-  form: any; setForm: (v: any) => void
+  caretakers: Caretaker[]; setCaretakers: (v: Caretaker[]) => void
+  form: CaretakerForm; setForm: (v: CaretakerForm) => void
   saving: boolean; setSaving: (v: boolean) => void
   msg: string; setMsg: (v: string) => void
   emailSending: boolean; setEmailSending: (v: boolean) => void
@@ -95,7 +102,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
   const [loaded, setLoaded] = useState(false)
   useEffect(() => {
     if (loaded) return
-    apiJson<{ caretakers?: any[] }>(`/api/caretakers?athlete_id=${athleteId}`)
+    apiJson<{ caretakers?: Caretaker[] }>(`/api/caretakers?athlete_id=${athleteId}`)
       .then(j => { setCaretakers(j.caretakers ?? []); setLoaded(true) })
       .catch((e: unknown) => { setMsg(errorMessage(e, 'Could not load caretakers')); setLoaded(true) })
   }, [athleteId, loaded, setCaretakers, setMsg])
@@ -137,7 +144,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{c.caretaker_name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({c.relationship})</span></div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.caretaker_email}</div>
               </div>
-              <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11, gap: 4 }} onClick={() => sendTestEmail(c.caretaker_email, c.caretaker_name)} disabled={emailSending}>
+              <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11, gap: 4 }} onClick={() => sendTestEmail(c.caretaker_email, c.caretaker_name ?? 'there')} disabled={emailSending}>
                 <Icon name="mail" size={12} /> Send
               </button>
               <button className="btn btn-danger" style={{ padding: '4px 8px' }} onClick={async () => {
@@ -218,7 +225,7 @@ export default function AthleteDetailPage() {
 
   const [autoMonthlyReport, setAutoMonthlyReport] = useState(false)
   const [showCaretakers, setShowCaretakers] = useState(false)
-  const [caretakers, setCaretakers] = useState<any[]>([])
+  const [caretakers, setCaretakers] = useState<Caretaker[]>([])
   const [caretakerForm, setCaretakerForm] = useState({ name: '', email: '', relationship: 'parent', notify_session_reports: true, notify_monthly_reports: true, notify_wellness_alerts: true })
   const [caretakerSaving, setCaretakerSaving] = useState(false)
   const [caretakerMsg, setCaretakerMsg] = useState('')
@@ -258,7 +265,7 @@ export default function AthleteDetailPage() {
   const [sessionsShowAll, setSessionsShowAll] = useState(false)
 
   // ── Notes ─────────────────────────────────────────────────────
-  const [notes, setNotes] = useState<any[]>([])
+  const [notes, setNotes] = useState<CoachNote[]>([])
   const [noteText, setNoteText] = useState('')
   const [noteShared, setNoteShared] = useState(false)
   const [noteSaving, setNoteSaving] = useState(false)
@@ -477,13 +484,16 @@ export default function AthleteDetailPage() {
       setActionError(errorMessage(e, 'Could not change who can see that video'))
       return
     }
-    setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).map(v => v.id === videoId ? { ...v, shared_with_athlete: !current } as any : v) }))
+    setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).map(v => v.id === videoId ? { ...v, shared_with_athlete: !current } : v) }))
   }
 
   const saveProfile = async () => {
     setProfileSaving(true); setProfileMsg('')
     try {
-      const body: any = {
+      // Typed from what the PATCH route accepts rather than left open: this
+      // object is assembled conditionally below, and `any` meant a typo in a
+      // key would have been a silently dropped field.
+      const body: Record<string, string | null | Record<string, string> | { label: string; value: string }[]> = {
         first_name: profileForm.first_name.trim(),
         last_name: profileForm.last_name.trim(),
         position: profileForm.position.trim() || null,
@@ -628,7 +638,7 @@ export default function AthleteDetailPage() {
       {/* ── Quick Session Modal ── */}
       {showQuickSession && athlete && (
         <QuickSessionModal
-          athletes={[athlete as any]}
+          athletes={[athlete]}
           groups={[]}
           defaultAthleteId={athleteId}
           coachSport={coachSport}
@@ -986,7 +996,7 @@ export default function AthleteDetailPage() {
                             {s.audio_path && (
                               <div style={{ marginTop: 14 }}>
                                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Recording</div>
-                                <SessionAudioPlayer sessionId={s.id} mime={(s as any).audio_mime ?? null} />
+                                <SessionAudioPlayer sessionId={s.id} mime={s.audio_mime ?? null} />
                               </div>
                             )}
                             {s.summary && (
@@ -1010,8 +1020,8 @@ export default function AthleteDetailPage() {
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--border-soft)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 6 }}>
                                         <span style={{ fontSize: 13, fontWeight: 600 }}>{v.file_name ?? 'Video'}</span>
                                         <div style={{ display: 'flex', gap: 6 }}>
-                                          <button className="btn btn-ghost" onClick={() => toggleVideoShare(s.id, v.id, (v as any).shared_with_athlete ?? false)} style={{ padding: '4px 10px', fontSize: 12, gap: 5 }}>
-                                            <Icon name="share" size={12} /> {(v as any).shared_with_athlete ? 'Shared' : 'Share'}
+                                          <button className="btn btn-ghost" onClick={() => toggleVideoShare(s.id, v.id, v.shared_with_athlete)} style={{ padding: '4px 10px', fontSize: 12, gap: 5 }}>
+                                            <Icon name="share" size={12} /> {v.shared_with_athlete ? 'Shared' : 'Share'}
                                           </button>
                                           <button className="btn btn-danger" onClick={() => deleteVideo(s.id, v.id)} style={{ padding: '4px 10px', fontSize: 12, gap: 5 }}>
                                             <Icon name="trash" size={12} /> Delete
@@ -1294,7 +1304,7 @@ export default function AthleteDetailPage() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {notes.map((n: any) => (
+                {notes.map((n) => (
                   <div key={n.id} className="card" style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
                       <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>

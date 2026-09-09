@@ -33,7 +33,13 @@ function attach(res: NextResponse, cookies: CookieToSet[]) {
 
 const BUCKET = 'session-videos'
 
-async function generateSignedUrls(admin: ReturnType<typeof createSupabaseAdminClient>, videos: any[]) {
+/** The fields of a session_videos row this helper needs to mint a URL. */
+type SignableVideo = { storage_path: string }
+
+async function generateSignedUrls<T extends SignableVideo>(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  videos: T[],
+) {
   return Promise.all(
     videos.map(async (v) => {
       const { data } = await admin.storage
@@ -60,16 +66,19 @@ export async function GET(
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   const isAthlete = profile?.role === 'athlete'
 
-  let q = admin
+  const q = admin
     .from('session_videos')
     .select('id, session_id, storage_path, file_name, mime_type, annotations, shared_with_athlete, share_note, created_at')
     .eq('session_id', sessionId)
     .order('created_at', { ascending: true })
 
-  // Athletes only see videos explicitly shared with them
-  if (isAthlete) q = (q as any).eq('shared_with_athlete', true)
+  // Athletes only see videos explicitly shared with them. Applied as a fresh
+  // binding rather than reassigning `q`, which is what the cast was working
+  // around: chaining .eq() narrows the builder's type and TypeScript will not
+  // assign the narrower result back onto the wider variable.
+  const query = isAthlete ? q.eq('shared_with_athlete', true) : q
 
-  const { data: videos, error } = await q
+  const { data: videos, error } = await query
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 

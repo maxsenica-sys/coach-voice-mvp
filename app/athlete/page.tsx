@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
-import VideoAnnotator from '@/app/components/VideoAnnotator'
+import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import WellnessSubmit from '@/app/components/WellnessSubmit'
 import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import { getDailyQuote } from '@/lib/quotes'
@@ -21,6 +21,7 @@ import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
 import { formatSessionDate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
+import type { MessageRow, RsvpEvent } from '@/lib/api-types'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -31,7 +32,18 @@ type SessionRow = {
   session_name: string | null
   title: string | null
   summary: string | null
-  transcript: string | null
+  /**
+   * The squad this session was recorded for, if any.
+   *
+   * The transcript itself is deliberately NOT in this type. A group recording
+   * writes one row per member carrying the coach's whole talk to the squad,
+   * which names other children — so the athlete's client does not select that
+   * column at all any more. Selecting it and then declining to render it would
+   * not be a fix: a column this browser can query is a column it has.
+   * Individual transcripts are loaded one at a time from the detail route,
+   * which withholds squad transcripts server-side.
+   */
+  group_id: string | null
   focus_points?: string[] | null
   session_date?: string | null
   shared_with_athlete: boolean
@@ -55,7 +67,7 @@ type SessionVideo = {
   session_id: string
   storage_path: string
   file_name: string | null
-  annotations: any[]
+  annotations: AnnotationStroke[]
   created_at: string
   signedUrl: string | null
 }
@@ -281,9 +293,14 @@ export default function AthletePage() {
 
   // Videos
   const [sessionVideos, setSessionVideos] = useState<Record<string, SessionVideo[]>>({})
+  // Transcripts are fetched one at a time, on request, rather than arriving
+  // with the session list — see the note on SessionRow.group_id. `null` means
+  // "asked for and the server declined", which is what a squad session gets.
+  const [transcripts, setTranscripts] = useState<Record<string, string | null>>({})
+  const [transcriptBusy, setTranscriptBusy] = useState<string | null>(null)
 
   // Messaging (athlete → coach)
-  const [messages, setMessages] = useState<any[]>([])
+  const [messages, setMessages] = useState<MessageRow[]>([])
   const [msgText, setMsgText] = useState('')
   const [msgSending, setMsgSending] = useState(false)
   const [msgLoading, setMsgLoading] = useState(false)
@@ -292,7 +309,7 @@ export default function AthletePage() {
 
   // RSVP
   const [rsvpMap, setRsvpMap] = useState<Record<string, string>>({}) // event_id → status
-  const [rsvpEvents, setRsvpEvents] = useState<any[]>([])
+  const [rsvpEvents, setRsvpEvents] = useState<RsvpEvent[]>([])
 
   // Join coach by code
   const [joinCode, setJoinCode] = useState('')
@@ -330,7 +347,7 @@ export default function AthletePage() {
         const [{ data: sessData }, notesRes] = await Promise.all([
           athRecord
             ? supabase.from('sessions')
-                .select('id, session_name, title, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime')
+                .select('id, session_name, title, summary, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime, group_id')
                 .eq('athlete_id', athRecord.id)
                 .eq('shared_with_athlete', true)
                 // By when the session happened, not when the row was written —
@@ -449,7 +466,7 @@ export default function AthletePage() {
     fetch(`/api/calendar?month=${calMonth}`)
       .then((r) => r.json())
       .then((j) => {
-        const coachEvents = (j.events ?? []).filter((e: any) => e.created_by_role === 'coach' && e.rsvp_enabled)
+        const coachEvents = ((j.events ?? []) as RsvpEvent[]).filter((e) => e.created_by_role === 'coach' && e.rsvp_enabled)
         setRsvpEvents(coachEvents)
       })
   }, [tab, athleteId, calMonth])
@@ -620,6 +637,29 @@ export default function AthletePage() {
   const stopNoteRecording = () => {
     mediaRecRef.current?.stop()
     setNoteRecording(false)
+  }
+
+  /**
+   * Fetch one session's transcript on demand.
+   *
+   * The detail route is the only path that serves it, and it withholds the
+   * transcript of a squad session from an athlete viewer. So this can be
+   * called without the client having to be trusted to know the rule.
+   */
+  const loadTranscript = async (sessionId: string) => {
+    if (sessionId in transcripts) return
+    setTranscriptBusy(sessionId)
+    try {
+      const data = await apiJson<{ session?: { transcript?: string | null } }>(
+        `/api/sessions/${sessionId}/detail`,
+        { cache: 'no-store' },
+      )
+      setTranscripts((prev) => ({ ...prev, [sessionId]: data.session?.transcript ?? null }))
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not load that transcript'))
+    } finally {
+      setTranscriptBusy(null)
+    }
   }
 
   // ── Calendar event ─────────────────────────────────────────
@@ -1199,7 +1239,7 @@ export default function AthletePage() {
                                 <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--coach-color)', display: 'inline-block' }} />
                                 Recording
                               </div>
-                              <SessionAudioPlayer sessionId={s.id} mime={(s as any).audio_mime ?? null} />
+                              <SessionAudioPlayer sessionId={s.id} mime={s.audio_mime ?? null} />
                             </div>
                           )}
 
@@ -1216,14 +1256,26 @@ export default function AthletePage() {
                             </div>
                           )}
 
-                          {/* Full transcript (collapsed) */}
-                          {s.transcript && (
-                            <details style={{ marginTop: 12 }}>
+                          {/* Full transcript — individual sessions only.
+                              A squad recording is the coach talking to the
+                              whole group and routinely names other athletes,
+                              so it is never sent here. The summary above was
+                              written for this athlete alone. */}
+                          {s.group_id ? (
+                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.6 }}>
+                              This was a squad session. Your summary above is yours — the full
+                              recording is your coach talking to the whole group, so it stays
+                              with them.
+                            </div>
+                          ) : (
+                            <details style={{ marginTop: 12 }} onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) void loadTranscript(s.id) }}>
                               <summary style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text-2)', cursor: 'pointer', padding: '8px 0' }}>
                                 View full transcript
                               </summary>
                               <div style={{ fontSize: 'var(--fs-3)', lineHeight: 1.7, color: 'var(--text-2)', marginTop: 8, padding: '12px 14px', background: 'var(--border-soft)', borderRadius: 8, whiteSpace: 'pre-wrap' }}>
-                                {s.transcript}
+                                {transcriptBusy === s.id
+                                  ? 'Loading…'
+                                  : transcripts[s.id] ?? 'No transcript was saved for this session.'}
                               </div>
                             </details>
                           )}
@@ -1327,8 +1379,13 @@ export default function AthletePage() {
               {!msgLoading && messages.length === 0 && (
                 <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-3)', padding: 30 }}>No messages yet. Send your coach a message below!</div>
               )}
-              {messages.map((msg: any) => {
+              {messages.map((msg) => {
                 const isAthlete = msg.sender_role === 'athlete'
+                // Bound once so the narrowing survives into the onClick
+                // closure below — inside a callback TypeScript can no longer
+                // prove the field is still non-null, and it is right to
+                // insist: `messages` is state and could be replaced mid-click.
+                const mediaUrl = msg.media_url
                 return (
                   <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isAthlete ? 'flex-end' : 'flex-start', marginBottom: 4 }}>
                     <div style={{
@@ -1340,7 +1397,7 @@ export default function AthletePage() {
                       boxShadow: '0 1px 2px rgba(0,0,0,0.05)', fontSize: 14, lineHeight: 1.5,
                     }}>
                       {msg.msg_type === 'text' && <span>{msg.content}</span>}
-                      {msg.msg_type === 'image' && msg.media_url && <img src={msg.media_url} alt="image" style={{ maxWidth: 240, maxHeight: 200, borderRadius: 10, display: 'block', cursor: 'pointer' }} onClick={() => window.open(msg.media_url, '_blank')} />}
+                      {msg.msg_type === 'image' && msg.media_url && <img src={msg.media_url} alt="image" style={{ maxWidth: 240, maxHeight: 200, borderRadius: 10, display: 'block', cursor: 'pointer' }} onClick={() => { if (mediaUrl) window.open(mediaUrl, '_blank') }} />}
                       {msg.msg_type === 'video' && msg.media_url && <video src={msg.media_url} controls style={{ maxWidth: 280, maxHeight: 180, borderRadius: 10, display: 'block' }} />}
                       {msg.msg_type === 'audio' && msg.media_url && (
                         <div style={{ padding: '6px 4px' }}>
@@ -1350,7 +1407,12 @@ export default function AthletePage() {
                       )}
                     </div>
                     <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 2, paddingLeft: isAthlete ? 0 : 4, paddingRight: isAthlete ? 4 : 0 }}>
-                      {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {/* created_at is nullable in the schema, and
+                          `new Date(null)` is the epoch — a message stamped
+                          01:00 in 1970 rather than an empty slot. */}
+                      {msg.created_at
+                        ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : ''}
                     </div>
                   </div>
                 )
@@ -1448,7 +1510,7 @@ export default function AthletePage() {
               <div style={{ marginTop: 20 }}>
                 <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Events needing your response</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {rsvpEvents.map((evt: any) => {
+                  {rsvpEvents.map((evt) => {
                     const status = rsvpMap[evt.id]
                     return (
                       <div key={evt.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>

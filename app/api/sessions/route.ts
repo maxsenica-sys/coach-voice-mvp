@@ -152,6 +152,11 @@ export async function POST(req: NextRequest) {
   const sport_context = typeof body?.sport_context === 'string' ? body.sport_context.trim() || null : null
   const audio_path = typeof body?.audio_path === 'string' ? body.audio_path.trim() || null : null
   const audio_mime = typeof body?.audio_mime === 'string' ? body.audio_mime.trim() || null : null
+  // The squad this recording was for, when it was a group save. It is what
+  // lets the athlete side tell a squad talk from a one-to-one, and therefore
+  // what lets it withhold a transcript that names other children. Validated
+  // below against the coach's own groups — never trusted from the client.
+  const group_id = typeof body?.group_id === 'string' ? body.group_id.trim() || null : null
 
   if (!athlete_id) {
     const res = NextResponse.json({ error: 'athlete_id is required' }, { status: 400 })
@@ -175,12 +180,25 @@ export async function POST(req: NextRequest) {
   // transcriptNames. It is one lookup by primary key sitting next to an OpenAI
   // call, so the added cost is not measurable. The coach profile is still only
   // read when it is actually needed.
-  const [{ data: athleteRow }, { data: coachProfile }] = await Promise.all([
+  const [{ data: athleteRow }, { data: coachProfile }, { data: groupRow }] = await Promise.all([
     supabase.from('athletes').select('sport, first_name').eq('id', athlete_id).maybeSingle(),
     sport_context
       ? Promise.resolve({ data: null })
       : supabase.from('profiles').select('sport').eq('id', user.id).maybeSingle(),
+    // A client-supplied group id decides whether a transcript is ever shown to
+    // a child, so it is checked against this coach's own groups rather than
+    // taken on trust. An id that does not belong to them resolves to null,
+    // which fails safe in the wrong direction on purpose: an unflagged group
+    // session leaks, so a rejected id must not silently become "individual".
+    group_id
+      ? supabase.from('groups').select('id').eq('id', group_id).eq('coach_id', user.id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
+
+  if (group_id && !groupRow) {
+    const res = NextResponse.json({ error: 'That squad was not found, or is not yours.' }, { status: 400 })
+    return attachCookies(res, cookiesToSet)
+  }
 
   let resolvedSport = sport_context
   if (!resolvedSport) {
@@ -216,6 +234,7 @@ export async function POST(req: NextRequest) {
       session_date: session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date()),
       audio_path,
       audio_mime,
+      group_id,
     })
     .select('id, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime')
     .single()

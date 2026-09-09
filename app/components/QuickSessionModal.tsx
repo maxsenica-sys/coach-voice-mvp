@@ -232,6 +232,13 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   athlete_id: aid,
+                  // Marks the row as a squad recording. This is what lets the
+                  // athlete side withhold a transcript that is the coach
+                  // talking about the whole group — until this existed, every
+                  // member could read what the coach said about every other
+                  // member. The server validates it against the coach's own
+                  // groups rather than trusting it.
+                  group_id: group.id,
                   session_name: sessionName.trim() ? `[${group.name}] ${sessionName.trim()}` : `[${group.name}] Session`,
                   transcript: transcript.trim(),
                   shared_with_athlete: shareWithAthlete,

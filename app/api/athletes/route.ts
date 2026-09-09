@@ -31,7 +31,7 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const athletes = (data ?? []).map((a: any) => ({
+    const athletes = (data ?? []).map((a) => ({
       ...a,
       // INVITED = invite sent but athlete hasn't logged in yet
       // ACTIVE = athlete has visited their portal at least once
