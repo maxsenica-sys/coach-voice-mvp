@@ -33,6 +33,34 @@ function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
+/**
+ * Paint one stroke onto the canvas.
+ *
+ * Module scope, not component scope. It closes over nothing — every input is a
+ * parameter — and as a function declaration inside the component it was being
+ * captured by the render loop's effect on first mount, which is what
+ * react-hooks flags: an effect reading a binding declared after it cannot see
+ * later versions of that binding. Hoisting made it work by accident. Moving it
+ * out makes it correct on purpose, and makes it obvious there is no state here.
+ */
+function drawStroke(ctx: CanvasRenderingContext2D, stroke: AnnotationStroke, alpha: number, burst: boolean) {
+  if (stroke.points.length < 2) return
+  ctx.save()
+  ctx.globalAlpha = alpha
+  ctx.strokeStyle = stroke.color
+  ctx.lineWidth = burst ? stroke.width * (1 + (1 - alpha) * 2) : stroke.width
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  ctx.moveTo(stroke.points[0].x, stroke.points[0].y)
+  for (let i = 1; i < stroke.points.length; i++) {
+    ctx.lineTo(stroke.points[i].x, stroke.points[i].y)
+  }
+  ctx.stroke()
+  ctx.restore()
+}
+
+
 export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAnnotationsChange, readOnly = false, sessionId, videoId }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -117,23 +145,6 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
     rafRef.current = requestAnimationFrame(render)
     return () => cancelAnimationFrame(rafRef.current)
   }, [])
-
-  function drawStroke(ctx: CanvasRenderingContext2D, stroke: AnnotationStroke, alpha: number, burst: boolean) {
-    if (stroke.points.length < 2) return
-    ctx.save()
-    ctx.globalAlpha = alpha
-    ctx.strokeStyle = stroke.color
-    ctx.lineWidth = burst ? stroke.width * (1 + (1 - alpha) * 2) : stroke.width
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.beginPath()
-    ctx.moveTo(stroke.points[0].x, stroke.points[0].y)
-    for (let i = 1; i < stroke.points.length; i++) {
-      ctx.lineTo(stroke.points[i].x, stroke.points[i].y)
-    }
-    ctx.stroke()
-    ctx.restore()
-  }
 
   // Convert mouse/touch coords to canvas space
   function getCanvasPoint(e: React.MouseEvent | React.TouchEvent): { x: number; y: number } | null {

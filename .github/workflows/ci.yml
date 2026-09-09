@@ -26,13 +26,16 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-      # Advisory only. The repo has ~1100 pre-existing lint errors (mostly
-      # no-explicit-any and unescaped entities) that predate this workflow, so
-      # a hard gate would fail every push and get ignored. Blocking on it is
-      # worth doing once that backlog is cleared.
-      - name: Lint (advisory)
+      # Blocking, as of 2026-09-09. It was advisory for as long as there was a
+      # backlog to excuse — 135 errors, then 31 — and a gate that is always red
+      # cannot fail a bad commit, which is part of how the #9BA29B contrast
+      # regression got in. The backlog is now zero, so the excuse is gone.
+      #
+      # Warnings are deliberately not fatal: eslint exits non-zero on errors
+      # only, and turning 32 unused-import warnings into a merge blocker would
+      # recreate exactly the backlog that made this advisory in the first place.
+      - name: Lint
         run: npm run lint
-        continue-on-error: true
 
       # The three rigs below are fast, need no browser and no network, and each
       # one exists because a bug of that class already shipped green. They run

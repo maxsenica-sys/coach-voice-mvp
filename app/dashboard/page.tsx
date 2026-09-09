@@ -17,7 +17,7 @@ import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/compone
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
 import { activeCount } from '@/lib/athlete-status'
 import { formatSessionDate, sessionDate, sessionISODate, todayISODate } from '@/lib/session-date'
-import { GROUP_COLORS, DEFAULT_GROUP_COLOR } from '@/lib/group-colors'
+import { GROUP_COLORS, DEFAULT_GROUP_COLOR, stableTone } from '@/lib/group-colors'
 import { errorMessage } from '@/lib/errors'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
@@ -134,6 +134,65 @@ function SimpleToast({ data, onDismiss }: { data: SimpleToastData; onDismiss: ()
       </div>
       <div style={{ height: 3, background: 'rgba(255,255,255,0.2)' }}>
         <div style={{ height: '100%', background: 'rgba(255,255,255,0.6)', animation: 'toastProgress 4s linear forwards' }} />
+      </div>
+    </div>
+  )
+}
+
+// ── Receipt Toast ────────────────────────────────────────────────
+/**
+ * What happened when the coach pressed Save.
+ *
+ * Saving a session is the app's most consequential action and it used to
+ * happen in silence: `onSaved(); onClose()` — the sheet drops away and the
+ * coach is returned to an unchanged dashboard. In that same instant the server
+ * inserted a session row, created a calendar event and, because
+ * `shared_with_athlete` defaults to on, **sent an email to a minor**. None of
+ * it was reported. The coach's only way to check was to open the Sessions tab
+ * and read the list.
+ *
+ * Deliberately NOT claimed here: that the email was delivered. The client
+ * cannot know — `notifySessionShared` swallows its own failures — and a
+ * receipt asserting an unverified send is worse than no receipt.
+ *
+ * Also deliberately not offered: an Undo. There is no DELETE on
+ * `/api/sessions/[id]`, and an undo that cannot be honoured is a worse lie
+ * than silence.
+ *
+ * It lives longer than `SimpleToast`'s four seconds because it carries a tap
+ * target, and it does not auto-dismiss while the pointer is over it.
+ */
+interface ReceiptToastData { id: string; message: string; href: string | null }
+
+function ReceiptToast({ data, onDismiss }: { data: ReceiptToastData; onDismiss: () => void }) {
+  const [leaving, setLeaving] = useState(false)
+  const [held, setHeld] = useState(false)
+  const dismiss = () => { setLeaving(true); setTimeout(onDismiss, 320) }
+  useEffect(() => {
+    if (held) return
+    const t = setTimeout(dismiss, 9000)
+    return () => clearTimeout(t)
+  }, [held]) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      style={{
+        background: 'var(--success)', color: '#fff', borderRadius: 12, overflow: 'hidden',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+        animation: leaving ? 'toastOut 0.32s ease forwards' : 'toastIn 0.35s ease',
+        minWidth: 240, maxWidth: 340, width: '100%',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
+        <span style={{ fontSize: 'var(--fs-4)' }}>✓</span>
+        <span style={{ flex: 1, fontSize: 'var(--fs-3)', fontWeight: 700 }}>{data.message}</span>
+        {data.href && (
+          <Link href={data.href} style={{ color: '#fff', fontSize: 'var(--fs-2)', fontWeight: 800, textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+            View
+          </Link>
+        )}
+        <button onClick={dismiss} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
       </div>
     </div>
   )
@@ -391,6 +450,7 @@ function DashboardPageInner() {
 
   // Simple toasts (success/error)
   const [simpleToasts, setSimpleToasts] = useState<SimpleToastData[]>([])
+  const [receipts, setReceipts] = useState<ReceiptToastData[]>([])
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     const id = `${Date.now()}-${Math.random()}`
     setSimpleToasts(prev => [...prev, { id, message, type }])
@@ -542,7 +602,14 @@ function DashboardPageInner() {
       if (athleteId) p.set('athlete_id', athleteId)
       const res = await fetch(`/api/sessions/all?${p}`, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
-      if (res.ok) setAllSessions(json.sessions ?? [])
+      if (res.ok) {
+        const rows: Session[] = json.sessions ?? []
+        setAllSessions(rows)
+        // Returned so a caller can diff before/after and work out what a save
+        // actually created — see the receipt in onSaved.
+        return rows
+      }
+      return [] as Session[]
     } finally { setLoadingSessions(false) }
   }
 
@@ -595,7 +662,13 @@ function DashboardPageInner() {
     if (!coachUserId) return
     const channel = supabase
       .channel(`athlete-joins-${coachUserId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'athletes' }, (payload: any) => {
+      // Supabase types the realtime payload generically; this names only the
+      // two columns the handler reads. Both sides are partial because an UPDATE
+      // payload carries whatever the replica identity includes, not the row.
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'athletes' }, (payload: {
+        old?: { athlete_user_id?: string | null }
+        new?: { id?: string; athlete_user_id?: string | null }
+      }) => {
         const prev = payload.old
         const next = payload.new
         // Athlete just activated: had no user_id before, now has one
@@ -792,6 +865,22 @@ function DashboardPageInner() {
     return !s || a.first_name.toLowerCase().includes(s) || a.last_name.toLowerCase().includes(s) || a.email.toLowerCase().includes(s)
   })
   const activeAthletes = athletes.filter(a => a.athlete_user_id)
+  /**
+   * Per-athlete session totals, from the coverage route rather than from
+   * `allSessions`.
+   *
+   * `allSessions` is fetched with `limit: '50'` — the 50 newest sessions
+   * across the WHOLE roster, not per athlete. The roster cards were deriving
+   * "Last session" and "N total" from it, so once a coach passed 50 sessions
+   * the cards started reporting "No sessions yet" for athletes with twenty,
+   * silently, and worst for the busiest coaches. The coverage route counts
+   * every session server-side, which is what it was built for.
+   */
+  const coverageByAthlete = useMemo(
+    () => new Map(coverage.map((c) => [c.athlete_id, c])),
+    [coverage],
+  )
+
   const recentSessions = allSessions.slice(0, 3)
   const thisWeek = allSessions.filter(s => {
     const d = sessionDate(s)
@@ -958,7 +1047,6 @@ function DashboardPageInner() {
           {tab === 'home' && (() => {
             // Day maths now lives in DayWheel, which spans months rather than
             // one fixed week.
-            const _toneColors = ['var(--coach-color)','var(--primary)','var(--energy-dark)']
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
@@ -1035,7 +1123,7 @@ function DashboardPageInner() {
                               ) : <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>—</div>}
                             </div>
                             <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border-soft)', flexShrink: 0 }} />
-                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: _toneColors[i % 3], color: '#fff', fontWeight: 800, fontSize: 'var(--fs-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: stableTone(ev.id), color: '#fff', fontWeight: 800, fontSize: 'var(--fs-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               {(ev.title[0] ?? '?').toUpperCase()}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -1096,10 +1184,10 @@ function DashboardPageInner() {
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                      {recentSessions.map((s, i) => {
+                      {recentSessions.map((s) => {
                         const a = s.athletes
                         const initials = a ? `${a.first_name[0] ?? ''}${a.last_name[0] ?? ''}`.toUpperCase() : '?'
-                        const tone = _toneColors[i % 3]
+                        const tone = a ? stableTone(a.id) : 'var(--text-muted)'
                         const ago = (() => {
                           // A session recorded today keeps the precise "3h";
                           // a backdated one counts whole days from the day it
@@ -1156,7 +1244,7 @@ function DashboardPageInner() {
                       {athletes.slice(0, 8).map((a, i) => {
                         const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
                         const unread = (unreadCounts[a.id] ?? 0) as number
-                        const tone = _toneColors[i % 3]
+                        const tone = stableTone(a.id)
                         const wellnessScore = overallWellnessScore(wellnessByAthlete.get(a.id) ?? null)
                         const wellnessColor = overallScoreColor(wellnessScore)
                         return (
@@ -1317,8 +1405,16 @@ function DashboardPageInner() {
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
                   {filteredAthletes.map(a => {
                     const status = (a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')).toUpperCase()
-                    const last = allSessions.find(s => s.athlete_id === a.id)
-                    const count = allSessions.filter(s => s.athlete_id === a.id).length
+                    // Uncapped counts. Falls back to the truncated client list
+                    // only while coverage is still loading, so the first paint
+                    // is never blank.
+                    const cov = coverageByAthlete.get(a.id)
+                    const lastDate = cov
+                      ? cov.last_session_date
+                      : allSessions.find(s => s.athlete_id === a.id)?.session_date ?? null
+                    const count = cov
+                      ? cov.session_count
+                      : allSessions.filter(s => s.athlete_id === a.id).length
                     return (
                       <div key={a.id} className="card" style={{ padding: 16 }}>
                         <div style={{ display: 'flex', gap: 12 }}>
@@ -1330,7 +1426,7 @@ function DashboardPageInner() {
                             </div>
                             <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>{a.email}</div>
                             <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 3 }}>
-                              {last ? `Last session ${formatSessionDate(last, {})}` : 'No sessions yet'}
+                              {lastDate ? `Last session ${formatSessionDate({ session_date: lastDate }, {})}` : 'No sessions yet'}
                               {count > 0 && ` · ${count} total`}
                             </div>
                           </div>
@@ -1678,10 +1774,10 @@ function DashboardPageInner() {
             </div>
             <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 16 }}>An invite email will be sent with a link to set their password.</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-              {[['First name','Alex','firstName'],['Last name','Johnson','lastName']].map(([label,ph,key]) => (
+              {([['First name','Alex','firstName'],['Last name','Johnson','lastName']] as const).map(([label,ph,key]) => (
                 <div key={key}>
                   <label className="label">{label}</label>
-                  <input className="input" placeholder={ph} value={(addForm as any)[key]} onChange={e => setAddForm(f => ({ ...f, [key]: e.target.value }))} />
+                  <input className="input" placeholder={ph} value={addForm[key]} onChange={e => setAddForm(f => ({ ...f, [key]: e.target.value }))} />
                 </div>
               ))}
               <div>
@@ -1800,6 +1896,13 @@ function DashboardPageInner() {
               onDismiss={() => setSimpleToasts(prev => prev.filter(x => x.id !== t.id))}
             />
           ))}
+          {receipts.map(r => (
+            <ReceiptToast
+              key={r.id}
+              data={r}
+              onDismiss={() => setReceipts(prev => prev.filter(x => x.id !== r.id))}
+            />
+          ))}
           {joinToasts.map(t => (
             <JoinToast
               key={t.toastId}
@@ -1818,7 +1921,41 @@ function DashboardPageInner() {
           defaultGroupId={quickSessionGroupId}
           coachSport={coachSport}
           onClose={() => { setQuickSessionOpen(false); setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined) }}
-          onSaved={() => { fetchAllSessions(); fetchAthletes(); fetchCoverage() }}
+          onSaved={async () => {
+            // Diff the session list around the refetch: whatever is new is what
+            // this save created. The modal reports nothing back, and reading it
+            // from the list means the receipt describes what the server
+            // actually wrote rather than what the client asked for.
+            const before = new Set(allSessions.map((s) => s.id))
+            const [after] = await Promise.all([fetchAllSessions(), fetchAthletes(), fetchCoverage()])
+            const created = (after ?? []).filter((s) => !before.has(s.id))
+            if (created.length === 0) return
+
+            const shared = created.filter((s) => s.shared_with_athlete).length
+            const first = created[0]
+            const who = first.athletes
+              ? first.athletes.first_name
+              : 'your athlete'
+            const message =
+              created.length > 1
+                ? (shared === created.length
+                    ? `Shared with ${created.length} athletes`
+                    : `Saved for ${created.length} athletes · ${shared} shared`)
+                : (first.shared_with_athlete
+                    ? `Shared with ${who}`
+                    : `Saved to ${who}'s record`)
+
+            setReceipts((prev) => [
+              ...prev,
+              {
+                id: `receipt-${first.id}`,
+                message,
+                // One session opens directly; a squad save has no single page
+                // to open, so it offers no link rather than a misleading one.
+                href: created.length === 1 ? `/sessions/${first.id}` : null,
+              },
+            ])
+          }}
         />
       )}
     </div>

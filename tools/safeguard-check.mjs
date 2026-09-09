@@ -215,6 +215,33 @@ const RULES = [
       return found
     },
   },
+
+  {
+    id: 'SG6',
+    title: 'The athlete client never selects a session transcript',
+    why: 'A group recording writes the coach\'s whole squad talk to one row per member, and it names other children. The athlete app used to select that column and render it, so every member could read what the coach said about every other member. Withholding it in the UI is not a fix — a column the browser can query is a column it has. Transcripts now come only from the detail route, which withholds squad ones server-side.',
+    cite: 'supabase/migrations/023_sessions_group_id.sql; the note on SessionRow.group_id in app/athlete/page.tsx',
+    check(files) {
+      const found = []
+      for (const f of files) {
+        if (!/^app\/athlete\//.test(f.rel)) continue
+        const src = code(f)
+        // Any Supabase select on `sessions` from the athlete client that names
+        // the transcript column. The detail-route fetch is a plain HTTP call
+        // and does not match.
+        for (const m of src.matchAll(/\.from\(\s*['"]sessions['"]\s*\)([\s\S]{0,400}?)\)/g)) {
+          if (/\btranscript\b/.test(m[1])) {
+            found.push({
+              file: f.rel,
+              line: lineOf(f, /\.from\(\s*['"]sessions['"]/),
+              msg: 'athlete client selects the transcript column directly',
+            })
+          }
+        }
+      }
+      return found
+    },
+  },
 ]
 
 /**
@@ -223,7 +250,7 @@ const RULES = [
  * it does not have.
  */
 const KNOWN_GAPS = [
-  'A group session writes the same transcript to one row per member, and the athlete page renders it in full. A critical remark about one named child is readable by every other child in that squad. There is no flag distinguishing a group session from an individual one, so this cannot be detected from source shape — it needs `sessions.group_id` and a product decision.',
+  'Whether the transcript withholding is correct for sessions saved BEFORE `sessions.group_id` existed. Those rows are null, so they are not identifiable as squad sessions. They are covered from the other end — the athlete client no longer selects transcripts at all — but SG6 is what enforces that, and a future direct fetch could reintroduce the leak for historic rows without tripping the group check.',
   'Whether a route\'s ownership check is *correct* — SG1 proves a route authenticates, not that it then scopes the query to the right coach.',
   'Whether row-level security policies in Supabase actually match what the routes assume. The policies live in migrations and are enforced by the database, not by anything this scanner reads.',
   'What the AI summariser writes about a child. `tools/prompt-rig.mjs` covers the prompt; nothing covers a model\'s output on an unseen transcript.',

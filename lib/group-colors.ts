@@ -38,3 +38,35 @@ export const GROUP_COLORS = [
 
 /** The swatch a new group starts on. */
 export const DEFAULT_GROUP_COLOR: string = GROUP_COLORS[0]
+
+/**
+ * A stable accent colour derived from a row's id.
+ *
+ * It used to be `_toneColors[i % 3]` — the athlete's **index in whatever array
+ * was being rendered**. So the same person was sage in the roster strip and
+ * rust in the recent-sessions list, and adding one athlete re-coloured
+ * everybody. An identity colour that changes identity is worse than no colour
+ * at all: it teaches the eye a pattern and then breaks it.
+ *
+ * Hashing the id fixes both. The colour is stable for the life of the row, the
+ * same in every list, and unaffected by what else is on screen. Pass an athlete
+ * id for an athlete; the coach's calendar strip keys off the event id, because
+ * a calendar row carries a name but no athlete id.
+ *
+ * These three are brand tokens rather than hexes because, unlike GROUP_COLORS
+ * above, nobody picks them and nothing persists them — they are presentation
+ * derived from a key, so they should follow the design system.
+ */
+const TONES = ['var(--coach-color)', 'var(--primary-dark)', 'var(--energy-dark)'] as const
+
+export function stableTone(key: string): string {
+  // FNV-1a. Any stable hash would do; this one is short, has no dependencies
+  // and spreads short similar strings (uuids differing in one character) far
+  // better than summing char codes.
+  let h = 0x811c9dc5
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return TONES[Math.abs(h) % TONES.length]
+}

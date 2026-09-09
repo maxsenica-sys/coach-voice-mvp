@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 
-  const groups = (data ?? []).map((g: any) => ({
+  const groups = (data ?? []).map((g) => ({
     id: g.id,
     name: g.name,
     color: g.color,

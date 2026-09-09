@@ -102,7 +102,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const { data: session } = await admin
     .from('sessions')
-    .select('id, coach_id, athlete_id, session_name, title, summary, transcript, coach_notes, focus_points, shared_with_athlete, sport_context, audio_path, audio_mime, session_date, created_at')
+    .select('id, coach_id, athlete_id, session_name, title, summary, transcript, coach_notes, focus_points, shared_with_athlete, sport_context, audio_path, audio_mime, session_date, created_at, group_id')
     .eq('id', id)
     .maybeSingle()
 
@@ -162,7 +162,19 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         session_name: session.session_name,
         title: session.title,
         summary: session.summary,
-        transcript: session.transcript,
+        // A squad transcript is the coach talking to the whole group, and it
+        // routinely names other children — "Ellie, that block was lazy" is
+        // read by ten teenagers who are not Ellie. The summary each athlete
+        // gets is written for them individually and the prompt forbids naming
+        // anyone else; the raw transcript underneath has no such protection,
+        // so the coach keeps it and the athlete never receives it.
+        //
+        // Withheld on the wire, not hidden in the UI: a field the client is
+        // sent is a field the client has.
+        transcript: isCoach || !session.group_id ? session.transcript : null,
+        // Lets the athlete's page explain the absence instead of just showing
+        // nothing where a control used to be.
+        is_group_session: Boolean(session.group_id),
         coach_notes: session.coach_notes,
         focus_points: Array.isArray(session.focus_points) ? session.focus_points : [],
         shared_with_athlete: session.shared_with_athlete,
