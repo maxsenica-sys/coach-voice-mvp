@@ -111,6 +111,16 @@ cold-start decision through `data-boot` / `data-boot-anim`. Scoped to
 timeout so a bundle that never arrives cannot strand a user on an ink screen.
 Nothing in that block may depend on JavaScript, the CSS chunk, or the webfont.
 
+**Recording is offline-first as of 2026-09-09.** The blob is written to
+IndexedDB the instant the recorder stops, before any network call
+(`lib/recording-queue.ts`), and upload/transcribe/save are retryable stages
+resumed by `lib/recording-sync.ts` and drained by `PendingRecordings` on the
+dashboard. Saving is the one non-idempotent leg — no idempotency key on
+`POST /api/sessions` — so it is attempted once per drain and the row is deleted
+on success. **None of this is covered by an automated check**, which makes it
+the largest untested surface in the app and the one holding the only copy of a
+recording.
+
 Almost all styling is **inline `style={{}}` objects**, not the token classes in
 `globals.css`. The token classes exist and are good; the pages mostly bypass
 them. Any design recommendation has to reckon with that.
@@ -158,6 +168,12 @@ field in the system. It renders on `/sessions/[id]` and, since 2026-09-06, as a
 single line on the athlete's home card under "Take into next session".
 
 ### What wellness holds
+`wellness_checkins` also carries the soreness follow-up: `soreness_score`
+(0-10, **more is worse** — the opposite direction to everything else here) and
+`soreness_areas` (region ids). Asked only when the athlete says they are sore,
+and the body map appears only from 4 up. Nothing averages `soreness_score` with
+the five metrics below, deliberately; see migration 026.
+
 `wellness_checkins`: one row per `(athlete_id, check_date)` —
 `energy, mood, sleep_q, soreness, stress`, each 1–5, plus free `notes`.
 `soreness` and `stress` read 5 = good, like every other metric — the scale was
@@ -170,6 +186,14 @@ Low scores fire caretaker alerts (`/api/wellness/alert`).
 
 **Wellness and session data never meet.** Nothing joins a check-in to a
 session, on either side of the app.
+
+### Injuries and availability
+`injuries`: one row per injury — `athlete_id, coach_id, body_area, status
+(active|recovering|cleared), severity, started_on, expected_return, cleared_on,
+note`. `body_area` is a region id from `lib/body-map.ts`, the same vocabulary
+the athlete taps on their check-in. Records **availability, not medicine**:
+there is no diagnosis or treatment field anywhere, and the coach writes while
+the athlete can only read (enforced in the route and in RLS).
 
 ### Other tables
 `profiles` (role, name, sport, position, experience, goals, invite_code) ·
