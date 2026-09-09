@@ -17,8 +17,9 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
-import { formatSessionDate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
+import { metricColor, metricTint, scoreLabel, type MetricKey } from '@/lib/wellness-config'
+import { formatSessionDate, parseISODate } from '@/lib/session-date'
 
 type FocusPoint = string
 
@@ -64,10 +65,36 @@ type AttachmentRow = {
   signedUrl: string | null
 }
 
+/**
+ * The athlete's own check-in from the morning of the session. Coach-only —
+ * the API sends null to an athlete viewer — and deliberately three metrics,
+ * not five. See loadSessionCheckin in the detail route for why.
+ */
+type SessionCheckin = {
+  energy: number | null
+  sleep_q: number | null
+  soreness: number | null
+  check_date: string
+}
+
+/**
+ * The three check-in metrics a coach sees next to a session, in order.
+ *
+ * `mood` and `stress` are absent by design, not by omission — see the detail
+ * route. Typed as a subset of MetricKey so the wellness-config helpers still
+ * apply and this list cannot silently grow to five.
+ */
+const CHECKIN_METRICS: { key: Extract<MetricKey, 'energy' | 'sleep_q' | 'soreness'>; label: string }[] = [
+  { key: 'energy', label: 'Energy' },
+  { key: 'sleep_q', label: 'Sleep' },
+  { key: 'soreness', label: 'Soreness' },
+]
+
 type DetailResponse = {
   viewerRole: 'coach' | 'athlete'
   session: SessionDetail
   athlete: AthleteLite
+  checkin: SessionCheckin | null
   videos: VideoRow[]
   attachments: AttachmentRow[]
 }
@@ -87,6 +114,7 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
     case 'image':  return <svg {...p}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
     case 'video':  return <svg {...p}><polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
     case 'text':   return <svg {...p}><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></svg>
+    case 'pulse':  return <svg {...p}><polyline points="2 12 6 12 9 4 15 20 18 12 22 12" /></svg>
     case 'plus':   return <svg {...p}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
     case 'x':      return <svg {...p}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
     case 'check':  return <svg {...p}><polyline points="20 6 9 17 4 12" /></svg>
@@ -288,6 +316,7 @@ export default function SessionDetailPage() {
   })
   const heading = session.session_name || session.title || 'Coaching session'
   const athleteName = athlete ? `${athlete.first_name} ${athlete.last_name}` : 'Athlete'
+  const athleteFirst = athlete?.first_name?.trim() ?? ''
   const backHref = isCoach && athlete ? `/athletes/${athlete.id}` : '/athlete'
 
   return (
@@ -416,6 +445,57 @@ export default function SessionDetailPage() {
             </div>
           )}
         </Section>
+
+        {/* ── How they came in ──
+            The athlete's own check-in from the morning of this session, shown
+            to the coach only. This is the first place in the app where wellness
+            data and session data meet: until now the athlete answered five
+            questions a day and the coach read them, if at all, on a separate
+            graph on a separate page, never alongside the session they explain.
+
+            Renders nothing when there is no check-in for that date. That is
+            deliberate — a "did not check in" row would turn a coaching tool
+            into a compliance report about a child. */}
+        {isCoach && data!.checkin && (
+          <Section icon="pulse" label="How they came in" accent="var(--wellness-ok)">
+            <div className="card" style={{ padding: 14 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {CHECKIN_METRICS.map(({ key, label }) => {
+                  const score = data!.checkin![key]
+                  return (
+                    <div key={key} style={{
+                      flex: 1, borderRadius: 'var(--radius-sm)', padding: '9px 10px',
+                      background: metricTint(key, score),
+                    }}>
+                      <div style={{
+                        fontSize: 'var(--fs-1)', fontWeight: 800, textTransform: 'uppercase',
+                        letterSpacing: '0.06em', color: 'var(--text-2)',
+                      }}>{label}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginTop: 3 }}>
+                        <span style={{ fontSize: 'var(--fs-4)', fontWeight: 800, color: metricColor(key, score) }}>
+                          {score ?? '—'}
+                        </span>
+                        {/* A partially filled check-in leaves a metric null.
+                            The score already renders as an em dash, so the
+                            label is suppressed rather than repeating it. */}
+                        {score !== null && (
+                          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: metricColor(key, score) }}>
+                            {scoreLabel(key, score)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 10 }}>
+                {athleteFirst ? `${athleteFirst}'s own check-in on ` : 'Their own check-in on '}
+                {parseISODate(data!.checkin.check_date)?.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) ?? data!.checkin.check_date}
+                . Only you can see this.
+              </div>
+            </div>
+          </Section>
+        )}
 
         {/* ── Focus points ── */}
         {(isCoach || session.focus_points.length > 0) && (

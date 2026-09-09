@@ -176,3 +176,34 @@ position that the check-in "earns its place as it stands". Ask on training days 
 the morning after, not on an empty Sunday.
 **Cut:** the composite `overallWellnessScore` — a mean of five non-commensurate
 ordinal items, two inverted, that lets 5/5 energy cancel 1/5 soreness.
+
+---
+
+## Round 5 — 2026-09-09b · net-new additions only
+
+Brief was different: two capabilities that do not exist yet, 30–60 minutes each.
+
+**DATA-008 "Quiet lately" (128) — BUILT.** Nothing in the app answers "who have I
+not recorded for?" The finding that made it a server route rather than a client
+reduce: `fetchAllSessions` uses `limit: '50'`, so the roster cards' "Last session"
+and "N total" are computed from the 50 newest sessions across the whole roster.
+Past that window an athlete with twenty sessions reads "No sessions yet" — and the
+error hides the very athlete the feature exists to find. Two other agents proposed
+the same feature this round from the client side and would have inherited the bug.
+
+Evidence discipline note to self, worth keeping: the coach-expectancy literature
+(Rejeski/Darracott/Hutslar 1979, Horn 1984) supports "the distribution is uneven
+and invisible to the coach making it". It does **not** support a direction of skew,
+and several of those studies found low-expectancy athletes got *more* general
+instruction alongside less corrective feedback. Show the coach the distribution;
+claim nothing about which way it leans.
+
+**DATA-009 "How they came in" (96) — BUILT.** Wellness and session data had never
+met: `grep -rn "wellness" app/sessions/ app/api/sessions/` returned zero. The
+athlete's own morning check-in now sits beside the session on the coach's page.
+Three metrics, not five — `mood` and `stress` stay out, and a day with no check-in
+renders nothing rather than a compliance row about a child.
+
+**Still cut:** `overallWellnessScore`. Round 4 fixed the sign of that mean; it did
+not make averaging five non-commensurate ordinal items a defensible thing to do,
+and it still feeds the caretaker alert.

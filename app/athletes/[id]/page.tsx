@@ -10,6 +10,7 @@ import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnn
 import WellnessGraph from '@/app/components/WellnessGraph'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
+import TrainingSpine from '@/app/components/TrainingSpine'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile } from '@/lib/profile-cache'
 import {
@@ -776,6 +777,14 @@ export default function AthleteDetailPage() {
                 ))}
               </div>
             </div>
+
+            {/* ── Training rhythm ──
+                Twelve weeks of this athlete's sessions. The page already
+                fetched every one of them and the overview rendered none, so
+                "are we still working together, and is this normal for them?"
+                had no answer anywhere. The coach variant names a gap over a
+                fortnight; the athlete's own copy of this never does. */}
+            <TrainingSpine sessions={sessions} variant="coach" />
 
             {/* ── The one thing you came here to do ── */}
             <button className="btn btn-coach" style={{ gap: 7, fontWeight: 700, justifyContent: 'center', padding: '12px' }} onClick={() => setShowQuickSession(true)}>

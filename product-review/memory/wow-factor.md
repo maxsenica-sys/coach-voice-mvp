@@ -179,3 +179,36 @@ is a one-way pipe and nothing in it closes a loop — with DATA-006 as the one-d
 version and this as the three-week version. Worth remembering: the strongest case for
 an ambitious idea here was that a conservative agent independently found the same
 structural fact on a different screen.
+
+---
+
+## Round 5 — 2026-09-09b · net-new additions, one-hour budget
+
+Constrained the way I am normally told not to be: the cheapest version that still
+wows, as the whole proposal. It worked better than my usual output — the top idea
+scored 240 and shipped the same day.
+
+**WOW-004 "Team Talk" (240) — BUILT.** A squad recording fans out to one save per
+member, each running the same summariser over the same transcript with the same
+prompt: eleven model calls, eleven copies of one paragraph, eleven emails saying
+the same thing. The expensive part was already built and was being wasted. Each
+athlete's summary now leads with the part of the talk that was about them.
+
+The load-bearing piece is the gate, and it belongs in code rather than in the
+prompt: no name in the transcript, no personalisation, and the prompt reverts
+character-for-character to the one that shipped before. Asking a model to "write
+this for Ana" over a transcript that never mentions Ana is an invitation to invent
+a coaching instruction and address it to a named child. The implementation caught
+something I did not specify — a naive word-boundary test matches "Ana" inside
+"Anastasia" and "banana", and `\b` is useless for "Zoë" or "Łukasz".
+
+**WOW-005 "Where your voice went" (64) — SUPERSEDED by DATA-008.** Two other agents
+proposed the same underlying question this round. Mine was the version with a bar
+chart of a volunteer coach's neglect attached, and the shaming risk I flagged as
+"the real one" is exactly why the simpler framing won. Keep flagging it; also
+notice that the flag was a reason to change the design, not just to caveat it.
+
+**The finding I am most pleased with is not a proposal:** a group session shows
+every member the whole squad transcript, so a critical remark about one named child
+is readable by ten others. Team Talk reduces the summary half and does not touch
+it. Named rather than smuggled into the hour.

@@ -16,6 +16,7 @@ import {
 } from '@/lib/wellness-config'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
+import TrainingSpine from '@/app/components/TrainingSpine'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
 import { formatSessionDate } from '@/lib/session-date'
@@ -978,6 +979,13 @@ export default function AthletePage() {
                 )}
               </div>
             )}
+
+            {/* ── Training rhythm ──
+                Twelve weeks of work, so the athlete can see it accumulating.
+                Sits below the check-in (today's job) and above the sessions
+                list (the record) — today first, then the shape of the term.
+                Renders nothing under three sessions. */}
+            <TrainingSpine sessions={sessions} variant="athlete" />
 
             {/* ── From your coach ──
                 Previously one session in a decorated card, with the rest hidden

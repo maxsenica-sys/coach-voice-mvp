@@ -10,7 +10,9 @@ import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
-import { apiMutate } from '@/lib/api-client'
+import { apiJson, apiMutate } from '@/lib/api-client'
+import AttentionStrip from '@/app/components/AttentionStrip'
+import type { CoverageRow } from '@/app/api/athletes/coverage/route'
 import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
 import { activeCount } from '@/lib/athlete-status'
@@ -371,6 +373,7 @@ function DashboardPageInner() {
   const [addMemberMap, setAddMemberMap] = useState<Record<string, string>>({})
 
   const [allSessions, setAllSessions] = useState<Session[]>([])
+  const [coverage, setCoverage] = useState<CoverageRow[]>([])
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [sessionsSearch, setSessionsSearch] = useState('')
   const [sessionsAthleteFilter, setSessionsAthleteFilter] = useState('')
@@ -446,7 +449,7 @@ function DashboardPageInner() {
       // immediately instead of queueing behind getUser() and the profile query.
       // That removes two serial round trips from every arrival on the dashboard.
       const dataReady = Promise.all([
-        fetchAthletes(), fetchGroups(), fetchAllSessions(), fetchUnreadCounts(),
+        fetchAthletes(), fetchGroups(), fetchAllSessions(), fetchUnreadCounts(), fetchCoverage(),
       ])
 
       const { data: { user } } = await supabase.auth.getUser()
@@ -541,6 +544,24 @@ function DashboardPageInner() {
       const json = await res.json().catch(() => ({}))
       if (res.ok) setAllSessions(json.sessions ?? [])
     } finally { setLoadingSessions(false) }
+  }
+
+  // Who has gone longest without a recording. Server-computed on purpose: the
+  // same numbers derived on the client from `allSessions` are wrong past 50
+  // sessions across the roster, and wrong in the direction that hides a
+  // neglected athlete. See app/api/athletes/coverage/route.ts.
+  const fetchCoverage = async () => {
+    try {
+      const { coverage: rows } = await apiJson<{ coverage: CoverageRow[] }>(
+        '/api/athletes/coverage',
+        { cache: 'no-store' },
+      )
+      setCoverage(rows ?? [])
+    } catch {
+      // A failed coverage read must not break the dashboard: the strip simply
+      // does not render, exactly as it does for a coach with nobody overdue.
+      setCoverage([])
+    }
   }
 
   const handleUnreadChange = useCallback((counts: Record<string, number>) => {
@@ -1041,6 +1062,20 @@ function DashboardPageInner() {
                     </button>
                   </div>
                 )}
+
+                {/* Quiet lately — who has gone longest without a recording.
+                    Sits above "Recent sessions" deliberately: recent sessions
+                    are what the coach has already done, this is what they have
+                    not. It renders nothing when nobody is overdue, so a coach
+                    on top of their roster never sees it. */}
+                <AttentionStrip
+                  coverage={coverage}
+                  onSelect={(id) => {
+                    setQuickSessionAthleteId(id)
+                    setQuickSessionGroupId(undefined)
+                    setQuickSessionOpen(true)
+                  }}
+                />
 
                 {/* Recent sessions */}
                 <div>
@@ -1783,7 +1818,7 @@ function DashboardPageInner() {
           defaultGroupId={quickSessionGroupId}
           coachSport={coachSport}
           onClose={() => { setQuickSessionOpen(false); setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined) }}
-          onSaved={() => { fetchAllSessions(); fetchAthletes() }}
+          onSaved={() => { fetchAllSessions(); fetchAthletes(); fetchCoverage() }}
         />
       )}
     </div>
