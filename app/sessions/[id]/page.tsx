@@ -17,13 +17,17 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
+import FocusCard from '@/app/components/FocusCard'
 import { errorMessage } from '@/lib/errors'
 import { metricColor, metricTint, scoreLabel, type MetricKey } from '@/lib/wellness-config'
+import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/session-response'
 import { formatSessionDate, parseISODate } from '@/lib/session-date'
 
 type FocusPoint = string
 
 type SessionDetail = {
+  athlete_response?: string | null
+  athlete_responded_at?: string | null
   id: string
   athlete_id: string
   session_name: string | null
@@ -163,6 +167,31 @@ export default function SessionDetailPage() {
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   const isCoach = data?.viewerRole === 'coach'
+
+  /**
+   * The athlete's answer, held locally so a tap is instant.
+   *
+   * Seeded from the loaded session and updated optimistically; a failed write
+   * puts the previous value back rather than leaving the chip lying.
+   */
+  const [response, setResponse] = useState<string | null>(null)
+  useEffect(() => { setResponse(data?.session.athlete_response ?? null) }, [data?.session.athlete_response])
+
+  const answer = async (next: SessionResponse) => {
+    const previous = response
+    const value = previous === next ? null : next
+    setResponse(value)
+    try {
+      await apiMutate(`/api/sessions/${sessionId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response: value }),
+      })
+    } catch (e: unknown) {
+      setResponse(previous)
+      setActionError(errorMessage(e, 'Could not send that to your coach'))
+    }
+  }
   const session = data?.session
   const athlete = data?.athlete
 
@@ -449,6 +478,75 @@ export default function SessionDetailPage() {
           )}
         </Section>
 
+        {/* ── The athlete's answer ──
+            The only thing in this product that travels from the athlete back
+            to the coach. Placed directly under the focus points, because what
+            it answers is the focus point: the coach said do this, and this is
+            whether it landed.
+
+            Two renders of one field. The athlete gets buttons; the coach gets
+            a read-only badge, because a coach editing an athlete's answer
+            would make the signal worthless. */}
+        {!isCoach && (
+          <Section icon="check" label="Tell your coach" accent="var(--primary-dark)">
+            <div className="card" style={{ padding: 14 }}>
+              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                {SESSION_RESPONSES.map((opt) => {
+                  const on = response === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => void answer(opt.value)}
+                      style={{
+                        padding: '9px 14px', minHeight: 40, borderRadius: 999,
+                        border: `1px solid ${on ? opt.color : 'var(--border)'}`,
+                        background: on ? opt.tint : 'var(--bg)',
+                        color: on ? opt.color : 'var(--text-2)',
+                        fontFamily: 'inherit',
+                        fontSize: 'var(--fs-3)', fontWeight: on ? 800 : 600,
+                        cursor: 'pointer', lineHeight: 1.2,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
+                {response
+                  ? 'Your coach can see this. Tap again to undo.'
+                  : 'One tap. Your coach sees which one you picked, and nothing else.'}
+              </div>
+            </div>
+          </Section>
+        )}
+
+        {isCoach && responseOption(data!.session.athlete_response) && (
+          <Section icon="check" label="What they said back" accent="var(--primary-dark)">
+            <div className="card" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 11, flexWrap: 'wrap' }}>
+              <span style={{
+                padding: '7px 13px', borderRadius: 999,
+                background: responseOption(data!.session.athlete_response)!.tint,
+                color: responseOption(data!.session.athlete_response)!.color,
+                fontSize: 'var(--fs-3)', fontWeight: 800,
+              }}>
+                {responseOption(data!.session.athlete_response)!.coachLabel}
+              </span>
+              <span style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>
+                {athleteFirst || 'They'} answered
+                {data!.session.athlete_responded_at
+                  ? ` ${new Date(data!.session.athlete_responded_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
+                  : ''}
+                {data!.session.athlete_response === 'not_clear'
+                  ? ' — worth a word before the next session.'
+                  : '.'}
+              </span>
+            </div>
+          </Section>
+        )}
+
         {/* ── How they came in ──
             The athlete's own check-in from the morning of this session, shown
             to the coach only. This is the first place in the app where wellness
@@ -530,6 +628,18 @@ export default function SessionDetailPage() {
                   )}
                 </div>
               ))}
+
+              {/* ── Keep it ──
+                  Offered to the athlete only, and only when there is a point
+                  to keep. The coach has the whole session; the athlete has one
+                  sentence, and this is the only thing in the product they can
+                  take out of it. The image carries no name and no link — see
+                  FocusCard. */}
+              {!isCoach && session.focus_points.length > 0 && (
+                <div style={{ padding: '10px 8px 2px' }}>
+                  <FocusCard point={session.focus_points[0]} dateLabel={dateLabel} />
+                </div>
+              )}
 
               {isCoach && (
                 <div style={{ display: 'flex', gap: 7, padding: session.focus_points.length ? '10px 8px 0' : 0 }}>

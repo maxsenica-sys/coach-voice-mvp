@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { apiMutate } from '@/lib/api-client'
+import { apiJson, apiMutate } from '@/lib/api-client'
 import { formatSessionDate, todayISODate, yesterdayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
+import { responseOption } from '@/lib/session-response'
+import type { LastFocus } from '@/app/api/athletes/[id]/last-focus/route'
 
 interface Athlete {
   id: string
@@ -70,6 +72,30 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       streamRef.current?.getTracks().forEach((t) => t.stop())
     }
   }, [])
+
+  /**
+   * What this athlete was last asked to work on, and whether it landed.
+   *
+   * `focus_points` is the only forward-looking field the product has, and
+   * nothing has ever carried it forward — the coach records session two with
+   * no memory of what they asked for in session one. This is that memory, at
+   * the only moment it can change what gets said: the seconds before the
+   * recording starts.
+   *
+   * Read-only. It never pre-fills anything and never blocks a save; a coach who
+   * wants to talk about something else just talks about something else.
+   */
+  const [lastFocus, setLastFocus] = useState<LastFocus | null>(null)
+
+  useEffect(() => {
+    if (mode !== 'athlete' || !athleteId) { setLastFocus(null); return }
+    let cancelled = false
+    apiJson<{ focus: LastFocus | null }>(`/api/athletes/${athleteId}/last-focus`, { cache: 'no-store' })
+      .then((j) => { if (!cancelled) setLastFocus(j.focus ?? null) })
+      // A missing prompt is not worth an error message on top of a recorder.
+      .catch(() => { if (!cancelled) setLastFocus(null) })
+    return () => { cancelled = true }
+  }, [athleteId, mode])
 
   const startRecording = async () => {
     setError('')
@@ -444,6 +470,45 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 </div>
               )}
             </div>
+
+            {/* ── Last time you said ──
+                Read-only, and only when there is something to show. It does
+                not pre-fill the transcript, gate the recording, or ask the
+                coach to confirm anything — a prompt that demands a response
+                before you may speak is worse than no prompt courtside.
+
+                When the athlete answered "not sure what you mean", that is the
+                single most useful sentence this app can put in front of a
+                coach, so it is said plainly rather than colour-coded. */}
+            {lastFocus && (
+              <div style={{
+                padding: '11px 13px', borderRadius: 10,
+                background: 'var(--coach-light)', border: '1px solid var(--coach-border)',
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--coach-on-light)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+                  Last time you said
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', lineHeight: 1.45 }}>
+                  {lastFocus.point}
+                </div>
+                {(() => {
+                  const answered = responseOption(lastFocus.response)
+                  const when = lastFocus.session_date
+                    ? formatSessionDate({ session_date: lastFocus.session_date }, { day: 'numeric', month: 'short' })
+                    : null
+                  return (
+                    <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 6 }}>
+                      {when ? `${when}. ` : ''}
+                      {answered
+                        ? (lastFocus.response === 'not_clear'
+                            ? 'They said it was not clear — worth covering again.'
+                            : `They said: ${answered.coachLabel.toLowerCase()}.`)
+                        : 'They have not answered yet.'}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
 
             {/* Session name + date */}
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

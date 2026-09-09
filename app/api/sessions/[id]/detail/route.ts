@@ -102,7 +102,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const { data: session } = await admin
     .from('sessions')
-    .select('id, coach_id, athlete_id, session_name, title, summary, transcript, coach_notes, focus_points, shared_with_athlete, sport_context, audio_path, audio_mime, session_date, created_at, group_id')
+    .select('id, coach_id, athlete_id, session_name, title, summary, transcript, coach_notes, focus_points, shared_with_athlete, sport_context, audio_path, audio_mime, session_date, created_at, group_id, athlete_response, athlete_responded_at')
     .eq('id', id)
     .maybeSingle()
 
@@ -175,6 +175,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         // Lets the athlete's page explain the absence instead of just showing
         // nothing where a control used to be.
         is_group_session: Boolean(session.group_id),
+        // The athlete's own answer. Both roles see it: the coach because it is
+        // the only feedback they get, the athlete because they should be able
+        // to see and change what they said.
+        athlete_response: session.athlete_response ?? null,
+        athlete_responded_at: session.athlete_responded_at ?? null,
         coach_notes: session.coach_notes,
         focus_points: Array.isArray(session.focus_points) ? session.focus_points : [],
         shared_with_athlete: session.shared_with_athlete,
