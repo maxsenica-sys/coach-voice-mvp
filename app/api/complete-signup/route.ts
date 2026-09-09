@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import type { CookieToSet } from '@/lib/supabase-route'
 
-type CookieToSet = { name: string; value: string; options?: any }
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   const admin = createSupabaseAdminClient()
 
   // Build profile update payload
-  const profileUpdate: Record<string, any> = {
+  const profileUpdate: Record<string, unknown> = {
     role: role ?? 'coach',
     first_name: firstName ?? null,
     last_name: lastName ?? null,

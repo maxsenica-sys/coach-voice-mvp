@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { formatSessionDate } from '@/lib/session-date'
+import { errorMessage } from '@/lib/errors'
 
 type FocusPoint = string
 
@@ -145,8 +146,8 @@ export default function SessionDetailPage() {
       setData(json)
       setNotesDraft(json.session.coach_notes ?? '')
       setNotesDirty(false)
-    } catch (e: any) {
-      setPageError(e?.message ?? 'Could not open this session.')
+    } catch (e: unknown) {
+      setPageError(errorMessage(e, 'Could not open this session.'))
     } finally {
       setLoading(false)
     }
@@ -168,8 +169,8 @@ export default function SessionDetailPage() {
       })
       if (okMsg) flash(okMsg)
       return true
-    } catch (e: any) {
-      setActionError(e?.message ?? 'That change did not save.')
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'That change did not save.'))
       return false
     }
   }
@@ -236,8 +237,8 @@ export default function SessionDetailPage() {
         },
       )
       setData((d) => (d ? { ...d, attachments: [...d.attachments, attachment] } : d))
-    } catch (e: any) {
-      setActionError(e?.message ?? 'The image could not be uploaded.')
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'The image could not be uploaded.'))
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -249,8 +250,8 @@ export default function SessionDetailPage() {
     try {
       await apiMutate(`/api/sessions/${sessionId}/attachments?attachment_id=${attachmentId}`, { method: 'DELETE' })
       setData((d) => (d ? { ...d, attachments: d.attachments.filter((a) => a.id !== attachmentId) } : d))
-    } catch (e: any) {
-      setActionError(e?.message ?? 'Could not remove that image.')
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not remove that image.'))
     }
   }
 

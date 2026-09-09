@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSportTerminologyHint } from '@/lib/sports'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { createRouteClient } from '@/lib/supabase-route'
+import { errorMessage } from '@/lib/errors'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
       const admin = createSupabaseAdminClient()
       const { data: blob, error: dlErr } = await admin.storage.from('session-audio').download(audioPath)
       if (dlErr || !blob) {
-        return NextResponse.json({ error: `Could not read audio from storage: ${dlErr?.message ?? 'not found'}` }, { status: 400 })
+        return NextResponse.json({ error: `Could not read audio from storage: ${errorMessage(dlErr, 'not found')}` }, { status: 400 })
       }
       const name = audioPath.split('/').pop() || 'audio.webm'
       audioFile = new File([blob], name, { type: blob.type || 'audio/webm' })
@@ -100,8 +101,8 @@ export async function POST(req: Request) {
     const transcriptText = (json?.text ?? '').toString()
 
     return NextResponse.json({ text: transcriptText, segments: json?.segments ?? [] })
-  } catch (e: any) {
-    console.error('[transcribe] caught error', e?.message)
-    return NextResponse.json({ error: e?.message ?? 'Unknown error in /api/transcribe' }, { status: 500 })
+  } catch (e: unknown) {
+    console.error('[transcribe] caught error', errorMessage(e))
+    return NextResponse.json({ error: errorMessage(e, 'Unknown error in /api/transcribe') }, { status: 500 })
   }
 }

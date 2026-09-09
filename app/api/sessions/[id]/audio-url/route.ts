@@ -12,13 +12,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import type { CookieToSet } from '@/lib/supabase-route'
+import { errorMessage } from '@/lib/errors'
 
 export const runtime = 'nodejs'
 
 const BUCKET = 'session-audio'
 const EXPIRES_IN = 60 * 60 // 1 hour — long enough to listen, short enough not to leak
 
-type CookieToSet = { name: string; value: string; options?: any }
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -92,7 +93,7 @@ export async function GET(
 
   if (error || !data?.signedUrl) {
     return attach(
-      NextResponse.json({ error: error?.message ?? 'Could not open the recording.' }, { status: 500 }),
+      NextResponse.json({ error: errorMessage(error, 'Could not open the recording.') }, { status: 500 }),
       cookiesToSet,
     )
   }

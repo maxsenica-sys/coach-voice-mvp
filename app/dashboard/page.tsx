@@ -16,6 +16,7 @@ import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName,
 import { activeCount } from '@/lib/athlete-status'
 import { formatSessionDate, sessionDate, sessionISODate, todayISODate } from '@/lib/session-date'
 import { GROUP_COLORS, DEFAULT_GROUP_COLOR } from '@/lib/group-colors'
+import { errorMessage } from '@/lib/errors'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -221,7 +222,7 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
       onNameChange(json.first_name, json.last_name, json.sport ?? '', profileForm.email)
       setProfileMsg('Profile updated!')
       setTimeout(() => setProfileMsg(''), 3000)
-    } catch (e: any) { setProfileMsg(e?.message ?? 'Failed') }
+    } catch (e: unknown) { setProfileMsg(errorMessage(e, 'Failed')) }
     finally { setProfileSaving(false) }
   }
 
@@ -608,7 +609,7 @@ function DashboardPageInner() {
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error)
       setInviteCode(json.inviteCode); setCodeEditing(false); setCodeMsg('Code updated!')
-    } catch (e: any) { setCodeMsg(e?.message ?? 'Failed') }
+    } catch (e: unknown) { setCodeMsg(errorMessage(e, 'Failed')) }
     finally { setCodeSaving(false) }
   }
 
@@ -627,7 +628,7 @@ function DashboardPageInner() {
       setAddForm({ firstName: '', lastName: '', email: '' })
       setAddMsg('Athlete invited!'); setShowAddAthlete(false)
       await fetchAthletes()
-    } catch (e: any) { setAddMsg(e?.message ?? 'Failed') }
+    } catch (e: unknown) { setAddMsg(errorMessage(e, 'Failed')) }
     finally { setAddLoading(false) }
   }
 
@@ -643,7 +644,7 @@ function DashboardPageInner() {
       if (!res.ok) throw new Error(json?.error)
       setGroups(prev => [json.group, ...prev])
       setNewGroupForm({ name: '', color: DEFAULT_GROUP_COLOR, description: '' })
-    } catch (e: any) { setGroupMsg(e?.message ?? 'Failed') }
+    } catch (e: unknown) { setGroupMsg(errorMessage(e, 'Failed')) }
     finally { setGroupSaving(false) }
   }
 
@@ -651,8 +652,8 @@ function DashboardPageInner() {
     if (!confirm('Delete this group? Athletes are not removed.')) return
     try {
       await apiMutate(`/api/groups?id=${id}`, { method: 'DELETE' })
-    } catch (e: any) {
-      showToast(e?.message ?? 'Could not delete the group', 'error')
+    } catch (e: unknown) {
+      showToast(errorMessage(e, 'Could not delete the group'), 'error')
       return
     }
     setGroups(prev => prev.filter(g => g.id !== id))
@@ -672,8 +673,8 @@ function DashboardPageInner() {
   const removeMemberFromGroup = async (groupId: string, athleteId: string) => {
     try {
       await apiMutate(`/api/groups/${groupId}/members?athlete_id=${athleteId}`, { method: 'DELETE' })
-    } catch (e: any) {
-      showToast(e?.message ?? 'Could not remove that athlete', 'error')
+    } catch (e: unknown) {
+      showToast(errorMessage(e, 'Could not remove that athlete'), 'error')
       return
     }
     await fetchGroups()
@@ -688,7 +689,7 @@ function DashboardPageInner() {
         event_type: eventForm.event_type, event_date: addEventModal.date,
         event_time: eventForm.event_time || null,
       }
-      const body: Record<string, any> = { ...base }
+      const body: Record<string, unknown> = { ...base }
       if (calMode === 'athlete') body.athlete_id = calTargetId
       else if (calMode === 'group') body.group_id = calTargetId
 
@@ -739,8 +740,8 @@ function DashboardPageInner() {
   const deleteEvent = async (id: string) => {
     try {
       await apiMutate(`/api/calendar?id=${id}`, { method: 'DELETE' })
-    } catch (e: any) {
-      showToast(e?.message ?? 'Could not delete the event', 'error')
+    } catch (e: unknown) {
+      showToast(errorMessage(e, 'Could not delete the event'), 'error')
       return
     }
     setCalEvents(prev => prev.filter(e => e.id !== id))
@@ -1159,7 +1160,7 @@ function DashboardPageInner() {
                       {/* Header */}
                       <div>
                         <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 28, letterSpacing: -0.6, fontStyle: 'italic', color: 'var(--text)' }}>
-                          You're all set up.
+                          You&apos;re all set up.
                         </h2>
                         <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>
                           Complete these steps to get started with your first athlete.
@@ -1202,7 +1203,7 @@ function DashboardPageInner() {
                         <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--border-soft)', color: 'var(--text-2)', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>2</div>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 3 }}>Add your first athlete</div>
-                          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>Invite them by email — they'll get a link to set up their account.</div>
+                          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>Invite them by email — they&apos;ll get a link to set up their account.</div>
                           <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6 }}>
                             <Icon name="plus" size={14} /> Add Athlete →
                           </button>

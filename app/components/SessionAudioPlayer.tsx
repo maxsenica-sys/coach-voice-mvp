@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { apiJson } from '@/lib/api-client'
+import { errorMessage } from '@/lib/errors'
 
 /**
  * Plays back the original recording for a session.
@@ -56,8 +57,8 @@ export default function SessionAudioPlayer({ sessionId, initialUrl = null, mime 
       if (!json.url) throw new Error('No recording is saved for this session.')
       setUrl(json.url)
       return json.url
-    } catch (e: any) {
-      setError(e?.message ?? 'Could not open the recording.')
+    } catch (e: unknown) {
+      setError(errorMessage(e, 'Could not open the recording.'))
       return null
     } finally {
       setLoading(false)

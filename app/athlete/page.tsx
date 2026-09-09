@@ -19,6 +19,7 @@ import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
 import { formatSessionDate } from '@/lib/session-date'
+import { errorMessage } from '@/lib/errors'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -370,8 +371,8 @@ export default function AthletePage() {
         const notesJson = await notesRes.json().catch(() => ({}))
         if (!cancelled) setNotes(notesJson.notes ?? [])
 
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? 'Failed to load')
+      } catch (e: unknown) {
+        if (!cancelled) setError(errorMessage(e, 'Failed to load'))
       } finally {
         if (!cancelled) setLoading(false)
         markAppReady()
@@ -478,8 +479,8 @@ export default function AthletePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: eventId, athlete_id: athleteId, status }),
       })
-    } catch (e: any) {
-      setActionError(e?.message ?? 'Could not send your reply — your coach did not get it.')
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not send your reply — your coach did not get it.'))
       return
     }
     setRsvpMap((prev) => ({ ...prev, [eventId]: status }))
@@ -556,8 +557,8 @@ export default function AthletePage() {
   const deleteNote = async (id: string) => {
     try {
       await apiMutate(`/api/athlete-notes?id=${id}`, { method: 'DELETE' })
-    } catch (e: any) {
-      setActionError(e?.message ?? 'Could not delete that note')
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not delete that note'))
       return
     }
     setNotes((prev) => prev.filter((n) => n.id !== id))
@@ -655,8 +656,8 @@ export default function AthletePage() {
   const deleteCalEvent = async (id: string) => {
     try {
       await apiMutate(`/api/calendar?id=${id}`, { method: 'DELETE' })
-    } catch (e: any) {
-      setActionError(e?.message ?? 'Could not delete that event')
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not delete that event'))
       return
     }
     setCalEvents((prev) => prev.filter((e) => e.id !== id))
@@ -722,7 +723,7 @@ export default function AthletePage() {
               <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{onboardFirstName}.</span>
             </h1>
             <p style={{ margin: '12px 0 0', fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, maxWidth: 340 }}>
-              Your coach has set up your training profile. Here's how to get started.
+              Your coach has set up your training profile. Here&apos;s how to get started.
             </p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 28 }}>
@@ -745,7 +746,7 @@ export default function AthletePage() {
             style={{ width: '100%', fontSize: 'var(--fs-4)', padding: '14px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             onClick={dismissOnboarding}
           >
-            Let's go →
+            Let&apos;s go →
           </button>
         </div>
         <ColdStartSplash />
@@ -1233,8 +1234,8 @@ export default function AthletePage() {
                                           headers: { 'Content-Type': 'application/json' },
                                           body: JSON.stringify({ annotations: strokes }),
                                         })
-                                      } catch (e: any) {
-                                        setActionError(e?.message ?? 'Could not save your drawing — it is on screen but not stored.')
+                                      } catch (e: unknown) {
+                                        setActionError(errorMessage(e, 'Could not save your drawing — it is on screen but not stored.'))
                                       }
                                     }}
                                   />
@@ -1390,14 +1391,14 @@ export default function AthletePage() {
         {tab === 'calendar' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {/* Daily quote */}
-            <p className="quote-strip">"{getDailyQuote('athlete')}"</p>
+            <p className="quote-strip">&quot;{getDailyQuote('athlete')}&quot;</p>
 
           <div className="card" style={{ padding: 24 }}>
             <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
                 <div className="section-title">My Calendar</div>
                 <div className="section-sub">
-                  Coach-scheduled events (in blue/coloured) plus your own personal entries. Coaches only see what they've added.
+                  Coach-scheduled events (in blue/coloured) plus your own personal entries. Coaches only see what they&apos;ve added.
                 </div>
               </div>
               {calSaveMsg && (

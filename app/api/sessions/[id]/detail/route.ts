@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import type { CookieToSet } from '@/lib/supabase-route'
 
 export const runtime = 'nodejs'
 
@@ -20,7 +21,6 @@ const MEDIA_BUCKET = 'session-videos'
 const AUDIO_BUCKET = 'session-audio'
 const SIGNED_TTL = 60 * 60
 
-type CookieToSet = { name: string; value: string; options?: any }
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []

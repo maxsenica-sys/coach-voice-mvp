@@ -129,7 +129,7 @@ export default function Home() {
             <>
               <h2 style={{ fontSize: 19, fontWeight: 800, marginBottom: 6, color: 'var(--text)' }}>Reset password</h2>
               <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 24 }}>
-                We'll send a reset link to your inbox.
+                We&apos;ll send a reset link to your inbox.
               </p>
               <label className="label">Email address</label>
               <input

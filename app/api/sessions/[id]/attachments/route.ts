@@ -13,13 +13,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import type { CookieToSet } from '@/lib/supabase-route'
+import { errorMessage } from '@/lib/errors'
 
 export const runtime = 'nodejs'
 
 const BUCKET = 'session-videos'
 const MAX_ATTACHMENTS = 20
 
-type CookieToSet = { name: string; value: string; options?: any }
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -101,7 +102,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(storagePath)
   if (error || !data) {
-    return attach(NextResponse.json({ error: error?.message ?? 'Could not start the upload.' }, { status: 500 }), cookiesToSet)
+    return attach(NextResponse.json({ error: errorMessage(error, 'Could not start the upload.') }, { status: 500 }), cookiesToSet)
   }
 
   return attach(NextResponse.json({ signedUrl: data.signedUrl, path: storagePath }), cookiesToSet)

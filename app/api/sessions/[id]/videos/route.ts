@@ -6,10 +6,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import type { CookieToSet } from '@/lib/supabase-route'
 
 export const runtime = 'nodejs'
 
-type CookieToSet = { name: string; value: string; options?: any }
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -230,7 +230,7 @@ export async function PATCH(
 
   if (!session) return attach(NextResponse.json({ error: 'Access denied.' }, { status: 403 }), cookiesToSet)
 
-  const updatePayload: Record<string, any> = {}
+  const updatePayload: Record<string, unknown> = {}
   if (annotations !== undefined) updatePayload.annotations = annotations
   if (typeof body?.shared_with_athlete === 'boolean') updatePayload.shared_with_athlete = body.shared_with_athlete
   if (typeof body?.share_note === 'string') updatePayload.share_note = body.share_note

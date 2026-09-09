@@ -7,6 +7,7 @@ import {
 } from '@/lib/wellness-config'
 import { fmtShortDate as fmtDate } from '@/lib/date-utils'
 import { apiJson } from '@/lib/api-client'
+import { errorMessage } from '@/lib/errors'
 
 interface Props {
   athleteId: string
@@ -121,10 +122,10 @@ export default function WellnessGraph({ athleteId }: Props) {
         `/api/wellness?athlete_id=${athleteId}&days=30`,
       )
       setCheckins(json.checkins ?? [])
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Without this the chart rendered as "no check-ins yet" on a failed
       // request, which reads as an athlete who never submitted one.
-      setLoadError(e?.message ?? 'Could not load wellness check-ins')
+      setLoadError(errorMessage(e, 'Could not load wellness check-ins'))
       setCheckins([])
     } finally {
       setLoading(false)

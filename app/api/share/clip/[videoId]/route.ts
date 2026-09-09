@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { errorMessage } from '@/lib/errors'
 
 export async function GET(
   req: NextRequest,
@@ -68,7 +69,7 @@ export async function GET(
         signedUrl: signed?.signedUrl ?? null,
       },
     })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errorMessage(e, 'Unknown error') }, { status: 500 })
   }
 }

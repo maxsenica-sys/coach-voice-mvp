@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { athleteStatus } from '@/lib/athlete-status'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { errorMessage } from '@/lib/errors'
 
 // GET /api/athletes/[id]
 export async function GET(
@@ -58,8 +59,8 @@ export async function GET(
         auto_monthly_report: data.auto_monthly_report ?? false,
       },
     })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errorMessage(e, 'Unknown error') }, { status: 500 })
   }
 }
 
@@ -77,7 +78,7 @@ export async function PATCH(
     const body = await req.json().catch(() => ({}))
 
     const allowed = ['first_name', 'last_name', 'position', 'height_cm', 'height', 'sport', 'sport_metrics', 'goals', 'custom_fields', 'photo_url', 'auto_monthly_report']
-    const updates: Record<string, any> = {}
+    const updates: Record<string, unknown> = {}
     for (const key of allowed) {
       if (key in body) updates[key] = body[key]
     }
@@ -97,8 +98,8 @@ export async function PATCH(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ athlete: data })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errorMessage(e, 'Unknown error') }, { status: 500 })
   }
 }
 

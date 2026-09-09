@@ -6,10 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import type { CookieToSet } from '@/lib/supabase-route'
+import { errorMessage } from '@/lib/errors'
 
 export const runtime = 'nodejs'
 
-type CookieToSet = { name: string; value: string; options?: any }
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -67,7 +68,7 @@ export async function GET(
     .createSignedUploadUrl(storagePath)
 
   if (error || !data) {
-    return attach(NextResponse.json({ error: error?.message ?? 'Failed to create upload URL' }, { status: 500 }), cookiesToSet)
+    return attach(NextResponse.json({ error: errorMessage(error, 'Failed to create upload URL') }, { status: 500 }), cookiesToSet)
   }
 
   return attach(

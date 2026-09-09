@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import type { CookieToSet } from '@/lib/supabase-route'
 
 function createSupabase(req: NextRequest) {
-  const cookiesToSet: { name: string; value: string; options?: any }[] = []
+  const cookiesToSet: CookieToSet[] = []
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -16,7 +17,7 @@ function createSupabase(req: NextRequest) {
   return { supabase, cookiesToSet }
 }
 
-function attach(res: NextResponse, cs: any[]) {
+function attach(res: NextResponse, cs: CookieToSet[]) {
   cs.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
   return res
 }
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
     description: g.description,
     created_at: g.created_at,
     member_count: (g.group_members ?? []).length,
-    member_ids: (g.group_members ?? []).map((m: any) => m.athlete_id),
+    member_ids: (g.group_members ?? []).map((m: { athlete_id: string }) => m.athlete_id),
   }))
 
   return attach(NextResponse.json({ groups }), cookiesToSet)

@@ -18,6 +18,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { WELLNESS_METRICS, metricColor, scoreLabel, type WellnessCheckin, type WellnessAlertReason } from '@/lib/wellness-config'
+import { errorMessage } from '@/lib/errors'
 
 type SendEmailArgs = {
   to: string | string[]
@@ -58,13 +59,13 @@ export async function sendEmail({ to, subject, html, fromName, fromEmail, replyT
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
-      return { ok: false, error: (err as any)?.message ?? `Resend returned ${res.status}` }
+      return { ok: false, error: errorMessage(err) ?? `Resend returned ${res.status}` }
     }
 
     const result = await res.json().catch(() => ({}))
     return { ok: true, id: (result as any)?.id }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? 'Email send failed' }
+  } catch (e: unknown) {
+    return { ok: false, error: errorMessage(e, 'Email send failed') }
   }
 }
 

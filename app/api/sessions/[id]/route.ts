@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
 import { notifySessionShared } from '@/lib/notify'
+import type { CookieToSet } from '@/lib/supabase-route'
 
-type CookieToSet = { name: string; value: string; options?: any }
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -38,7 +38,7 @@ export async function PATCH(
   const body = await req.json().catch(() => ({}))
 
   const allowed = ['shared_with_athlete', 'session_name', 'sport_context', 'title', 'summary', 'coach_notes', 'focus_points']
-  const updates: Record<string, any> = {}
+  const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
   }

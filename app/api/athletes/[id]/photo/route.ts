@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { errorMessage } from '@/lib/errors'
 
 export async function POST(
   req: NextRequest,
@@ -41,7 +42,7 @@ export async function POST(
       uploadUrl: uploadData.signedUrl,
       storagePath,
     })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errorMessage(e, 'Unknown error') }, { status: 500 })
   }
 }

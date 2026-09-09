@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { ALL_SPORTS } from '@/lib/sports'
+import { errorMessage } from '@/lib/errors'
 
 // ── Sport Wheel Picker ───────────────────────────────────────────
 const ITEM_H = 48
@@ -275,8 +276,8 @@ export default function SignupPage() {
       }
 
       router.push(form.role === 'athlete' ? '/athlete' : '/dashboard')
-    } catch (e: any) {
-      setError(e?.message ?? 'Something went wrong.')
+    } catch (e: unknown) {
+      setError(errorMessage(e, 'Something went wrong.'))
     } finally {
       setLoading(false)
     }
@@ -373,9 +374,9 @@ export default function SignupPage() {
           {/* ── Step 2: Name ── */}
           {step === 2 && (
             <div className="fade-in">
-              <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>What's your name?</h2>
+              <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>What&apos;s your name?</h2>
               <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 24 }}>
-                This is how you'll appear to {form.role === 'coach' ? 'your athletes' : 'your coach'}.
+                This is how you&apos;ll appear to {form.role === 'coach' ? 'your athletes' : 'your coach'}.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
@@ -410,7 +411,7 @@ export default function SignupPage() {
             <div className="fade-in">
               <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>Your login details</h2>
               <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 24 }}>
-                You'll use these to sign in every time.
+                You&apos;ll use these to sign in every time.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>

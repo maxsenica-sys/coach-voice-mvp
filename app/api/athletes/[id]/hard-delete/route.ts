@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { errorMessage } from '@/lib/errors'
 
 export async function POST(
   _request: Request,
@@ -38,7 +39,7 @@ export async function POST(
       .select('id')
       .eq('athlete_id', athleteId)
 
-    const sessionIds = (sessionRows ?? []).map((s: any) => s.id)
+    const sessionIds = (sessionRows ?? []).map((s: { id: string }) => s.id)
 
     if (sessionIds.length > 0) {
       await admin.from('session_videos').delete().in('session_id', sessionIds)
@@ -77,7 +78,7 @@ export async function POST(
     }
 
     return NextResponse.json({ ok: true })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errorMessage(e, 'Unknown error') }, { status: 500 })
   }
 }

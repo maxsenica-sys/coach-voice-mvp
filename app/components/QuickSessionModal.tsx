@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { apiMutate } from '@/lib/api-client'
 import { formatSessionDate, todayISODate, yesterdayISODate } from '@/lib/session-date'
+import { errorMessage } from '@/lib/errors'
 
 interface Athlete {
   id: string
@@ -179,8 +180,8 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         setAudioPath(uploadedPath)
         setAudioMime(mimeType)
       }
-    } catch (e: any) {
-      setError(e?.message ?? 'Transcription failed. You can type the transcript manually.')
+    } catch (e: unknown) {
+      setError(errorMessage(e, 'Transcription failed. You can type the transcript manually.'))
     } finally {
       setTranscribing(false)
       setStep('review')
@@ -262,8 +263,8 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
 
       onSaved()
       onClose()
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to save session')
+    } catch (e: unknown) {
+      setError(errorMessage(e, 'Failed to save session'))
     } finally {
       setSaving(false)
     }

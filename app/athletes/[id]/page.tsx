@@ -17,6 +17,7 @@ import {
   type WellnessCheckin, type WellnessAlert,
 } from '@/lib/wellness-config'
 import { formatSessionDate } from '@/lib/session-date'
+import { errorMessage } from '@/lib/errors'
 
 interface Athlete {
   id: string; first_name: string; last_name: string
@@ -95,7 +96,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
     if (loaded) return
     apiJson<{ caretakers?: any[] }>(`/api/caretakers?athlete_id=${athleteId}`)
       .then(j => { setCaretakers(j.caretakers ?? []); setLoaded(true) })
-      .catch((e: any) => { setMsg(e?.message ?? 'Could not load caretakers'); setLoaded(true) })
+      .catch((e: unknown) => { setMsg(errorMessage(e, 'Could not load caretakers')); setLoaded(true) })
   }, [athleteId, loaded, setCaretakers, setMsg])
 
   const save = async () => {
@@ -108,7 +109,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
       setCaretakers([...caretakers.filter(c => c.caretaker_email !== form.email), j.caretaker])
       setForm({ name: '', email: '', relationship: 'parent', notify_session_reports: true, notify_monthly_reports: true, notify_wellness_alerts: true })
       setMsg('Saved!')
-    } catch (e: any) { setMsg(e?.message ?? 'Failed') }
+    } catch (e: unknown) { setMsg(errorMessage(e, 'Failed')) }
     setSaving(false)
   }
 
@@ -120,7 +121,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
       const j = await res.json()
       if (!res.ok) throw new Error(j.error)
       setEmailMsg(`Sent to ${name}!`)
-    } catch (e: any) { setEmailMsg(e?.message ?? 'Failed') }
+    } catch (e: unknown) { setEmailMsg(errorMessage(e, 'Failed')) }
     setEmailSending(false)
   }
 
@@ -141,8 +142,8 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
               <button className="btn btn-danger" style={{ padding: '4px 8px' }} onClick={async () => {
                 try {
                   await apiMutate(`/api/caretakers?id=${c.id}`, { method: 'DELETE' })
-                } catch (e: any) {
-                  setMsg(e?.message ?? 'Could not remove that caretaker')
+                } catch (e: unknown) {
+                  setMsg(errorMessage(e, 'Could not remove that caretaker'))
                   return
                 }
                 setCaretakers(caretakers.filter(x => x.id !== c.id))
@@ -290,7 +291,7 @@ export default function AthleteDetailPage() {
       if (!sRes.ok) throw new Error((await sRes.json().catch(() => ({}))).error ?? 'Failed to load sessions')
       const { sessions: s } = await sRes.json()
       setSessions(s ?? [])
-    } catch (e: any) { setPageError(e?.message ?? 'Something went wrong') }
+    } catch (e: unknown) { setPageError(errorMessage(e, 'Something went wrong')) }
     finally { setLoading(false) }
   }
 
@@ -340,7 +341,7 @@ export default function AthleteDetailPage() {
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error ?? 'Failed to send')
       setAlertMsg(`Sent to ${email}!`)
-    } catch (e: any) { setAlertMsg(e?.message ?? 'Failed to send') }
+    } catch (e: unknown) { setAlertMsg(errorMessage(e, 'Failed to send')) }
     setAlertSending(false)
   }
   const wellnessColor = overallScoreColor(wellnessScore)
@@ -352,8 +353,8 @@ export default function AthleteDetailPage() {
   const toggleShare = async (sessionId: string, current: boolean) => {
     try {
       await apiMutate(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shared_with_athlete: !current }) })
-    } catch (e: any) {
-      setActionError(e?.message ?? (current ? 'Could not unshare that session' : 'Could not share that session'))
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, current ? 'Could not unshare that session' : 'Could not share that session'))
       return
     }
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, shared_with_athlete: !current } : s))
@@ -428,8 +429,8 @@ export default function AthleteDetailPage() {
         }
         const { video } = await regRes.json()
         setSessionVideos(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), video] }))
-      } catch (err: any) {
-        setPageError(err?.message ?? 'Upload failed')
+      } catch (err: unknown) {
+        setPageError(errorMessage(err, 'Upload failed'))
       } finally {
         setVideoProgress(prev => ({ ...prev, [sessionId]: null }))
         setVideoEta(prev => ({ ...prev, [sessionId]: '' }))
@@ -442,8 +443,8 @@ export default function AthleteDetailPage() {
   const saveAnnotations = async (sessionId: string, videoId: string, annotations: AnnotationStroke[]) => {
     try {
       await apiMutate(`/api/sessions/${sessionId}/videos?video_id=${videoId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ annotations }) })
-    } catch (e: any) {
-      setActionError(e?.message ?? 'Could not save your annotations — they are still on screen but not stored.')
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not save your annotations — they are still on screen but not stored.'))
       return
     }
     setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).map(v => v.id === videoId ? { ...v, annotations } : v) }))
@@ -453,8 +454,8 @@ export default function AthleteDetailPage() {
     if (!confirm('Delete this video?')) return
     try {
       await apiMutate(`/api/sessions/${sessionId}/videos?video_id=${videoId}`, { method: 'DELETE' })
-    } catch (e: any) {
-      setActionError(e?.message ?? 'Could not delete that video')
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not delete that video'))
       return
     }
     setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).filter(v => v.id !== videoId) }))
@@ -463,8 +464,8 @@ export default function AthleteDetailPage() {
   const toggleVideoShare = async (sessionId: string, videoId: string, current: boolean) => {
     try {
       await apiMutate(`/api/sessions/${sessionId}/videos?video_id=${videoId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shared_with_athlete: !current }) })
-    } catch (e: any) {
-      setActionError(e?.message ?? 'Could not change who can see that video')
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not change who can see that video'))
       return
     }
     setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).map(v => v.id === videoId ? { ...v, shared_with_athlete: !current } as any : v) }))
@@ -491,7 +492,7 @@ export default function AthleteDetailPage() {
       setAthlete(prev => prev ? { ...prev, ...updated } : prev)
       setProfileMsg('Saved!')
       setTimeout(() => setProfileMsg(''), 3000)
-    } catch (e: any) { setProfileMsg(e?.message ?? 'Failed') }
+    } catch (e: unknown) { setProfileMsg(errorMessage(e, 'Failed')) }
     finally { setProfileSaving(false) }
   }
 
@@ -520,7 +521,7 @@ export default function AthleteDetailPage() {
       setNotes(prev => [json.note, ...prev])
       setNoteText(''); setNoteMsg('Note saved!')
       setTimeout(() => setNoteMsg(''), 3000)
-    } catch (e: any) { setNoteMsg(e?.message ?? 'Failed') }
+    } catch (e: unknown) { setNoteMsg(errorMessage(e, 'Failed')) }
     finally { setNoteSaving(false) }
   }
 
@@ -550,7 +551,7 @@ export default function AthleteDetailPage() {
       const reloadRes = await fetch(`/api/athletes/${athleteId}`)
       const { athlete: a } = await reloadRes.json()
       setAthlete(prev => prev ? { ...prev, photo_signed_url: a.photo_signed_url, photo_url: a.photo_url } : prev)
-    } catch (e: any) { setProfileMsg(e?.message ?? 'Photo upload failed') }
+    } catch (e: unknown) { setProfileMsg(errorMessage(e, 'Photo upload failed')) }
     finally { setPhotoUploading(false) }
   }
 
@@ -1203,9 +1204,9 @@ export default function AthleteDetailPage() {
                             const next = e.target.checked; setAutoMonthlyReport(next)
                             try {
                               await apiMutate(`/api/athletes/${athleteId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_monthly_report: next }) })
-                            } catch (err: any) {
+                            } catch (err: unknown) {
                               setAutoMonthlyReport(!next)   // put the switch back — the change didn't save
-                              setActionError(err?.message ?? 'Could not save that setting')
+                              setActionError(errorMessage(err, 'Could not save that setting'))
                             }
                           }} />
                           <div>

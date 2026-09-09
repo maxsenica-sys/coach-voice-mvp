@@ -6,10 +6,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { createServerClient } from '@supabase/ssr'
+import type { CookieToSet } from '@/lib/supabase-route'
 
 export const runtime = 'nodejs'
 
-type CookieToSet = { name: string; value: string; options?: any }
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []

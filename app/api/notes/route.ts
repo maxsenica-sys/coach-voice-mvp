@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { errorMessage } from '@/lib/errors'
 
 // GET /api/notes?athlete_id=...
 export async function GET(req: Request) {
@@ -42,8 +43,8 @@ export async function GET(req: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     return NextResponse.json({ notes: data ?? [] })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errorMessage(e, 'Unknown error') }, { status: 500 })
   }
 }
 
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
 
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const body = await req.json().catch(() => ({} as any))
+    const body = await req.json().catch(() => ({} as Record<string, unknown>))
     const athlete_id = String(body?.athlete_id ?? '').trim()
     const summary = String(body?.summary ?? '').trim()
     const shared_with_athlete = Boolean(body?.shared_with_athlete ?? false)
@@ -95,7 +96,7 @@ export async function POST(req: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     return NextResponse.json({ note: data })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errorMessage(e, 'Unknown error') }, { status: 500 })
   }
 }

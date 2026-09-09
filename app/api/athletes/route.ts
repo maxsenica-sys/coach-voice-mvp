@@ -4,6 +4,7 @@ import { createRouteClient } from '@/lib/supabase-route'
 import { athleteStatus } from '@/lib/athlete-status'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { sendEmail, renderBrandedEmail } from '@/lib/notify'
+import { errorMessage } from '@/lib/errors'
 
 // GET /api/athletes
 export async function GET() {
@@ -38,8 +39,8 @@ export async function GET() {
     }))
 
     return NextResponse.json({ athletes })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errorMessage(e, 'Unknown error') }, { status: 500 })
   }
 }
 
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json().catch(() => ({} as any))
+    const body = await request.json().catch(() => ({} as Record<string, unknown>))
     const first_name = String(body?.first_name ?? '').trim()
     const last_name = String(body?.last_name ?? '').trim()
     const email = String(body?.email ?? '').trim()
@@ -153,7 +154,7 @@ export async function POST(request: Request) {
       },
       ...(emailWarning ? { warning: emailWarning } : {}),
     })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unknown error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errorMessage(e, 'Unknown error') }, { status: 500 })
   }
 }

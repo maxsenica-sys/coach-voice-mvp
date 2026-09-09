@@ -10,8 +10,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { notifyCalendarEventCreated } from '@/lib/notify'
+import type { CookieToSet } from '@/lib/supabase-route'
 
-type CookieToSet = { name: string; value: string; options?: any }
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
     if (!group) return attach(NextResponse.json({ error: 'Group not found' }, { status: 404 }), cookiesToSet)
 
     const { data: members } = await admin.from('group_members').select('athlete_id').eq('group_id', groupIdP)
-    const athleteIds = (members ?? []).map((m: any) => m.athlete_id)
+    const athleteIds = (members ?? []).map((m: { athlete_id: string }) => m.athlete_id)
 
     if (athleteIds.length === 0) return attach(NextResponse.json({ events: [] }), cookiesToSet)
 
@@ -202,7 +202,7 @@ export async function POST(req: NextRequest) {
     if (!groupCheck) return attach(NextResponse.json({ error: 'Group not found' }, { status: 404 }), cookiesToSet)
 
     const { data: members } = await admin.from('group_members').select('athlete_id').eq('group_id', group_id)
-    const athleteIds = (members ?? []).map((m: any) => m.athlete_id)
+    const athleteIds = (members ?? []).map((m: { athlete_id: string }) => m.athlete_id)
 
     if (athleteIds.length === 0) return attach(NextResponse.json({ error: 'Group has no members' }, { status: 400 }), cookiesToSet)
 

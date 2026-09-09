@@ -3,8 +3,8 @@ import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
 import { getSportTerminologyHint } from '@/lib/sports'
 import { notifySessionShared } from '@/lib/notify'
+import type { CookieToSet } from '@/lib/supabase-route'
 
-type CookieToSet = { name: string; value: string; options?: any }
 
 function createSupabase(req: NextRequest) {
   // We store cookies Supabase wants to set, then apply them to the response we return.

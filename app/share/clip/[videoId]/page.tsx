@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
+import { errorMessage } from '@/lib/errors'
 
 export default function ShareClipPage() {
   const params = useParams()
@@ -24,7 +25,7 @@ export default function ShareClipPage() {
         if (j.error) throw new Error(j.error)
         setVideo(j.video)
       })
-      .catch(e => setError(e?.message ?? 'Failed to load clip'))
+      .catch(e => setError(errorMessage(e, 'Failed to load clip')))
       .finally(() => setLoading(false))
   }, [videoId, sessionId])
 
