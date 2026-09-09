@@ -474,7 +474,7 @@ export default function SignupPage() {
                   display: 'inline-flex', alignItems: 'center', gap: 8,
                   background: 'var(--primary-light)', border: '1.5px solid var(--primary)',
                   borderRadius: 999, padding: '4px 14px', fontSize: 13, fontWeight: 700,
-                  color: 'var(--primary)', marginBottom: 12,
+                  color: 'var(--primary-dark)', marginBottom: 12,
                 }}>
                   ✓ {form.sport}
                   <button
@@ -636,7 +636,7 @@ export default function SignupPage() {
 
           <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)', marginTop: 16 }}>
             Already have an account?{' '}
-            <Link href="/" style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}>Sign in</Link>
+            <Link href="/" style={{ color: 'var(--primary-dark)', fontWeight: 700, textDecoration: 'none' }}>Sign in</Link>
           </p>
         </div>
       </div>

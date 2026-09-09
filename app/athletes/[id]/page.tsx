@@ -181,7 +181,7 @@ function VideoUploadBar({ pct, eta }: { pct: number; eta: string }) {
   return (
     <div style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>Uploading… {pct}%</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)' }}>Uploading… {pct}%</span>
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{eta}</span>
       </div>
       <div style={{ height: 8, background: 'var(--border)', borderRadius: 999, overflow: 'hidden' }}>

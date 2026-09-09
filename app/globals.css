@@ -63,8 +63,14 @@
   --warning:      #B8883A;
   --warning-light:#F6E9CC;
   --warning-border:#E4CE9A;  /* decorative hairline on --warning-light */
+  /* Amber as TEXT. --warning/--energy are fills: #B8883A is 2.98:1 on white and
+     fails 1.4.3. The dashboard had reached for #C9933A (2.72:1, on the INVITED
+     status label) and #9A7229 (4.36:1, on the Unread stat) instead of a token,
+     and both failed. 5.35:1 on white, 5.05:1 on --bg. */
+  --energy-dark:  #8A6420;
   --success:      #5D8257;
   --success-light:#E6ECDF;
+  --success-border:#CBD7C0;  /* decorative hairline on --success-light */
 
   /* Typography */
   --text:         #1F2421;
@@ -118,6 +124,10 @@
      and both would flash. */
   --grad-ink:     linear-gradient(160deg, #1F2421 0%, #3A4F38 100%);
   --ink-base:     #1F2421;
+  /* The far stop of --grad-ink, exposed on its own because the coach sidebar
+     paints the same two colours at 180deg rather than 160deg. Naming it lets
+     that gradient stop hardcoding the hex without silently changing its angle. */
+  --ink-mid:      #3A4F38;
   --ink-figure:   #445C42;
   --on-ink:       #F5ECD7;
   --on-ink-2:     rgba(245, 236, 215, 0.72);

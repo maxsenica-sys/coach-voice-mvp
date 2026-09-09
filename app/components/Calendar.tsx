@@ -136,7 +136,7 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
         </div>
         <button
           onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDate(todayStr); onMonthChange?.(toMonthStr(today.getFullYear(), today.getMonth())) }}
-          style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+          style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
         >
           Today
         </button>
