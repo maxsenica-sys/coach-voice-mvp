@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { computeWellnessAlert, type WellnessCheckin } from '@/lib/wellness-config'
+import { isBodyRegion } from '@/lib/body-map'
 import { notifyWellnessAlert } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
 
@@ -57,7 +58,24 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { athlete_id, check_date, energy, mood, sleep_q, soreness, stress, notes } = await req.json()
+  const body = await req.json()
+  const { athlete_id, check_date, energy, mood, sleep_q, soreness, stress, notes } = body
+
+  // The soreness follow-up. Validated rather than trusted: `soreness_score` is
+  // a 0-10 rating and `soreness_areas` must be region ids from lib/body-map.ts,
+  // because the whole point of a fixed vocabulary is that arbitrary text about
+  // a child's body never reaches the database.
+  const rawScore = body?.soreness_score
+  const soreness_score =
+    typeof rawScore === 'number' && Number.isInteger(rawScore) && rawScore >= 0 && rawScore <= 10
+      ? rawScore
+      : null
+
+  const rawAreas = body?.soreness_areas
+  const soreness_areas =
+    Array.isArray(rawAreas) && rawAreas.length
+      ? Array.from(new Set(rawAreas.filter(isBodyRegion)))
+      : null
   if (!athlete_id) return NextResponse.json({ error: 'athlete_id required' }, { status: 400 })
 
   // Get coach_id from athlete row
@@ -72,6 +90,10 @@ export async function POST(req: NextRequest) {
       coach_id: ath.coach_id,
       check_date: check_date ?? new Date().toISOString().split('T')[0],
       energy, mood, sleep_q, soreness, stress, notes,
+      soreness_score,
+      // Null, not [], when there is nothing: an empty array reads as "asked and
+      // answered nothing", which is a different fact from "never asked".
+      soreness_areas: soreness_score === null ? null : soreness_areas,
     }, { onConflict: 'athlete_id,check_date' })
     .select()
     .single()

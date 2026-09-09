@@ -9,8 +9,7 @@ function startsWithRoute(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(route + '/')
 }
 
-// /dev holds the Hear It prototype — coach-only, same as the dashboard.
-const COACH_ROUTES = ['/dashboard', '/athletes', '/dev']
+const COACH_ROUTES = ['/dashboard', '/athletes']
 const ATHLETE_ROUTES = ['/athlete']
 // Signed-in but role-agnostic: a session page serves the owning coach and the
 // athlete it was shared with. The route itself checks which of the two you are.
@@ -188,5 +187,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/dashboard/:path*', '/athletes/:path*', '/athlete/:path*', '/sessions/:path*', '/dev/:path*', '/reset'],
+  matcher: ['/', '/dashboard/:path*', '/athletes/:path*', '/athlete/:path*', '/sessions/:path*', '/reset'],
 }

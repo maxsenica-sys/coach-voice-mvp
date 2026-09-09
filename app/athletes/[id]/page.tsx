@@ -11,6 +11,7 @@ import WellnessGraph from '@/app/components/WellnessGraph'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import TrainingSpine from '@/app/components/TrainingSpine'
+import InjuryPanel from '@/app/components/InjuryPanel'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile } from '@/lib/profile-cache'
 import {
@@ -800,6 +801,12 @@ export default function AthleteDetailPage() {
             <button className="btn btn-coach" style={{ gap: 7, fontWeight: 700, justifyContent: 'center', padding: '12px' }} onClick={() => setShowQuickSession(true)}>
               <Icon name="mic" size={15} /> Record a session
             </button>
+
+            {/* ── Availability ──
+                Above wellness on purpose: soreness is a number that varies by
+                the day, an injury is a decision that governs the session the
+                coach is about to plan. */}
+            <InjuryPanel athleteId={athleteId} athleteName={athlete.first_name} />
 
             {/* ── Wellness ── */}
             <div>
