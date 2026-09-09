@@ -12,6 +12,7 @@ import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import AttentionStrip from '@/app/components/AttentionStrip'
+import PendingRecordings from '@/app/components/PendingRecordings'
 import type { CoverageRow } from '@/lib/attention'
 import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
@@ -1150,6 +1151,12 @@ function DashboardPageInner() {
                     </button>
                   </div>
                 )}
+
+                {/* Recordings still on this device. Renders nothing when the
+                    queue is empty, which is almost always — and sits above
+                    everything else when it is not, because an unsent recording
+                    is more urgent than any summary of past ones. */}
+                <PendingRecordings onSynced={() => { fetchAllSessions(); fetchCoverage() }} />
 
                 {/* Quiet lately — who has gone longest without a recording.
                     Sits above "Recent sessions" deliberately: recent sessions

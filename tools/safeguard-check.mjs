@@ -242,6 +242,48 @@ const RULES = [
       return found
     },
   },
+
+  {
+    id: 'SG7',
+    title: 'A recording never carries a hardcoded audio type or extension',
+    why: 'Chrome records audio/webm and iOS records audio/mp4, and Whisper reads the codec from the FILENAME EXTENSION. A hardcoded extension means the transcription silently fails or mis-transcribes on Apple devices only — so a child\'s session is lost, the coach is told nothing useful, and it looks like a flake. This is checklist item 4 in CLAUDE.md, which until now was a sentence asking a human to remember.',
+    cite: 'CLAUDE.md — "Protected recording call sites"; lib/audio-mime.ts',
+    check(files) {
+      const found = []
+      for (const f of files) {
+        // lib/audio-mime.ts is where the mapping is allowed to name the types.
+        if (f.rel === 'lib/audio-mime.ts') continue
+        const src = code(f)
+        // A literal audio type passed into a File, Blob or MediaRecorder.
+        //
+        // A FALLBACK is allowed and is what CLAUDE.md's own example does:
+        // `recorder.mimeType || 'audio/webm'` reads the real type and only
+        // names one when the browser reported nothing. What must never happen
+        // is the literal being the *only* source of the type. So a match is a
+        // violation only when it is not preceded by `||` or `??`.
+        for (const m of src.matchAll(/new\s+(File|Blob|MediaRecorder)\s*\([\s\S]{0,240}?\)/g)) {
+          const literal = /(\|\||\?\?)\s*['"]audio\/|['"]audio\/(webm|mp4|ogg)/.exec(m[0])
+          const isFallback = /(\|\||\?\?)\s*['"]audio\//.test(m[0])
+          if (literal && !isFallback) {
+            found.push({
+              file: f.rel,
+              line: lineOf(f, /new\s+(File|Blob|MediaRecorder)/),
+              msg: `hardcodes an audio type in new ${m[1]}(...) with no detected type behind it`,
+            })
+          }
+        }
+        // A filename with a baked-in audio extension.
+        if (/`recording\.(webm|mp4|ogg)`|['"]recording\.(webm|mp4|ogg)['"]/.test(src)) {
+          found.push({
+            file: f.rel,
+            line: lineOf(f, /recording\.(webm|mp4|ogg)/),
+            msg: 'hardcodes the recording filename extension',
+          })
+        }
+      }
+      return found
+    },
+  },
 ]
 
 /**
@@ -253,6 +295,7 @@ const KNOWN_GAPS = [
   'Whether the transcript withholding is correct for sessions saved BEFORE `sessions.group_id` existed. Those rows are null, so they are not identifiable as squad sessions. They are covered from the other end — the athlete client no longer selects transcripts at all — but SG6 is what enforces that, and a future direct fetch could reintroduce the leak for historic rows without tripping the group check.',
   'Whether a route\'s ownership check is *correct* — SG1 proves a route authenticates, not that it then scopes the query to the right coach.',
   'Whether row-level security policies in Supabase actually match what the routes assume. The policies live in migrations and are enforced by the database, not by anything this scanner reads.',
+  'Whether the offline recording queue actually works in a browser. It is IndexedDB, the `online` event and a resumable three-stage upload, none of which a static scanner or a Node rig can exercise. The boot harness drives real Chromium but only asserts on the cold-start timeline. This is the largest untested surface in the app and it is the one holding the only copy of a recording.',
   'What the Focus Card image actually contains. It is built to carry the coaching sentence, the date and the wordmark and nothing else — no name, no photo, no URL, no session id — because it is designed to leave the app. That constraint lives in canvas drawing code and cannot be checked by reading source shape, so it has to be re-read by a human whenever app/components/FocusCard.tsx changes.',
   'What the AI summariser writes about a child. `tools/prompt-rig.mjs` covers the prompt; nothing covers a model\'s output on an unseen transcript.',
 ]

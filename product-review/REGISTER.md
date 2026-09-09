@@ -470,6 +470,60 @@ is the next one.
 lists as a protected component. The instruction to add a soreness follow-up to
 the daily check-in cannot be carried out anywhere else.
 
+### Round 9 — 2026-09-09 · capture that survives no signal
+
+Max: *"merge it and do the local capture"* — the explicit sign-off the previous
+round asked for before touching the protected recording path.
+
+**The failure removed.** A sports hall has no signal, and the core action of the
+product depended on a network at the exact moment it is least likely to exist.
+The audio lived only in a JavaScript array, so three ordinary things destroyed
+it: a failed upload, the coach closing the modal, or iOS discarding the
+backgrounded PWA — which it does aggressively and silently. In every case the
+coach found out after they had stopped talking.
+
+**The model.** The blob is written to IndexedDB the instant the recorder stops,
+before anything touches the network. Upload, transcribe and save become
+retryable stages recorded on the same row, so a retry resumes rather than
+restarting and does not pay for a second Whisper call.
+
+| File | What |
+|---|---|
+| `lib/recording-queue.ts` | The IndexedDB store. No wrapper library — one object store and five operations. Every op is best-effort: a blocked store degrades to exactly the behaviour the app had before |
+| `lib/recording-sync.ts` | Advances one row as far as it can. Never throws — a background drain must not be able to take a page down |
+| `app/components/PendingRecordings.tsx` | The visible half. Drains on mount and on `online`, renders nothing when empty |
+| `lib/audio-mime.ts` | The MIME list and extension mapping, previously duplicated in two recorders |
+
+**Saving is the one leg that is not idempotent.** `POST /api/sessions` has no
+idempotency key, so a retry after a save that actually succeeded writes the
+session twice — visible to the athlete and impossible to delete from the app.
+The row is therefore deleted immediately on success and a save is attempted
+once per drain pass. A partial group save is reported rather than retried, for
+the same reason.
+
+**Why the queue is visible.** A silent background queue is worse than no queue:
+the coach's model becomes "I recorded it, it is fine" with nothing to check. If
+a recording cannot be sent, the only honest thing is to say so on the screen
+they open daily, next to a button that tries again.
+
+**New rule SG7**, and it found something. CLAUDE.md checklist item 4 — never
+hardcode an audio type or extension — was a sentence asking a human to
+remember. It is now enforced. Writing it exposed that the MIME candidate list
+was **duplicated in both recorders**, which is precisely how two capture paths
+start disagreeing about which browser gets mp4; both now read
+`lib/audio-mime.ts`. The rule was first written too bluntly and flagged the
+`recorder.mimeType || 'audio/webm'` fallback that CLAUDE.md itself prescribes;
+it now allows a fallback and rejects only a literal with nothing behind it.
+Proved by hardcoding a type in the athlete voice-note recorder and watching it
+fail.
+
+**The honest gap, added to KNOWN GAPS.** None of the queue's browser behaviour
+is covered by an automated check. It is IndexedDB, the `online` event and a
+resumable three-stage upload, and no static scanner or Node rig can exercise
+any of it. **This is now the largest untested surface in the app, and it is the
+one holding the only copy of a recording.** It wants a browser-driven test of
+its own before it is trusted courtside.
+
 ## Not yet reviewed
 
 Real observations, recorded so they are not lost, but **not** agent proposals.
