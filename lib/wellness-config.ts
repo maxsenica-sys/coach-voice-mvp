@@ -26,13 +26,34 @@ export const WELLNESS_METRICS: WellnessMetric[] = [
     key: 'sleep_q', label: 'Sleep', icon: '😴', color: '#8b5cf6',
     hint: 'How well did you sleep last night?',
   },
+  // NOT inverted, despite the names. `inverted` means "a higher raw score is
+  // worse" — and for both of these a higher raw score is BETTER, because that
+  // is what the athlete is asked. Read the hints: 5 is "no soreness" and
+  // "relaxed". The scale was written that way on purpose so that 5 is always
+  // the good end of every question, which is the right call for a form a
+  // 13-year-old fills in daily.
+  //
+  // They carried `inverted: true` from e32ac64 until 2026-09-09, while the
+  // hints have said 5-is-good since the initial commit. Every scoring function
+  // therefore computed `6 - raw` on answers that were already the right way
+  // round, and flipped them. The effect was not cosmetic: because
+  // overallWellnessScore averages these with the other three,
+  // computeWellnessAlert ran backwards. An athlete answering 4/4/4 with no
+  // soreness and no stress scored 2.8 and tripped the alert; one answering
+  // 2/2/2 while very sore and very stressed scored 3.2 and did not. The
+  // coach's roster dot, the graph, the alert email and the caretaker escalation
+  // were all reading these two metrics upside down.
+  //
+  // Fixed by deleting the flag rather than by changing the hints, because the
+  // hints are what athletes have always answered against — the stored data is
+  // already 5-is-good, so no migration is needed. Do not "restore" this flag.
   {
     key: 'soreness', label: 'Soreness', icon: '💪', color: '#f59e0b',
-    hint: '1 = very sore, 5 = no soreness', inverted: true,
+    hint: '1 = very sore, 5 = no soreness',
   },
   {
     key: 'stress', label: 'Stress', icon: '🧠', color: '#ef4444',
-    hint: '1 = very stressed, 5 = relaxed', inverted: true,
+    hint: '1 = very stressed, 5 = relaxed',
   },
 ]
 

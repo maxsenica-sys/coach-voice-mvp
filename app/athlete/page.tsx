@@ -126,14 +126,13 @@ function WellnessHistory({ rows }: { rows: WellnessRow[] }) {
     // count toward the dots and toward the coach's alert — they are just not
     // narrated back to the child.
     //
-    // `soreness` is excluded for a different and more boring reason: the app
-    // contradicts itself about which direction it runs. WELLNESS_METRICS marks
-    // it `inverted` and every scoring function computes `6 - raw`, but the
-    // form's own hint tells the athlete "1 = very sore, 5 = no soreness",
-    // which is the opposite. Until that is settled, a sentence about soreness
-    // could confidently tell an athlete the reverse of the truth. See the note
-    // filed in product-review/REGISTER.md.
-    const ELIGIBLE = ['energy', 'sleep_q'] as const
+    // `soreness` is included. It was held out while WELLNESS_METRICS marked it
+    // `inverted` and every scoring function computed `6 - raw` against a hint
+    // that said the opposite — a sentence built on that would have told an
+    // athlete the reverse of the truth. That flag was wrong and is gone, so a
+    // raw score now means what the athlete was asked, and 5 is the good end of
+    // all three of these.
+    const ELIGIBLE = ['energy', 'sleep_q', 'soreness'] as const
 
     const meanOf = (subset: typeof cells, key: (typeof ELIGIBLE)[number]) => {
       const vals = subset
