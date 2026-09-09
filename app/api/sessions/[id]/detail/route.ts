@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { sessionISODate } from '@/lib/session-date'
 
 export const runtime = 'nodejs'
 
@@ -40,6 +41,55 @@ function createSupabase(req: NextRequest) {
 function attach(res: NextResponse, cookies: CookieToSet[]) {
   cookies.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
   return res
+}
+
+/**
+ * How the athlete said they were feeling on the morning of this session.
+ *
+ * Wellness and session data have never met anywhere in this app: the athlete
+ * answers five questions a day and, on the coach's side, that data has exactly
+ * two destinations — the graph on the athlete profile and the caretaker alert
+ * email. It has never informed the reading of a single session. So a coach
+ * reviewing "platform collapsing late in the session, looked heavy" cannot see
+ * that the athlete reported 2/5 energy and 2/5 sleep that morning, which is the
+ * difference between a technique note and a rest day.
+ *
+ * Three deliberate restrictions, none of them incidental:
+ *
+ * 1. **Coach only.** `day` is passed as null for an athlete viewer, so the
+ *    query does not run and the field is null on the wire. The athlete already
+ *    has their own 14-day strip on their own wellness tab; they do not need
+ *    their sleep score staring back at them from the coach's page.
+ * 2. **Three metrics, not five.** `mood` and `stress` are excluded on purpose.
+ *    They are the two the round-4 work ruled must not be narrated back, and
+ *    putting a teenager's mood score next to a coach's performance note invites
+ *    a causal reading a coach is not qualified to make. `soreness` is safe to
+ *    show since 4d0929e deleted the bogus `inverted` flag — the stored data has
+ *    always been 5-is-good.
+ * 3. **Silence on a missing day.** No row means null means the UI renders
+ *    nothing. There is no "did not check in" state, because that turns a
+ *    coaching tool into a compliance report about a child.
+ */
+type SessionCheckin = {
+  energy: number | null
+  sleep_q: number | null
+  soreness: number | null
+  check_date: string
+}
+
+async function loadSessionCheckin(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  athleteId: string,
+  day: string | null,
+): Promise<SessionCheckin | null> {
+  if (!day) return null
+  const { data } = await admin
+    .from('wellness_checkins')
+    .select('energy, sleep_q, soreness, check_date')
+    .eq('athlete_id', athleteId)
+    .eq('check_date', day)
+    .maybeSingle()
+  return (data as SessionCheckin | null) ?? null
 }
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -72,10 +122,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return attach(NextResponse.json({ error: 'Forbidden' }, { status: 403 }), cookiesToSet)
   }
 
-  const [{ data: athlete }, { data: videos }, { data: attachments }] = await Promise.all([
+  const [{ data: athlete }, { data: videos }, { data: attachments }, checkin] = await Promise.all([
     admin.from('athletes').select('id, first_name, last_name, sport, photo_url').eq('id', session.athlete_id).maybeSingle(),
     admin.from('session_videos').select('id, storage_path, file_name, mime_type, annotations, shared_with_athlete, created_at').eq('session_id', id).order('created_at'),
     admin.from('session_attachments').select('id, storage_path, file_name, mime_type, caption, created_at').eq('session_id', id).order('created_at'),
+    loadSessionCheckin(admin, session.athlete_id, isCoach ? sessionISODate(session) : null),
   ])
 
   // The athlete only sees videos explicitly shared with them; the coach sees all.
@@ -122,6 +173,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         audio_mime: session.audio_mime,
       },
       athlete: athlete ?? null,
+      // Coach-only, and null for an athlete viewer — see loadSessionCheckin.
+      checkin,
       videos: visibleVideos.map((v) => ({ ...v, signedUrl: videoUrls[v.storage_path] ?? null })),
       attachments: (attachments ?? []).map((a) => ({ ...a, signedUrl: attachmentUrls[a.storage_path] ?? null })),
     }),

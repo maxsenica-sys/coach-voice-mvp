@@ -213,6 +213,83 @@ NEWEST badge are product decisions for Max, not defects.
 on screen 3,399 ms (not 3,069 / 3,529). Every DESIGN-006 contrast ratio and hex
 count reproduced exactly. Full detail in the report's CORRECTIONS section.
 
+### Round 5 — 2026-09-09 · net-new additions only
+
+Max: *"I specifically need new additions to the app that haven't been created
+before. Get creative, enhance the project overall. 3-4 new ideas that will take
+between 30min-1hr of time to code."* So all four agents were dispatched with the
+same unusual constraint: two **net-new capabilities** each, nothing already on
+this register, each costed at 30-60 minutes, and — for the wow agent, which is
+normally told the opposite — the cheapest version that still wows, as the whole
+proposal rather than as a footnote.
+
+| ID | Date | Status | One line | Verdict | Priority |
+|---|---|---|---|---|---|
+| WOW-004 | 2026-09-09 | IMPLEMENTED | Team Talk — a squad recording produces one identical summary per member; make each athlete's lead with the part that was about them, gated on their name actually being in the transcript | BUILD NOW | **240** |
+| UX-009 | 2026-09-09 | PROPOSED | The Receipt — a session save fires four side effects including an email to a minor, and reports none of them; the modal just disappears | BUILD NOW | 150 |
+| DATA-008 | 2026-09-09 | IMPLEMENTED | Quiet lately — nothing anywhere answers "who have I not recorded for?", and the one number that comes close is wrong past 50 sessions | BUILD NOW | 128 |
+| UX-008 | 2026-09-09 | SUPERSEDED by DATA-008 | Record next — the same list as DATA-008, as a one-tap strip on the coach's home | BUILD NOW | 128 |
+| DATA-009 | 2026-09-09 | IMPLEMENTED | How they came in — put the athlete's own check-in from the morning of a session next to that session, coach-only | BUILD NOW | 96 |
+| DESIGN-008 | 2026-09-09 | IMPLEMENTED | The Spine — twelve weeks of training as one shared component, on the athlete's home and the coach's athlete profile | BUILD NOW | 72 |
+| WOW-005 | 2026-09-09 | SUPERSEDED by DATA-008 | Where your voice went — minutes of recorded voice per athlete, as a coach-facing mirror | BUILD NOW | 64 |
+| DESIGN-009 | 2026-09-09 | PROPOSED | The Focus Card — render the focus point as a 1080x1350 ink image the athlete saves to their camera roll | TEST | 18 |
+
+**The convergence, and it is the strongest this system has produced.** Three of
+four agents independently proposed the same feature: DATA-008 ("Quiet lately"),
+UX-008 ("Record next") and WOW-005 ("Where your voice went") are one idea at
+three sizes — *the coach has no surface anywhere that says which athlete has
+gone longest without hearing from them.* They were built as one thing, taking
+DATA-008's server query (the only version that is correct) and UX-008's
+interaction (tap a face, the recorder opens pointed at them). WOW-005's bar
+chart of minutes-per-athlete was dropped: it is the same information with a
+shaming register attached, and the agent said so itself.
+
+**Why UX-008 could not have been built as proposed.** It computes the gap on the
+client from `allSessions`, which is fetched with `limit: '50'`. Past 50 sessions
+across the roster an athlete's last session falls outside the window and they
+read as never-recorded. The error is in the "safe" direction for a strip that
+sorts neglect to the top, but the same array feeds the roster cards' "Last
+session" and "N total" lines, where it is simply wrong. DATA-008 caught this and
+made it a server query. Both agents found the same 50-row ceiling independently.
+
+**Not built, and why:**
+
+- **UX-009 (The Receipt)** — the best idea of the four that did not ship, and the
+  highest-priority thing now on this register at 150. It is a *gap in an existing
+  flow* rather than a new capability, and this run was explicitly scoped to net-new
+  additions. It should be first next time.
+- **DESIGN-009 (The Focus Card)** — the agent attached a safeguarding question to
+  it and recommended asking a coach before building. That is the right order.
+
+### Round 5 — what was built, 2026-09-09
+
+| ID | Built as |
+|---|---|
+| DATA-008 + UX-008 | New `app/api/athletes/coverage/route.ts` — every session for the coach, no limit, reduced to a per-athlete gap; new `app/components/AttentionStrip.tsx`, rendered on the dashboard home above "Recent sessions". Tapping a face opens `QuickSessionModal` pre-targeted. Renders `null` when nobody is overdue; 14-day threshold, 7-day grace for a newly added athlete, capped at 6 |
+| DATA-009 | Fourth read added to the existing `Promise.all` in `app/api/sessions/[id]/detail/route.ts`, gated coach-only by passing a null date for an athlete viewer; a "How they came in" section on `app/sessions/[id]/page.tsx` reusing `metricColor`/`metricTint`/`scoreLabel`. Three metrics — `mood` and `stress` deliberately excluded. Renders nothing on a day with no check-in |
+| DESIGN-008 | New `app/components/TrainingSpine.tsx` — 12 weekly bars from `sessionDate`, `--primary-dark` on `--border-soft` (4.95:1, measured). Rendered on the athlete home under the check-in and on the coach's athlete-profile overview. The coach variant names a gap over 14 days; the athlete's never does. Nothing renders under three sessions |
+| WOW-004 | `transcriptNames()` in `app/api/sessions/route.ts` — a deterministic whole-word test, unicode-aware, run in code and not left to the model — plus an optional `WHO THIS IS FOR` prompt block and the athlete's first name threaded into `makeQuickSummary`. No name in the transcript means the prompt is character-for-character the one that shipped before |
+
+**Two bugs found by testing rather than by reading**, both in code written this
+round and neither visible to `tsc`, `lint` or `next build`:
+
+- **Twelve-week bucketing was wrong across a daylight saving change.** Dividing a
+  millisecond difference by 86400000 assumes every local day is 24 hours. A
+  session on Monday 29 March 2027 landed in the *previous* week's bucket in
+  `Europe/London` and `America/New_York` while passing in `UTC` — so CI, which
+  runs in UTC, would have shipped it green and it would have been wrong for most
+  of the app's users twice a year. Fixed with `calendarDaysBetween` in
+  `lib/session-date.ts`, now used by both new features. Verified across six
+  timezones including `Pacific/Chatham`.
+- **The name gate matched substrings.** Caught before it shipped: "Ana" must not
+  match "Anastasia" or "banana", and `\b` is useless for "Zoë" or "Łukasz". The
+  test suite for it covers substrings, accents, Cyrillic, possessives, regex
+  metacharacters in a name, and empty/one-letter input.
+
+**Validated by** `npx tsc --noEmit` (clean), `npm run lint` (31 errors — the
+pre-existing count, unchanged), `npm run build` (passes), and
+`npm run verify:boot` (**40/40**, run because both role homes were touched).
+
 ## Not yet reviewed
 
 Real observations, recorded so they are not lost, but **not** agent proposals.
@@ -230,6 +307,10 @@ An agent may pick any of these up as its own recommendation on a later run.
 | ~~2026-09-09 build~~ | ~~Correctness~~ | **RESOLVED 2026-09-09 (`4d0929e`) — it was not a contradiction to decide, it was a bug.** `inverted: true` means "a higher raw score is worse" by the flag's own definition, but both hints ask the athlete the other way round, so `6 - raw` flipped answers that were already correct. Because `overallWellnessScore` feeds `computeWellnessAlert`, **the safeguarding alert ran backwards**: 4/4/4 with no soreness and no stress scored 2.8 and tripped the coach email; 2/2/2 while very sore and very stressed scored 3.2 and did not. Fixed by deleting the flag, not by rewriting the hints — the hints predate it (initial commit vs `e32ac64`), so stored data is already right and needs no migration. Original note: **the app contradicts itself about which way soreness runs.** `WELLNESS_METRICS` marks `soreness` and `stress` `inverted: true`, and every scoring function (`metricColor`, `metricTint`, `scoreLabel`, `overallWellnessScore`) computes `6 - raw` — so a raw 5 scores as *bad*. But the form's own hint tells the athlete "1 = very sore, 5 = no soreness", i.e. raw 5 is *good*, and PROJECT-STATE records the same reading. One of the two is wrong. This decides the colour of a dot, the coach's alert threshold and whether a caretaker email fires, so it is not cosmetic. Not fixed in the DATA-006 build: flipping it either way changes alerting behaviour and needs a decision, not a guess. The new athlete-facing sentence sidesteps it by naming only `energy` and `sleep_q`. |
 | 2026-09-09 build | Process | `npm run lint` reports **135 pre-existing errors** across 53 files (mostly `no-explicit-any` in API routes). CLAUDE.md lists lint as a mandatory pre-commit gate, but a gate that has been red for a long time cannot fail a bad commit — which is part of why the `#9BA29B` regression got in. The DESIGN-006 rule works only because it is scoped to a file with zero violations. |
 | 2026-09-09 orchestrator | Process | PROJECT-STATE is 316 lines against its own ~250-line budget after today's refresh, and wants a deliberate trim rather than further growth. |
+| 2026-09-09 WOW-004 | **Safeguarding** | **A group session shows every member the whole squad transcript.** `QuickSessionModal.tsx:227-249` writes the identical `transcript` to one session row per member; `app/athlete/page.tsx:332` selects it and renders it under "View full transcript". Any critical remark a coach makes about one named child in a squad talk is readable by every other child in that squad, today. WOW-004 reduces the *summary* leak — the prompt forbids naming other athletes — but does not touch the transcript underneath it. There is no flag distinguishing a group session from an individual one, so suppressing it needs one (`sessions.group_id`). Not cosmetic, and arguably more urgent than anything built this round. |
+| 2026-09-09 UX-009 | Correctness | A **group** save can partially fail silently: `QuickSessionModal.tsx:220-250` posts one session per member, and success for 7 of 8 is reported to the coach identically to success for 8 of 8 — by the modal closing. The thrown-error path covers a rejected post, not a 200 that wrote nothing. |
+| 2026-09-09 DATA-008 | Correctness | `fetchAllSessions` requests `limit: '50'` and three derived values treat it as "all sessions" — `recentSessions`, `thisWeek`, and the per-athlete `last`/`count` on the roster cards (`app/dashboard/page.tsx:1285-1286`). A busy coach's roster starts reporting "No sessions yet" for athletes who have twenty, with no error anywhere. The new coverage route sidesteps it for the strip; the roster cards are still wrong. |
+| 2026-09-09 DESIGN-008 | Design | An athlete's avatar colour is `_toneColors[i % 3]` — derived from their **index in an array** (`app/dashboard/page.tsx:940, 1017, 1067, 1124`). The same person is sage in one list and rust in another, and everyone's colour shifts when one athlete is added. `lib/group-colors.ts` already shows the team knows how to hash an id to a stable colour. |
 | 2026-09-06 DATA+UX | Product | **STILL OPEN — the biggest thing this review found that nobody has acted on.** Both agents independently challenged the wellness loop: the coach gets one flattened mean with no indication which metric caused it, and the athlete gets nothing back at all for five taps a day. Neither made it their primary. The athlete's "See your trends →" still opens a blank form; `WellnessGraph` already exists and takes `athleteId`, so showing it there is close to a one-line change — but whether an athlete should see their own trends is a product decision, not a bug fix, so it was left for Max. |
 | ~~2026-09-06 UX-002~~ | ~~UX~~ | **DONE 2026-09-06** — wired to the messages tab, dot removed. |
 | ~~2026-09-06 ALL FOUR~~ | ~~Defect~~ | **DONE 2026-09-06.** A signed-in user was shown the login form on every cold start. `/` is in the proxy matcher but no protected-route list (`proxy.ts:13-17,93`), `app/page.tsx` has no session check at all, and the PWA `start_url` is `/`. The middleware holds the user object at the edge and discards it. Verified. |
@@ -276,23 +357,26 @@ has changed. The orchestrator bumps these when it files a report.
 | Area | Reviews since last primary |
 |---|---|
 | Ambition / wow factor | 0 |
-| Entrance / splash / boot shell | 0 |
-| Wellness (submit, graph, alerts) | 0 |
+| Coach dashboard home | 0 |
+| Session save + summariser | 0 |
+| Session page `/sessions/[id]` | 0 |
 | Athlete home + sessions | 0 |
-| Recorder / QuickSessionModal | 1 |
-| Session save + summariser | 1 |
-| Sign-in `/` | 1 |
-| Session page `/sessions/[id]` | 2 |
-| Coach dashboard home | 2 |
-| Athlete profile `/athletes/[id]` | 2 |
-| Messaging | 2 |
-| Calendar / DayWheel | 2 |
-| Groups / squads | 2 |
-| Onboarding: signup, join, invite | 2 |
-| PDF reports | 2 |
-| Video annotation | 2 |
+| Athlete profile `/athletes/[id]` | 0 |
+| Wellness (submit, graph, alerts) | 0 |
+| Entrance / splash / boot shell | 1 |
+| Recorder / QuickSessionModal | 2 |
+| Sign-in `/` | 2 |
+| Messaging | 3 |
+| Calendar / DayWheel | 3 |
+| Groups / squads | 3 |
+| Onboarding: signup, join, invite | 3 |
+| PDF reports | 3 |
+| Video annotation | 3 |
 
-Areas at 2 after this round. Nothing has hit the 4+ audit trigger yet, but
-messaging, calendar, groups, PDF and video annotation have now gone four rounds
-without being anyone's primary subject and are the obvious candidates for the
-next deliberate untouched-area audit.
+Round 5 reset six areas to 0 — it touched the coach home, the session save path,
+the session page, both athlete surfaces and wellness. **Messaging, calendar,
+groups, PDF reports and video annotation are now at 3 and are one round from the
+4+ audit trigger.** They have never been any agent's primary subject. The round-4
+audit of untouched areas found four real defects in exactly this kind of quiet
+corner, so the counter has earned the benefit of the doubt: make one of them the
+focus next time, or run a deliberate audit across all five.

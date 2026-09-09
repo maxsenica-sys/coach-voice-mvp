@@ -61,6 +61,28 @@ export function formatSessionDate(
   return d ? d.toLocaleDateString(undefined, opts) : fallback
 }
 
+/**
+ * Whole calendar days from `from` to `to`, counting local days rather than
+ * elapsed milliseconds.
+ *
+ * Dividing a millisecond difference by 86400000 is wrong across a daylight
+ * saving transition, because two local midnights a week apart are 167 or 169
+ * hours apart, not 168. Measured: bucketing twelve weeks of sessions that way
+ * put a session recorded on Monday 29 March 2027 into the previous week in
+ * Europe/London and America/New_York, while passing in UTC — so it would have
+ * shipped green from CI and been wrong for most of the app's users twice a
+ * year.
+ *
+ * Normalising both ends to local midnight and rounding absorbs the stray hour:
+ * the quotient is only ever a whole number plus or minus 1/24, and rounding
+ * lands it back on the day the calendar actually shows.
+ */
+export function calendarDaysBetween(from: Date, to: Date): number {
+  const a = new Date(from.getFullYear(), from.getMonth(), from.getDate())
+  const b = new Date(to.getFullYear(), to.getMonth(), to.getDate())
+  return Math.round((b.getTime() - a.getTime()) / 86400000)
+}
+
 /** Yesterday in the viewer's own timezone, as `YYYY-MM-DD`. */
 export function yesterdayISODate(): string {
   return new Intl.DateTimeFormat('en-CA').format(new Date(Date.now() - 86400000))

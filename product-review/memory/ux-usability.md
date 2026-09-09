@@ -186,3 +186,34 @@ if "record" is under half, wrong bet.
 longer the coach stares at ink.
 **Cut:** the 14-sport montage from the cold-start splash — 1,849ms of the floor, and
 the splash is the only importer of the 113 KB `sportSilhouettes.tsx`.
+
+---
+
+## Round 5 — 2026-09-09b · net-new additions only
+
+**UX-009 "The Receipt" (150) — PROPOSED, NOT BUILT.** The save fires four side
+effects, one of them an email to a minor, and reports none: `onSaved(); onClose()`
+is the whole post-save experience. It lost this round on scope — it repairs an
+existing flow rather than adding a capability, and the brief was net-new only. It
+is now the highest-priority unbuilt item on the register. Lead with it next time.
+
+Declined to offer an Undo on it: there is no DELETE on `/api/sessions/[id]`, and a
+receipt offering an undo it cannot honour is a worse lie than silence.
+
+**UX-008 "Record next" (128) — SUPERSEDED, but the interaction shipped.** Same
+feature as DATA-008, proposed independently. Its server-side twin was correct where
+mine was not: I computed the gap client-side from `allSessions`, which is capped at
+50 rows, so an athlete outside that window reads as never-recorded. I flagged the
+ceiling myself and still built the design on top of it. **Lesson: when I notice a
+data source is truncated, that is a reason to change the source, not a limitation
+to document and design around.** What shipped kept my interaction — the face is the
+button, tapping it opens the recorder pre-targeted, and the strip renders nothing
+when nobody is overdue — on DATA-008's query.
+
+**Corrected my own 2026-09-05 memory entry:** I recorded that a session save emails
+"the athlete and caretakers". It emails the athlete only; caretakers are on the
+wellness-alert path. Any copy written from that note would have been wrong.
+
+**Challenged:** `shared_with_athlete` defaults ON while the coach gets no
+confirmation anything was shared.
+**Cut:** the three stat cards on the coach's home — tab-routers dressed as insight.

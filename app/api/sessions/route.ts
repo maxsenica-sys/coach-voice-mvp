@@ -44,7 +44,42 @@ const EMPTY_SUMMARY: QuickSummary = { summary: null, next: null }
 // one instruction, so it is dropped rather than shown. The prompt asks for 90.
 const MAX_NEXT_LENGTH = 120
 
-async function makeQuickSummary(transcript: string, sport?: string | null): Promise<QuickSummary> {
+/**
+ * Did the coach actually say this athlete's name in this recording?
+ *
+ * This is the guard that makes per-athlete summaries safe, and it deliberately
+ * runs in code rather than being left to the model. A squad recording is saved
+ * as one session per member — the same transcript, posted N times — so without
+ * a hard gate, asking the model to "write this for Ana" on a transcript that
+ * never mentions Ana invites it to invent a point and attribute it to her. A
+ * fabricated coaching instruction, addressed to a named child, is the worst
+ * output this product could produce.
+ *
+ * So: no name in the transcript, no personalisation, and the summary is byte-
+ * for-byte the prompt that shipped before this existed.
+ *
+ * `\b` is not used because it is defined on ASCII word characters, so it
+ * misfires on names like "Zoë" or "Łukasz". This tests for a non-letter (or a
+ * string edge) either side instead, under the `u` flag.
+ */
+function transcriptNames(transcript: string, firstName: string | null | undefined): boolean {
+  const name = (firstName ?? '').trim()
+  // One-letter "names" are almost always placeholder roster data and would
+  // match far too much prose.
+  if (name.length < 2) return false
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  try {
+    return new RegExp(`(^|[^\\p{L}])${escaped}([^\\p{L}]|$)`, 'iu').test(transcript)
+  } catch {
+    return false
+  }
+}
+
+async function makeQuickSummary(
+  transcript: string,
+  sport?: string | null,
+  athleteName?: string | null,
+): Promise<QuickSummary> {
   const key = process.env.OPENAI_API_KEY
   if (!key) return EMPTY_SUMMARY
 
@@ -63,8 +98,37 @@ async function makeQuickSummary(transcript: string, sport?: string | null): Prom
       `Interpret ambiguous or misheard words as ${trimmedSport} terminology where that is the plausible reading. Never introduce terms from a different sport.\n`
     : `SPORT: not specified. Keep the language general — do NOT assume a particular sport, and do not use sport-specific jargon that isn't already in the transcript.\n`
 
+  // Personalisation, gated on the coach having actually said the name. When the
+  // name is absent this is the empty string and the prompt is exactly the one
+  // that shipped before — same words, same output.
+  //
+  // Why this matters: a squad recording fans out to one session per member,
+  // each running this same summariser over the identical transcript. Today a
+  // coach who talks for four minutes about eleven athletes pays for eleven
+  // model calls and gets eleven copies of one paragraph, none of which is about
+  // the athlete reading it. The work was already being done; it was just being
+  // done eleven times with the same answer.
+  //
+  // Note the shape of the interpolation below: when `named` is false this block
+  // is the empty string and the prompt is character-for-character the one that
+  // shipped before personalisation existed — not merely equivalent. Worth
+  // preserving deliberately, because it means this feature cannot regress the
+  // summary an individually-recorded athlete already gets. There is a check
+  // for it in the PR description.
+  const named = transcriptNames(transcript, athleteName)
+  const addressee = (athleteName ?? '').trim()
+  const personalBlock = named
+    ? `
+
+WHO THIS IS FOR
+You are writing this for ${addressee}, and the coach used their name in the recording. This may be a talk to a whole squad; if so, every member gets their own version of this summary.
+Lead with the point the coach addressed to ${addressee}, in the coach's own words. Then give the points meant for everyone.
+Never mention any other athlete by name — not in a bullet, not in the NEXT line. Refer to the rest of the group as "the group" or "the team".
+Never attribute a point to ${addressee} that the coach did not address to them. If their name appears only in a greeting, a register or a list, write only the points meant for everyone and personalise nothing.`
+    : ''
+
   const prompt = `
-You are summarising a coach's spoken notes from a training session, for the athlete to read afterwards.
+You are summarising a coach's spoken notes from a training session, for the athlete to read afterwards.${personalBlock}
 
 ${sportBlock}
 WHAT YOU ARE READING
@@ -229,17 +293,32 @@ export async function POST(req: NextRequest) {
   // state that hasn't always loaded by the time the modal opens. Falling back
   // to the athlete's sport, then the coach's profile, makes the summary
   // sport-aware regardless of client timing.
+  //
+  // The athlete row is now read on every save rather than only when the sport
+  // is missing, because the summariser also needs the first name — see
+  // transcriptNames. It is one lookup by primary key sitting next to an OpenAI
+  // call, so the added cost is not measurable. The coach profile is still only
+  // read when it is actually needed.
+  const [{ data: athleteRow }, { data: coachProfile }] = await Promise.all([
+    supabase.from('athletes').select('sport, first_name').eq('id', athlete_id).maybeSingle(),
+    sport_context
+      ? Promise.resolve({ data: null })
+      : supabase.from('profiles').select('sport').eq('id', user.id).maybeSingle(),
+  ])
+
   let resolvedSport = sport_context
   if (!resolvedSport) {
-    const [{ data: athleteRow }, { data: coachProfile }] = await Promise.all([
-      supabase.from('athletes').select('sport').eq('id', athlete_id).maybeSingle(),
-      supabase.from('profiles').select('sport').eq('id', user.id).maybeSingle(),
-    ])
     resolvedSport = athleteRow?.sport?.trim() || coachProfile?.sport?.trim() || null
   }
 
-  // AI quick scan summary (if it fails, we still save with summary = null)
-  const { summary, next: nextFocus } = await makeQuickSummary(transcript.trim(), resolvedSport)
+  // AI quick scan summary (if it fails, we still save with summary = null).
+  // The first name is a gate, not an instruction: if the coach never said it,
+  // the prompt is unchanged from what it was before personalisation existed.
+  const { summary, next: nextFocus } = await makeQuickSummary(
+    transcript.trim(),
+    resolvedSport,
+    athleteRow?.first_name ?? null,
+  )
 
   const { data, error } = await supabase
     .from('sessions')

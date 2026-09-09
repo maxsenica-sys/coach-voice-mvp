@@ -238,3 +238,33 @@ must be re-derived. Gated on one unrun query — when athletes actually open the
 `globals.css:590` already solves the iOS auto-zoom it was for. Two-line fix.
 **Cut:** the "NEWEST" badge (`:831-832`) — the smallest type in the app, spent
 saying the first item in a reverse-chronological list is the newest.
+
+---
+
+## Round 5 — 2026-09-09b · net-new additions only
+
+**DESIGN-008 "The Spine" (72) — BUILT.** Twelve weekly bars, on the athlete's home
+and the coach's athlete-profile overview, from sessions both sites already held.
+The app's first chart rendered from a shared component rather than inline in a page
+file — that shape matters more than the chart, given almost everything is inline
+styles in four large files.
+
+Contrast stated and verified: `--primary-dark` on `--border-soft` is 4.95:1 against
+the 3:1 WCAG 1.4.11 asks for a meaningful graphical object. I validated my method
+first by reproducing `--primary-dark` on white at 5.94:1, the figure already in
+PROJECT-STATE — worth continuing to do before quoting any new number.
+
+Two labelled judgements, not findings: weeks rather than a daily grid (84 cells with
+24 filled reads as failure to a fifteen-year-old), and no streak counter (a coach's
+holiday must not become the athlete's failure). The build added a third I did not
+propose — the coach variant names a gap over 14 days and the athlete's version never
+does.
+
+**DESIGN-009 "The Focus Card" (18) — PROPOSED, TEST.** The one artefact that could
+leave the app, as an image rather than a URL, so it needs no public surface. I
+attached the safeguarding question myself and recommended asking a coach first.
+That was the right order and it is why this did not ship today.
+
+**Challenged:** avatar colour derived from array index, so identity changes when the
+array does — `lib/group-colors.ts` already shows how to hash an id instead.
+**Cut:** the "Unread" stat tile, spending full-bleed colour to say "0".
