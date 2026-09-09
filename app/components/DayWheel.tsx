@@ -278,7 +278,7 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
 
                     {ev.event_time && <span style={{ fontSize: 10.5, color: 'var(--text-muted)', flexShrink: 0 }}>{ev.event_time}</span>}
                     {isSession && (
-                      <span style={{ fontSize: 12, color: '#6F8E6B', flexShrink: 0, lineHeight: 1 }}>›</span>
+                      <span style={{ fontSize: 12, color: 'var(--primary-dark)', flexShrink: 0, lineHeight: 1 }}>›</span>
                     )}
                   </>
                 )

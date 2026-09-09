@@ -362,9 +362,17 @@ export default function AthleteDetailPage() {
 
   const loadVideos = async (sessionId: string) => {
     if (sessionVideos[sessionId]) return
-    const res = await fetch(`/api/sessions/${sessionId}/videos`, { cache: 'no-store' })
-    const json = await res.json().catch(() => ({}))
-    setSessionVideos(prev => ({ ...prev, [sessionId]: json.videos ?? [] }))
+    // Checklist item 1. This had no res.ok check and no catch: a non-2xx
+    // silently rendered "no videos" for a session that has them, and a network
+    // error threw out of an un-awaited handler.
+    try {
+      const json = await apiJson<{ videos?: SessionVideo[] }>(
+        `/api/sessions/${sessionId}/videos`, { cache: 'no-store' },
+      )
+      setSessionVideos(prev => ({ ...prev, [sessionId]: json.videos ?? [] }))
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not load the videos for that session'))
+    }
   }
 
   const openSession = (id: string) => {
@@ -547,10 +555,21 @@ export default function AthleteDetailPage() {
       })
       if (!patchRes.ok) throw new Error('Failed to save photo reference')
 
-      // 4. Reload athlete to get new signed URL
-      const reloadRes = await fetch(`/api/athletes/${athleteId}`)
-      const { athlete: a } = await reloadRes.json()
-      setAthlete(prev => prev ? { ...prev, photo_signed_url: a.photo_signed_url, photo_url: a.photo_url } : prev)
+      // 4. Reload athlete to get new signed URL.
+      //
+      // This had no res.ok check at all, and it is the worst place in the file
+      // to be missing one. The upload and the PATCH above have already
+      // succeeded by this point — the photo IS saved. If this reload returned
+      // a non-2xx, destructuring gave `a === undefined`, the next line threw
+      // on `a.photo_signed_url`, and the outer catch told the coach "Photo
+      // upload failed". They would then upload it again, having been told a
+      // successful save had failed.
+      const { athlete: a } = await apiJson<{ athlete?: { photo_signed_url?: string | null; photo_url?: string | null } }>(
+        `/api/athletes/${athleteId}`,
+      )
+      if (a) {
+        setAthlete(prev => prev ? { ...prev, photo_signed_url: a.photo_signed_url ?? null, photo_url: a.photo_url ?? null } : prev)
+      }
     } catch (e: unknown) { setProfileMsg(errorMessage(e, 'Photo upload failed')) }
     finally { setPhotoUploading(false) }
   }

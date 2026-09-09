@@ -458,7 +458,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
               )}
               {/* FIX 6: show error state instead of empty chat on fetch failure */}
               {!loadingMsgs && msgError && (
-                <div style={{ textAlign: 'center', color: '#ef4444', fontSize: 13, padding: 40 }}>
+                <div style={{ textAlign: 'center', color: 'var(--danger)', fontSize: 13, padding: 40 }}>
                   {msgError}
                 </div>
               )}
@@ -547,7 +547,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
               }}>
                 {recordingAudio ? (
                   <>
-                    <span style={{ color: '#ef4444', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: 'var(--danger)', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span className="recording-dot" /> Recording…
                     </span>
                     <button className="btn btn-danger" style={{ padding: '6px 14px', fontSize: 13 }} onClick={stopAudio}>Stop</button>

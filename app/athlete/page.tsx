@@ -508,10 +508,18 @@ export default function AthletePage() {
   const loadVideos = async (sessionId: string) => {
     if (sessionVideos[sessionId]) return
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/videos`, { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
+      // apiJson, not raw fetch: on a non-2xx this used to fall through to
+      // `json.videos ?? []` and render "no videos" for a session that has
+      // them. Checklist item 1 — a failure that looks like an empty result is
+      // worse than one that looks like a failure.
+      const json = await apiJson<{ videos?: SessionVideo[] }>(
+        `/api/sessions/${sessionId}/videos`, { cache: 'no-store' },
+      )
       setSessionVideos((prev) => ({ ...prev, [sessionId]: json.videos ?? [] }))
-    } catch {}
+    } catch {
+      // Left non-fatal deliberately: videos are an enhancement to the session
+      // card, and the card is still useful without them.
+    }
   }
 
   const openSessionToggle = (id: string) => {
