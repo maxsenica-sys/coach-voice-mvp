@@ -15,7 +15,6 @@
     "verify:boot": "node tools/boot-smoke.mjs"
   },
   "dependencies": {
-    "@ducanh2912/next-pwa": "^10.2.9",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.97.0",
     "next": "16.1.6",

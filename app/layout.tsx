@@ -259,6 +259,33 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
       d.removeAttribute('data-boot-anim')
     }, 6400)
   } catch (e) { /* blocked storage: no shell, no splash, app still opens */ }
+})()
+
+/* ── The service worker ────────────────────────────────────────────────────
+ *
+ * public/sw.js caches the content-hashed assets — the bundle, the stylesheet,
+ * the self-hosted fonts, the launch images — so a cold start reads them off
+ * disk instead of the network. It deliberately never caches a document; the
+ * reasoning is in that file.
+ *
+ * This registration is why it exists at all. next.config.ts wraps the config
+ * in @ducanh2912/next-pwa, which is a webpack plugin, and this project builds
+ * with Turbopack — so no worker was ever emitted and /sw.js returned 404 in
+ * production. Nothing was being cached by anything, including the fonts that
+ * the comment above claims the worker covers.
+ *
+ * Registered on load rather than here at the top of <head>: registration is
+ * async and cheap, but it still costs a fetch, and nothing about the first
+ * paint depends on it. Outside the IIFE above on purpose — that one returns
+ * early on "/" and on every non-app page, and the worker is wanted everywhere.
+ */
+;(function () {
+  if (!('serviceWorker' in navigator)) return
+  addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js').catch(function () {
+      /* An unavailable worker must never be visible: no cache, same app. */
+    })
+  })
 })()`
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
