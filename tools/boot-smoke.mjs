@@ -255,9 +255,27 @@ async function assertMiddleware(base) {
   const manifest = await mres.json().catch(() => null)
   check('the manifest is served', mres.ok && !!manifest, `${mres.status}`)
   if (manifest) {
+    /* The invariant is "what app/manifest.ts says is what the browser gets",
+     * not any particular colour. A static public/manifest.webmanifest shadowed
+     * the route for months and served a different background — the near-black
+     * the app opened to — and nothing anywhere could see it happen. So this
+     * reads the value out of the source and compares, which keeps failing if
+     * the shadow returns while leaving the colour itself a design decision
+     * anyone can change in one place.
+     *
+     * The stale value is banned by name as well, because that specific colour
+     * coming back is the regression, whatever route it takes. */
+    const src = readFileSync(join(ROOT, 'app', 'manifest.ts'), 'utf8')
+    const intended = (src.match(/background_color:\s*'(#[0-9A-Fa-f]{3,8})'/) || [])[1]
+    check('app/manifest.ts declares a background_color', Boolean(intended), String(intended))
     check(
-      'background_color is the light brand ground, not near-black',
-      manifest.background_color === '#FBF8F3',
+      'the served background_color is the one in app/manifest.ts',
+      Boolean(intended) && manifest.background_color === intended,
+      `served ${manifest.background_color}, source says ${intended} — a public/ file shadowing the route is how this diverges`,
+    )
+    check(
+      'the launch screen is not the old near-black',
+      manifest.background_color !== '#1F2421',
       `got ${manifest.background_color} — this is the whole cold start's first frame`,
     )
     check(

@@ -20,7 +20,7 @@ import {
 } from '@/lib/wellness-config'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import { formatSessionDate, sessionISODate } from '@/lib/session-date'
-import { currentMonth, parseMonth, sameMonth, toMonthStr } from '@/lib/calendar-month'
+import { currentMonth, parseMonth, sameMonth, shiftMonth, toMonthStr } from '@/lib/calendar-month'
 import { todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
@@ -350,6 +350,9 @@ export default function AthleteDetailPage() {
     setCalMonth(toMonthStr(currentMonth()))
     setCalEvents([])
     setCalError('')
+    // The form's own copy names the athlete ("Ask Nick to…"), so leaving it
+    // open across a profile change silently re-targets whatever is typed in it.
+    setUpcomingForm(null)
     calReqRef.current++
   }, [athleteId])
 
@@ -412,17 +415,32 @@ export default function AthleteDetailPage() {
 
   /* This athlete's recent check-ins, keyed by date, for answering "did they?".
    * Deliberately a separate read from the 14-day one that feeds the wellness
-   * alert: widening that window would change what the alert computes over. */
+   * alert: widening that window would change what the alert computes over.
+   *
+   * Guarded and cleared exactly like the calendar fetch, and for a sharper
+   * reason. These are keyed by DATE, not by athlete, so an unguarded response
+   * landing after you had moved to another athlete would render the first
+   * child's energy, mood and soreness under the second child's name. Wrong
+   * numbers are bad; wrong numbers about the wrong child are the worst thing
+   * this app could put on screen. */
   const [checkinDates, setCheckinDates] = useState<Map<string, WellnessCheckin>>(new Map())
+  const checkinReqRef = useRef(0)
+  useEffect(() => {
+    setCheckinDates(new Map())
+    checkinReqRef.current++
+  }, [athleteId])
   useEffect(() => {
     if (activeTab !== 'calendar' || !athleteId) return
+    const seq = ++checkinReqRef.current
     void (async () => {
       try {
         const json = await apiJson<{ checkins: WellnessCheckin[] }>(
           '/api/wellness?athlete_id=' + encodeURIComponent(athleteId) + '&days=45',
         )
+        if (seq !== checkinReqRef.current) return
         setCheckinDates(new Map((json.checkins ?? []).map((c) => [c.check_date, c])))
       } catch {
+        if (seq !== checkinReqRef.current) return
         // The panel then reads "not yet completed", which is the honest answer
         // when we could not find out. It never claims one exists.
         setCheckinDates(new Map())
@@ -432,8 +450,46 @@ export default function AthleteDetailPage() {
 
   /* Planned sessions from today onwards: a session event with no session_id,
    * i.e. one nothing has been recorded against yet. A recorded session gets
-   * its own row dated the day it happened, so the two never collide. */
-  const upcomingSessions = calEvents
+   * its own row dated the day it happened, so the two never collide.
+   *
+   * Fetched over its own two-month window rather than read off `calEvents`.
+   * The grid holds one month, so a session booked for the 1st of next month
+   * was invisible on the 30th of this one — the panel that exists to answer
+   * "am I coaching them soon, and have they checked in?" said "Nothing
+   * booked", and its contents changed when the coach pressed the month arrows
+   * even though nothing labelled it as month-scoped. */
+  const [upcoming, setUpcoming] = useState<CalendarEvent[]>([])
+  const [upcomingLoaded, setUpcomingLoaded] = useState(false)
+  const upcomingReqRef = useRef(0)
+  useEffect(() => {
+    setUpcoming([])
+    setUpcomingLoaded(false)
+    upcomingReqRef.current++
+  }, [athleteId])
+  useEffect(() => {
+    if (activeTab !== 'calendar' || !athleteId) return
+    const seq = ++upcomingReqRef.current
+    void (async () => {
+      const months = [toMonthStr(currentMonth()), toMonthStr(shiftMonth(currentMonth(), 1))]
+      try {
+        const pages = await Promise.all(months.map((m) => apiJson<{ events: CalendarEvent[] }>(
+          '/api/calendar?athlete_id=' + encodeURIComponent(athleteId) + '&month=' + m,
+          { cache: 'no-store' },
+        )))
+        if (seq !== upcomingReqRef.current) return
+        const byId = new Map<string, CalendarEvent>()
+        for (const page of pages) for (const ev of page.events ?? []) byId.set(ev.id, ev)
+        setUpcoming(Array.from(byId.values()))
+      } catch {
+        if (seq !== upcomingReqRef.current) return
+        setUpcoming([])
+      } finally {
+        if (seq === upcomingReqRef.current) setUpcomingLoaded(true)
+      }
+    })()
+  }, [activeTab, athleteId, calReload])
+
+  const upcomingSessions = upcoming
     .filter((e) => e.event_type === 'session' && !e.session_id && e.event_date >= todayISODate())
     .sort((a, b) => (a.event_date + (a.event_time ?? '')).localeCompare(b.event_date + (b.event_time ?? '')))
 
@@ -443,7 +499,7 @@ export default function AthleteDetailPage() {
     setUpcomingSaving(true)
     setCalError('')
     try {
-      await apiJson('/api/calendar', {
+      await apiMutate('/api/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1358,7 +1414,12 @@ export default function AthleteDetailPage() {
 
               {upcomingSessions.length === 0 && !upcomingForm && (
                 <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>
-                  Nothing booked. Add one to ask {athlete.first_name} how their body is feeling beforehand.
+                  {/* Only once the window has come back. "Nothing booked" while
+                      it is still loading is a confident claim about data we do
+                      not have. */}
+                  {upcomingLoaded
+                    ? `Nothing booked in the next two months. Add one to ask ${athlete.first_name} how their body is feeling beforehand.`
+                    : 'Checking…'}
                 </div>
               )}
 
@@ -1377,7 +1438,7 @@ export default function AthleteDetailPage() {
                       {ev.checkin_requested ? (
                         checkin ? (
                           <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, fontWeight: 700, color: overallScoreColor(score) }}>
-                            Checked in{score !== null ? ' · ' + score + '/5 overall' : ''}
+                            Checked in{score !== null ? ' · feeling ' + score + '/5' : ''}
                             {typeof checkin.soreness_score === 'number' ? ' · soreness ' + checkin.soreness_score + '/10' : ''}
                           </div>
                         ) : (

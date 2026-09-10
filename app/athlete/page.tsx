@@ -463,6 +463,9 @@ export default function AthletePage() {
    *  app/dashboard/page.tsx. Two quick arrow presses otherwise let the older
    *  month's response land last and win. */
   const calReqRef = useRef(0)
+  /** The RSVP list shares `calMonth` with the grid, so it races on the same
+   *  arrow presses and needs the same guard. */
+  const rsvpReqRef = useRef(0)
 
   const fetchCalendar = useCallback(async (month: string) => {
     const seq = ++calReqRef.current
@@ -556,11 +559,21 @@ export default function AthletePage() {
     // HTML error page became an unhandled rejection during a month change,
     // which is precisely when this fires. It shares its month with the grid,
     // so it must not be able to take the tab down with it.
+    const seq = ++rsvpReqRef.current
     void (async () => {
       try {
         const j = await apiJson<{ events: RsvpEvent[] }>(`/api/calendar?month=${calMonth}`)
-        setRsvpEvents((j.events ?? []).filter((e) => e.created_by_role === 'coach' && e.rsvp_enabled))
+        if (seq !== rsvpReqRef.current) return
+        // Only events that have not happened. This list is headed "Events
+        // needing your response", and month navigation reaching the past —
+        // which it now does, because the arrows work — would otherwise ask a
+        // fourteen-year-old to RSVP to something last March.
+        const today = todayISODate()
+        setRsvpEvents((j.events ?? []).filter(
+          (e) => e.created_by_role === 'coach' && e.rsvp_enabled && e.event_date >= today,
+        ))
       } catch {
+        if (seq !== rsvpReqRef.current) return
         // The grid's own error line already reports a failed month. An RSVP
         // list that cannot load is not worth a second message.
         setRsvpEvents([])
@@ -1084,7 +1097,7 @@ export default function AthletePage() {
                   <>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 13 }}>
                       <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--primary-dark)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
-                        {sessionToday ? 'Done before today’s session' : 'Checked in today'}
+                        {sessionToday ? 'Checked in for today’s session' : 'Checked in today'}
                       </span>
                       <span style={{ flex: 1 }} />
                       <button onClick={() => setTab('wellness')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 'var(--fs-1)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>

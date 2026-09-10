@@ -90,6 +90,17 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
   const todayStr = todayDateStr()
   const [selectedDate, setSelectedDate] = useState<string | null>(todayStr)
 
+  /* The selection only counts while it is in the visible month.
+   *
+   * `goToMonth` carries it across an arrow press, but the month can also
+   * change from outside — the host setting `month`, which is what "Jump to
+   * their most recent session" does. That left the detail panel headed
+   * "Thursday, September 10" below an August grid, reading "No events on this
+   * day" about a day not on screen: incoherent, and worst on the one control
+   * whose whole job is "your sessions are over here". */
+  const monthPrefix = toMonthStr(ym) + '-'
+  const selected = selectedDate?.startsWith(monthPrefix) ? selectedDate : null
+
   const goToMonth = (to: { year: number; month: number }) => {
     // The selection is this component's own — it is a cursor, not data — so it
     // is carried here rather than pushed up to the host.
@@ -107,7 +118,7 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
     return map
   }, [events])
 
-  const selectedEvents = selectedDate ? (eventsByDate[selectedDate] ?? []) : []
+  const selectedEvents = selected ? (eventsByDate[selected] ?? []) : []
 
   // Grid helpers
   const days = daysInMonth(ym)
@@ -166,7 +177,7 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
           const dateStr = toDateStr(ym, dayNum)
           const dayEvents = eventsByDate[dateStr] ?? []
           const isToday = dateStr === todayStr
-          const isSelected = dateStr === selectedDate
+          const isSelected = dateStr === selected
           const hasEvents = dayEvents.length > 0
 
           return (
@@ -208,14 +219,14 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
       </div>
 
       {/* Selected day events */}
-      {selectedDate && (
+      {selected && (
         <div style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--border-soft)', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}>
-              {new Date(selectedDate + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+              {new Date(selected + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
             </span>
             {onAddEvent && (
-              <button className="btn btn-primary" onClick={() => onAddEvent(selectedDate)} style={{ padding: '5px 12px', fontSize: 12 }}>
+              <button className="btn btn-primary" onClick={() => onAddEvent(selected)} style={{ padding: '5px 12px', fontSize: 12 }}>
                 + Add event
               </button>
             )}
@@ -223,8 +234,16 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
 
           {selectedEvents.length === 0 ? (
             <div style={{ padding: '16px', fontSize: 14, color: 'var(--text-muted)', textAlign: 'center' }}>
-              No events on this day.
-              {onAddEvent && <span> Click <strong>+ Add event</strong> to add one.</span>}
+              {/* Only once this month's events have actually arrived. Saying
+                  "no events" while they are in flight is a confident claim
+                  about data we do not have, and it flashed on every single
+                  month change. */}
+              {loading ? 'Loading…' : (
+                <>
+                  No events on this day.
+                  {onAddEvent && <span> Click <strong>+ Add event</strong> to add one.</span>}
+                </>
+              )}
             </div>
           ) : (
             <div style={{ padding: '8px' }}>

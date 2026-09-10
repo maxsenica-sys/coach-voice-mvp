@@ -81,7 +81,15 @@ const MAX_ENTRIES = 240
 async function trim(cache) {
   const keys = await cache.keys()
   if (keys.length <= MAX_ENTRIES) return
-  for (const req of keys.slice(0, keys.length - MAX_ENTRIES)) {
+  // The precache is inserted first at install, so dropping from the front
+  // would evict the launch images and icons before anything else — exactly
+  // backwards, and invisible to the boot check, which only ever looks at a
+  // fresh install. Skip them.
+  const protectedPaths = new Set(PRECACHE)
+  const evictable = keys.filter((r) => {
+    try { return !protectedPaths.has(new URL(r.url).pathname) } catch { return true }
+  })
+  for (const req of evictable.slice(0, keys.length - MAX_ENTRIES)) {
     await cache.delete(req)
   }
 }
@@ -127,9 +135,20 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     (async () => {
-      const cache = await caches.open(STATIC_CACHE)
-      const hit = await cache.match(req)
-      if (hit) return hit
+      // Any failure here falls through to the network. The header above
+      // promises behaviour identical to having no worker at all, and without
+      // this that promise breaks in the worst possible place: caches.open()
+      // rejecting under blocked or partitioned storage would reject the
+      // response for /_next/static/chunks/*.js, which is a blank app — worse
+      // than no caching.
+      let cache
+      try {
+        cache = await caches.open(STATIC_CACHE)
+        const hit = await cache.match(req)
+        if (hit) return hit
+      } catch {
+        return fetch(req)
+      }
       const res = await fetch(req)
       // Only a clean, complete, same-origin 200 is worth keeping. An opaque or
       // partial response cached here would be served forever.

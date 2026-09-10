@@ -228,7 +228,12 @@ function main() {
       [
         // The `@/` alias the app's own lib modules import each other with.
         '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON',
-        '--import', path.join(HERE, 'alias-register.mjs'),
+        // A file:// URL, for the same reason the dynamic imports above use one.
+      // Fixing only those left this line failing identically —
+      // ERR_UNSUPPORTED_ESM_URL_SCHEME on all nine zones — so `npm run verify`
+      // still died at step two and the two rigs after it never ran at all.
+      // Half a portability fix is indistinguishable from none.
+      '--import', pathToFileURL(path.join(HERE, 'alias-register.mjs')).href,
         fileURLToPath(import.meta.url), '--zone', zone, '--year', String(year),
       ],
       { env: { ...process.env, TZ: zone }, encoding: 'utf8' },

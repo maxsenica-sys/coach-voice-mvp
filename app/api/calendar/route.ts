@@ -272,6 +272,7 @@ export async function POST(req: NextRequest) {
       eventType: safeType,
       eventDate: event_date,
       description: description?.trim() ?? null,
+      checkinRequested: checkin_requested,
     })
   }
 

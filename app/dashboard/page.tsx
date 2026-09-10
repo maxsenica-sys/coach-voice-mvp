@@ -416,10 +416,13 @@ function DashboardPageInner() {
   const [loadingAthletes, setLoadingAthletes] = useState(false)
   const [wellnessByAthlete, setWellnessByAthlete] = useState<Map<string, WellnessCheckin>>(new Map())
   const [athleteSearch, setAthleteSearch] = useState('')
-  // 'INACTIVE' is not a status like the other two — an athlete is both ACTIVE
-  // and inactive when they have signed in but nobody has recorded for them in
-  // a fortnight. It is a separate question about the same roster, which is why
-  // it is a filter rather than a fourth badge. See lib/attention.ts.
+  // 'INACTIVE' is not a status like the other two, and it deliberately overlaps
+  // both. It asks "has anything been recorded for this person lately", which
+  // is true of an ACTIVE athlete nobody has recorded for in a fortnight AND of
+  // an INVITED athlete who has been on the roster a week with no session at
+  // all. That is why it is a filter and not a fourth badge: it is a different
+  // question about the same roster, not another value of the same field. The
+  // rule and its thresholds are in lib/attention.ts.
   const [athleteFilter, setAthleteFilter] = useState<'all' | 'ACTIVE' | 'INVITED' | 'INACTIVE'>('all')
   const [addForm, setAddForm] = useState({ firstName: '', lastName: '', email: '' })
   const [addMsg, setAddMsg] = useState('')
@@ -445,6 +448,9 @@ function DashboardPageInner() {
    * a recording" at that moment states as fact something we do not know yet,
    * and it is the wrong way round: the answer today is four of eight. */
   const [coverageLoaded, setCoverageLoaded] = useState(false)
+  /** Separate from "loaded", because a failed read is not an empty roster and
+   *  must not be reported as one. */
+  const [coverageFailed, setCoverageFailed] = useState(false)
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [sessionsSearch, setSessionsSearch] = useState('')
   const [sessionsAthleteFilter, setSessionsAthleteFilter] = useState('')
@@ -637,11 +643,13 @@ function DashboardPageInner() {
         { cache: 'no-store' },
       )
       setCoverage(rows ?? [])
+      setCoverageFailed(false)
     } catch {
       // A failed coverage read must not break the dashboard. The Inactive
       // filter then reports that it could not work it out, rather than
       // claiming the roster is fine.
       setCoverage([])
+      setCoverageFailed(true)
     } finally {
       setCoverageLoaded(true)
     }
@@ -661,11 +669,31 @@ function DashboardPageInner() {
    */
   const calReqRef = useRef(0)
 
+  /* Switching whose calendar you are looking at.
+   *
+   * The events must be dropped in the same breath as the target, or the
+   * previous athlete's dots and detail entries keep rendering under the new
+   * athlete's name until the fetch lands — one child's session showing as
+   * another's. The athlete profile host guards this explicitly; this host did
+   * not, and three separate onClicks set the mode and target without it.
+   * Funnelled through one function so a fourth cannot be added without it. */
+  const showCalendarFor = (mode: CalMode, targetId: string) => {
+    setCalMode(mode)
+    setCalTargetId(targetId)
+    setCalEvents([])
+    setCalError('')
+  }
+
   const fetchCalendar = useCallback(async (mode: CalMode, targetId: string, month: string) => {
     // Don't fetch athlete/group calendars until a target is selected
     if ((mode === 'athlete' || mode === 'group') && !targetId) {
+      // Claim the sequence on the way out too. Without this an older request
+      // still in flight passes its own guard and writes the previous athlete's
+      // events back over the cleared state — the one asymmetry in the counter.
+      calReqRef.current++
       setCalEvents([])
       setCalError('')
+      setCalLoading(false)
       return
     }
     const seq = ++calReqRef.current
@@ -1445,17 +1473,23 @@ function DashboardPageInner() {
               {filteredAthletes.length === 0 ? (
                 <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
                   {athletes.length === 0
-                    ? 'No athletes yet. Add one to get started.'
+                    ? loadingAthletes ? 'Loading…' : 'No athletes yet. Add one to get started.'
                     : athleteFilter === 'INACTIVE' && !athleteSearch
                       // An empty Inactive list is the answer, not a dead end —
                       // but only once we know it. Until the coverage read
                       // lands the list is empty for want of data, and saying
                       // nobody is overdue would be asserting the opposite of
                       // the truth.
-                      ? coverageLoaded
-                        ? `Nobody has gone more than ${QUIET_AFTER_DAYS} days without a recording.`
-                        : 'Working out who has been quiet…'
-                      : 'No athletes match your search.'}
+                      ? coverageFailed
+                        // A read that failed is not a roster that is fine. The
+                        // comment on fetchCoverage said this; the copy did not.
+                        ? 'Could not work out who has been quiet. Refresh to try again.'
+                        : coverageLoaded
+                          ? `Nobody has gone more than ${QUIET_AFTER_DAYS} days without a recording.`
+                          : 'Working out who has been quiet…'
+                      : athleteFilter === 'INACTIVE'
+                        ? 'Nobody inactive matches your search.'
+                        : 'No athletes match your search.'}
                 </div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
@@ -1505,7 +1539,7 @@ function DashboardPageInner() {
                             <Icon name="messages" size={14} />
                             {(unreadCounts[a.id] ?? 0) > 0 && <span style={{ position: 'absolute', top: 3, right: 3, width: 8, height: 8, background: 'var(--primary)', borderRadius: '50%' }} />}
                           </button>
-                          <button onClick={() => { setTab('calendar'); setCalMode('athlete'); setCalTargetId(a.id) }} className="btn btn-ghost" style={{ fontSize: 'var(--fs-2)', padding: '7px 12px' }} title="Calendar">
+                          <button onClick={() => { setTab('calendar'); showCalendarFor('athlete', a.id) }} className="btn btn-ghost" style={{ fontSize: 'var(--fs-2)', padding: '7px 12px' }} title="Calendar">
                             <Icon name="calendar" size={14} />
                           </button>
                           <button onClick={() => setDeleteConfirmAthlete(a)} className="btn btn-danger" style={{ fontSize: 'var(--fs-2)', padding: '7px 10px' }}>
@@ -1690,14 +1724,14 @@ function DashboardPageInner() {
               <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Calendar</h2>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '200px 1fr', gap: 16, alignItems: 'start' }}>
                 <div className="card" style={{ padding: 14 }}>
-                  <button onClick={() => { setCalMode('personal'); setCalTargetId('') }} style={sideItem(calMode === 'personal', 'var(--primary)')}>
+                  <button onClick={() => showCalendarFor('personal', '')} style={sideItem(calMode === 'personal', 'var(--primary)')}>
                     <Icon name="calendar" size={15} /> My Calendar
                   </button>
                   {athletes.length > 0 && (
                     <>
                       <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.8, padding: '10px 12px 4px' }}>Athletes</div>
                       {athletes.map(a => (
-                        <button key={a.id} onClick={() => { setCalMode('athlete'); setCalTargetId(a.id) }} style={sideItem(calMode === 'athlete' && calTargetId === a.id, 'var(--coach-color)')}>
+                        <button key={a.id} onClick={() => showCalendarFor('athlete', a.id)} style={sideItem(calMode === 'athlete' && calTargetId === a.id, 'var(--coach-color)')}>
                           <Avatar initials={a.first_name[0].toUpperCase()} size={22} bg={calMode === 'athlete' && calTargetId === a.id ? 'rgba(255,255,255,0.25)' : 'var(--coach-color)'} />
                           {a.first_name} {a.last_name}
                         </button>
@@ -1708,7 +1742,7 @@ function DashboardPageInner() {
                     <>
                       <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.8, padding: '10px 12px 4px' }}>Groups</div>
                       {groups.map(g => (
-                        <button key={g.id} onClick={() => { setCalMode('group'); setCalTargetId(g.id) }} style={sideItem(calMode === 'group' && calTargetId === g.id, g.color)}>
+                        <button key={g.id} onClick={() => showCalendarFor('group', g.id)} style={sideItem(calMode === 'group' && calTargetId === g.id, g.color)}>
                           <span style={{ width: 10, height: 10, borderRadius: '50%', background: g.color, flexShrink: 0, border: '2px solid rgba(255,255,255,0.5)' }} />
                           {g.name}
                         </button>
