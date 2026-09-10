@@ -55,6 +55,16 @@ jobs:
       - name: Prompt rig
         run: npm run verify:prompt
 
+      # Month navigation. The calendar shipped a bug where every arrow press
+      # unmounted the grid and threw away the month it had just set, so the
+      # events belonged to one month and the grid drew another — and typecheck,
+      # lint and build all passed on it, before and after. This walks the real
+      # month model and asserts the two structural facts the bug rested on:
+      # that Calendar owns no month state, and that no host renders it behind a
+      # loading conditional.
+      - name: Calendar rig
+        run: npm run verify:calendar
+
       # `next build` prerenders /athlete, which constructs a Supabase client at
       # module scope and throws without these. They are placeholders — the build
       # never makes a network call — so no real secrets belong in CI.
