@@ -21,6 +21,7 @@ import {
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import { formatSessionDate, sessionISODate } from '@/lib/session-date'
 import { currentMonth, parseMonth, sameMonth, toMonthStr } from '@/lib/calendar-month'
+import { todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 
@@ -372,6 +373,90 @@ export default function AthleteDetailPage() {
       setCalEvents((evs) => evs.filter((e) => e.id !== id))
     } catch (e: unknown) {
       setCalError(errorMessage(e, 'Could not delete that event.'))
+    }
+  }
+
+  /* ── Upcoming sessions, and the check-in before them ───────────────────
+   *
+   * ITEM 7, kept as small as the ask insisted: no booking platform, no
+   * appointment management, no scheduling infrastructure, no new notification
+   * system.
+   *
+   * A future session is a calendar_events row that already fits: event_type
+   * 'session', a future event_date, this athlete, and session_id still null
+   * because nothing has been recorded. No new table and no second calendar.
+   * The only new field anywhere is checkin_requested — see migration 028.
+   *
+   * "Has the athlete checked in?" is answered by looking for their ordinary
+   * daily wellness check-in on that date, so there is no completion state to
+   * store and none to go stale. It is also the same five questions they
+   * already answer, rather than a second form to fill in.
+   *
+   * The reminder is the notification POST /api/calendar already sends when a
+   * coach creates an athlete event. Ticking the box is what makes that
+   * notification about the check-in.
+   */
+  const [upcomingForm, setUpcomingForm] = useState<{
+    date: string; time: string; title: string; requestCheckin: boolean
+  } | null>(null)
+  const [upcomingSaving, setUpcomingSaving] = useState(false)
+
+  /* This athlete's recent check-ins, keyed by date, for answering "did they?".
+   * Deliberately a separate read from the 14-day one that feeds the wellness
+   * alert: widening that window would change what the alert computes over. */
+  const [checkinDates, setCheckinDates] = useState<Map<string, WellnessCheckin>>(new Map())
+  useEffect(() => {
+    if (activeTab !== 'calendar' || !athleteId) return
+    void (async () => {
+      try {
+        const json = await apiJson<{ checkins: WellnessCheckin[] }>(
+          '/api/wellness?athlete_id=' + encodeURIComponent(athleteId) + '&days=45',
+        )
+        setCheckinDates(new Map((json.checkins ?? []).map((c) => [c.check_date, c])))
+      } catch {
+        // The panel then reads "not yet completed", which is the honest answer
+        // when we could not find out. It never claims one exists.
+        setCheckinDates(new Map())
+      }
+    })()
+  }, [activeTab, athleteId])
+
+  /* Planned sessions from today onwards: a session event with no session_id,
+   * i.e. one nothing has been recorded against yet. A recorded session gets
+   * its own row dated the day it happened, so the two never collide. */
+  const upcomingSessions = calEvents
+    .filter((e) => e.event_type === 'session' && !e.session_id && e.event_date >= todayISODate())
+    .sort((a, b) => (a.event_date + (a.event_time ?? '')).localeCompare(b.event_date + (b.event_time ?? '')))
+
+  const addUpcomingSession = async () => {
+    if (!upcomingForm || !athleteId) return
+    if (!upcomingForm.date) return
+    setUpcomingSaving(true)
+    setCalError('')
+    try {
+      await apiJson('/api/calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          athlete_id: athleteId,
+          title: upcomingForm.title.trim() || 'Coaching session',
+          event_type: 'session',
+          event_date: upcomingForm.date,
+          event_time: upcomingForm.time || null,
+          checkin_requested: upcomingForm.requestCheckin,
+        }),
+      })
+      setUpcomingForm(null)
+      // Show the month the session was added to, which refetches. Adding a
+      // session in October from September's grid would otherwise look like
+      // nothing happened.
+      setCalMonth(upcomingForm.date.slice(0, 7))
+      calReqRef.current++
+      setCalEvents([])
+    } catch (e: unknown) {
+      setCalError(errorMessage(e, 'Could not add that session.'))
+    } finally {
+      setUpcomingSaving(false)
     }
   }
 
@@ -1240,6 +1325,113 @@ export default function AthleteDetailPage() {
                 {calError}
               </div>
             )}
+
+            {/* ── Upcoming, and the check-in before it ───────────────────
+                The question this whole feature exists to answer is "I am
+                coaching them today — have they checked in, and how is their
+                body?", so the answer sits above the grid rather than inside a
+                day cell you have to find and tap. */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: upcomingSessions.length > 0 || upcomingForm ? 10 : 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Upcoming sessions
+                </div>
+                {!upcomingForm && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setUpcomingForm({ date: todayISODate(), time: '', title: '', requestCheckin: true })}
+                    style={{ fontSize: 'var(--fs-2)', padding: '5px 10px' }}
+                  >
+                    + Add
+                  </button>
+                )}
+              </div>
+
+              {upcomingSessions.length === 0 && !upcomingForm && (
+                <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>
+                  Nothing booked. Add one to ask {athlete.first_name} how their body is feeling beforehand.
+                </div>
+              )}
+
+              {upcomingSessions.map((ev) => {
+                const checkin = checkinDates.get(ev.event_date)
+                const score = checkin ? overallWellnessScore(checkin) : null
+                const isToday = ev.event_date === todayISODate()
+                return (
+                  <div key={ev.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderTop: '1px solid var(--border-soft)' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text)' }}>
+                        {isToday ? 'Today' : formatSessionDate({ session_date: ev.event_date }, { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {ev.event_time ? ' · ' + ev.event_time.slice(0, 5) : ''}
+                        {' · '}{ev.title}
+                      </div>
+                      {ev.checkin_requested ? (
+                        checkin ? (
+                          <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, fontWeight: 700, color: overallScoreColor(score) }}>
+                            Checked in{score !== null ? ' · ' + score + '/5 overall' : ''}
+                            {typeof checkin.soreness_score === 'number' ? ' · soreness ' + checkin.soreness_score + '/10' : ''}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, color: 'var(--text-muted)', fontWeight: 600 }}>
+                            Check-in asked for &middot; not completed yet
+                          </div>
+                        )
+                      ) : (
+                        <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, color: 'var(--text-muted)' }}>
+                          No check-in asked for
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => deleteCalEvent(ev.id)}
+                      title="Remove this session"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 18, lineHeight: 1, padding: '0 4px', flexShrink: 0 }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                )
+              })}
+
+              {upcomingForm && (
+                <div style={{ borderTop: '1px solid var(--border-soft)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <input
+                      className="input" type="date" value={upcomingForm.date}
+                      min={todayISODate()}
+                      onChange={(e) => setUpcomingForm({ ...upcomingForm, date: e.target.value })}
+                      style={{ maxWidth: 170 }}
+                    />
+                    <input
+                      className="input" type="time" value={upcomingForm.time}
+                      onChange={(e) => setUpcomingForm({ ...upcomingForm, time: e.target.value })}
+                      style={{ maxWidth: 130 }}
+                    />
+                  </div>
+                  <input
+                    className="input" placeholder="Coaching session"
+                    value={upcomingForm.title}
+                    onChange={(e) => setUpcomingForm({ ...upcomingForm, title: e.target.value })}
+                  />
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--fs-2)', color: 'var(--text-2)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox" checked={upcomingForm.requestCheckin}
+                      onChange={(e) => setUpcomingForm({ ...upcomingForm, requestCheckin: e.target.checked })}
+                      style={{ marginTop: 3, flexShrink: 0 }}
+                    />
+                    <span>Ask {athlete.first_name} to complete their check-in on the day, so you can see how their body is before you start.</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-primary" onClick={addUpcomingSession} disabled={upcomingSaving || !upcomingForm.date} style={{ fontSize: 'var(--fs-2)' }}>
+                      {upcomingSaving ? 'Adding…' : 'Add session'}
+                    </button>
+                    <button className="btn btn-ghost" onClick={() => setUpcomingForm(null)} disabled={upcomingSaving} style={{ fontSize: 'var(--fs-2)' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Rendered unconditionally and handed the loading prop. Swapping it out
                 for a spinner is the bug in lib/calendar-month.ts. */}

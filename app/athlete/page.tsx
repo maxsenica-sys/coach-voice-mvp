@@ -7,6 +7,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import WellnessSubmit from '@/app/components/WellnessSubmit'
+import { currentMonth, toMonthStr } from '@/lib/calendar-month'
 import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import { getDailyQuote } from '@/lib/quotes'
 import {
@@ -19,7 +20,7 @@ import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import TrainingSpine from '@/app/components/TrainingSpine'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
-import { formatSessionDate } from '@/lib/session-date'
+import { formatSessionDate, todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import type { MessageRow, RsvpEvent } from '@/lib/api-types'
 import { SESSION_RESPONSES, type SessionResponse } from '@/lib/session-response'
@@ -289,6 +290,46 @@ export default function AthletePage() {
   // Calendar
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
   const [calLoading, setCalLoading] = useState(false)
+  /* ── "Your coach has a session with you today" ──────────────────────────
+   *
+   * ITEM 7, the athlete half. When the coach plans a session and ticks the
+   * box, this is what the athlete sees: the check-in card they already use,
+   * with the reason for doing it before training rather than at some point
+   * today.
+   *
+   * No second form and no separate pre-session questionnaire — it is the same
+   * five questions and the same wellness_checkins row, which is also why the
+   * coach's side can answer "have they?" by looking for that row rather than
+   * tracking a state.
+   *
+   * Its own small fetch because the check-in card is on the home tab and the
+   * calendar fetch only runs on the calendar tab. Same route, one request, and
+   * a failure leaves the card exactly as it was — the nudge is an addition, so
+   * losing it costs nothing.
+   */
+  const [sessionToday, setSessionToday] = useState<CalendarEvent | null>(null)
+  useEffect(() => {
+    if (!athleteId) return
+    void (async () => {
+      try {
+        const json = await apiJson<{ events: CalendarEvent[] }>(
+          '/api/calendar?month=' + toMonthStr(currentMonth()),
+        )
+        const today = todayISODate()
+        setSessionToday(
+          (json.events ?? []).find(
+            (e) => e.created_by_role === 'coach'
+              && e.event_type === 'session'
+              && e.checkin_requested === true
+              && e.event_date === today,
+          ) ?? null,
+        )
+      } catch {
+        setSessionToday(null)
+      }
+    })()
+  }, [athleteId])
+
   const [calError, setCalError] = useState('')
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -1043,7 +1084,7 @@ export default function AthletePage() {
                   <>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 13 }}>
                       <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--primary-dark)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
-                        Checked in today
+                        {sessionToday ? 'Done before today’s session' : 'Checked in today'}
                       </span>
                       <span style={{ flex: 1 }} />
                       <button onClick={() => setTab('wellness')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 'var(--fs-1)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
@@ -1079,9 +1120,20 @@ export default function AthletePage() {
                         {new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
                       </span>
                     </div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-5)', fontWeight: 400, color: 'var(--text)', marginBottom: 13, letterSpacing: '-0.01em' }}>
+                    {/* Same card, same form, one sentence of reason. The
+                        coach asked for this before training starts, so say so
+                        — an athlete who knows why answers more carefully than
+                        one filling in a daily form. */}
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-5)', fontWeight: 400, color: 'var(--text)', marginBottom: sessionToday ? 6 : 13, letterSpacing: '-0.01em' }}>
                       How are you feeling today?
                     </div>
+                    {sessionToday && (
+                      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginBottom: 13, lineHeight: 1.5 }}>
+                        You have a session with your coach today
+                        {sessionToday.event_time ? ' at ' + sessionToday.event_time.slice(0, 5) : ''}. They have asked
+                        you to check in first, so they know how your body is before you start.
+                      </div>
+                    )}
                     <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '11px' }} onClick={() => setTab('wellness')}>
                       Check in
                     </button>

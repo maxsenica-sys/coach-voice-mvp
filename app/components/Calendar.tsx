@@ -16,8 +16,13 @@ export type CalendarEvent = {
   event_date: string // "YYYY-MM-DD"
   event_time?: string | null
   /** Set on session-linked events (migration 013) — lets a calendar entry open
-   *  the session it came from. */
+   *  the session it came from. Null on a session the coach has planned but not
+   *  yet recorded, which is how an upcoming session is represented. */
   session_id?: string | null
+  /** The coach asked this athlete to complete their pre-session check-in on
+   *  the day (migration 028). Whether they did is answered by their wellness
+   *  check-in for `event_date`, never stored on the event. */
+  checkin_requested?: boolean | null
   /** Joined athlete on coach-facing queries; null for the coach's own events. */
   athletes?: { first_name: string; last_name: string } | null
 }
