@@ -1,41 +1,25 @@
 import type { NextConfig } from 'next'
-import withPWA from '@ducanh2912/next-pwa'
 
+/* The @ducanh2912/next-pwa wrapper that used to be here is gone, along with a
+ * forty-line `runtimeCaching` array that read as if it were the app's caching
+ * policy.
+ *
+ * It never ran. next-pwa installs itself as a webpack plugin, this project
+ * builds with Turbopack, so the hook was never called: a production build
+ * emitted no `public/sw.js` and no workbox chunk, and `/sw.js` answered 404.
+ * Every rule in that array was dead — the NetworkOnly rules for Supabase and
+ * /api were describing a worker that did not exist, and the `/_next/static/*`
+ * CacheFirst rule is the one the comment in app/layout.tsx cites when it says
+ * the self-hosted fonts are covered by the service worker. Nothing was
+ * covering them.
+ *
+ * Dead configuration that reads as policy is worse than none, because it gets
+ * cited. The caching now lives in public/sw.js, registered from
+ * app/layout.tsx, where it can be read and where a build cannot quietly stop
+ * producing it. tools/boot-smoke.mjs checks that it is served and registered.
+ */
 const nextConfig: NextConfig = {
   turbopack: {},
 }
 
-export default withPWA({
-  dest: 'public',
-  cacheOnFrontEndNav: true,
-  aggressiveFrontEndNavCaching: true,
-  reloadOnOnline: true,
-  disable: process.env.NODE_ENV === 'development',
-  workboxOptions: {
-    disableDevLogs: true,
-    // Don't cache Supabase API calls — auth state must always be fresh
-    runtimeCaching: [
-      {
-        urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-        handler: 'NetworkOnly',
-      },
-      {
-        urlPattern: /\/api\/.*/i,
-        handler: 'NetworkOnly',
-      },
-      {
-        urlPattern: /\/_next\/static\/.*/i,
-        handler: 'CacheFirst',
-        options: {
-          cacheName: 'static-assets',
-          expiration: { maxAgeSeconds: 60 * 60 * 24 * 30 },
-        },
-      },
-      {
-        urlPattern: /\/_next\/image\/.*/i,
-        handler: 'StaleWhileRevalidate',
-        options: { cacheName: 'next-images' },
-      },
-    ],
-  },
-})(nextConfig)
+export default nextConfig

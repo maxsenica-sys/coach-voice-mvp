@@ -8,14 +8,14 @@
     "start": "next start",
     "lint": "eslint",
     "deploy": "git add -A && git commit -m \"deploy\" --allow-empty && git push origin main",
-    "verify": "npm run verify:safeguard && npm run verify:clock && npm run verify:prompt",
+    "verify": "npm run verify:safeguard && npm run verify:clock && npm run verify:prompt && npm run verify:calendar",
     "verify:safeguard": "node tools/safeguard-check.mjs",
     "verify:clock": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/clock-rig.mjs",
     "verify:prompt": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/prompt-rig.mjs",
-    "verify:boot": "node tools/boot-smoke.mjs"
+    "verify:boot": "node tools/boot-smoke.mjs",
+    "verify:calendar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/calendar-rig.mjs"
   },
   "dependencies": {
-    "@ducanh2912/next-pwa": "^10.2.9",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.97.0",
     "next": "16.1.6",

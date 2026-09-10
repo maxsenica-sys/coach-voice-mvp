@@ -18,7 +18,10 @@ import {
   WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint,
   type WellnessCheckin, type WellnessAlert,
 } from '@/lib/wellness-config'
-import { formatSessionDate } from '@/lib/session-date'
+import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
+import { formatSessionDate, sessionISODate } from '@/lib/session-date'
+import { currentMonth, parseMonth, sameMonth, shiftMonth, toMonthStr } from '@/lib/calendar-month'
+import { todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 
@@ -309,6 +312,238 @@ export default function AthleteDetailPage() {
   // ── Wellness at-a-glance (Overview card + header chip) ───────────
   // Self-contained, same pattern as WellnessGraph's own fetch: a failure
   // here shouldn't block the rest of the profile from loading.
+  /* ── This athlete's calendar ────────────────────────────────────────────
+   *
+   * The Calendar tab used to be a paragraph of text — "Sessions recorded with
+   * this athlete appear here" — followed by a button sending the coach to the
+   * main Calendar tab to find the athlete again by hand. Nothing was ever
+   * rendered here, for any athlete, which is what "the calendar is not
+   * synchronised with that specific athlete" was describing.
+   *
+   * The athlete id comes from the route, so the scope cannot be wrong. It also
+   * cannot be stale: athleteId drives the reset effect below and is a
+   * dependency of the fetch, so opening Nick and then Riley refetches rather
+   * than leaving Nick's events on screen under Riley's name.
+   *
+   * Same month contract as the other two hosts — see lib/calendar-month.ts.
+   * This page must never own a second copy of the month.
+   */
+  const [calMonth, setCalMonth] = useState(() => toMonthStr(currentMonth()))
+  const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
+  const [calLoading, setCalLoading] = useState(false)
+  const [calError, setCalError] = useState('')
+  const calReqRef = useRef(0)
+  /* Bumped to force a refetch of the month already on screen.
+   *
+   * Without it, "refetch" had to be expressed as `setCalMonth(newMonth)` and
+   * relied on the value actually differing. Adding an upcoming session for a
+   * date in the month already displayed sets the same string, React bails out,
+   * the effect below never re-runs — and the coach's new session does not
+   * appear. Which is the commonest case there is: you usually book something
+   * this month. */
+  const [calReload, setCalReload] = useState(0)
+
+  // Back to today's month, and empty, whenever the athlete changes. Without
+  // this, moving between profiles keeps the previous athlete's events on
+  // screen until the new fetch lands — under the new athlete's name.
+  useEffect(() => {
+    setCalMonth(toMonthStr(currentMonth()))
+    setCalEvents([])
+    setCalError('')
+    // The form's own copy names the athlete ("Ask Nick to…"), so leaving it
+    // open across a profile change silently re-targets whatever is typed in it.
+    setUpcomingForm(null)
+    calReqRef.current++
+  }, [athleteId])
+
+  useEffect(() => {
+    if (activeTab !== 'calendar' || !athleteId) return
+    const seq = ++calReqRef.current
+    setCalLoading(true)
+    setCalError('')
+    void (async () => {
+      try {
+        const json = await apiJson<{ events: CalendarEvent[] }>(
+          '/api/calendar?athlete_id=' + encodeURIComponent(athleteId) + '&month=' + calMonth,
+          { cache: 'no-store' },
+        )
+        if (seq !== calReqRef.current) return
+        setCalEvents(json.events ?? [])
+      } catch (e: unknown) {
+        if (seq !== calReqRef.current) return
+        setCalEvents([])
+        setCalError(errorMessage(e, 'Could not load this month.'))
+      } finally {
+        if (seq === calReqRef.current) setCalLoading(false)
+      }
+    })()
+  }, [activeTab, athleteId, calMonth, calReload])
+
+  const deleteCalEvent = async (id: string) => {
+    try {
+      await apiMutate('/api/calendar?id=' + encodeURIComponent(id), { method: 'DELETE' })
+      setCalEvents((evs) => evs.filter((e) => e.id !== id))
+    } catch (e: unknown) {
+      setCalError(errorMessage(e, 'Could not delete that event.'))
+    }
+  }
+
+  /* ── Upcoming sessions, and the check-in before them ───────────────────
+   *
+   * ITEM 7, kept as small as the ask insisted: no booking platform, no
+   * appointment management, no scheduling infrastructure, no new notification
+   * system.
+   *
+   * A future session is a calendar_events row that already fits: event_type
+   * 'session', a future event_date, this athlete, and session_id still null
+   * because nothing has been recorded. No new table and no second calendar.
+   * The only new field anywhere is checkin_requested — see migration 028.
+   *
+   * "Has the athlete checked in?" is answered by looking for their ordinary
+   * daily wellness check-in on that date, so there is no completion state to
+   * store and none to go stale. It is also the same five questions they
+   * already answer, rather than a second form to fill in.
+   *
+   * The reminder is the notification POST /api/calendar already sends when a
+   * coach creates an athlete event. Ticking the box is what makes that
+   * notification about the check-in.
+   */
+  const [upcomingForm, setUpcomingForm] = useState<{
+    date: string; time: string; title: string; requestCheckin: boolean
+  } | null>(null)
+  const [upcomingSaving, setUpcomingSaving] = useState(false)
+
+  /* This athlete's recent check-ins, keyed by date, for answering "did they?".
+   * Deliberately a separate read from the 14-day one that feeds the wellness
+   * alert: widening that window would change what the alert computes over.
+   *
+   * Guarded and cleared exactly like the calendar fetch, and for a sharper
+   * reason. These are keyed by DATE, not by athlete, so an unguarded response
+   * landing after you had moved to another athlete would render the first
+   * child's energy, mood and soreness under the second child's name. Wrong
+   * numbers are bad; wrong numbers about the wrong child are the worst thing
+   * this app could put on screen. */
+  const [checkinDates, setCheckinDates] = useState<Map<string, WellnessCheckin>>(new Map())
+  const checkinReqRef = useRef(0)
+  useEffect(() => {
+    setCheckinDates(new Map())
+    checkinReqRef.current++
+  }, [athleteId])
+  useEffect(() => {
+    if (activeTab !== 'calendar' || !athleteId) return
+    const seq = ++checkinReqRef.current
+    void (async () => {
+      try {
+        const json = await apiJson<{ checkins: WellnessCheckin[] }>(
+          '/api/wellness?athlete_id=' + encodeURIComponent(athleteId) + '&days=45',
+        )
+        if (seq !== checkinReqRef.current) return
+        setCheckinDates(new Map((json.checkins ?? []).map((c) => [c.check_date, c])))
+      } catch {
+        if (seq !== checkinReqRef.current) return
+        // The panel then reads "not yet completed", which is the honest answer
+        // when we could not find out. It never claims one exists.
+        setCheckinDates(new Map())
+      }
+    })()
+  }, [activeTab, athleteId])
+
+  /* Planned sessions from today onwards: a session event with no session_id,
+   * i.e. one nothing has been recorded against yet. A recorded session gets
+   * its own row dated the day it happened, so the two never collide.
+   *
+   * Fetched over its own two-month window rather than read off `calEvents`.
+   * The grid holds one month, so a session booked for the 1st of next month
+   * was invisible on the 30th of this one — the panel that exists to answer
+   * "am I coaching them soon, and have they checked in?" said "Nothing
+   * booked", and its contents changed when the coach pressed the month arrows
+   * even though nothing labelled it as month-scoped. */
+  const [upcoming, setUpcoming] = useState<CalendarEvent[]>([])
+  const [upcomingLoaded, setUpcomingLoaded] = useState(false)
+  const upcomingReqRef = useRef(0)
+  useEffect(() => {
+    setUpcoming([])
+    setUpcomingLoaded(false)
+    upcomingReqRef.current++
+  }, [athleteId])
+  useEffect(() => {
+    if (activeTab !== 'calendar' || !athleteId) return
+    const seq = ++upcomingReqRef.current
+    void (async () => {
+      const months = [toMonthStr(currentMonth()), toMonthStr(shiftMonth(currentMonth(), 1))]
+      try {
+        const pages = await Promise.all(months.map((m) => apiJson<{ events: CalendarEvent[] }>(
+          '/api/calendar?athlete_id=' + encodeURIComponent(athleteId) + '&month=' + m,
+          { cache: 'no-store' },
+        )))
+        if (seq !== upcomingReqRef.current) return
+        const byId = new Map<string, CalendarEvent>()
+        for (const page of pages) for (const ev of page.events ?? []) byId.set(ev.id, ev)
+        setUpcoming(Array.from(byId.values()))
+      } catch {
+        if (seq !== upcomingReqRef.current) return
+        setUpcoming([])
+      } finally {
+        if (seq === upcomingReqRef.current) setUpcomingLoaded(true)
+      }
+    })()
+  }, [activeTab, athleteId, calReload])
+
+  const upcomingSessions = upcoming
+    .filter((e) => e.event_type === 'session' && !e.session_id && e.event_date >= todayISODate())
+    .sort((a, b) => (a.event_date + (a.event_time ?? '')).localeCompare(b.event_date + (b.event_time ?? '')))
+
+  const addUpcomingSession = async () => {
+    if (!upcomingForm || !athleteId) return
+    if (!upcomingForm.date) return
+    setUpcomingSaving(true)
+    setCalError('')
+    try {
+      await apiMutate('/api/calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          athlete_id: athleteId,
+          title: upcomingForm.title.trim() || 'Coaching session',
+          event_type: 'session',
+          event_date: upcomingForm.date,
+          event_time: upcomingForm.time || null,
+          checkin_requested: upcomingForm.requestCheckin,
+        }),
+      })
+      setUpcomingForm(null)
+      // Show the month it was added to — booking something in October from
+      // September's grid would otherwise look like nothing happened — and
+      // force the refetch rather than relying on the month string changing,
+      // because usually it has not.
+      setCalMonth(upcomingForm.date.slice(0, 7))
+      setCalReload((n) => n + 1)
+    } catch (e: unknown) {
+      setCalError(errorMessage(e, 'Could not add that session.'))
+    } finally {
+      setUpcomingSaving(false)
+    }
+  }
+
+  /* Where this athlete's sessions actually are.
+   *
+   * The calendar shows one month at a time, so an athlete whose last session
+   * was in August opens on an empty September grid — which reads as "this
+   * athlete has no sessions", and was half of the reported "some athletes have
+   * their sessions on their calendar and others do not". The sessions array is
+   * every session for this athlete, uncapped (GET /api/sessions is scoped by
+   * athlete and has no limit), so the count and date below are exact rather
+   * than derived from a truncated window. */
+  const latestSessionISO = sessions
+    .map((x) => sessionISODate(x))
+    .filter((d): d is string => !!d)
+    .sort()
+    .at(-1) ?? null
+  const latestSessionMonth = latestSessionISO ? latestSessionISO.slice(0, 7) : null
+  const viewingLatestMonth = latestSessionMonth
+    ? sameMonth(parseMonth(calMonth), parseMonth(latestSessionMonth))
+    : true
+
   const [wellnessLatest, setWellnessLatest] = useState<WellnessCheckin | null>(null)
   const [wellnessAlert, setWellnessAlert] = useState<WellnessAlert | null>(null)
   useEffect(() => {
@@ -1127,12 +1362,157 @@ export default function AthleteDetailPage() {
         ══════════════════════════════════════ */}
         {activeTab === 'calendar' && athlete && (
           <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Athlete Calendar</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-              Sessions recorded with this athlete appear here. Use the main{' '}
-              <button className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 8px' }} onClick={() => router.push('/dashboard?tab=calendar')}>Calendar tab</button>{' '}
-              to view your full schedule and add events.
+            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+              {athlete.first_name}&rsquo;s calendar
             </div>
+            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginBottom: 14 }}>
+              {sessions.length === 0
+                ? 'No sessions recorded yet. Anything you record for them appears here.'
+                : `${sessions.length} session${sessions.length === 1 ? '' : 's'} recorded${latestSessionISO ? ` · most recent ${formatSessionDate({ session_date: latestSessionISO }, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`}
+            </div>
+
+            {/* A one-month window over months of history is how "this athlete
+                has no sessions" gets read off an empty grid. Say where they
+                are, and offer to go. Hidden once you are already there, so it
+                disappears the moment it stops being useful. */}
+            {latestSessionMonth && !viewingLatestMonth && (
+              <button
+                className="btn btn-ghost"
+                onClick={() => setCalMonth(latestSessionMonth)}
+                style={{ fontSize: 'var(--fs-2)', padding: '6px 12px', marginBottom: 12 }}
+              >
+                Jump to their most recent session &rarr;
+              </button>
+            )}
+
+            {calError && (
+              <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 12 }}>
+                {calError}
+              </div>
+            )}
+
+            {/* ── Upcoming, and the check-in before it ───────────────────
+                The question this whole feature exists to answer is "I am
+                coaching them today — have they checked in, and how is their
+                body?", so the answer sits above the grid rather than inside a
+                day cell you have to find and tap. */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: upcomingSessions.length > 0 || upcomingForm ? 10 : 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Upcoming sessions
+                </div>
+                {!upcomingForm && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setUpcomingForm({ date: todayISODate(), time: '', title: '', requestCheckin: true })}
+                    style={{ fontSize: 'var(--fs-2)', padding: '5px 10px' }}
+                  >
+                    + Add
+                  </button>
+                )}
+              </div>
+
+              {upcomingSessions.length === 0 && !upcomingForm && (
+                <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>
+                  {/* Only once the window has come back. "Nothing booked" while
+                      it is still loading is a confident claim about data we do
+                      not have. */}
+                  {upcomingLoaded
+                    ? `Nothing booked in the next two months. Add one to ask ${athlete.first_name} how their body is feeling beforehand.`
+                    : 'Checking…'}
+                </div>
+              )}
+
+              {upcomingSessions.map((ev) => {
+                const checkin = checkinDates.get(ev.event_date)
+                const score = checkin ? overallWellnessScore(checkin) : null
+                const isToday = ev.event_date === todayISODate()
+                return (
+                  <div key={ev.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderTop: '1px solid var(--border-soft)' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text)' }}>
+                        {isToday ? 'Today' : formatSessionDate({ session_date: ev.event_date }, { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {ev.event_time ? ' · ' + ev.event_time.slice(0, 5) : ''}
+                        {' · '}{ev.title}
+                      </div>
+                      {ev.checkin_requested ? (
+                        checkin ? (
+                          <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, fontWeight: 700, color: overallScoreColor(score) }}>
+                            Checked in{score !== null ? ' · feeling ' + score + '/5' : ''}
+                            {typeof checkin.soreness_score === 'number' ? ' · soreness ' + checkin.soreness_score + '/10' : ''}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, color: 'var(--text-muted)', fontWeight: 600 }}>
+                            Check-in asked for &middot; not completed yet
+                          </div>
+                        )
+                      ) : (
+                        <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, color: 'var(--text-muted)' }}>
+                          No check-in asked for
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => deleteCalEvent(ev.id)}
+                      title="Remove this session"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 18, lineHeight: 1, padding: '0 4px', flexShrink: 0 }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                )
+              })}
+
+              {upcomingForm && (
+                <div style={{ borderTop: '1px solid var(--border-soft)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <input
+                      className="input" type="date" value={upcomingForm.date}
+                      min={todayISODate()}
+                      onChange={(e) => setUpcomingForm({ ...upcomingForm, date: e.target.value })}
+                      style={{ maxWidth: 170 }}
+                    />
+                    <input
+                      className="input" type="time" value={upcomingForm.time}
+                      onChange={(e) => setUpcomingForm({ ...upcomingForm, time: e.target.value })}
+                      style={{ maxWidth: 130 }}
+                    />
+                  </div>
+                  <input
+                    className="input" placeholder="Coaching session"
+                    value={upcomingForm.title}
+                    onChange={(e) => setUpcomingForm({ ...upcomingForm, title: e.target.value })}
+                  />
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--fs-2)', color: 'var(--text-2)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox" checked={upcomingForm.requestCheckin}
+                      onChange={(e) => setUpcomingForm({ ...upcomingForm, requestCheckin: e.target.checked })}
+                      style={{ marginTop: 3, flexShrink: 0 }}
+                    />
+                    <span>Ask {athlete.first_name} to complete their check-in on the day, so you can see how their body is before you start.</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-primary" onClick={addUpcomingSession} disabled={upcomingSaving || !upcomingForm.date} style={{ fontSize: 'var(--fs-2)' }}>
+                      {upcomingSaving ? 'Adding…' : 'Add session'}
+                    </button>
+                    <button className="btn btn-ghost" onClick={() => setUpcomingForm(null)} disabled={upcomingSaving} style={{ fontSize: 'var(--fs-2)' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Rendered unconditionally and handed the loading prop. Swapping it out
+                for a spinner is the bug in lib/calendar-month.ts. */}
+            <Calendar
+              events={calEvents}
+              role="coach"
+              month={calMonth}
+              loading={calLoading}
+              onDeleteEvent={deleteCalEvent}
+              onMonthChange={setCalMonth}
+            />
           </div>
         )}
 

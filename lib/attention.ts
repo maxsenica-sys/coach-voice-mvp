@@ -12,6 +12,23 @@
 // The thresholds are judgement, and they are named rather than inlined so that
 // changing "what counts as too long" is a one-line decision with a comment
 // attached, not a magic number buried in a filter.
+//
+// 2026-09-10: this used to drive a "Quiet lately" strip of faces on the coach's
+// home tab. Max asked for it off the home page — it was not worth the space
+// there — and for the same information to live in athlete management instead,
+// as an `Inactive` filter next to All / Active / Invited. The rule did not
+// change; only where it is asked. Deliberately in one place and not both: the
+// same list on two screens is two things to keep in agreement, and the home
+// tab's version was the one nobody had asked a question to get to.
+//
+// The properties that made the strip worth having are kept by the filter:
+// it is coach-only, it names nobody when nobody qualifies, and its copy is
+// "Inactive", not a reprimand. A part-time coach with two dozen athletes will
+// always have a long tail, and a scold is not a gift.
+//
+// Coach-only, always. No athlete may see this or anything derived from it — a
+// ranking of a coach's attention across a squad of children is exactly the
+// between-kids comparison the product forbids.
 
 export interface CoverageRow {
   athlete_id: string
@@ -41,28 +58,26 @@ export const QUIET_AFTER_DAYS = 14
  */
 export const GRACE_DAYS = 7
 
-/** Never show more than this many. A queue you cannot finish is a nag. */
-export const MAX_SHOWN = 6
-
 /**
- * The athletes worth surfacing, in the order the API returned them
- * (longest-gap first, never-recorded ahead of everyone).
+ * Has this athlete gone long enough without a recording to count as inactive?
  *
- * Note what this does *not* do: it never re-sorts. The ordering is the API's
- * job because only the server has every session; if this function sorted, it
- * would be sorting a list whose day counts it cannot verify.
+ * The one definition, used by the Inactive filter on the Athletes tab. It used
+ * to be inlined in a `selectQuiet` helper that fed a strip on the coach's
+ * home tab; that strip is gone and the rule now answers a question
+ * the coach asks deliberately, in the place where they manage their roster.
  */
-export function selectQuiet(coverage: CoverageRow[]): CoverageRow[] {
-  return coverage
-    .filter((r) =>
-      r.days_since === null
-        ? (r.days_on_roster ?? 0) >= GRACE_DAYS
-        : r.days_since >= QUIET_AFTER_DAYS,
-    )
-    .slice(0, MAX_SHOWN)
+export function isQuiet(r: CoverageRow): boolean {
+  return r.days_since === null
+    ? (r.days_on_roster ?? 0) >= GRACE_DAYS
+    : r.days_since >= QUIET_AFTER_DAYS
 }
 
-/** "24 days" / "1 day" / "no sessions yet" — the label under a face. */
+/** "24 days" / "1 day" / "no sessions yet" — how long the silence has been.
+ *
+ * `MAX_SHOWN` and `selectQuiet` used to live here too, capping the list at six
+ * because a strip of faces you cannot finish is a nag. Both went with the
+ * strip: the Athletes tab filter must not cap, because a filter that silently
+ * hid the seventh inactive athlete would be lying about the roster. */
 export function gapLabel(r: CoverageRow): string {
   if (r.days_since === null) return 'no sessions yet'
   if (r.days_since === 1) return '1 day'

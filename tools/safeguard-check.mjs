@@ -62,9 +62,29 @@ function walk(dir, out = []) {
 }
 
 const FILES = [...walk(path.join(ROOT, 'app')), ...walk(path.join(ROOT, 'lib'))].map((full) => {
-  const text = readFileSync(full, 'utf8')
+  /* Line endings are normalised, and this is not cosmetic — it decides
+   * whether the rules below run at all.
+   *
+   * On a Windows checkout the files arrive with CRLF, so every line handed to
+   * `code()` ends in a carriage return. In a JavaScript regex \r is a line
+   * terminator, so `.` does not match it: the //-stripping pattern never
+   * reaches the end of the line, never matches, and silently strips nothing.
+   * Every rule that greps for a table or an API name then finds that name in a
+   * comment *about* it. SG5 fired on lib/body-map.ts, which contains no query
+   * at all — only a sentence mentioning wellness_checkins — and SG7 fired on
+   * lib/audio-mime.ts, which is its own documented exemption.
+   *
+   * Both were false, and both had been failing for anyone running this outside
+   * CI. That is worse than a missing rule: two red lines make the whole report
+   * look untrustworthy, so the real ones stop being read.
+   */
+  const text = readFileSync(full, 'utf8').replace(/\r\n/g, '\n')
   return {
-    rel: path.relative(ROOT, full),
+    // Forward slashes, always. The exemptions below compare `rel` against
+    // literal paths like 'lib/audio-mime.ts', and path.relative yields
+    // backslashes on Windows — so an exemption stops applying on exactly the
+    // machine the author is sitting at.
+    rel: path.relative(ROOT, full).split(path.sep).join('/'),
     text,
     lines: text.split('\n'),
     isClient: /^\s*['"]use client['"]/m.test(text),
@@ -180,10 +200,10 @@ const RULES = [
     id: 'SG4',
     title: 'Coach-attention data never reaches an athlete surface',
     why: 'The coverage ranking answers "which of these children has the coach spent least time on". Shown to a coach it is a prompt to act. Shown to a child it is either a wound or a league table of who the coach likes best, which is the comparison-between-kids this product forbids outright.',
-    cite: 'app/components/AttentionStrip.tsx — "Do not move it"; PROJECT-STATE.md safeguarding limits',
+    cite: 'lib/attention.ts — "Coach-only, always"; PROJECT-STATE.md safeguarding limits',
     check(files) {
       const found = []
-      const forbidden = /@\/lib\/attention|AttentionStrip|athletes\/coverage/
+      const forbidden = /@\/lib\/attention|athletes\/coverage/
       for (const f of files) {
         // Athlete-facing surfaces: the athlete app, and the athlete's own
         // shared session view is role-agnostic so it is included too.

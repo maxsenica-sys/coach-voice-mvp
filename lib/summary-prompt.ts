@@ -32,6 +32,27 @@ export const EMPTY_SUMMARY: QuickSummary = { summary: null, next: null }
 export const MAX_NEXT_LENGTH = 120
 
 /**
+ * How many bullets the summary aims for.
+ *
+ * It asked for "2–5" and, with a 300-character total budget, landed on three or
+ * four — which is what Max was reading when he asked for five. So the range is
+ * gone and the number is stated: a range invites the model to take the cheap end
+ * of it.
+ *
+ * The prompt says "a target, not a quota" in the same breath, and that sentence
+ * is load-bearing. A firm number without it is an instruction to invent a fifth
+ * point on a two-minute recording, and an invented coaching instruction
+ * addressed to a named child is the worst thing this product can produce. Five
+ * short bullets is also roughly one extra line on screen, not a longer summary:
+ * the per-bullet cap is what keeps it scannable, and the total budget only rose
+ * from 300 to 340.
+ *
+ * Named here rather than only in the prompt string so the rig can assert the
+ * prompt still asks for it.
+ */
+export const TARGET_BULLETS = 5
+
+/**
  * Did the coach actually say this athlete's name in this recording?
  *
  * This is the guard that makes per-athlete summaries safe, and it deliberately
@@ -121,7 +142,8 @@ WHAT YOU ARE READING
 The text below is an automatic transcript of the coach talking out loud, not a written report. Expect run-on sentences, filler, self-corrections and misheard words. Read it for intent — the coach's actual coaching points — and quietly ignore transcription noise.
 
 WRITE
-2–5 bullets, each starting with •, each a short specific coaching point in the coach's own voice. Prefer what the athlete should DO next over abstract praise. Aim for under 300 characters total.
+Five bullets, each starting with •, each a short specific coaching point in the coach's own voice. Prefer what the athlete should DO next over abstract praise. Keep each to one line — under 70 characters a bullet, under 340 characters in total.
+Five is a target, not a quota. Write fewer if the coach did not make five distinct points, and never pad, restate a point in different words, or add generic advice to reach the number.
 
 THEN, ON A FINAL SEPARATE LINE
 If — and only if — the coach said something about what to work on next time, add one line in exactly this form:

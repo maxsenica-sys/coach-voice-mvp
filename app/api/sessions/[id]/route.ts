@@ -85,7 +85,7 @@ export async function PATCH(
     // would drag a backdated session's calendar entry forward to the day it was
     // saved the first time sharing is toggled on.
     const dateStr = data.session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date(data.created_at))
-    const isFirstShare = await syncSessionCalendarEvent({
+    const sync = await syncSessionCalendarEvent({
       supabase,
       sessionId: data.id,
       athleteId: data.athlete_id,
@@ -96,9 +96,16 @@ export async function PATCH(
       visibleToAthlete: updates.shared_with_athlete,
       skipIfExists: true,
     })
+    // The session row is already committed, so a calendar failure must not
+    // fail the request — but it must be findable. It used to be discarded
+    // entirely, which is how a session ends up saved and on nobody's calendar
+    // with a 200 and no trace.
+    if (sync.outcome === 'failed') {
+      console.error('[sessions PATCH] calendar sync failed', { sessionId: data.id, error: sync.error })
+    }
     // Only notify the first time this session is shared, not on every re-toggle,
-    // and never when it's being unshared.
-    if (isFirstShare && updates.shared_with_athlete === true) {
+    // and never when it's being unshared. A failed sync is not a first share.
+    if (sync.outcome === 'inserted' && updates.shared_with_athlete === true) {
       await notifySessionShared({
         supabase,
         req,

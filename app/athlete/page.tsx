@@ -7,6 +7,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import WellnessSubmit from '@/app/components/WellnessSubmit'
+import { currentMonth, toMonthStr } from '@/lib/calendar-month'
 import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import { getDailyQuote } from '@/lib/quotes'
 import {
@@ -19,7 +20,7 @@ import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import TrainingSpine from '@/app/components/TrainingSpine'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
-import { formatSessionDate } from '@/lib/session-date'
+import { formatSessionDate, todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import type { MessageRow, RsvpEvent } from '@/lib/api-types'
 import { SESSION_RESPONSES, type SessionResponse } from '@/lib/session-response'
@@ -289,6 +290,47 @@ export default function AthletePage() {
   // Calendar
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
   const [calLoading, setCalLoading] = useState(false)
+  /* ── "Your coach has a session with you today" ──────────────────────────
+   *
+   * ITEM 7, the athlete half. When the coach plans a session and ticks the
+   * box, this is what the athlete sees: the check-in card they already use,
+   * with the reason for doing it before training rather than at some point
+   * today.
+   *
+   * No second form and no separate pre-session questionnaire — it is the same
+   * five questions and the same wellness_checkins row, which is also why the
+   * coach's side can answer "have they?" by looking for that row rather than
+   * tracking a state.
+   *
+   * Its own small fetch because the check-in card is on the home tab and the
+   * calendar fetch only runs on the calendar tab. Same route, one request, and
+   * a failure leaves the card exactly as it was — the nudge is an addition, so
+   * losing it costs nothing.
+   */
+  const [sessionToday, setSessionToday] = useState<CalendarEvent | null>(null)
+  useEffect(() => {
+    if (!athleteId) return
+    void (async () => {
+      try {
+        const json = await apiJson<{ events: CalendarEvent[] }>(
+          '/api/calendar?month=' + toMonthStr(currentMonth()),
+        )
+        const today = todayISODate()
+        setSessionToday(
+          (json.events ?? []).find(
+            (e) => e.created_by_role === 'coach'
+              && e.event_type === 'session'
+              && e.checkin_requested === true
+              && e.event_date === today,
+          ) ?? null,
+        )
+      } catch {
+        setSessionToday(null)
+      }
+    })()
+  }, [athleteId])
+
+  const [calError, setCalError] = useState('')
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
@@ -417,19 +459,36 @@ export default function AthletePage() {
   }, [router, supabase])
 
   // ── Calendar ──────────────────────────────────────────────
+  /** Only the newest request may write — see the note on the coach's copy in
+   *  app/dashboard/page.tsx. Two quick arrow presses otherwise let the older
+   *  month's response land last and win. */
+  const calReqRef = useRef(0)
+  /** The RSVP list shares `calMonth` with the grid, so it races on the same
+   *  arrow presses and needs the same guard. */
+  const rsvpReqRef = useRef(0)
+
   const fetchCalendar = useCallback(async (month: string) => {
+    const seq = ++calReqRef.current
     setCalLoading(true)
+    setCalError('')
     try {
-      const res = await fetch(`/api/calendar?month=${month}`, { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok) setCalEvents(json.events ?? [])
+      // apiJson, not raw fetch: `if (res.ok)` with no else swallowed every
+      // failure here, so a 500 left last month's events on screen and said
+      // nothing. Checklist item 1 in CLAUDE.md.
+      const json = await apiJson<{ events: CalendarEvent[] }>(`/api/calendar?month=${month}`, { cache: 'no-store' })
+      if (seq !== calReqRef.current) return
+      setCalEvents(json.events ?? [])
+    } catch (e: unknown) {
+      if (seq !== calReqRef.current) return
+      setCalEvents([])
+      setCalError(errorMessage(e, 'Could not load this month.'))
     } finally {
-      setCalLoading(false)
+      if (seq === calReqRef.current) setCalLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    if (tab === 'calendar' && athleteId) fetchCalendar(calMonth)
+    if (tab === 'calendar' && athleteId) void fetchCalendar(calMonth)
   }, [tab, athleteId, calMonth, fetchCalendar])
 
   // ── The athlete's own wellness history ────────────────────
@@ -496,12 +555,30 @@ export default function AthletePage() {
   useEffect(() => {
     if (tab !== 'calendar' || !athleteId) return
     // Load upcoming coach events with rsvp_enabled for this athlete
-    fetch(`/api/calendar?month=${calMonth}`)
-      .then((r) => r.json())
-      .then((j) => {
-        const coachEvents = ((j.events ?? []) as RsvpEvent[]).filter((e) => e.created_by_role === 'coach' && e.rsvp_enabled)
-        setRsvpEvents(coachEvents)
-      })
+    // No `.catch` and no res.ok check here previously: a network failure or an
+    // HTML error page became an unhandled rejection during a month change,
+    // which is precisely when this fires. It shares its month with the grid,
+    // so it must not be able to take the tab down with it.
+    const seq = ++rsvpReqRef.current
+    void (async () => {
+      try {
+        const j = await apiJson<{ events: RsvpEvent[] }>(`/api/calendar?month=${calMonth}`)
+        if (seq !== rsvpReqRef.current) return
+        // Only events that have not happened. This list is headed "Events
+        // needing your response", and month navigation reaching the past —
+        // which it now does, because the arrows work — would otherwise ask a
+        // fourteen-year-old to RSVP to something last March.
+        const today = todayISODate()
+        setRsvpEvents((j.events ?? []).filter(
+          (e) => e.created_by_role === 'coach' && e.rsvp_enabled && e.event_date >= today,
+        ))
+      } catch {
+        if (seq !== rsvpReqRef.current) return
+        // The grid's own error line already reports a failed month. An RSVP
+        // list that cannot load is not worth a second message.
+        setRsvpEvents([])
+      }
+    })()
   }, [tab, athleteId, calMonth])
 
   const sendMessage = async () => {
@@ -1020,7 +1097,7 @@ export default function AthletePage() {
                   <>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 13 }}>
                       <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--primary-dark)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
-                        Checked in today
+                        {sessionToday ? 'Checked in for today’s session' : 'Checked in today'}
                       </span>
                       <span style={{ flex: 1 }} />
                       <button onClick={() => setTab('wellness')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 'var(--fs-1)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
@@ -1056,9 +1133,20 @@ export default function AthletePage() {
                         {new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
                       </span>
                     </div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-5)', fontWeight: 400, color: 'var(--text)', marginBottom: 13, letterSpacing: '-0.01em' }}>
+                    {/* Same card, same form, one sentence of reason. The
+                        coach asked for this before training starts, so say so
+                        — an athlete who knows why answers more carefully than
+                        one filling in a daily form. */}
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-5)', fontWeight: 400, color: 'var(--text)', marginBottom: sessionToday ? 6 : 13, letterSpacing: '-0.01em' }}>
                       How are you feeling today?
                     </div>
+                    {sessionToday && (
+                      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginBottom: 13, lineHeight: 1.5 }}>
+                        You have a session with your coach today
+                        {sessionToday.event_time ? ' at ' + sessionToday.event_time.slice(0, 5) : ''}. They have asked
+                        you to check in first, so they know how your body is before you start.
+                      </div>
+                    )}
                     <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '11px' }} onClick={() => setTab('wellness')}>
                       Check in
                     </button>
@@ -1644,17 +1732,26 @@ export default function AthletePage() {
                 </div>
               )}
             </div>
-            {calLoading ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>Loading calendar…</div>
-            ) : !athleteId ? (
+            {/* The `!athleteId` branch is a real empty state and stays. The
+                `calLoading` branch that used to sit in front of it did not:
+                it unmounted the calendar on every month change and threw away
+                the month just chosen. See lib/calendar-month.ts. */}
+            {calError && (
+              <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 12 }}>
+                {calError}
+              </div>
+            )}
+            {!athleteId ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>Connect to a coach first to see your calendar.</div>
             ) : (
               <Calendar
                 events={calEvents}
                 role="athlete"
+                month={calMonth}
+                loading={calLoading}
                 onAddEvent={(date) => setAddEventModal(date)}
                 onDeleteEvent={deleteCalEvent}
-                onMonthChange={m => setCalMonth(m)}
+                onMonthChange={setCalMonth}
               />
             )}
 

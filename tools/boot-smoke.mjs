@@ -158,6 +158,38 @@ function assertBuildOutput() {
   const external = css.match(/@import\s+url\(["']?https?:[^)]*\)/g) || []
   check('no third-party @import survives into the CSS', external.length === 0, external.join(', '))
 
+  // ── The launch screen ───────────────────────────────────────────────────
+  //
+  // The manifest's background_color is the very first frame of a cold start:
+  // the OS paints it, with the app icon on it, before any of this app exists.
+  // It was near-black for months because a stale hand-written copy of the
+  // manifest sat in public/ and silently shadowed app/manifest.ts — a static
+  // file wins over a route of the same name, with no warning from the build,
+  // the type system or the linter. Nothing could have caught it except asking
+  // what is actually served, which is what the served-manifest check below
+  // does. This one bans the shadow at source.
+  const shadow = join(ROOT, 'public', 'manifest.webmanifest')
+  check(
+    'no static manifest shadows app/manifest.ts',
+    !existsSync(shadow),
+    existsSync(shadow) ? 'public/manifest.webmanifest overrides the route — delete it' : '',
+  )
+
+  // The service worker is hand-written in public/sw.js precisely because the
+  // generated one never existed: next-pwa is a webpack plugin and this project
+  // builds with Turbopack, so /sw.js answered 404 in production while a
+  // forty-line runtimeCaching array in next.config.ts looked authoritative.
+  const sw = join(ROOT, 'public', 'sw.js')
+  if (check('a service worker is present', existsSync(sw))) {
+    const src = readFileSync(sw, 'utf8')
+    // Caching a document is how a PWA bricks itself: the prerendered HTML
+    // names content-hashed chunks, so a shell served from cache after a deploy
+    // fetches chunks that no longer exist and the app opens to nothing. There
+    // is no staging environment to catch that here.
+    check("the worker refuses navigations", src.includes("req.mode === 'navigate'"))
+    check('the worker never claims /api', src.includes("url.pathname.startsWith('/api/')"))
+  }
+
   const htmlFiles = walk(join(NEXT_DIR, 'server', 'app')).filter((f) => f.endsWith('.html'))
   const index = htmlFiles.find((f) => f.endsWith('index.html'))
   check('"/" is prerendered to static HTML', Boolean(index), index ? '' : 'no index.html — "/" went dynamic')
@@ -212,6 +244,49 @@ async function assertMiddleware(base) {
 
   r = await go(`${AUTH}; cv_role_hint=athlete`, '/?intro=1')
   check('?intro=1 still renders "/"', r.status === 200, `${r.status} ${r.to}`)
+
+  // ── What the browser is actually handed ─────────────────────────────────
+  //
+  // Asking the server, not reading the source. app/manifest.ts had the right
+  // background_color the whole time; a stale public/manifest.webmanifest was
+  // being served instead, and the only way to see that is to fetch the URL.
+  heading('The launch screen the OS paints')
+  const mres = await fetch(base + '/manifest.webmanifest')
+  const manifest = await mres.json().catch(() => null)
+  check('the manifest is served', mres.ok && !!manifest, `${mres.status}`)
+  if (manifest) {
+    /* The invariant is "what app/manifest.ts says is what the browser gets",
+     * not any particular colour. A static public/manifest.webmanifest shadowed
+     * the route for months and served a different background — the near-black
+     * the app opened to — and nothing anywhere could see it happen. So this
+     * reads the value out of the source and compares, which keeps failing if
+     * the shadow returns while leaving the colour itself a design decision
+     * anyone can change in one place.
+     *
+     * The stale value is banned by name as well, because that specific colour
+     * coming back is the regression, whatever route it takes. */
+    const src = readFileSync(join(ROOT, 'app', 'manifest.ts'), 'utf8')
+    const intended = (src.match(/background_color:\s*'(#[0-9A-Fa-f]{3,8})'/) || [])[1]
+    check('app/manifest.ts declares a background_color', Boolean(intended), String(intended))
+    check(
+      'the served background_color is the one in app/manifest.ts',
+      Boolean(intended) && manifest.background_color === intended,
+      `served ${manifest.background_color}, source says ${intended} — a public/ file shadowing the route is how this diverges`,
+    )
+    check(
+      'the launch screen is not the old near-black',
+      manifest.background_color !== '#1F2421',
+      `got ${manifest.background_color} — this is the whole cold start's first frame`,
+    )
+    check(
+      'the maskable icon survived',
+      (manifest.icons ?? []).some((i) => String(i.purpose ?? '').includes('maskable')),
+    )
+    check('start_url is "/"', manifest.start_url === '/', String(manifest.start_url))
+  }
+
+  const swres = await fetch(base + '/sw.js')
+  check('/sw.js is served (it 404d for months)', swres.status === 200, `${swres.status}`)
 
   // Exercises the identity branch. The middleware reads the session with
   // getClaims() rather than getUser() — local signature verification instead of
@@ -410,6 +485,44 @@ async function assertBoot(base) {
       JSON.stringify(afterTap),
     )
     await escCtx.close()
+
+    /* ── the service worker ──
+     *
+     * Registration is the half that was missing entirely, so it is checked in
+     * a real browser rather than by grepping for the call. The cache contents
+     * are checked too: a worker that installs and caches nothing looks exactly
+     * like a working one from the outside. */
+    heading('The service worker registers and caches')
+    const swCtx = await browser.newContext()
+    const swPage = await swCtx.newPage()
+    await swPage.goto(base + '/', { waitUntil: 'load' })
+    const swState = await swPage.evaluate(async () => {
+      const reg = await navigator.serviceWorker.getRegistration('/').catch(() => null)
+      if (!reg) return { registered: false }
+      await navigator.serviceWorker.ready
+      // Give the install handler's precache a moment to settle.
+      await new Promise((r) => setTimeout(r, 1200))
+      const keys = await caches.keys()
+      const cache = keys.length ? await caches.open(keys[0]) : null
+      const cached = cache ? (await cache.keys()).map((r) => new URL(r.url).pathname) : []
+      return { registered: true, keys, cached }
+    })
+    check('the worker registers', swState.registered === true, JSON.stringify(swState.keys ?? {}))
+    if (swState.registered) {
+      check(
+        'the launch images are precached',
+        (swState.cached ?? []).some((p) => p.startsWith('/splash/')),
+        `${(swState.cached ?? []).length} entries`,
+      )
+      // The one thing this worker must never do. A cached document names
+      // content-hashed chunks that stop existing on the next deploy.
+      check(
+        'no HTML document was cached',
+        !(swState.cached ?? []).some((p) => p === '/' || p === '/dashboard' || p === '/athlete'),
+        (swState.cached ?? []).join(', ').slice(0, 200),
+      )
+    }
+    await swCtx.close()
 
     /* ── nothing broken on the way in ── */
     heading('Console and network on "/"')

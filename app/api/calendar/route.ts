@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
   const admin = createSupabaseAdminClient()
   const range = monthRange(month)
 
-  const baseSelect = 'id, athlete_id, session_id, created_by_user_id, created_by_role, title, description, event_type, event_date, event_time, created_at'
+  const baseSelect = 'id, athlete_id, session_id, created_by_user_id, created_by_role, title, description, event_type, event_date, event_time, checkin_requested, created_at'
 
   // ── ATHLETE ROLE ────────────────────────────────────────────
   if (role === 'athlete') {
@@ -150,6 +150,16 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
   const { athlete_id, group_id, title, description, event_type, event_date, event_time } = body
 
+  // Did the coach ask this athlete to complete their pre-session check-in on
+  // the day? One boolean on the event, deliberately — see migration 028.
+  //
+  // Only ever true for a coach-created session event for one named athlete. A
+  // check-in belongs to a person, so it is meaningless on a coach's own
+  // personal event, and a squad-wide request is a different feature with a
+  // different consent question; both fail closed rather than silently
+  // half-working.
+  const checkin_requested = event_type === 'session' && Boolean(body?.checkin_requested)
+
   if (!title?.trim() || !event_date) {
     return attach(NextResponse.json({ error: 'title and event_date are required.' }, { status: 400 }), cookiesToSet)
   }
@@ -173,7 +183,7 @@ export async function POST(req: NextRequest) {
       event_type: safeType,
       event_date,
       event_time: event_time ?? null,
-    }).select('id, athlete_id, created_by_role, title, description, event_type, event_date, event_time, created_at').single()
+    }).select('id, athlete_id, created_by_role, title, description, event_type, event_date, event_time, checkin_requested, created_at').single()
 
     if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
     return attach(NextResponse.json({ event: data }, { status: 201 }), cookiesToSet)
@@ -190,7 +200,7 @@ export async function POST(req: NextRequest) {
       event_type: safeType,
       event_date,
       event_time: event_time ?? null,
-    }).select('id, athlete_id, created_by_role, title, description, event_type, event_date, event_time, created_at').single()
+    }).select('id, athlete_id, created_by_role, title, description, event_type, event_date, event_time, checkin_requested, created_at').single()
 
     if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
     return attach(NextResponse.json({ event: data }, { status: 201 }), cookiesToSet)
@@ -247,7 +257,8 @@ export async function POST(req: NextRequest) {
     event_type: safeType,
     event_date,
     event_time: event_time ?? null,
-  }).select('id, athlete_id, created_by_role, title, description, event_type, event_date, event_time, created_at').single()
+    checkin_requested: safeType === 'session' ? checkin_requested : false,
+  }).select('id, athlete_id, created_by_role, title, description, event_type, event_date, event_time, checkin_requested, created_at').single()
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 
@@ -261,6 +272,7 @@ export async function POST(req: NextRequest) {
       eventType: safeType,
       eventDate: event_date,
       description: description?.trim() ?? null,
+      checkinRequested: checkin_requested,
     })
   }
 

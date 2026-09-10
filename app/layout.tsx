@@ -26,10 +26,14 @@ import './globals.css'
  *   second connection to fonts.gstatic.com for the files themselves.
  *
  * Self-hosting fixes both. The files come from our own origin as part of the
- * build, they are covered by the service worker's `/_next/static/*` CacheFirst
- * rule (the custom `runtimeCaching` array in next.config.ts replaces next-pwa's
- * defaults, so Google Fonts were never cached by it either), and `display:
+ * build, they are cached by the service worker in public/sw.js, and `display:
  * swap` means text paints immediately in the fallback regardless.
+ *
+ * That sentence used to cite the `runtimeCaching` array in next.config.ts, and
+ * this is the exact failure that array is now deleted for: it never ran — a
+ * webpack plugin under a Turbopack build — so for as long as this comment
+ * claimed the fonts were cached, nothing was caching anything. Dead
+ * configuration gets cited; keep the citation pointing at code that runs.
  *
  * Only Newsreader is preloaded. It carries the first heading on every screen,
  * so a swap there is visible. JetBrains Mono appears on a handful of 10-11px
@@ -259,6 +263,53 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
       d.removeAttribute('data-boot-anim')
     }, 6400)
   } catch (e) { /* blocked storage: no shell, no splash, app still opens */ }
+})()
+
+/* ── The service worker ────────────────────────────────────────────────────
+ *
+ * public/sw.js caches the content-hashed assets — the bundle, the stylesheet,
+ * the self-hosted fonts, the launch images — so a cold start reads them off
+ * disk instead of the network. It deliberately never caches a document; the
+ * reasoning is in that file.
+ *
+ * This registration is why it exists at all. next.config.ts wraps the config
+ * in @ducanh2912/next-pwa, which is a webpack plugin, and this project builds
+ * with Turbopack — so no worker was ever emitted and /sw.js returned 404 in
+ * production. Nothing was being cached by anything, including the fonts that
+ * the comment above claims the worker covers.
+ *
+ * Registered on load rather than here at the top of <head>: registration is
+ * async and cheap, but it still costs a fetch, and nothing about the first
+ * paint depends on it. Outside the IIFE above on purpose — that one returns
+ * early on "/" and on every non-app page, and the worker is wanted everywhere.
+ */
+;(function () {
+  if (!('serviceWorker' in navigator)) return
+  /* Production only. next-pwa carried a disable-in-development flag and
+   * dropping that wrapper dropped the guard with it. Dev chunk URLs under
+   * /_next/static/ are not content-hashed the way the build's are, so
+   * cache-first would serve a developer their own stale bundle after every
+   * edit until they cleared site data — and the cv-sw-reset escape hatch needs
+   * a console to reach. An existing worker is unregistered too, so a dev
+   * session that already installed one recovers by reloading rather than by
+   * knowing about any of this.
+   *
+   * The value is decided on the server and baked into the HTML, which is why
+   * it is an interpolation and not a runtime lookup: process.env does not
+   * exist in the browser. Note there are no backticks anywhere in this script
+   * — it lives inside a template literal, and one would end it early. */
+  var isProd = ${process.env.NODE_ENV === 'production'}
+  if (!isProd) {
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (r) { r.unregister() })
+    }).catch(function () { /* nothing to undo */ })
+    return
+  }
+  addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js').catch(function () {
+      /* An unavailable worker must never be visible: no cache, same app. */
+    })
+  })
 })()`
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

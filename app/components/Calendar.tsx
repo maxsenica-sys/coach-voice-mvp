@@ -1,6 +1,10 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo } from 'react'
+import {
+  carrySelection, currentMonth, daysInMonth, firstWeekday, parseMonth,
+  shiftMonth, toDateStr, todayDateStr, toMonthStr, type MonthStr,
+} from '@/lib/calendar-month'
 
 export type CalendarEvent = {
   id: string
@@ -12,8 +16,13 @@ export type CalendarEvent = {
   event_date: string // "YYYY-MM-DD"
   event_time?: string | null
   /** Set on session-linked events (migration 013) — lets a calendar entry open
-   *  the session it came from. */
+   *  the session it came from. Null on a session the coach has planned but not
+   *  yet recorded, which is how an upcoming session is represented. */
   session_id?: string | null
+  /** The coach asked this athlete to complete their pre-session check-in on
+   *  the day (migration 028). Whether they did is answered by their wellness
+   *  check-in for `event_date`, never stored on the event. */
+  checkin_requested?: boolean | null
   /** Joined athlete on coach-facing queries; null for the coach's own events. */
   athletes?: { first_name: string; last_name: string } | null
 }
@@ -21,9 +30,26 @@ export type CalendarEvent = {
 type Props = {
   events: CalendarEvent[]
   role: 'coach' | 'athlete'
+  /**
+   * The month on screen, "YYYY-MM". Required, and owned by the host.
+   *
+   * It used to be this component's own `useState`, which meant the grid and
+   * the host's fetch key were two copies of one fact — and the hosts unmounted
+   * the component while fetching, so every arrow press threw away the month it
+   * had just set and the grid snapped back to today while the events belonged
+   * to the month you asked for. See lib/calendar-month.ts. Required rather
+   * than optional on purpose: an optional month would let a future host fall
+   * back to local state and quietly reintroduce the whole bug.
+   */
+  month: MonthStr
+  onMonthChange: (monthStr: MonthStr) => void
   onAddEvent?: (date: string) => void
   onDeleteEvent?: (id: string) => void
-  onMonthChange?: (monthStr: string) => void
+  /**
+   * Dim and disable rather than disappear. Hosts must pass this instead of
+   * swapping the calendar out for a "Loading…" line — that unmount is the bug
+   * lib/calendar-month.ts describes.
+   */
   loading?: boolean
 }
 
@@ -45,20 +71,8 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function daysInMonth(year: number, month: number) {
-  return new Date(year, month + 1, 0).getDate()
-}
-
-function firstDayOfMonth(year: number, month: number) {
-  return new Date(year, month, 1).getDay()
-}
-
-function formatMonthYear(year: number, month: number) {
+function formatMonthYear({ year, month }: { year: number; month: number }) {
   return new Date(year, month, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-}
-
-function toDateStr(year: number, month: number, day: number): string {
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
 function formatTime(time: string | null | undefined) {
@@ -69,35 +83,29 @@ function formatTime(time: string | null | undefined) {
   return `${hour}:${String(m).padStart(2, '0')}${period}`
 }
 
-export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMonthChange, loading }: Props) {
-  const today = new Date()
-  const [year, setYear] = useState(today.getFullYear())
-  const [month, setMonth] = useState(today.getMonth())
-  const [selectedDate, setSelectedDate] = useState<string | null>(
-    toDateStr(today.getFullYear(), today.getMonth(), today.getDate())
-  )
+export default function Calendar({ events, role, month, onMonthChange, onAddEvent, onDeleteEvent, loading }: Props) {
+  // Derived from the prop every render — no copy, nothing to fall out of step,
+  // and an unmount cannot lose it.
+  const ym = parseMonth(month)
+  const todayStr = todayDateStr()
+  const [selectedDate, setSelectedDate] = useState<string | null>(todayStr)
 
-  const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate())
+  /* The selection only counts while it is in the visible month.
+   *
+   * `goToMonth` carries it across an arrow press, but the month can also
+   * change from outside — the host setting `month`, which is what "Jump to
+   * their most recent session" does. That left the detail panel headed
+   * "Thursday, September 10" below an August grid, reading "No events on this
+   * day" about a day not on screen: incoherent, and worst on the one control
+   * whose whole job is "your sessions are over here". */
+  const monthPrefix = toMonthStr(ym) + '-'
+  const selected = selectedDate?.startsWith(monthPrefix) ? selectedDate : null
 
-  const toMonthStr = (y: number, m: number) =>
-    `${y}-${String(m + 1).padStart(2, '0')}`
-
-  const handleMonthChange = (y: number, m: number) => {
-    setYear(y); setMonth(m)
-    if (selectedDate) {
-      const [, , dd] = selectedDate.split('-').map(Number)
-      const daysInNew = daysInMonth(y, m)
-      if (dd <= daysInNew) {
-        setSelectedDate(toDateStr(y, m, dd))
-      } else {
-        setSelectedDate(null)
-      }
-    }
-    onMonthChange?.(toMonthStr(y, m))
-  }
-
-  const handleSelectDate = (dateStr: string) => {
-    setSelectedDate(dateStr || null)
+  const goToMonth = (to: { year: number; month: number }) => {
+    // The selection is this component's own — it is a cursor, not data — so it
+    // is carried here rather than pushed up to the host.
+    setSelectedDate((prev) => carrySelection(prev, to))
+    onMonthChange(toMonthStr(to))
   }
 
   // Index events by date — useMemo so it recomputes only when events change
@@ -110,11 +118,11 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
     return map
   }, [events])
 
-  const selectedEvents = selectedDate ? (eventsByDate[selectedDate] ?? []) : []
+  const selectedEvents = selected ? (eventsByDate[selected] ?? []) : []
 
   // Grid helpers
-  const days = daysInMonth(year, month)
-  const firstDay = firstDayOfMonth(year, month)
+  const days = daysInMonth(ym)
+  const firstDay = firstWeekday(ym)
   const totalCells = Math.ceil((firstDay + days) / 7) * 7
 
   return (
@@ -123,23 +131,33 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
-            onClick={() => handleMonthChange(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1)}
+            onClick={() => goToMonth(shiftMonth(ym, -1))}
+            aria-label="Previous month"
             style={{ width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >‹</button>
           <span style={{ fontSize: 16, fontWeight: 800, minWidth: 160, textAlign: 'center' }}>
-            {formatMonthYear(year, month)}
+            {formatMonthYear(ym)}
           </span>
           <button
-            onClick={() => handleMonthChange(month === 11 ? year + 1 : year, month === 11 ? 0 : month + 1)}
+            onClick={() => goToMonth(shiftMonth(ym, 1))}
+            aria-label="Next month"
             style={{ width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >›</button>
         </div>
         <button
-          onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDate(todayStr); onMonthChange?.(toMonthStr(today.getFullYear(), today.getMonth())) }}
+          onClick={() => { const now = currentMonth(); setSelectedDate(todayStr); onMonthChange(toMonthStr(now)) }}
           style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
         >
           Today
         </button>
+      </div>
+
+      {/* Loading is shown here, in place, and never by unmounting the grid.
+          The hosts used to render `{calLoading ? <div>Loading…</div> :
+          <Calendar/>}`, which threw away the month the user had just chosen —
+          see lib/calendar-month.ts. */}
+      <div aria-live="polite" style={{ height: 14, marginTop: -8, marginBottom: 4, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        {loading ? 'Loading…' : ''}
       </div>
 
       {/* Day-of-week headers */}
@@ -150,16 +168,16 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
       </div>
 
       {/* Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+      <div aria-busy={loading ? true : undefined} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, opacity: loading ? 0.45 : 1, transition: 'opacity 0.12s ease' }}>
         {Array.from({ length: totalCells }).map((_, i) => {
           const dayNum = i - firstDay + 1
           const isValid = dayNum >= 1 && dayNum <= days
           if (!isValid) return <div key={i} />
 
-          const dateStr = toDateStr(year, month, dayNum)
+          const dateStr = toDateStr(ym, dayNum)
           const dayEvents = eventsByDate[dateStr] ?? []
           const isToday = dateStr === todayStr
-          const isSelected = dateStr === selectedDate
+          const isSelected = dateStr === selected
           const hasEvents = dayEvents.length > 0
 
           return (
@@ -201,14 +219,14 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
       </div>
 
       {/* Selected day events */}
-      {selectedDate && (
+      {selected && (
         <div style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--border-soft)', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}>
-              {new Date(selectedDate + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+              {new Date(selected + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
             </span>
             {onAddEvent && (
-              <button className="btn btn-primary" onClick={() => onAddEvent(selectedDate)} style={{ padding: '5px 12px', fontSize: 12 }}>
+              <button className="btn btn-primary" onClick={() => onAddEvent(selected)} style={{ padding: '5px 12px', fontSize: 12 }}>
                 + Add event
               </button>
             )}
@@ -216,8 +234,16 @@ export default function Calendar({ events, role, onAddEvent, onDeleteEvent, onMo
 
           {selectedEvents.length === 0 ? (
             <div style={{ padding: '16px', fontSize: 14, color: 'var(--text-muted)', textAlign: 'center' }}>
-              No events on this day.
-              {onAddEvent && <span> Click <strong>+ Add event</strong> to add one.</span>}
+              {/* Only once this month's events have actually arrived. Saying
+                  "no events" while they are in flight is a confident claim
+                  about data we do not have, and it flashed on every single
+                  month change. */}
+              {loading ? 'Loading…' : (
+                <>
+                  No events on this day.
+                  {onAddEvent && <span> Click <strong>+ Add event</strong> to add one.</span>}
+                </>
+              )}
             </div>
           ) : (
             <div style={{ padding: '8px' }}>

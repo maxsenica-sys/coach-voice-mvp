@@ -45,6 +45,12 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+// pathToFileURL, not the bare path. A dynamic import of "C:\Users\…" is
+// rejected outright as an unsupported URL scheme 'c:', so this rig could only
+// ever run on Linux — and CI is the only place that is, which makes it a gate
+// the person who just changed the code cannot run before opening the PR. Same
+// lesson as the boot harness and its `npx` spawn.
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const FIXTURES = path.join(ROOT, 'tools/prompt-fixtures/transcripts.json')
@@ -81,8 +87,8 @@ const DIM = '\x1b[2m'
 const BOLD = '\x1b[1m'
 const OFF = '\x1b[0m'
 
-const { buildSummaryPrompt, transcriptNames, parseSummaryResponse, MAX_NEXT_LENGTH } =
-  await import(path.join(ROOT, 'lib/summary-prompt.ts'))
+const { buildSummaryPrompt, transcriptNames, parseSummaryResponse, MAX_NEXT_LENGTH, TARGET_BULLETS } =
+  await import(pathToFileURL(path.join(ROOT, 'lib/summary-prompt.ts')).href)
 
 const fixtures = JSON.parse(readFileSync(FIXTURES, 'utf8'))
 
@@ -209,6 +215,21 @@ for (const c of fixtures.cases) {
       invariantFails.push(`${tag}: wrong sport branch`)
     }
 
+    // How many bullets the summary asks for. It said "2-5" and, against a
+    // 300-character budget, produced three or four; Max asked for five, so the
+    // range is gone and the number is stated. A range invites the cheap end.
+    if (!check(/^Five bullets, each starting with/m.test(prompt), 'the prompt asks for five bullets', tag)) {
+      invariantFails.push(`${tag}: the prompt no longer asks for five bullets`)
+    }
+    // The sentence that stops five becoming a quota. Without it a firm number
+    // is an instruction to invent a fifth point on a two-minute recording, and
+    // a fabricated coaching instruction addressed to a named child is the worst
+    // output this product can produce. It is not decoration; do not drop it
+    // while tuning the count.
+    if (!check(prompt.includes('Five is a target, not a quota'), 'five is a target and not a quota', tag)) {
+      invariantFails.push(`${tag}: the anti-padding sentence is gone`)
+    }
+
     // The rules that keep the output safe must survive every edit.
     for (const clause of [
       'Never state anything the coach did not say',
@@ -247,6 +268,7 @@ for (const r of fixtures.replies) {
 // A NEXT line is rendered to a child as an instruction, so the ceiling is a
 // safety property, not a formatting one.
 check(MAX_NEXT_LENGTH <= 200, 'the NEXT ceiling stays short enough to act on', String(MAX_NEXT_LENGTH))
+check(TARGET_BULLETS === 5, 'the bullet target is five', String(TARGET_BULLETS))
 
 // ── 5 · live mode ─────────────────────────────────────────────────────────
 

@@ -9,6 +9,20 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     orientation: 'portrait',
     // Matches the Letter/Ivory palette in globals.css (--bg and --text).
+    //
+    // This value was being thrown away. `public/manifest.webmanifest` — a
+    // stale, hand-written copy of this file, committed and never updated —
+    // shadows this route: a static file in public/ wins, so the manifest the
+    // browser actually fetched was that one, with `background_color:
+    // "#1F2421"`. That colour is the launch screen the OS paints for the whole
+    // cold start, before a single byte of the app exists, which is the
+    // "completely black screen for 2-3 seconds" the app opens with. It also
+    // carried a different description, no maskable icon, and shortcuts
+    // pointing at ?tab= URLs the dashboard no longer reads.
+    //
+    // The static copy is deleted. Do not add one back: there is no warning
+    // when it shadows this, and nothing in the build or the type system can
+    // see it happen.
     background_color: '#FBF8F3',
     theme_color: '#1F2421',
     categories: ['sports', 'productivity', 'health'],

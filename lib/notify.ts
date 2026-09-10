@@ -282,6 +282,11 @@ type NotifyCalendarEventArgs = {
   eventType: string
   eventDate: string
   description?: string | null
+  /** The coach asked the athlete to complete their pre-session check-in before
+   *  this one (migration 028). It changes the subject, the body and the call to
+   *  action — sending the identical "added an event" mail either way is what
+   *  made the reminder a claim rather than a feature. */
+  checkinRequested?: boolean
 }
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -298,6 +303,19 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
  * notifySessionShared). Same "something happened, athlete has no way to
  * know" gap as unshared sessions used to have.
  */
+/* A check-in request has to change the email, or it is not a reminder.
+ *
+ * app/athletes/[id]/page.tsx and migration 028 both said "the reminder is the
+ * notification /api/calendar already sends; ticking the box is what makes that
+ * notification about the check-in". That was not true: this function was never
+ * told, so the athlete received the identical "added an event to your
+ * calendar" mail either way and the request only surfaced if they happened to
+ * open the app on the day. Two reviewers caught the same false claim.
+ *
+ * So the flag comes in, and the mail says what is being asked for. Still one
+ * notification on one existing path — no scheduler, no second send, nothing
+ * that fires on the morning of. That would be the notification system the ask
+ * ruled out; this is the mail that already went, telling the truth. */
 export async function notifyCalendarEventCreated({
   supabase,
   req,
@@ -307,6 +325,7 @@ export async function notifyCalendarEventCreated({
   eventType,
   eventDate,
   description,
+  checkinRequested,
 }: NotifyCalendarEventArgs): Promise<void> {
   try {
     const [{ data: athlete }, coachName] = await Promise.all([
@@ -318,18 +337,28 @@ export async function notifyCalendarEventCreated({
     const typeLabel = EVENT_TYPE_LABELS[eventType] ?? 'calendar event'
     const appUrl = getAppBaseUrl(req)
 
+    // The check-in ask changes what this mail is for, so it changes the mail.
+    // Sending the identical "added an event to your calendar" note either way
+    // is what made the reminder in migration 028 a claim rather than a
+    // feature. Addressed to a young athlete: what to do, why, and no alarm.
+    const askHtml = checkinRequested
+      ? `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px">Before you train, please open CoachVoice and do your check-in — it takes about twenty seconds. It tells ${coachName} how your body is feeling so they can plan the session around you.</p>`
+      : ''
+
     const html = renderBrandedEmail({
-      heading: `New ${typeLabel} on your calendar`,
+      heading: checkinRequested ? 'Check in before your session' : `New ${typeLabel} on your calendar`,
       bodyHtml: `
 <p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px"><strong>${coachName}</strong> added <strong>${eventTitle}</strong> to your calendar for ${eventDate}.</p>
-${description ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px">${description}</p>` : ''}`,
-      ctaText: 'View calendar',
+${askHtml}${description ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px">${description}</p>` : ''}`,
+      ctaText: checkinRequested ? 'Do my check-in' : 'View calendar',
       ctaHref: `${appUrl}/athlete`,
     })
 
     await sendEmail({
       to: athlete.email,
-      subject: `${coachName} added ${eventTitle} to your calendar`,
+      subject: checkinRequested
+        ? `${coachName} would like a check-in before ${eventTitle}`
+        : `${coachName} added ${eventTitle} to your calendar`,
       html,
       fromName: `${coachName} via CoachVoice`,
     })

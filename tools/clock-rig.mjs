@@ -52,6 +52,12 @@
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+// pathToFileURL, not the bare path. A dynamic import of "C:\Users\…" is
+// rejected outright as an unsupported URL scheme 'c:', so this rig could only
+// ever run on Linux — and CI is the only place that is, which makes it a gate
+// the person who just changed the code cannot run before opening the PR. Same
+// lesson as the boot harness and its `npx` spawn.
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
@@ -82,9 +88,9 @@ const OFF = '\x1b[0m'
 
 async function runZone(zone, year) {
   const { calendarDaysBetween, parseISODate, todayISODate, sessionISODate, sessionDate } =
-    await import(path.join(ROOT, 'lib/session-date.ts'))
+    await import(pathToFileURL(path.join(ROOT, 'lib/session-date.ts')).href)
   const { buildSpine, startOfWeek, SPINE_WEEKS } =
-    await import(path.join(ROOT, 'lib/training-spine.ts'))
+    await import(pathToFileURL(path.join(ROOT, 'lib/training-spine.ts')).href)
 
   const failures = []
   let checks = 0
@@ -222,7 +228,12 @@ function main() {
       [
         // The `@/` alias the app's own lib modules import each other with.
         '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON',
-        '--import', path.join(HERE, 'alias-register.mjs'),
+        // A file:// URL, for the same reason the dynamic imports above use one.
+      // Fixing only those left this line failing identically —
+      // ERR_UNSUPPORTED_ESM_URL_SCHEME on all nine zones — so `npm run verify`
+      // still died at step two and the two rigs after it never ran at all.
+      // Half a portability fix is indistinguishable from none.
+      '--import', pathToFileURL(path.join(HERE, 'alias-register.mjs')).href,
         fileURLToPath(import.meta.url), '--zone', zone, '--year', String(year),
       ],
       { env: { ...process.env, TZ: zone }, encoding: 'utf8' },

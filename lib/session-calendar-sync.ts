@@ -30,14 +30,31 @@ type SyncSessionCalendarEventArgs = {
   skipIfExists?: boolean
 }
 
+export type SyncResult =
+  | { outcome: 'inserted' }
+  | { outcome: 'existed' }
+  | { outcome: 'failed'; error: string }
+
 /**
- * Creates a calendar_events row for a session that's being shared with its
- * athlete. Fire-and-forget: the caller's session write is already committed,
- * so a failure here shouldn't fail the request. Returns whether it actually
- * inserted a new row (false when skipIfExists found one already) — callers
- * use this as the "is this genuinely the first time this session was
- * shared?" signal, e.g. to avoid re-sending a share notification on every
- * toggle.
+ * Puts a session on the calendar. The caller's session write is already
+ * committed, so a failure here must not fail the request — but it must not be
+ * invisible either, which it was.
+ *
+ * The old signature returned `!error` and threw the error away, and the caller
+ * in POST /api/sessions discarded even that boolean. So the one failure mode
+ * that matters — the row not being written — produced a 200, a saved session,
+ * and a session that appears on nobody's calendar. That is exactly the shape of
+ * the incident migration 018 was written to clean up, and it would have come
+ * back silently. The write goes through the RLS-scoped client while
+ * /api/calendar reads with the service-role client, so RLS refusing the insert
+ * is a real and completely quiet outcome.
+ *
+ * Now returns what happened, so a caller can log it:
+ *   'inserted' — a new row was written.
+ *   'existed'  — skipIfExists found one; visibility updated if it differed.
+ *                Callers use this as "not the first share", e.g. to avoid
+ *                re-sending a share notification on every toggle.
+ *   'failed'   — with the message. The session is saved; the calendar is not.
  */
 export async function syncSessionCalendarEvent({
   supabase,
@@ -49,24 +66,32 @@ export async function syncSessionCalendarEvent({
   eventDate,
   visibleToAthlete,
   skipIfExists,
-}: SyncSessionCalendarEventArgs): Promise<boolean> {
+}: SyncSessionCalendarEventArgs): Promise<SyncResult> {
   if (skipIfExists) {
-    const { data: existing } = await supabase
+    // maybeSingle() errors when more than one row comes back. That error used
+    // to be discarded, so a session that somehow had two events fell through
+    // to the insert below and got a third. Migration 027 makes the duplicate
+    // impossible; this reports it rather than compounding it if it ever
+    // happens anyway.
+    const { data: existing, error: lookupError } = await supabase
       .from('calendar_events')
       .select('id, visible_to_athlete')
       .eq('session_id', sessionId)
       .maybeSingle()
 
+    if (lookupError) return { outcome: 'failed', error: lookupError.message }
+
     if (existing) {
       // The event already exists (created at save time). A later share toggle
       // only changes who can see it — never adds a second row.
       if (existing.visible_to_athlete !== visibleToAthlete) {
-        await supabase
+        const { error: updateError } = await supabase
           .from('calendar_events')
           .update({ visible_to_athlete: visibleToAthlete })
           .eq('id', existing.id)
+        if (updateError) return { outcome: 'failed', error: updateError.message }
       }
-      return false
+      return { outcome: 'existed' }
     }
   }
 
@@ -84,5 +109,5 @@ export async function syncSessionCalendarEvent({
       visible_to_athlete: visibleToAthlete,
     })
 
-  return !error
+  return error ? { outcome: 'failed', error: error.message } : { outcome: 'inserted' }
 }
