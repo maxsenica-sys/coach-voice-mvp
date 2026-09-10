@@ -52,6 +52,12 @@
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+// pathToFileURL, not the bare path. A dynamic import of "C:\Users\…" is
+// rejected outright as an unsupported URL scheme 'c:', so this rig could only
+// ever run on Linux — and CI is the only place that is, which makes it a gate
+// the person who just changed the code cannot run before opening the PR. Same
+// lesson as the boot harness and its `npx` spawn.
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
@@ -82,9 +88,9 @@ const OFF = '\x1b[0m'
 
 async function runZone(zone, year) {
   const { calendarDaysBetween, parseISODate, todayISODate, sessionISODate, sessionDate } =
-    await import(path.join(ROOT, 'lib/session-date.ts'))
+    await import(pathToFileURL(path.join(ROOT, 'lib/session-date.ts')).href)
   const { buildSpine, startOfWeek, SPINE_WEEKS } =
-    await import(path.join(ROOT, 'lib/training-spine.ts'))
+    await import(pathToFileURL(path.join(ROOT, 'lib/training-spine.ts')).href)
 
   const failures = []
   let checks = 0
