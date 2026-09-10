@@ -289,6 +289,7 @@ export default function AthletePage() {
   // Calendar
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
   const [calLoading, setCalLoading] = useState(false)
+  const [calError, setCalError] = useState('')
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
@@ -417,19 +418,33 @@ export default function AthletePage() {
   }, [router, supabase])
 
   // ── Calendar ──────────────────────────────────────────────
+  /** Only the newest request may write — see the note on the coach's copy in
+   *  app/dashboard/page.tsx. Two quick arrow presses otherwise let the older
+   *  month's response land last and win. */
+  const calReqRef = useRef(0)
+
   const fetchCalendar = useCallback(async (month: string) => {
+    const seq = ++calReqRef.current
     setCalLoading(true)
+    setCalError('')
     try {
-      const res = await fetch(`/api/calendar?month=${month}`, { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok) setCalEvents(json.events ?? [])
+      // apiJson, not raw fetch: `if (res.ok)` with no else swallowed every
+      // failure here, so a 500 left last month's events on screen and said
+      // nothing. Checklist item 1 in CLAUDE.md.
+      const json = await apiJson<{ events: CalendarEvent[] }>(`/api/calendar?month=${month}`, { cache: 'no-store' })
+      if (seq !== calReqRef.current) return
+      setCalEvents(json.events ?? [])
+    } catch (e: unknown) {
+      if (seq !== calReqRef.current) return
+      setCalEvents([])
+      setCalError(errorMessage(e, 'Could not load this month.'))
     } finally {
-      setCalLoading(false)
+      if (seq === calReqRef.current) setCalLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    if (tab === 'calendar' && athleteId) fetchCalendar(calMonth)
+    if (tab === 'calendar' && athleteId) void fetchCalendar(calMonth)
   }, [tab, athleteId, calMonth, fetchCalendar])
 
   // ── The athlete's own wellness history ────────────────────
@@ -496,12 +511,20 @@ export default function AthletePage() {
   useEffect(() => {
     if (tab !== 'calendar' || !athleteId) return
     // Load upcoming coach events with rsvp_enabled for this athlete
-    fetch(`/api/calendar?month=${calMonth}`)
-      .then((r) => r.json())
-      .then((j) => {
-        const coachEvents = ((j.events ?? []) as RsvpEvent[]).filter((e) => e.created_by_role === 'coach' && e.rsvp_enabled)
-        setRsvpEvents(coachEvents)
-      })
+    // No `.catch` and no res.ok check here previously: a network failure or an
+    // HTML error page became an unhandled rejection during a month change,
+    // which is precisely when this fires. It shares its month with the grid,
+    // so it must not be able to take the tab down with it.
+    void (async () => {
+      try {
+        const j = await apiJson<{ events: RsvpEvent[] }>(`/api/calendar?month=${calMonth}`)
+        setRsvpEvents((j.events ?? []).filter((e) => e.created_by_role === 'coach' && e.rsvp_enabled))
+      } catch {
+        // The grid's own error line already reports a failed month. An RSVP
+        // list that cannot load is not worth a second message.
+        setRsvpEvents([])
+      }
+    })()
   }, [tab, athleteId, calMonth])
 
   const sendMessage = async () => {
@@ -1644,17 +1667,26 @@ export default function AthletePage() {
                 </div>
               )}
             </div>
-            {calLoading ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>Loading calendar…</div>
-            ) : !athleteId ? (
+            {/* The `!athleteId` branch is a real empty state and stays. The
+                `calLoading` branch that used to sit in front of it did not:
+                it unmounted the calendar on every month change and threw away
+                the month just chosen. See lib/calendar-month.ts. */}
+            {calError && (
+              <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 12 }}>
+                {calError}
+              </div>
+            )}
+            {!athleteId ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>Connect to a coach first to see your calendar.</div>
             ) : (
               <Calendar
                 events={calEvents}
                 role="athlete"
+                month={calMonth}
+                loading={calLoading}
                 onAddEvent={(date) => setAddEventModal(date)}
                 onDeleteEvent={deleteCalEvent}
-                onMonthChange={m => setCalMonth(m)}
+                onMonthChange={setCalMonth}
               />
             )}
 

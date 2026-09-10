@@ -468,6 +468,7 @@ function DashboardPageInner() {
   const [calTargetId, setCalTargetId] = useState('')
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
   const [calLoading, setCalLoading] = useState(false)
+  const [calError, setCalError] = useState('')
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -639,23 +640,45 @@ function DashboardPageInner() {
     setUnreadCounts(counts)
   }, [])
 
+  /**
+   * Only the newest request may write. Pressing ‹ twice quickly fires two
+   * fetches with no ordering guarantee, so without this the older month's
+   * response can land last and win — the grid then shows one month and the
+   * dots belong to another, which looks exactly like the unmount bug it sits
+   * next to. The same counter owns `calLoading`, because a plain boolean is
+   * cleared by whichever request finishes first while the other is still out.
+   */
+  const calReqRef = useRef(0)
+
   const fetchCalendar = useCallback(async (mode: CalMode, targetId: string, month: string) => {
     // Don't fetch athlete/group calendars until a target is selected
     if ((mode === 'athlete' || mode === 'group') && !targetId) {
       setCalEvents([])
+      setCalError('')
       return
     }
+    const seq = ++calReqRef.current
     setCalLoading(true)
+    setCalError('')
     try {
       const p = new URLSearchParams({ month })
       if (mode === 'personal') p.set('mode', 'personal')
       else if (mode === 'group') p.set('group_id', targetId)
       else p.set('athlete_id', targetId)
-      const res = await fetch(`/api/calendar?${p}`, { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok) setCalEvents(json.events ?? [])
-      else console.error('[Calendar fetch]', json?.error)
-    } finally { setCalLoading(false) }
+      // apiJson, not raw fetch: a non-2xx used to be swallowed here, leaving
+      // the previous month's events on screen with nothing said. Checklist
+      // item 1 in CLAUDE.md.
+      const json = await apiJson<{ events: CalendarEvent[] }>(`/api/calendar?${p}`, { cache: 'no-store' })
+      if (seq !== calReqRef.current) return
+      setCalEvents(json.events ?? [])
+    } catch (e: unknown) {
+      if (seq !== calReqRef.current) return
+      // Say so rather than showing a stale month as if it were this one.
+      setCalEvents([])
+      setCalError(errorMessage(e, 'Could not load this month.'))
+    } finally {
+      if (seq === calReqRef.current) setCalLoading(false)
+    }
   }, [])
 
   // Keep ref in sync so Realtime closure always sees fresh athletes
@@ -690,7 +713,7 @@ function DashboardPageInner() {
   }, [coachUserId])
 
   useEffect(() => {
-    if (tab === 'calendar') fetchCalendar(calMode, calTargetId, calMonth)
+    if (tab === 'calendar') void fetchCalendar(calMode, calTargetId, calMonth)
   }, [tab, calMode, calTargetId, calMonth, fetchCalendar])
 
   useEffect(() => {
@@ -1681,10 +1704,25 @@ function DashboardPageInner() {
                     <div className="section-title" style={{ fontSize: 'var(--fs-4)' }}>{calTitle}</div>
                     <div className="section-sub">{calSubtitle}</div>
                   </div>
-                  {calLoading
-                    ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 30 }}>Loading…</div>
-                    : <Calendar events={calEvents} role="coach" onAddEvent={date => setAddEventModal({ date })} onDeleteEvent={deleteEvent} onMonthChange={m => setCalMonth(m)} />
-                  }
+                  {calError && (
+                    <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 12 }}>
+                      {calError}
+                    </div>
+                  )}
+                  {/* Rendered unconditionally. The `calLoading ? … : <Calendar/>`
+                      that used to be here unmounted the calendar on every
+                      month change, which is what made the grid snap back to
+                      today while the events belonged to the month the coach
+                      had asked for. lib/calendar-month.ts has the full trace. */}
+                  <Calendar
+                    events={calEvents}
+                    role="coach"
+                    month={calMonth}
+                    loading={calLoading}
+                    onAddEvent={date => setAddEventModal({ date })}
+                    onDeleteEvent={deleteEvent}
+                    onMonthChange={setCalMonth}
+                  />
                 </div>
               </div>
             </div>
