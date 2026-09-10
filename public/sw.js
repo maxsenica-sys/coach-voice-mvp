@@ -63,6 +63,29 @@ function isCacheable(url) {
   return /^\/(icon|apple-icon)[^/]*\.(png|svg)$/.test(url.pathname)
 }
 
+/* An upper bound on entries, because these URLs are content-hashed.
+ *
+ * That is what makes them safe to cache forever, and it is also why the cache
+ * would otherwise grow forever: every deploy mints new chunk names, the old
+ * ones stop being requested, and nothing ever asks for them again — so nothing
+ * would ever evict them. Over months of deploys that is tens of megabytes of
+ * JavaScript no version of the app can use, on a phone.
+ *
+ * `cache.keys()` returns insertion order, so dropping from the front evicts
+ * the oldest, which is the least likely to belong to the current deploy. The
+ * limit is generous: a full page load of this app is well under a hundred
+ * requests, so the live set is never at risk of being trimmed.
+ */
+const MAX_ENTRIES = 240
+
+async function trim(cache) {
+  const keys = await cache.keys()
+  if (keys.length <= MAX_ENTRIES) return
+  for (const req of keys.slice(0, keys.length - MAX_ENTRIES)) {
+    await cache.delete(req)
+  }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
@@ -111,7 +134,7 @@ self.addEventListener('fetch', (event) => {
       // Only a clean, complete, same-origin 200 is worth keeping. An opaque or
       // partial response cached here would be served forever.
       if (res.ok && res.status === 200 && res.type === 'basic') {
-        cache.put(req, res.clone()).catch(() => { /* quota, most likely */ })
+        cache.put(req, res.clone()).then(() => trim(cache)).catch(() => { /* quota, most likely */ })
       }
       return res
     })(),
