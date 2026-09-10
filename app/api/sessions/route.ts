@@ -168,6 +168,29 @@ export async function POST(req: NextRequest) {
     return attachCookies(res, cookiesToSet)
   }
 
+  // The athlete has to be this coach's. Nothing checked it: the session insert
+  // has `coach_id: user.id` so RLS lets it through regardless, but the calendar
+  // sync's WITH CHECK (migration 017) requires `athlete_id in (select id from
+  // athletes where coach_id = auth.uid())`. So an athlete_id belonging to
+  // someone else produced a saved session, an HTTP 200, and a calendar row
+  // silently refused — asymmetric because /api/calendar reads with the
+  // service-role client and RLS never sees the read. Rejecting it here means
+  // the write path and the read path agree on who owns what.
+  //
+  // Zero such rows exist today. Nothing prevented one.
+  {
+    const { data: owned } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('id', athlete_id)
+      .eq('coach_id', user.id)
+      .maybeSingle()
+    if (!owned) {
+      const res = NextResponse.json({ error: 'That athlete was not found, or is not yours.' }, { status: 403 })
+      return attachCookies(res, cookiesToSet)
+    }
+  }
+
   // Resolve the sport server-side rather than trusting the client to send it.
   // 26 of the first 40 sessions saved with sport_context null even though the
   // coach's profile said Volleyball — the recorder reads `coachSport` from
@@ -250,7 +273,7 @@ export async function POST(req: NextRequest) {
   // calendar without vanishing from the coach's.
   if (data?.id) {
     const dateStr = data.session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date())
-    await syncSessionCalendarEvent({
+    const sync = await syncSessionCalendarEvent({
       supabase,
       sessionId: data.id,
       athleteId: athlete_id,
@@ -260,6 +283,15 @@ export async function POST(req: NextRequest) {
       eventDate: dateStr,
       visibleToAthlete: shared_with_athlete,
     })
+    // The return value used to be discarded, and before that the helper threw
+    // the error away too — so the one outcome that matters, the row not being
+    // written, produced a 200 and a session on nobody's calendar. That is the
+    // incident migration 018 exists to clean up, and it could have recurred
+    // without anyone noticing. The session is genuinely saved either way, so
+    // this logs rather than failing the request.
+    if (sync.outcome === 'failed') {
+      console.error('[sessions POST] calendar sync failed', { sessionId: data.id, athlete_id, error: sync.error })
+    }
 
     if (shared_with_athlete) {
       await notifySessionShared({

@@ -18,7 +18,9 @@ import {
   WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint,
   type WellnessCheckin, type WellnessAlert,
 } from '@/lib/wellness-config'
-import { formatSessionDate } from '@/lib/session-date'
+import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
+import { formatSessionDate, sessionISODate } from '@/lib/session-date'
+import { currentMonth, parseMonth, sameMonth, toMonthStr } from '@/lib/calendar-month'
 import { errorMessage } from '@/lib/errors'
 import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 
@@ -309,6 +311,89 @@ export default function AthleteDetailPage() {
   // ── Wellness at-a-glance (Overview card + header chip) ───────────
   // Self-contained, same pattern as WellnessGraph's own fetch: a failure
   // here shouldn't block the rest of the profile from loading.
+  /* ── This athlete's calendar ────────────────────────────────────────────
+   *
+   * The Calendar tab used to be a paragraph of text — "Sessions recorded with
+   * this athlete appear here" — followed by a button sending the coach to the
+   * main Calendar tab to find the athlete again by hand. Nothing was ever
+   * rendered here, for any athlete, which is what "the calendar is not
+   * synchronised with that specific athlete" was describing.
+   *
+   * The athlete id comes from the route, so the scope cannot be wrong. It also
+   * cannot be stale: athleteId drives the reset effect below and is a
+   * dependency of the fetch, so opening Nick and then Riley refetches rather
+   * than leaving Nick's events on screen under Riley's name.
+   *
+   * Same month contract as the other two hosts — see lib/calendar-month.ts.
+   * This page must never own a second copy of the month.
+   */
+  const [calMonth, setCalMonth] = useState(() => toMonthStr(currentMonth()))
+  const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
+  const [calLoading, setCalLoading] = useState(false)
+  const [calError, setCalError] = useState('')
+  const calReqRef = useRef(0)
+
+  // Back to today's month, and empty, whenever the athlete changes. Without
+  // this, moving between profiles keeps the previous athlete's events on
+  // screen until the new fetch lands — under the new athlete's name.
+  useEffect(() => {
+    setCalMonth(toMonthStr(currentMonth()))
+    setCalEvents([])
+    setCalError('')
+    calReqRef.current++
+  }, [athleteId])
+
+  useEffect(() => {
+    if (activeTab !== 'calendar' || !athleteId) return
+    const seq = ++calReqRef.current
+    setCalLoading(true)
+    setCalError('')
+    void (async () => {
+      try {
+        const json = await apiJson<{ events: CalendarEvent[] }>(
+          '/api/calendar?athlete_id=' + encodeURIComponent(athleteId) + '&month=' + calMonth,
+          { cache: 'no-store' },
+        )
+        if (seq !== calReqRef.current) return
+        setCalEvents(json.events ?? [])
+      } catch (e: unknown) {
+        if (seq !== calReqRef.current) return
+        setCalEvents([])
+        setCalError(errorMessage(e, 'Could not load this month.'))
+      } finally {
+        if (seq === calReqRef.current) setCalLoading(false)
+      }
+    })()
+  }, [activeTab, athleteId, calMonth])
+
+  const deleteCalEvent = async (id: string) => {
+    try {
+      await apiMutate('/api/calendar?id=' + encodeURIComponent(id), { method: 'DELETE' })
+      setCalEvents((evs) => evs.filter((e) => e.id !== id))
+    } catch (e: unknown) {
+      setCalError(errorMessage(e, 'Could not delete that event.'))
+    }
+  }
+
+  /* Where this athlete's sessions actually are.
+   *
+   * The calendar shows one month at a time, so an athlete whose last session
+   * was in August opens on an empty September grid — which reads as "this
+   * athlete has no sessions", and was half of the reported "some athletes have
+   * their sessions on their calendar and others do not". The sessions array is
+   * every session for this athlete, uncapped (GET /api/sessions is scoped by
+   * athlete and has no limit), so the count and date below are exact rather
+   * than derived from a truncated window. */
+  const latestSessionISO = sessions
+    .map((x) => sessionISODate(x))
+    .filter((d): d is string => !!d)
+    .sort()
+    .at(-1) ?? null
+  const latestSessionMonth = latestSessionISO ? latestSessionISO.slice(0, 7) : null
+  const viewingLatestMonth = latestSessionMonth
+    ? sameMonth(parseMonth(calMonth), parseMonth(latestSessionMonth))
+    : true
+
   const [wellnessLatest, setWellnessLatest] = useState<WellnessCheckin | null>(null)
   const [wellnessAlert, setWellnessAlert] = useState<WellnessAlert | null>(null)
   useEffect(() => {
@@ -1127,12 +1212,45 @@ export default function AthleteDetailPage() {
         ══════════════════════════════════════ */}
         {activeTab === 'calendar' && athlete && (
           <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Athlete Calendar</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-              Sessions recorded with this athlete appear here. Use the main{' '}
-              <button className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 8px' }} onClick={() => router.push('/dashboard?tab=calendar')}>Calendar tab</button>{' '}
-              to view your full schedule and add events.
+            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+              {athlete.first_name}&rsquo;s calendar
             </div>
+            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginBottom: 14 }}>
+              {sessions.length === 0
+                ? 'No sessions recorded yet. Anything you record for them appears here.'
+                : `${sessions.length} session${sessions.length === 1 ? '' : 's'} recorded${latestSessionISO ? ` · most recent ${formatSessionDate({ session_date: latestSessionISO }, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`}
+            </div>
+
+            {/* A one-month window over months of history is how "this athlete
+                has no sessions" gets read off an empty grid. Say where they
+                are, and offer to go. Hidden once you are already there, so it
+                disappears the moment it stops being useful. */}
+            {latestSessionMonth && !viewingLatestMonth && (
+              <button
+                className="btn btn-ghost"
+                onClick={() => setCalMonth(latestSessionMonth)}
+                style={{ fontSize: 'var(--fs-2)', padding: '6px 12px', marginBottom: 12 }}
+              >
+                Jump to their most recent session &rarr;
+              </button>
+            )}
+
+            {calError && (
+              <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 12 }}>
+                {calError}
+              </div>
+            )}
+
+            {/* Rendered unconditionally and handed the loading prop. Swapping it out
+                for a spinner is the bug in lib/calendar-month.ts. */}
+            <Calendar
+              events={calEvents}
+              role="coach"
+              month={calMonth}
+              loading={calLoading}
+              onDeleteEvent={deleteCalEvent}
+              onMonthChange={setCalMonth}
+            />
           </div>
         )}
 
