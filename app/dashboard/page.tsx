@@ -437,6 +437,14 @@ function DashboardPageInner() {
 
   const [allSessions, setAllSessions] = useState<Session[]>([])
   const [coverage, setCoverage] = useState<CoverageRow[]>([])
+  /* Whether the coverage read has come back at all — not the same question as
+   * whether it is empty.
+   *
+   * The Inactive filter is computed from it, so before it lands the list is
+   * empty for want of data. Saying "nobody has gone more than 14 days without
+   * a recording" at that moment states as fact something we do not know yet,
+   * and it is the wrong way round: the answer today is four of eight. */
+  const [coverageLoaded, setCoverageLoaded] = useState(false)
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [sessionsSearch, setSessionsSearch] = useState('')
   const [sessionsAthleteFilter, setSessionsAthleteFilter] = useState('')
@@ -630,9 +638,12 @@ function DashboardPageInner() {
       )
       setCoverage(rows ?? [])
     } catch {
-      // A failed coverage read must not break the dashboard: the strip simply
-      // does not render, exactly as it does for a coach with nobody overdue.
+      // A failed coverage read must not break the dashboard. The Inactive
+      // filter then reports that it could not work it out, rather than
+      // claiming the roster is fine.
       setCoverage([])
+    } finally {
+      setCoverageLoaded(true)
     }
   }
 
@@ -1436,8 +1447,14 @@ function DashboardPageInner() {
                   {athletes.length === 0
                     ? 'No athletes yet. Add one to get started.'
                     : athleteFilter === 'INACTIVE' && !athleteSearch
-                      // An empty Inactive list is the answer, not a dead end.
-                      ? `Nobody has gone more than ${QUIET_AFTER_DAYS} days without a recording.`
+                      // An empty Inactive list is the answer, not a dead end —
+                      // but only once we know it. Until the coverage read
+                      // lands the list is empty for want of data, and saying
+                      // nobody is overdue would be asserting the opposite of
+                      // the truth.
+                      ? coverageLoaded
+                        ? `Nobody has gone more than ${QUIET_AFTER_DAYS} days without a recording.`
+                        : 'Working out who has been quiet…'
                       : 'No athletes match your search.'}
                 </div>
               ) : (
