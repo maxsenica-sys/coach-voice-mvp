@@ -180,10 +180,10 @@ const RULES = [
     id: 'SG4',
     title: 'Coach-attention data never reaches an athlete surface',
     why: 'The coverage ranking answers "which of these children has the coach spent least time on". Shown to a coach it is a prompt to act. Shown to a child it is either a wound or a league table of who the coach likes best, which is the comparison-between-kids this product forbids outright.',
-    cite: 'app/components/AttentionStrip.tsx — "Do not move it"; PROJECT-STATE.md safeguarding limits',
+    cite: 'lib/attention.ts — "Coach-only, always"; PROJECT-STATE.md safeguarding limits',
     check(files) {
       const found = []
-      const forbidden = /@\/lib\/attention|AttentionStrip|athletes\/coverage/
+      const forbidden = /@\/lib\/attention|athletes\/coverage/
       for (const f of files) {
         // Athlete-facing surfaces: the athlete app, and the athlete's own
         // shared session view is role-agnostic so it is included too.

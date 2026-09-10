@@ -11,9 +11,8 @@ import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
 import { apiJson, apiMutate } from '@/lib/api-client'
-import AttentionStrip from '@/app/components/AttentionStrip'
 import PendingRecordings from '@/app/components/PendingRecordings'
-import type { CoverageRow } from '@/lib/attention'
+import { gapLabel, isQuiet, QUIET_AFTER_DAYS, type CoverageRow } from '@/lib/attention'
 import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
 import { activeCount } from '@/lib/athlete-status'
@@ -417,7 +416,11 @@ function DashboardPageInner() {
   const [loadingAthletes, setLoadingAthletes] = useState(false)
   const [wellnessByAthlete, setWellnessByAthlete] = useState<Map<string, WellnessCheckin>>(new Map())
   const [athleteSearch, setAthleteSearch] = useState('')
-  const [athleteFilter, setAthleteFilter] = useState<'all' | 'ACTIVE' | 'INVITED'>('all')
+  // 'INACTIVE' is not a status like the other two — an athlete is both ACTIVE
+  // and inactive when they have signed in but nobody has recorded for them in
+  // a fortnight. It is a separate question about the same roster, which is why
+  // it is a filter rather than a fourth badge. See lib/attention.ts.
+  const [athleteFilter, setAthleteFilter] = useState<'all' | 'ACTIVE' | 'INVITED' | 'INACTIVE'>('all')
   const [addForm, setAddForm] = useState({ firstName: '', lastName: '', email: '' })
   const [addMsg, setAddMsg] = useState('')
   const [addLoading, setAddLoading] = useState(false)
@@ -859,13 +862,6 @@ function DashboardPageInner() {
 
   const logout = async () => { clearCachedProfile(); await supabase.auth.signOut(); router.push('/') }
 
-  const filteredAthletes = athletes.filter(a => {
-    const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
-    if (athleteFilter !== 'all' && status !== athleteFilter) return false
-    const s = athleteSearch.toLowerCase()
-    return !s || a.first_name.toLowerCase().includes(s) || a.last_name.toLowerCase().includes(s) || a.email.toLowerCase().includes(s)
-  })
-  const activeAthletes = athletes.filter(a => a.athlete_user_id)
   /**
    * Per-athlete session totals, from the coverage route rather than from
    * `allSessions`.
@@ -881,6 +877,27 @@ function DashboardPageInner() {
     () => new Map(coverage.map((c) => [c.athlete_id, c])),
     [coverage],
   )
+
+  /** Inactive: nobody has recorded for them in a fortnight. lib/attention.ts
+   *  owns the threshold; this only asks the question. Uncomputable until the
+   *  coverage read lands, which is why it is keyed off the same map the roster
+   *  cards use rather than off the truncated `allSessions` window — deriving
+   *  it from that would report "no sessions yet" for an athlete with twenty
+   *  and put them in this list wrongly. */
+  const inactiveIds = useMemo(
+    () => new Set(coverage.filter(isQuiet).map((c) => c.athlete_id)),
+    [coverage],
+  )
+
+  const filteredAthletes = athletes.filter(a => {
+    const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
+    if (athleteFilter === 'INACTIVE') {
+      if (!inactiveIds.has(a.id)) return false
+    } else if (athleteFilter !== 'all' && status !== athleteFilter) return false
+    const s = athleteSearch.toLowerCase()
+    return !s || a.first_name.toLowerCase().includes(s) || a.last_name.toLowerCase().includes(s) || a.email.toLowerCase().includes(s)
+  })
+  const activeAthletes = athletes.filter(a => a.athlete_user_id)
 
   const recentSessions = allSessions.slice(0, 3)
   const thisWeek = allSessions.filter(s => {
@@ -1158,20 +1175,6 @@ function DashboardPageInner() {
                     is more urgent than any summary of past ones. */}
                 <PendingRecordings onSynced={() => { fetchAllSessions(); fetchCoverage() }} />
 
-                {/* Quiet lately — who has gone longest without a recording.
-                    Sits above "Recent sessions" deliberately: recent sessions
-                    are what the coach has already done, this is what they have
-                    not. It renders nothing when nobody is overdue, so a coach
-                    on top of their roster never sees it. */}
-                <AttentionStrip
-                  coverage={coverage}
-                  onSelect={(id) => {
-                    setQuickSessionAthleteId(id)
-                    setQuickSessionGroupId(undefined)
-                    setQuickSessionOpen(true)
-                  }}
-                />
-
                 {/* Recent sessions */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
@@ -1393,9 +1396,10 @@ function DashboardPageInner() {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <input className="input" placeholder="Search…" value={athleteSearch} onChange={e => setAthleteSearch(e.target.value)} style={{ maxWidth: 260 }} />
                 <div style={{ display: 'flex', gap: 4 }}>
-                  {(['all','ACTIVE','INVITED'] as const).map(f => (
+                  {(['all','ACTIVE','INVITED','INACTIVE'] as const).map(f => (
                     <button key={f} onClick={() => setAthleteFilter(f)} style={{ padding: '7px 12px', borderRadius: 7, border: '1.5px solid', borderColor: athleteFilter === f ? 'var(--primary)' : 'var(--border)', background: athleteFilter === f ? 'var(--primary)' : 'transparent', color: athleteFilter === f ? '#fff' : 'var(--text-2)', fontSize: 'var(--fs-2)', fontWeight: athleteFilter === f ? 700 : 400, cursor: 'pointer' }}>
                       {f === 'all' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
+                      {f === 'INACTIVE' && inactiveIds.size > 0 && ` · ${inactiveIds.size}`}
                     </button>
                   ))}
                 </div>
@@ -1406,7 +1410,12 @@ function DashboardPageInner() {
 
               {filteredAthletes.length === 0 ? (
                 <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                  {athletes.length === 0 ? 'No athletes yet. Add one to get started.' : 'No athletes match your search.'}
+                  {athletes.length === 0
+                    ? 'No athletes yet. Add one to get started.'
+                    : athleteFilter === 'INACTIVE' && !athleteSearch
+                      // An empty Inactive list is the answer, not a dead end.
+                      ? `Nobody has gone more than ${QUIET_AFTER_DAYS} days without a recording.`
+                      : 'No athletes match your search.'}
                 </div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
@@ -1436,6 +1445,15 @@ function DashboardPageInner() {
                               {lastDate ? `Last session ${formatSessionDate({ session_date: lastDate }, {})}` : 'No sessions yet'}
                               {count > 0 && ` · ${count} total`}
                             </div>
+                            {/* Only when it is true, and only ever to the
+                                coach. A date on its own does not read as "this
+                                has been too long" at a glance, which is the
+                                whole point of the Inactive filter. */}
+                            {cov && isQuiet(cov) && (
+                              <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--energy-dark)', marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                Quiet · {gapLabel(cov)}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
