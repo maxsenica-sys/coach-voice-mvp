@@ -333,6 +333,15 @@ export default function AthleteDetailPage() {
   const [calLoading, setCalLoading] = useState(false)
   const [calError, setCalError] = useState('')
   const calReqRef = useRef(0)
+  /* Bumped to force a refetch of the month already on screen.
+   *
+   * Without it, "refetch" had to be expressed as `setCalMonth(newMonth)` and
+   * relied on the value actually differing. Adding an upcoming session for a
+   * date in the month already displayed sets the same string, React bails out,
+   * the effect below never re-runs — and the coach's new session does not
+   * appear. Which is the commonest case there is: you usually book something
+   * this month. */
+  const [calReload, setCalReload] = useState(0)
 
   // Back to today's month, and empty, whenever the athlete changes. Without
   // this, moving between profiles keeps the previous athlete's events on
@@ -365,7 +374,7 @@ export default function AthleteDetailPage() {
         if (seq === calReqRef.current) setCalLoading(false)
       }
     })()
-  }, [activeTab, athleteId, calMonth])
+  }, [activeTab, athleteId, calMonth, calReload])
 
   const deleteCalEvent = async (id: string) => {
     try {
@@ -447,12 +456,12 @@ export default function AthleteDetailPage() {
         }),
       })
       setUpcomingForm(null)
-      // Show the month the session was added to, which refetches. Adding a
-      // session in October from September's grid would otherwise look like
-      // nothing happened.
+      // Show the month it was added to — booking something in October from
+      // September's grid would otherwise look like nothing happened — and
+      // force the refetch rather than relying on the month string changing,
+      // because usually it has not.
       setCalMonth(upcomingForm.date.slice(0, 7))
-      calReqRef.current++
-      setCalEvents([])
+      setCalReload((n) => n + 1)
     } catch (e: unknown) {
       setCalError(errorMessage(e, 'Could not add that session.'))
     } finally {
