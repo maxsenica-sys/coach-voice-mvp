@@ -37,6 +37,8 @@ from pocket_todoist import dedupe, extract, pipeline, prompt, routing, vault  # 
 from pocket_todoist.dates import resolve_due  # noqa: E402
 from pocket_todoist.sinks.todoist_sink import TodoistSink  # noqa: E402
 
+import plan as plan_module  # noqa: E402
+
 GOLDEN = os.path.join(HERE, "fixtures", "golden-prompt.txt")
 
 FAILURES = []
@@ -46,7 +48,10 @@ CHECKS = [0]
 def check(name, condition, detail=""):
     CHECKS[0] += 1
     if not condition:
-        FAILURES.append(f"{name}{(' -- ' + detail) if detail else ''}")
+        # Coerced, because a rig that crashes while reporting a failure hides
+        # every failure after it.
+        suffix = f" -- {detail}" if detail else ""
+        FAILURES.append(f"{name}{suffix}")
 
 
 def equal(name, actual, expected):
@@ -505,6 +510,112 @@ def rig_pipeline():
                   not os.path.exists(clean_config["vault"]["state_file"]))
 
 
+
+# --- Rig 5: the phone path (plan.py) ----------------------------------------
+
+def rig_plan():
+    """plan.py runs when the vault is on a phone and there are no credentials.
+
+    Its duplicate check has to be stricter than run.py's, because the tasks the
+    older .automation/run.py pipeline wrote carry no ref at all. Similarity
+    against every existing Pocket task is the only thing that can see them.
+    """
+    config, _ = config_module.load()
+    config["vault"]["name"] = "Second Brain"
+
+    recordings = [{
+        "recording_id": "rec-1",
+        "title": "Chat about Kevin and HPA",
+        "date": "2026-09-11",
+        "transcript": WORKED_EXAMPLE_2,
+    }]
+    extractions = {"rec-1": {
+        "action_items": [
+            {"title": "Message Kevin about Friday training", "context": "",
+             "owner": "me", "owner_name": "", "due_phrase": "tomorrow",
+             "priority": "high", "topic": "Coaching"},
+            {"title": "Finish the HPA testing document", "context": "",
+             "owner": "me", "owner_name": "", "due_phrase": "next week",
+             "priority": "normal", "topic": "HPA"},
+            {"title": "Dan to send the gym program images", "context": "",
+             "owner": "other", "owner_name": "Dan", "due_phrase": "",
+             "priority": "normal", "topic": "Coaching"},
+        ],
+        "ideas": ["Six-weekly testing blocks"],
+        "notes": [], "decisions": [],
+    }}
+    projects = [{"id": "1", "name": "Inbox"}, {"id": "2", "name": "Actions"},
+                {"id": "3", "name": "Waiting On"}]
+
+    result = plan_module.build(list(recordings), extractions, [], projects, config)
+    by_title = {t["content"]: t for t in result["create"]}
+    equal("plan: three tasks planned", len(result["create"]), 3)
+
+    kevin = by_title.get("Message Kevin about Friday training")
+    check("plan: the Kevin task exists", kevin is not None, list(by_title))
+    if kevin:
+        equal("plan: Kevin lands in Actions", kevin["project_name"], "Actions")
+        equal("plan: and uses that project's real id", kevin["projectId"], "2")
+        equal("plan: 'tomorrow' resolves against the recording's date",
+              kevin["due_local"], "2026-09-12T08:00:00")
+        equal("plan: 8am Brisbane is sent to Todoist as the night before in UTC",
+              kevin["due_datetime_utc"], "2026-09-11T22:00:00.000000Z")
+        equal("plan: 'high' becomes Todoist p2", kevin["priority"], 3)
+        equal("plan: and is spelled out for callers that name priorities",
+              kevin["priorityLabel"], "p2")
+        equal("plan: the due string carries a time, not just a date",
+              kevin["dueString"], "2026-09-12 at 08:00")
+        check("plan: every task carries the Pocket label", "Pocket" in kevin["labels"])
+        check("plan: the topic rides along as a label", "Coaching" in kevin["labels"])
+        check("plan: the description links back to the vault",
+              "obsidian://search?vault=Second%20Brain" in kevin["description"])
+        check("plan: the description carries a ref",
+              bool(dedupe.refs_in(kevin["description"])))
+        check("plan: the transcript is NOT sent to Todoist",
+              "I also need to finish" not in kevin["description"])
+
+    hpa = by_title.get("Finish the HPA testing document")
+    if hpa:
+        equal("plan: 'next week' is the coming Monday", hpa["due_local"][:10], "2026-09-14")
+
+    dan = next((t for t in result["create"] if t["content"].startswith("Dan:")), None)
+    check("plan: someone else's commitment is prefixed with their name", dan is not None,
+          list(by_title))
+    if dan:
+        equal("plan: and routed to Waiting On", dan["project_name"], "Waiting On")
+        check("plan: with no invented due date", "due_local" not in dan)
+        check("plan: and no due string either", "dueString" not in dan)
+
+    check("plan: an Obsidian block is produced for the note",
+          "Six-weekly testing blocks" in result["obsidian_blocks"]["rec-1"])
+
+    # Re-planning the same recording against the tasks it produced must be a
+    # no-op. This is the whole safety property of re-running.
+    existing = [{"id": "x", "content": t["content"], "description": t["description"]}
+                for t in result["create"]]
+    again = plan_module.build(list(recordings), extractions, existing, projects, config)
+    equal("plan: re-planning creates nothing", len(again["create"]), 0)
+    check("plan: and says why", all("ref already" in s["reason"] for s in again["skipped"]))
+
+    # The case refs cannot cover: a task written by the OLD pipeline, which has
+    # no ref in its description at all.
+    legacy = [{"id": "old", "content": "Message Kevin about Friday training",
+               "description": "Source: some other note (2026-09-06)"}]
+    legacy_plan = plan_module.build(list(recordings), extractions, legacy, projects, config)
+    titles = [t["content"] for t in legacy_plan["create"]]
+    check("plan: a ref-less task from the old pipeline is still recognised",
+          "Message Kevin about Friday training" not in titles, titles)
+    equal("plan: and the genuinely new ones are still planned", len(titles), 2)
+
+    # A recording nobody extracted must not silently vanish.
+    orphan = plan_module.build(
+        [{"recording_id": "rec-9", "title": "Unread", "date": "2026-09-11",
+          "transcript": "x"}], {}, [], projects, config)
+    equal("plan: an unextracted recording creates nothing", len(orphan["create"]), 0)
+    check("plan: and is reported rather than dropped",
+          any("no extraction" in s["reason"] for s in orphan["skipped"]))
+
+
 def main():
     update = "--update-golden" in sys.argv
     rig_prompt(update=update)
@@ -513,6 +624,7 @@ def main():
     rig_dates()
     rig_plumbing()
     rig_pipeline()
+    rig_plan()
 
     if FAILURES:
         print(f"\n{len(FAILURES)} of {CHECKS[0]} checks FAILED:\n")
@@ -520,7 +632,7 @@ def main():
             print(f"  x {failure}")
         return 1
     print(f"All {CHECKS[0]} checks passed "
-          f"(dates, prompt, plumbing, pipeline).")
+          f"(dates, prompt, plumbing, pipeline, plan).")
     return 0
 
 

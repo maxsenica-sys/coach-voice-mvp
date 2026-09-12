@@ -91,6 +91,17 @@ def upsert_frontmatter_block(frontmatter, key, lines):
     return (existing + "\n" + rendered.rstrip("\n")).strip("\n")
 
 
+def obsidian_search_uri(vault_name, query):
+    """A link back when the note's path in the vault is not known.
+
+    The Pocket source knows a recording's title but not where Pocket filed it,
+    and a wrong file path produces a link that silently opens nothing. A search
+    link always lands somewhere useful.
+    """
+    return ("obsidian://search?vault=" + urllib.parse.quote(vault_name, safe="")
+            + "&query=" + urllib.parse.quote(f'"{query}"', safe=""))
+
+
 def obsidian_uri(vault_name, rel_path):
     without_extension = re.sub(r"\.md$", "", rel_path)
     return ("obsidian://open?vault=" + urllib.parse.quote(vault_name, safe="")
