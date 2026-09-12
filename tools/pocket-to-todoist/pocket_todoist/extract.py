@@ -116,9 +116,11 @@ class ClaudeBackend:
         return self._client
 
     def extract(self, note_title, note_date, transcript, topics) -> Extraction:
-        import anthropic
-
+        # Imported here, not at module scope, so the heuristic backend and the
+        # test rigs run on a machine that has never installed it. _get_client
+        # raises the friendly version of this error, so it goes first.
         client = self._get_client()
+        import anthropic
         user_message = prompt_module.build_user_message(
             note_title, note_date, topics, transcript)
         try:
