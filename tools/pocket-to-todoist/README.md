@@ -56,8 +56,9 @@ splits the tool in two, sharing one tested core:
 | Marks the note processed in Obsidian | yes | no: it cannot reach the vault |
 | Runs where | a Mac or laptop | a scheduled Claude session |
 
-**`plan.py` is the one in use today**, because of the iPhone. See
-[ROUTINE.md](ROUTINE.md) for the daily schedule. `run.py` is the better shape
+**`plan.py` is the one in use today**, because of the iPhone. It is driven by
+the `pocket-to-todoist` skill: say "run it", type `/run-it`, or let the daily
+Routine fire. See [ROUTINE.md](ROUTINE.md). `run.py` is the better shape
 and takes over the moment the vault is on a computer: it is the only one that
 can write the extracted ideas and decisions back into the note.
 
