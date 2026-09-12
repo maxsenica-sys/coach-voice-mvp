@@ -44,3 +44,8 @@ next-env.d.ts
 
 # Claude Code worktrees — scratch checkouts, never part of the repo
 .claude/worktrees/
+
+# Pocket -> Todoist automation: local virtualenv created by its install.sh
+tools/pocket-to-todoist/.venv/
+__pycache__/
+*.pyc

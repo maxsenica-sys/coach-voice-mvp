@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Runs the pipeline every 15 minutes, and once at login.
+
+  StandardOutPath/StandardErrorPath are the only record of what happened when
+  nobody is watching, which is the normal case. Check them first if tasks stop
+  appearing.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pocket-todoist</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__RUNPY__</string>
+    <string>--once</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TODOIST_API_TOKEN</key>
+    <string>__TODOIST_TOKEN__</string>
+    <key>ANTHROPIC_API_KEY</key>
+    <string>__ANTHROPIC_KEY__</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>900</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__LOGDIR__/pocket-todoist.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOGDIR__/pocket-todoist.error.log</string>
+</dict>
+</plist>

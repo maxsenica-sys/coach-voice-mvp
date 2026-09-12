@@ -1,0 +1,57 @@
+{
+  "_comment": [
+    "Copy to ~/.config/pocket-todoist/config.json (install.sh does this for you).",
+    "Anything left out falls back to the defaults in pocket_todoist/config.py,",
+    "so this file only needs to hold what differs."
+  ],
+
+  "timezone": "Australia/Brisbane",
+
+  "vault": {
+    "path": "~/Second Brain",
+    "name": "Second Brain",
+
+    "include_folders": ["Pocket"],
+
+    "match": {
+      "frontmatter_keys": ["pocket_id", "recordingId"],
+      "frontmatter_values": { "source": "pocket" },
+      "tags": ["pocket"],
+      "filename_globs": []
+    },
+
+    "processed_key": "pocket_todoist",
+    "state_file": "~/.local/state/pocket-todoist/state.json"
+  },
+
+  "due": {
+    "default_time": "08:00",
+    "evening_time": "18:00",
+    "next_week_anchor": "monday",
+    "this_week_anchor": "friday",
+    "weekend_day": "saturday",
+
+    "phrase_map": {
+      "before training": "today",
+      "before the session": "today",
+      "after training": "today",
+      "first thing": "tomorrow"
+    }
+  },
+
+  "routing": {
+    "owner_projects": { "me": "Actions", "other": "Waiting On" },
+    "fallback_project": "Inbox",
+    "always_labels": ["Pocket"],
+    "use_topic_projects": true
+  },
+
+  "extract": {
+    "backend": "claude",
+    "model": "claude-opus-5"
+  },
+
+  "todoist": {
+    "token_env": "TODOIST_API_TOKEN"
+  }
+}

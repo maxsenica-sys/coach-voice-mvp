@@ -55,6 +55,14 @@ jobs:
       - name: Prompt rig
         run: npm run verify:prompt
 
+      # The Pocket -> Obsidian -> Todoist automation in tools/pocket-to-todoist.
+      # Standalone from the app, so it is deliberately NOT part of `npm run
+      # verify` -- a personal automation should not be able to block a product
+      # merge. It runs here because a rig nothing runs is a rig that rots: no
+      # network, no key, ~0.3s.
+      - name: Pocket -> Todoist rigs
+        run: npm run verify:pocket
+
       # Month navigation. The calendar shipped a bug where every arrow press
       # unmounted the grid and threw away the month it had just set, so the
       # events belonged to one month and the grid drew another — and typecheck,
