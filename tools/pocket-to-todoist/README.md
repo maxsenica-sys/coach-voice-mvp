@@ -43,9 +43,39 @@ This tool is built to **fit that system, not replace it**:
 has not been read or modified. If it is still scheduled somewhere, see
 *Running both* below.
 
+## Two ways to run it
+
+The vault is on an iPhone, so there is no computer to watch a folder on. That
+splits the tool in two, sharing one tested core:
+
+| | `run.py` | `plan.py` |
+|---|---|---|
+| Reads | the vault, on disk | transcripts handed to it as JSON |
+| Talks to Todoist | itself, over REST | no: it emits task payloads |
+| Needs | a computer with the vault, and two API tokens | nothing |
+| Marks the note processed in Obsidian | yes | no: it cannot reach the vault |
+| Runs where | a Mac or laptop | a scheduled Claude session |
+
+**`plan.py` is the one in use today**, because of the iPhone. See
+[ROUTINE.md](ROUTINE.md) for the daily schedule. `run.py` is the better shape
+and takes over the moment the vault is on a computer: it is the only one that
+can write the extracted ideas and decisions back into the note.
+
+Both get their dates, routing, priorities, descriptions and duplicate
+suppression from the same modules and the same rigs. Only the transport differs.
+
+### What the phone costs
+
+One requirement cannot be met without a computer: **marking the note processed
+inside Obsidian**. Nothing here can write to the vault, so "already handled" is
+recorded in Todoist instead, as a `ref:` line in every task description. That is
+durable and survives anything short of deleting the tasks, but the note itself
+does not show that it was read. `plan.py` still produces the Obsidian block for
+each note under `obsidian_blocks`, ready to paste in.
+
 ## Install
 
-On the machine where the vault lives:
+To run the vault watcher, on the machine where the vault lives:
 
 ```bash
 cd tools/pocket-to-todoist

@@ -47,11 +47,7 @@ class TodoistSink(Sink):
         due = resolve_due(action.due_phrase, note.on, config.get("due") or {})
         decision = routing.route(action, self.projects_by_name, config)
 
-        title = action.title
-        if action.owner == "other" and action.owner_name:
-            prefix = f"{action.owner_name}:"
-            if not title.lower().startswith(action.owner_name.lower()):
-                title = f"{prefix} {title}"
+        title = routing.owner_title(action)
 
         description = _describe(note, action, due, context)
 

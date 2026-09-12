@@ -19,8 +19,15 @@ prefers a real project whenever it finds one.
 
 from __future__ import annotations
 
+import re
+
 # Todoist counts priority backwards from the UI: 4 is p1, 1 is p4.
 PRIORITY_TO_TODOIST = {"urgent": 4, "high": 3, "normal": 2, "low": 1}
+
+# The REST API numbers priority backwards; the MCP connector and the UI both
+# name it. Emitting both spellings means neither caller has to convert, and a
+# conversion done by a caller is a conversion nothing tests.
+TODOIST_PRIORITY_LABEL = {4: "p1", 3: "p2", 2: "p3", 1: "p4"}
 
 
 class Route:
@@ -82,3 +89,27 @@ def route(action, projects_by_name, config):
         labels=labels,
         priority=PRIORITY_TO_TODOIST.get(action.priority, 2),
     )
+
+
+def owner_title(action):
+    """The task title as it should read in Todoist.
+
+    Someone else's commitment is written "Name: do the thing", which is the
+    convention the Waiting On project already uses -- the point of that project
+    is scanning a column of names. Titles that already open with the person's
+    name are rewritten into the same shape rather than left as they are, so the
+    column stays scannable: "Dan to send the images" becomes "Dan: send the
+    images", not "Dan: Dan to send the images".
+    """
+    title = (action.title or "").strip()
+    if action.owner != "other" or not action.owner_name:
+        return title
+
+    name = action.owner_name.strip()
+    lead = re.match(rf"^{re.escape(name)}\s*(?::|,|\bto\b|\bwill\b|\bis to\b)?\s*",
+                    title, re.IGNORECASE)
+    if lead:
+        title = title[lead.end():].strip()
+    if not title:
+        return name
+    return f"{name}: {title[:1].lower() + title[1:]}"
