@@ -19,11 +19,20 @@
 
 Every assertion here was verified by breaking the code on purpose and watching
 that specific check go red. A check that has never failed is not known to work.
+
+This file drops the package's __pycache__ before importing anything. Editing a
+constant to another value of the same byte length, twice inside one second,
+leaves Python serving a stale .pyc -- which looks exactly like a rig that failed
+to notice the change. That happened twice while calibrating the similarity
+threshold below, and produced a confidently wrong conclusion both times. A rig
+you cannot trust while deliberately breaking things is not a rig.
 """
 
 from __future__ import annotations
 
 import os
+import pathlib
+import shutil
 import sys
 import tempfile
 from datetime import date, datetime, timedelta
@@ -31,6 +40,11 @@ from zoneinfo import ZoneInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
+
+# Before any import of the package under test. See the module docstring.
+sys.dont_write_bytecode = True
+for _cache in pathlib.Path(os.path.dirname(HERE)).rglob("__pycache__"):
+    shutil.rmtree(_cache, ignore_errors=True)
 
 from pocket_todoist import config as config_module  # noqa: E402
 from pocket_todoist import dedupe, extract, pipeline, prompt, routing, vault  # noqa: E402
@@ -258,6 +272,34 @@ def rig_plumbing():
           not dedupe.is_near_duplicate(
               "Send Dan the gym program",
               ["Send Wyatt the spike timing rhyme", "Update the shoulder page"]))
+
+    # Real pairs from the day a second pipeline wrote the same commitments in
+    # different words. The threshold is calibrated on exactly these.
+    for ours, theirs in [
+        ("Send Jack footwork drills for his passing", "Send Jack the footwork drills"),
+        ("Send Nick his session recording and written summary",
+         "Send Nick's session recording + summary to his parent"),
+        ("Build Jack's six-week gym program", "Write Jack's 6-week gym program"),
+        ("Set up a Google Drive folder for Jack's training videos",
+         "Set up Google Drive folder for Jack's video uploads"),
+        ("Speak with Vicky about setting up online work for Nick",
+         "Speak with Vicky about online work for Nick"),
+    ]:
+        check(f"dedupe: catches the other pipeline's wording -- {theirs[:34]!r}",
+              dedupe.is_near_duplicate(ours, [theirs]))
+
+    # The pairs that must survive the lowered threshold. The first is the
+    # closest false pair in the whole real set, at 0.63.
+    for a, b in [
+        ("Send the footwork and spiking drill material", "Send Jack the footwork drills"),
+        ("Send Nick his session recording and written summary",
+         "Send Jack his full session note (testing + technical)"),
+        ("Speak with Vicky about setting up online work for Nick",
+         "Vicky - decision on online coaching for Nick"),
+        ("Build Jack's six-week gym program", "Build Nick's 6-week block to end of October"),
+    ]:
+        check(f"dedupe: still separates {a[:32]!r} from {b[:28]!r}",
+              not dedupe.is_near_duplicate(a, [b]))
 
     # -- the four-way separation itself
     # The whole product is this split: actions leave, everything else stays.
