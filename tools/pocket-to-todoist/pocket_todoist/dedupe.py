@@ -24,12 +24,24 @@ from difflib import SequenceMatcher
 REF_PREFIX = "pkt-"
 REF_PATTERN = re.compile(r"\bpkt-[0-9a-f]{10}\b")
 
-# Above this title similarity, two tasks from the same note are the same task.
-# 0.85 was chosen by running the fixtures: it merges re-phrasings such as
-# "Message Kevin about Friday training" / "Message Kevin re Friday training",
-# and keeps "Send Dan the gym program" apart from "Send Dan the arm swing
-# program", which differ by one word and are genuinely two errands.
-SIMILARITY_THRESHOLD = 0.85
+# Above this title similarity, two tasks are treated as the same task.
+#
+# 0.67 is the midpoint of a measured gap, not a guess. On 2026-09-13 a second
+# pipeline wrote sixteen tasks covering the same commitments as this one's, in
+# its own wording. Scoring all 286 pairs of real titles against each other:
+#
+#   true duplicates      0.33 0.38 0.47 | 0.71 0.73 0.80 0.83 0.89
+#   worst non-duplicate                 | 0.63
+#
+# So anything at or above 0.67 is a duplicate and nothing below it is, on the
+# evidence available. The old value of 0.85 caught one of those eight.
+#
+# The three duplicates scoring below 0.47 are out of reach of any string
+# comparison -- "Collect the outstanding cash for the 11 September group
+# session" and "Friday group -- $80 per athlete outstanding" are the same
+# errand and share one word. Nothing here will catch those; only not running
+# two pipelines at once will.
+SIMILARITY_THRESHOLD = 0.67
 
 
 def normalise(title: str) -> str:
