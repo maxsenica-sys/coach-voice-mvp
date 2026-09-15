@@ -50,3 +50,26 @@ Four days, with duplicate suppression doing the rest. A watermark would be
 tighter, but it needs somewhere durable to live, and the whole point of this
 shape is that there is nowhere durable except Todoist itself. Re-reading a few
 days of recordings costs a little extra work and cannot produce a duplicate.
+
+## The schedule screenshots
+
+The same shape, a different inbox. `screenshot-to-calendar` reads new images
+from the `Calendar Inbox` folder in Google Drive and files them into Google
+Calendar in Istanbul time. Say "do the schedule", type `/schedule`, or let a
+Routine fire.
+
+Drive rather than the vault, for the reason this whole file exists: a scheduled
+session cannot read an iPhone. Drive is the only inbox where both ends are
+reachable without a computer.
+
+A Routine for it has the same constraint as the Pocket one and then some — it
+needs the Drive **and** Calendar connectors, so it must be bound to a session
+that already holds them rather than starting fresh. Create it from the session
+you normally run these in; a Routine created elsewhere will fire with no
+connectors and quietly do nothing, which looks identical to there being no new
+schedules.
+
+Unlike the Pocket run, this one can end with work outstanding. Rows whose date
+contradicts the day printed beside them are held back rather than filed, and
+`plan_calendar.py` exits 2 when that happens. Those rows are the one thing worth
+reading in the report — everything else either landed or was already there.

@@ -21,6 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pocket_todoist import config as config_module  # noqa: E402
 from pocket_todoist import dedupe, extract, vault  # noqa: E402
 from pocket_todoist import pipeline as pipeline_module  # noqa: E402
+from pocket_todoist.gcal import CalendarClient, CalendarError  # noqa: E402
+from pocket_todoist.sinks.calendar_sink import CalendarSink  # noqa: E402
 from pocket_todoist.sinks.todoist_sink import TodoistSink  # noqa: E402
 from pocket_todoist.todoist import TodoistClient, TodoistError  # noqa: E402
 
@@ -93,6 +95,25 @@ def make_client(config, dry_run=False):
     return TodoistClient(token)
 
 
+def make_calendar(config, dry_run=False):
+    """A calendar client, or None when the sink is off or has no credentials.
+
+    Returning None rather than raising is deliberate: the calendar is the
+    optional half of this pipeline, and a missing Google token must never stop
+    the tasks being written. The sink is simply not added, and the run says so.
+    """
+    calendar_config = config.get("calendar") or {}
+    if not calendar_config.get("enabled", False):
+        return None
+    token = os.environ.get(calendar_config.get("token_env") or "GOOGLE_CALENDAR_TOKEN")
+    if not token:
+        if not dry_run:
+            print(f"{YELLOW}!{RESET} calendar.enabled is true but no token is set "
+                  f"-- appointments will stay tasks this run.")
+        return None
+    return CalendarClient(token, calendar_config.get("calendar_id") or "primary")
+
+
 def select_notes(config, args):
     notes = vault.discover(config)
     if args.note:
@@ -152,6 +173,34 @@ def doctor(config, config_path):
     except (TodoistError, KeyError) as exc:
         problems.append(str(exc))
         print(f"  {RED}x{RESET} {exc}")
+
+    print(f"\n{BOLD}Calendar{RESET}")
+    calendar_config = config.get("calendar") or {}
+    calendar_tz = calendar_config.get("timezone") or config.get("timezone")
+    if not calendar_config.get("enabled", False):
+        print(f"  {GREY}i{RESET} calendar.enabled is false -- spoken appointments "
+              f"stay tasks. The screenshot path (plan_calendar.py) is unaffected "
+              f"and still files into {calendar_tz}.")
+    else:
+        try:
+            from zoneinfo import ZoneInfo
+            ZoneInfo(calendar_tz)
+        except Exception:
+            problems.append(f"calendar.timezone is not a valid IANA name: {calendar_tz!r}")
+            print(f"  {RED}x{RESET} calendar.timezone is not a valid IANA name: "
+                  f"{calendar_tz!r}")
+        else:
+            token_env = calendar_config.get("token_env") or "GOOGLE_CALENDAR_TOKEN"
+            if os.environ.get(token_env):
+                print(f"  {GREEN}v{RESET} enabled, {token_env} set, filing into "
+                      f"{calendar_tz}")
+            else:
+                print(f"  {YELLOW}!{RESET} enabled but {token_env} is not set -- "
+                      f"appointments will stay tasks")
+        if calendar_tz == config.get("timezone"):
+            print(f"  {YELLOW}!{RESET} calendar.timezone matches the top-level "
+                  f"timezone. If the schedules are printed abroad, that is "
+                  f"probably not what you want.")
 
     print(f"\n{BOLD}Claude{RESET}")
     if (config.get("extract") or {}).get("backend") == "heuristic":
@@ -214,6 +263,12 @@ def run_once(config, args):
 
     client = make_client(config, dry_run=args.dry_run)
     sinks = [TodoistSink(client)]
+    calendar = make_calendar(config, dry_run=args.dry_run)
+    if calendar is not None or (config.get("calendar") or {}).get("enabled"):
+        # Ordered after Todoist on purpose. An appointment usually wants both
+        # records -- the event to be somewhere, the task to prepare for it --
+        # and if the calendar write fails, the task has already landed.
+        sinks.append(CalendarSink(calendar))
     state = dedupe.StateStore((config.get("vault") or {}).get("state_file"))
 
     report = pipeline_module.run(notes, config, backend, sinks, state,

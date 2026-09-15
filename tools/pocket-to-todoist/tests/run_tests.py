@@ -47,11 +47,13 @@ for _cache in pathlib.Path(os.path.dirname(HERE)).rglob("__pycache__"):
     shutil.rmtree(_cache, ignore_errors=True)
 
 from pocket_todoist import config as config_module  # noqa: E402
-from pocket_todoist import dedupe, extract, pipeline, prompt, routing, vault  # noqa: E402
+from pocket_todoist import dedupe, extract, pipeline, prompt, routing, schedule, vault  # noqa: E402
 from pocket_todoist.dates import resolve_due  # noqa: E402
+from pocket_todoist.sinks.calendar_sink import CalendarSink  # noqa: E402
 from pocket_todoist.sinks.todoist_sink import TodoistSink  # noqa: E402
 
 import plan as plan_module  # noqa: E402
+import plan_calendar as plan_calendar_module  # noqa: E402
 
 GOLDEN = os.path.join(HERE, "fixtures", "golden-prompt.txt")
 
@@ -658,6 +660,392 @@ def rig_plan():
           any("no extraction" in s["reason"] for s in orphan["skipped"]))
 
 
+# --- Rig 6: the schedule screenshots (Turkish) -------------------------------
+
+# 2026-09-14 is a Monday, so this week runs Pazartesi 14th .. Pazar 20th.
+WEEK = {
+    "pazartesi": date(2026, 9, 14),
+    "sali": date(2026, 9, 15),
+    "carsamba": date(2026, 9, 16),
+    "persembe": date(2026, 9, 17),
+    "cuma": date(2026, 9, 18),
+    "cumartesi": date(2026, 9, 19),
+    "pazar": date(2026, 9, 20),
+}
+
+
+class FakeCalendar:
+    """Stands in for Google Calendar. Records what would have been created."""
+
+    def __init__(self, existing=()):
+        self.existing = list(existing)
+        self.created = []
+
+    def events_between(self, start_iso, end_iso, query=None):
+        return list(self.existing)
+
+    def create_event(self, summary, start, end, description=None, location=None,
+                     ical_uid=None, timezone=None):
+        event = {"id": f"evt-{len(self.created) + 1}",
+                 "htmlLink": f"https://calendar.google.com/event?eid={len(self.created) + 1}",
+                 "summary": summary, "start": start, "end": end,
+                 "description": description or "", "location": location,
+                 "iCalUID": ical_uid}
+        self.created.append(event)
+        return event
+
+
+def rig_schedule():
+    """The Turkish reading layer, and the calendar plan built on top of it.
+
+    Every check here was verified by breaking the code on purpose. The three
+    that matter most, because each one fails while looking entirely healthy:
+
+    1. `fold` -- without it a schedule printed in capitals matches nothing,
+       because "SALI".lower() is "sali" and "Salı".lower() is "salı".
+    2. Longest-name-first -- without it "Pazartesi" matches the "Pazar" rule
+       and every Monday session moves to Sunday.
+    3. The pkt-/pkc- namespace split -- with a "-cal" suffix instead, the
+       calendar scan reads its own refs back as task refs, recognises none of
+       its own events, and re-creates the whole week on every run.
+    """
+
+    # --- Folding: the same day in every casing a printed schedule uses.
+    for spelling in ["SALI", "Salı", "salı", "SALİ", "sali", " Salı "]:
+        equal(f"schedule: {spelling!r} is Tuesday",
+              schedule.weekday_index(spelling), 1)
+
+    # The prefix trap. Turkish Sunday is a prefix of Monday, and Friday of
+    # Saturday, so a shortest-match lookup moves two days of the week.
+    for label, expected, clashes_with in [
+        ("Pazartesi", 0, "Pazar"), ("PAZARTESİ", 0, "Pazar"),
+        ("Pazar", 6, "Pazartesi"),
+        ("Cumartesi", 5, "Cuma"), ("CUMARTESİ", 5, "Cuma"),
+        ("Cuma", 4, "Cumartesi"),
+    ]:
+        equal(f"schedule: {label!r} is not read as {clashes_with!r}",
+              schedule.weekday_index(label), expected)
+
+    for label, expected in [("Çarşamba", 2), ("ÇARŞAMBA", 2), ("Perşembe", 3),
+                            ("PERŞEMBE", 3), ("Monday", 0), ("wed", 2)]:
+        equal(f"schedule: {label!r} weekday", schedule.weekday_index(label), expected)
+
+    check("schedule: a word that names no day is None",
+          schedule.weekday_index("Antrenman") is None)
+
+    # A day name inside a longer word is not that day. This is what the
+    # whole-word guard buys, and it is separate from the ordering below --
+    # a rig run proved the docstring had credited the wrong one.
+    for label in ["Pazartesi", "Cumartesi"]:
+        check(f"schedule: {label!r} is not matched by its own prefix",
+              schedule.weekday_index(label) != schedule.weekday_index(label[:5]),
+              f"{label} and {label[:5]} both read as "
+              f"{schedule.weekday_index(label)}")
+
+    # Two glossary terms can both be whole words in the same title. The longer
+    # one is the right answer, and only the ordering decides that.
+    equal("schedule: the longer glossary term wins",
+          schedule.gloss("Video Analiz"), "Video Analiz (video analysis)")
+    equal("schedule: an already-English title is not glossed twice",
+          schedule.gloss("Training"), "Training")
+
+    # --- Dates. Day-first always; there is no reading where MM/DD is right.
+    anchor = date(2026, 9, 14)
+    for printed, expected in [
+        ("16.09.2026", date(2026, 9, 16)),
+        ("16/09/2026", date(2026, 9, 16)),
+        ("16-09-2026", date(2026, 9, 16)),
+        ("2026-09-16", date(2026, 9, 16)),
+        ("16.09", date(2026, 9, 16)),          # year from the anchor
+        ("16 Eylül", date(2026, 9, 16)),
+        ("16 EYLÜL 2026", date(2026, 9, 16)),
+        ("Eylül 16", date(2026, 9, 16)),
+        ("1 Aralık", date(2026, 12, 1)),
+        ("5 Ocak", date(2027, 1, 5)),          # forwards, not ten months back
+    ]:
+        equal(f"schedule: date {printed!r}",
+              schedule.parse_date(printed, anchor=anchor), expected)
+
+    # 09.10 is the ninth of October, never the tenth of September.
+    equal("schedule: 09.10 is day-first",
+          schedule.parse_date("09.10", anchor=anchor), date(2026, 10, 9))
+
+    for rubbish in ["31.02.2026", "45.01.2026", "16.13.2026", "", "next week",
+                    "Antrenman", None]:
+        check(f"schedule: {rubbish!r} yields no date",
+              schedule.parse_date(rubbish, anchor=anchor) is None,
+              f"got {schedule.parse_date(rubbish, anchor=anchor)}")
+
+    # --- Times, in every separator a printed schedule uses.
+    for printed, expected in [("09:00", (9, 0)), ("09.00", (9, 0)),
+                              ("9:00", (9, 0)), ("0900", (9, 0)),
+                              ("19.30", (19, 30)), ("9", (9, 0))]:
+        parsed = schedule.parse_time(printed)
+        check(f"schedule: time {printed!r}",
+              parsed is not None and (parsed.hour, parsed.minute) == expected,
+              f"got {parsed}")
+
+    for rubbish in ["24:00", "25.00", "09:75", "", "sabah", None]:
+        check(f"schedule: time {rubbish!r} rejected",
+              schedule.parse_time(rubbish) is None)
+
+    for printed in ["09.00 - 10.30", "09:00-10:30", "09.00 – 10.30",
+                    "09:00 to 10:30", "09.00 ile 10.30"]:
+        start, end = schedule.parse_time_range(printed)
+        check(f"schedule: range {printed!r}",
+              start is not None and end is not None
+              and (start.hour, start.minute) == (9, 0)
+              and (end.hour, end.minute) == (10, 30),
+              f"got {start}..{end}")
+
+    # --- The weekday cross-check: the guard against reading the wrong row.
+    equal("schedule: SALI agrees with a Tuesday",
+          schedule.verify_weekday(WEEK["sali"], "SALI"), True)
+    equal("schedule: SALI contradicts a Wednesday",
+          schedule.verify_weekday(WEEK["carsamba"], "SALI"), False)
+    equal("schedule: an unreadable label cannot be checked either way",
+          schedule.verify_weekday(WEEK["sali"], "Antrenman"), None)
+
+    calendar_config = config_module.DEFAULTS["calendar"]
+
+    contradiction, problem = schedule.build(
+        {"title": "Antrenman", "date": "16.09.2026", "printed_day": "SALI",
+         "time": "18:00 - 20:00"}, calendar_config, anchor=anchor)
+    check("schedule: a row whose day contradicts its date is held back",
+          contradiction is None and problem is not None)
+    check("schedule: and the reason names both readings",
+          problem is not None and "Wednesday" in problem.reason
+          and "SALI" in problem.reason, problem.reason if problem else "")
+
+    undated, problem = schedule.build(
+        {"title": "Antrenman", "date": "", "time": "18:00"},
+        calendar_config, anchor=anchor)
+    check("schedule: a row with no readable date is never given one",
+          undated is None and problem is not None)
+
+    # --- A good row, end to end.
+    event, problem = schedule.build(
+        {"title": "Antrenman", "date": "15.09.2026", "printed_day": "SALI",
+         "time": "18:00 - 20:00", "location": "Salon"},
+        calendar_config, anchor=anchor)
+    check("schedule: a consistent row resolves", event is not None,
+          problem.reason if problem else "")
+    if event:
+        equal("schedule: its date", event.on, WEEK["sali"])
+        equal("schedule: its start", event.start_datetime(), "2026-09-15T18:00:00")
+        equal("schedule: its end", event.end_datetime(), "2026-09-15T20:00:00")
+        equal("schedule: the Turkish is kept and glossed",
+              event.title, "Antrenman (training)")
+
+    # A start with no end gets the configured duration, not an open-ended event.
+    open_ended, _ = schedule.build(
+        {"title": "Maç", "date": "18.09.2026", "printed_day": "Cuma",
+         "time": "19:00"}, calendar_config, anchor=anchor)
+    check("schedule: a start with no end gets the configured duration",
+          open_ended is not None
+          and open_ended.end_datetime() == "2026-09-18T20:30:00",
+          open_ended.end_datetime() if open_ended else "no event")
+
+    # A match finishing after midnight must not produce a negative-length event.
+    late, _ = schedule.build(
+        {"title": "Maç", "date": "18.09.2026", "start": "22:30", "end": "00:30"},
+        calendar_config, anchor=anchor)
+    check("schedule: an end past midnight rolls to the next day",
+          late is not None and late.end_datetime() == "2026-09-19T00:30:00",
+          late.end_datetime() if late else "no event")
+
+    # A dateless entry is still a fact worth having; Google's all-day end is
+    # exclusive, and sending the same date twice makes the event invisible.
+    all_day, _ = schedule.build(
+        {"title": "Deplasman", "date": "19.09.2026"}, calendar_config, anchor=anchor)
+    check("schedule: an entry with no time becomes an all-day event",
+          all_day is not None and all_day.all_day)
+    if all_day:
+        equal("schedule: whose end is the following date",
+              all_day.end_date_exclusive(), "2026-09-20")
+
+    # --- Refs. The namespace split, which is invisible when it breaks.
+    task_ref = dedupe.ref_for("pocket/1", "Antrenman")
+    calendar_ref = dedupe.cal_ref_for("pocket/1", "Antrenman")
+    check("schedule: a calendar ref round-trips through its own scanner",
+          calendar_ref in dedupe.cal_refs_in(f"ref: {calendar_ref}"))
+    equal("schedule: a calendar ref is invisible to the task scanner",
+          dedupe.refs_in(f"ref: {calendar_ref}"), set())
+    equal("schedule: a task ref is invisible to the calendar scanner",
+          dedupe.cal_refs_in(f"ref: {task_ref}"), set())
+    check("schedule: the two refs are not the same string", task_ref != calendar_ref)
+
+    # --- plan_calendar, end to end, against a real week.
+    config, _ = config_module.load()
+    screenshots = [{"screenshot_id": "shot-1", "file_name": "hafta-38.jpg",
+                    "taken_on": "2026-09-14", "drive_url": "https://drive.example/1"}]
+    rows = [
+        {"title": "Antrenman", "date": "14.09.2026", "printed_day": "PAZARTESİ",
+         "time": "10:00 - 12:00", "location": "Salon"},
+        {"title": "Antrenman", "date": "14.09.2026", "printed_day": "PAZARTESİ",
+         "time": "18:00 - 20:00", "location": "Salon"},
+        {"title": "Kondisyon", "date": "15.09.2026", "printed_day": "SALI",
+         "time": "10:00 - 11:30"},
+        {"title": "Maç", "date": "18.09.2026", "printed_day": "CUMA",
+         "time": "19:00 - 21:00", "location": "Ankara"},
+        # Contradicts its own day: 19.09.2026 is a Saturday, not Sunday.
+        {"title": "Toplantı", "date": "19.09.2026", "printed_day": "PAZAR",
+         "time": "11:00"},
+    ]
+    plan = plan_calendar_module.build(
+        screenshots, {"shot-1": {"events": rows}}, [], config)
+
+    equal("plan_calendar: four good rows planned", len(plan["create"]), 4)
+    equal("plan_calendar: the contradictory row is held back, not filed",
+          len(plan["needs_review"]), 1)
+    equal("plan_calendar: events are stamped Turkish time",
+          plan["timezone"], "Europe/Istanbul")
+    for entry in plan["create"]:
+        if "dateTime" in entry["start"]:
+            equal(f"plan_calendar: {entry['summary']} carries its zone",
+                  entry["start"]["timeZone"], "Europe/Istanbul")
+
+    # Two sessions with the same name on the same day are two events.
+    monday = [e for e in plan["create"] if e["start"].get("dateTime", "").startswith("2026-09-14")]
+    equal("plan_calendar: both Monday sessions survive", len(monday), 2)
+    equal("plan_calendar: and they are distinct events",
+          len({e["ref"] for e in monday}), 2)
+
+    # Re-running the same screenshot creates nothing. The existing events are
+    # shaped the way Google actually returns them -- an explicit +03:00 offset,
+    # where a freshly planned event carries a naive local time and a separate
+    # zone. Those describe the same moment and must compare equal; string
+    # comparison says they do not, and would rewrite the whole week every run.
+    existing = []
+    for index, entry in enumerate(plan["create"]):
+        start, end = dict(entry["start"]), dict(entry["end"])
+        for side in (start, end):
+            if "dateTime" in side:
+                side["dateTime"] = side["dateTime"] + "+03:00"
+        existing.append({"id": f"evt-{index}", "summary": entry["summary"],
+                         "location": entry.get("location", ""),
+                         "description": entry["description"],
+                         "start": start, "end": end})
+
+    again = plan_calendar_module.build(
+        screenshots, {"shot-1": {"events": rows}}, existing, config)
+    equal("plan_calendar: re-reading the same screenshot creates nothing",
+          len(again["create"]), 0)
+    equal("plan_calendar: and moves nothing, across the offset difference",
+          len(again["update"]), 0)
+    equal("plan_calendar: and says why", len(again["skipped"]), 4)
+
+    # A corrected time moves the existing event rather than adding a second one
+    # -- and must not be silently suppressed either, which is the bug this
+    # check was written for. A rescheduled match that never reaches the phone
+    # is the single most expensive thing this pipeline could do.
+    moved = [dict(r) for r in rows]
+    moved[3]["time"] = "20:00 - 22:00"
+    corrected = plan_calendar_module.build(
+        screenshots, {"shot-1": {"events": moved}}, existing, config)
+    equal("plan_calendar: a corrected time is not a second event",
+          len(corrected["create"]), 0)
+    equal("plan_calendar: a corrected time is not silently dropped",
+          len(corrected["update"]), 1)
+    if corrected["update"]:
+        entry = corrected["update"][0]
+        equal("plan_calendar: the moved event keeps its identity",
+              entry["iCalUID"],
+              [e for e in plan["create"] if e["summary"] == entry["summary"]][0]["iCalUID"])
+        equal("plan_calendar: and carries the new time",
+              entry["start"]["dateTime"], "2026-09-18T20:00:00")
+        equal("plan_calendar: and names the calendar's own id to move",
+              entry["event_id"], "evt-3")
+
+    # A renamed session is a new event, not a move. Stated as a check because
+    # it is a known gap rather than a desirable behaviour.
+    renamed = [dict(r) for r in rows]
+    renamed[2]["title"] = "Fizyoterapi"
+    after_rename = plan_calendar_module.build(
+        screenshots, {"shot-1": {"events": renamed}}, existing, config)
+    equal("plan_calendar: a renamed session reads as a new event",
+          len(after_rename["create"]), 1)
+
+    # A genuinely new session on a new day is created.
+    added = [dict(r) for r in rows] + [
+        {"title": "Video Analiz", "date": "17.09.2026", "printed_day": "PERŞEMBE",
+         "time": "16:00 - 17:00"}]
+    extended = plan_calendar_module.build(
+        screenshots, {"shot-1": {"events": added}}, existing, config)
+    equal("plan_calendar: a new session is still created", len(extended["create"]), 1)
+    equal("plan_calendar: and nothing else is disturbed", len(extended["update"]), 0)
+
+    # --- Every day of a year, in Istanbul: a wall-clock time survives the trip.
+    # Turkey has had no DST since 2016 and could rejoin it; nothing here may
+    # assume that, which is why the zone is named and never written as +03:00.
+    istanbul = ZoneInfo("Europe/Istanbul")
+    day, drift = date(2026, 1, 1), []
+    while day < date(2027, 1, 1):
+        built, _ = schedule.build(
+            {"title": "Antrenman", "date": day.isoformat(), "time": "19:00 - 21:00"},
+            config_module.DEFAULTS["calendar"], anchor=day)
+        if built is None:
+            drift.append(f"{day} did not resolve")
+            day += timedelta(days=1)
+            continue
+        local = datetime.fromisoformat(built.start_datetime()).replace(tzinfo=istanbul)
+        back = local.astimezone(ZoneInfo("UTC")).astimezone(istanbul)
+        if back.strftime("%Y-%m-%d %H:%M") != f"{day.isoformat()} 19:00":
+            drift.append(f"{day} came back as {back}")
+        day += timedelta(days=1)
+    check("plan_calendar: 365 days round-trip through Istanbul", not drift,
+          "; ".join(drift[:3]))
+
+    # --- The sink: narrow on purpose.
+    config["calendar"]["enabled"] = True
+    sink = CalendarSink(FakeCalendar())
+    sink.prepare(config)
+    note = vault.Note(path="", rel_path="pocket/rec-9", title="Note", on=date(2026, 9, 14),
+                      body="", frontmatter="", raw="")
+
+    def action(**kwargs):
+        base = {"title": "", "context": "", "owner": "me", "owner_name": "",
+                "due_phrase": "", "priority": "normal", "topic": "unknown"}
+        base.update(kwargs)
+        return extract.Action(**base)
+
+    yes = action(title="Physio appointment", due_phrase="tomorrow")
+    check("sink: an appointment with a date is the calendar's",
+          sink.accepts(note, yes))
+
+    no_date = action(title="Physio appointment")
+    check("sink: the same appointment with no date is not",
+          not sink.accepts(note, no_date))
+
+    errand = action(title="Book the physio appointment", due_phrase="tomorrow")
+    check("sink: booking an appointment stays a task",
+          not sink.accepts(note, errand))
+
+    plain = action(title="Finish the testing document", due_phrase="tomorrow")
+    check("sink: an ordinary task is not an appointment", not sink.accepts(note, plain))
+
+    record = sink.emit(note, yes, {"ref": dedupe.ref_for(note.key, yes.title),
+                                   "vault_name": "Second Brain"})
+    check("sink: it creates an event", record is not None)
+    if record:
+        equal("sink: in Turkish time", record["timezone"], "Europe/Istanbul")
+        check("sink: stamped with a calendar ref",
+              record["ref"].startswith(dedupe.CAL_REF_PREFIX), record["ref"])
+
+    # The sink must never suppress the task that accompanies its event.
+    equal("sink: reports no refs upward, so the task still gets written",
+          sink.known_refs(), {})
+
+    # A second run against a calendar that already holds the event creates nothing.
+    seeded = FakeCalendar(existing=[{"description": f"ref: {record['ref']}"}])
+    second = CalendarSink(seeded)
+    second.prepare(config)
+    check("sink: an event already on the calendar is not created twice",
+          second.emit(note, yes, {"ref": dedupe.ref_for(note.key, yes.title),
+                                  "vault_name": ""}) is None)
+    config["calendar"]["enabled"] = False
+
+
 def main():
     update = "--update-golden" in sys.argv
     rig_prompt(update=update)
@@ -667,6 +1055,7 @@ def main():
     rig_plumbing()
     rig_pipeline()
     rig_plan()
+    rig_schedule()
 
     if FAILURES:
         print(f"\n{len(FAILURES)} of {CHECKS[0]} checks FAILED:\n")
@@ -674,7 +1063,7 @@ def main():
             print(f"  x {failure}")
         return 1
     print(f"All {CHECKS[0]} checks passed "
-          f"(dates, prompt, plumbing, pipeline, plan).")
+          f"(dates, prompt, plumbing, pipeline, plan, schedule).")
     return 0
 
 

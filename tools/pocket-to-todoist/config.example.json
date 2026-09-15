@@ -53,5 +53,25 @@
 
   "todoist": {
     "token_env": "TODOIST_API_TOKEN"
+  },
+
+  "calendar": {
+    "_comment": [
+      "timezone is deliberately NOT the top-level one. The schedules are",
+      "printed in Turkey; the Todoist pipeline runs on Brisbane time. A named",
+      "zone, never an offset -- Turkey left DST in 2016 and could rejoin it.",
+      "enabled gates only whether a spoken appointment in a Pocket note also",
+      "becomes an event; the screenshot path reads this block either way."
+    ],
+    "enabled": false,
+    "timezone": "Europe/Istanbul",
+    "calendar_id": "primary",
+    "token_env": "GOOGLE_CALENDAR_TOKEN",
+    "default_duration_minutes": 90,
+    "gloss": true,
+    "allow_all_day": true,
+    "lookback_days": 30,
+    "lookahead_days": 180,
+    "drive_folder": "Calendar Inbox"
   }
 }

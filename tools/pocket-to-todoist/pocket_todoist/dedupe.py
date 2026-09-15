@@ -24,6 +24,17 @@ from difflib import SequenceMatcher
 REF_PREFIX = "pkt-"
 REF_PATTERN = re.compile(r"\bpkt-[0-9a-f]{10}\b")
 
+# The calendar's refs live in their own namespace rather than as a suffix on a
+# task ref, and that is not cosmetic. `pkt-abc123def0-cal` is matched by
+# REF_PATTERN above -- the pattern stops at the tenth hex digit and `\b` is
+# happy to end on the hyphen -- so a suffixed ref reads back as the *task* ref
+# it was derived from. A calendar scan would then never recognise its own
+# entries and would re-create every event on every run, while a task scan would
+# suppress the task that the event was supposed to accompany. Two prefixes that
+# cannot match each other's pattern make both of those impossible.
+CAL_REF_PREFIX = "pkc-"
+CAL_REF_PATTERN = re.compile(r"\bpkc-[0-9a-f]{10}\b")
+
 # Above this title similarity, two tasks are treated as the same task.
 #
 # 0.67 is the midpoint of a measured gap, not a guess. On 2026-09-13 a second
@@ -53,8 +64,22 @@ def ref_for(note_key: str, title: str) -> str:
     return REF_PREFIX + digest.hexdigest()[:10]
 
 
+def cal_ref_for(note_key: str, title: str) -> str:
+    """The calendar ref for the same action whose task ref is `ref_for`.
+
+    Same digest, different namespace: an action that becomes both an event and
+    a task is one commitment, and keeping the digest identical makes that
+    visible when reading the two records side by side.
+    """
+    return CAL_REF_PREFIX + ref_for(note_key, title)[len(REF_PREFIX):]
+
+
 def refs_in(text: str):
     return set(REF_PATTERN.findall(text or ""))
+
+
+def cal_refs_in(text: str):
+    return set(CAL_REF_PATTERN.findall(text or ""))
 
 
 def is_near_duplicate(title: str, existing_titles) -> bool:
