@@ -218,30 +218,156 @@ at a different label while comparing the two.
 
 The seams are already in place:
 
-- **A new destination** — Google Calendar for things that are really
-  appointments, a reminder service — is a class in `pocket_todoist/sinks/`
-  implementing `prepare` / `known_refs` / `accepts` / `emit`, added to the list
-  in `run.py`. The pipeline does not change.
+- **A new destination** is a class in `pocket_todoist/sinks/` implementing
+  `prepare` / `known_refs` / `accepts` / `emit`, added to the list in `run.py`.
+  The pipeline does not change. Google Calendar was the worked example in
+  `sinks/base.py` and is now `sinks/calendar_sink.py` — see *Schedules* below.
 - **Completion syncing back to Obsidian** reads the `ref:` values that are
   already written into every task description and ticks the matching checkbox in
   the note's block. Nothing new needs storing to make it possible.
 - **Better classification** is a prompt change in `pocket_todoist/prompt.py`,
   pinned by a golden file so the diff is reviewable.
 
+## Schedules: a screenshot into the calendar
+
+A training schedule is printed on a wall in Turkish, photographed, and has to
+end up in Google Calendar in Turkish time. That is a different problem from the
+voice notes, and it gets its own path:
+
+```
+a screenshot in Drive  ->  [ the session reads it ]  ->  events.json
+events.json            ->  [ plan_calendar.py ]     ->  calendar-plan.json
+calendar-plan.json     ->  [ the session creates ]  ->  Google Calendar
+```
+
+Same split as `plan.py`, for the same reason: the session is a courier that
+reads the image, and every decision that must be deterministic happens in a
+script with no network and no credentials. The procedure lives in
+`.claude/skills/screenshot-to-calendar/SKILL.md`; say "do the schedule" or type
+`/schedule`.
+
+Drop screenshots in a Google Drive folder called `Calendar Inbox`. Drive is not
+a preference — it is the only inbox both ends of this can reach. The vault is on
+an iPhone and no scheduled session can read it, so a screenshot filed in
+Obsidian stays in Obsidian.
+
+### Reading Turkish
+
+`pocket_todoist/schedule.py` handles the language. Three things there are not
+obvious and each comes from a way this fails quietly:
+
+**Turkish text is folded, never lowercased.** `"SALI".lower()` is `"sali"` and
+`"Salı".lower()` is `"salı"`, which do not compare equal. A schedule printed in
+capitals — which is most of them — therefore matches nothing at all, while
+looking entirely healthy in the logs. `fold()` is the only sanctioned
+normaliser.
+
+**Day names match on whole words, longest first.** "Pazar" (Sunday) is a prefix
+of "Pazartesi" (Monday) and "Cuma" (Friday) of "Cumartesi" (Saturday) — the same
+bug class as the name test that matched "Ana" inside "Anastasia", and here it
+moves every Monday session to Sunday.
+
+**Dates are day-first, always.** `09.10` is the ninth of October. There is no
+reading of a Turkish schedule where `MM/DD` is correct, so it is never tried.
+
+Titles keep the Turkish and gain an English gloss — `Antrenman (training)` —
+from a fixed glossary, so the calendar is readable without ceasing to match the
+schedule on the wall. The glossary is a dict in `schedule.py`; adding a word is
+a one-line change.
+
+### The weekday cross-check
+
+The guard worth understanding, because it is the one that will actually fire.
+A schedule is a grid, and the way a reader misreads a grid is by taking the row
+above or below — which changes the date while leaving the title, the time and
+the location all perfectly correct. Nothing downstream can detect that.
+
+So the session copies the printed day label verbatim (`SALI`), and the planner
+confirms the date it was given really is a Tuesday. If it is not, the row goes
+to `needs_review` and is reported, never filed. `plan_calendar.py` exits 2 when
+anything needs review, so a partial import cannot pass silently.
+
+**Nothing here invents a date.** A row with no readable date is reported, not
+placed on a plausible day. An empty calendar is a visible problem; Tuesday's
+session sitting confidently on Wednesday is not, and he plans his week on it.
+
+### Timezone
+
+`calendar.timezone` is `Europe/Istanbul` and is deliberately **not** the
+top-level `timezone`, which is `Australia/Brisbane` and belongs to the Todoist
+pipeline. A session at 19:00 in Istanbul is not 19:00 in Brisbane and one
+setting cannot be both.
+
+It is a named zone, never an offset. Turkey has had no DST since 2016 and could
+rejoin it; a hardcoded `+03:00` would be wrong the day it did. Every event sent
+to Google carries its `timeZone` explicitly, because Google reads a naive
+`dateTime` in the calendar's own default — a silent way to file an Istanbul
+evening session at an Australian one.
+
+### Duplicates
+
+An entry is identified by date, title and its occurrence among same-named
+entries that day, in the `pkc-` ref namespace — separate from the tasks' `pkt-`
+for a reason worth reading in `dedupe.py`. Consequences:
+
+- Re-uploading the same screenshot creates nothing. Existing events are
+  *compared*, not merely detected — Google returns `19:00+03:00` where a
+  planned event carries a naive local time and a separate zone, and those are
+  resolved to instants before comparison rather than matched as strings.
+- A **corrected time** moves the existing event rather than adding a second one
+  beside it, because the ref does not depend on the time. It lands in the
+  plan's `update` bucket with the calendar's own event id. An earlier draft
+  suppressed it instead, on the grounds that the ref was already present —
+  which meant a rescheduled match never reached the phone. That is now a
+  check, because it is the most expensive thing this could get wrong.
+- Two sessions with the same name on one day stay two events.
+- Adding an entry does not renumber differently-named ones, so nothing is
+  rewritten that did not change.
+
+### Known gaps
+
+Stated because a green run should never be mistaken for coverage it lacks:
+
+- **A deleted session is not removed.** The planner only creates. If a session
+  is cancelled on the printed schedule, the calendar keeps it.
+- **A renamed session becomes a second event.** The ref is built from the
+  title, so `Antrenman` becoming `Kondisyon` reads as a new entry, not a
+  changed one — the old one stays. A title change and a time change are not
+  distinguishable from a reprint without something stabler than a title to key
+  on, and a printed schedule offers nothing.
+- **Nothing reads the image but the session.** There is no OCR here and no
+  fixture of a real screenshot, so the rig proves what happens to rows *after*
+  they are read, not that they were read correctly. The weekday cross-check is
+  the only thing standing between a misread grid and the calendar.
+- **`run.py`'s calendar sink is unexercised in practice.** It is tested against
+  a fake, but the vault is still on a phone, so the path that would use it does
+  not run.
+
 ## Tests
 
 ```bash
-python3 tests/run_tests.py            # 123 checks, no network, ~0.3s
+python3 tests/run_tests.py            # 265 checks, no network, ~0.4s
 python3 tests/run_tests.py --update-golden   # after a deliberate prompt change
 ```
 
-Four rigs: dates (nine timezones, every day of a year), the pinned prompt,
-plumbing (routing, dedupe, vault splicing), and the whole pipeline against a
-temporary vault and a fake Todoist.
+Six rigs: dates (nine timezones, every day of a year), the pinned prompt,
+plumbing (routing, dedupe, vault splicing), the whole pipeline against a
+temporary vault and a fake Todoist, the phone path, and the Turkish schedule
+reader against a fake calendar.
 
 Each check was verified by breaking the code on purpose and watching that
-specific check go red — eleven deliberate bugs, eleven caught, including a
-dropped timezone conversion, a hardcoded 30-day month, an unstable dedupe ref,
-frontmatter rewritten wholesale, and the full transcript being sent to Todoist.
+specific check go red — twenty-four deliberate bugs, twenty-four caught,
+including a dropped timezone conversion, a hardcoded 30-day month, an unstable
+dedupe ref, frontmatter rewritten wholesale, the full transcript being sent to
+Todoist, a Turkish day name lowercased instead of folded, and a calendar ref
+that read back as the task ref it was derived from.
+
+Three of those were found by running the thing rather than by writing a test:
+the `-cal` ref suffix that `refs_in` silently truncated, a docstring that
+credited the wrong mechanism for keeping "Pazar" out of "Pazartesi", and a
+rescheduled match that was suppressed as a duplicate instead of moved. The
+last one passed every test that existed at the time and was caught by reading
+the output of an end-to-end run. That is the reason the exercise is not
+optional, and the reason a rig is not a substitute for running it once.
 
 A check that has never failed is not known to work.

@@ -83,6 +83,47 @@ DEFAULTS = {
         "token_env": "TODOIST_API_TOKEN",
     },
 
+    "calendar": {
+        # Off for the voice pipeline. The screenshot path (plan_calendar.py)
+        # reads this block regardless -- `enabled` gates only whether a spoken
+        # appointment in a Pocket note also becomes a calendar event, which is
+        # the change most likely to surprise, so it is opt-in.
+        "enabled": False,
+
+        # The schedules are printed in Turkey and read in Turkish time. This is
+        # deliberately NOT the top-level `timezone`, which is Brisbane and
+        # belongs to the Todoist pipeline: a training session at 19:00 in
+        # Istanbul is not 19:00 in Brisbane, and one setting cannot be both.
+        # Named, never an offset -- Turkey left DST in 2016 and could rejoin it,
+        # and a hardcoded +03:00 would be wrong the day it did.
+        "timezone": "Europe/Istanbul",
+
+        "calendar_id": "primary",
+        "token_env": "GOOGLE_CALENDAR_TOKEN",
+
+        # What a schedule entry with a start but no end is assumed to run for.
+        # 90 minutes is a volleyball session; a spoken appointment gets 60.
+        "default_duration_minutes": 90,
+
+        # Keep the printed Turkish and append an English gloss -- "Antrenman
+        # (training)". Set false to leave titles exactly as printed.
+        "gloss": True,
+
+        # An entry with a date but no time becomes an all-day event rather than
+        # being dropped. A match day with no time on the planner is still a fact
+        # worth having on the calendar.
+        "allow_all_day": True,
+
+        # How far either side of today to read the calendar when working out
+        # what is already there.
+        "lookback_days": 30,
+        "lookahead_days": 180,
+
+        # Where screenshots are dropped. Read by the session, not by this code --
+        # nothing here can reach Drive, the same way nothing can reach the vault.
+        "drive_folder": "Calendar Inbox",
+    },
+
     "watch": {
         "debounce_seconds": 20,
         "poll_seconds": 60,
