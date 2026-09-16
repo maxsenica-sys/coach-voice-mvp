@@ -33,6 +33,51 @@ function attach(res: NextResponse, cookies: CookieToSet[]) {
 
 const BUCKET = 'session-videos'
 
+/** Who, if anyone, the caller is on this session.
+ *
+ * Authenticating is not authorising, and this route used to stop at the first.
+ * It read the caller's *role* and then queried `session_videos` filtered by
+ * nothing but the session id from the URL — through the admin client, so RLS
+ * was not a backstop either. Any signed-in coach could name any session id and
+ * receive every video of another coach's athletes, with an hour-long signed URL
+ * for each one that keeps working after the session ends.
+ *
+ * `verify:safeguard` cannot see this: SG1 proves a route authenticates, and
+ * tools/safeguard-check.mjs says so verbatim in KNOWN_GAPS. The shape of the
+ * check below is deliberately the same as the one in ../detail/route.ts, which
+ * has been correct all along.
+ */
+async function authorize(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  sessionId: string,
+  userId: string,
+) {
+  const { data: session } = await admin
+    .from('sessions')
+    .select('id, coach_id, athlete_id, shared_with_athlete')
+    .eq('id', sessionId)
+    .maybeSingle()
+
+  if (!session) return { ok: false as const, status: 404, error: 'Session not found.' }
+
+  if (session.coach_id === userId) {
+    return { ok: true as const, isCoach: true, session }
+  }
+
+  // An athlete reaches their own session only once the coach has shared it.
+  if (session.shared_with_athlete) {
+    const { data: ath } = await admin
+      .from('athletes')
+      .select('id')
+      .eq('id', session.athlete_id)
+      .eq('athlete_user_id', userId)
+      .maybeSingle()
+    if (ath) return { ok: true as const, isCoach: false, session }
+  }
+
+  return { ok: false as const, status: 403, error: 'Forbidden' }
+}
+
 /** The fields of a session_videos row this helper needs to mint a URL. */
 type SignableVideo = { storage_path: string }
 
@@ -62,9 +107,13 @@ export async function GET(
   const { id: sessionId } = await ctx.params
   const admin = createSupabaseAdminClient()
 
-  // Determine user role to decide which videos to show
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  const isAthlete = profile?.role === 'athlete'
+  const auth = await authorize(admin, sessionId, user.id)
+  if (!auth.ok) {
+    return attach(NextResponse.json({ error: auth.error }, { status: auth.status }), cookiesToSet)
+  }
+  // Derived from this session, not from a global role: a coach is a coach of
+  // *their* sessions. Reading `profiles.role` answered a different question.
+  const isAthlete = !auth.isCoach
 
   const q = admin
     .from('session_videos')
@@ -124,6 +173,20 @@ export async function POST(
 
     if (!storagePath) {
       return attach(NextResponse.json({ error: 'path is required.' }, { status: 400 }), cookiesToSet)
+    }
+
+    // Never register a path outside the caller's own prefix.
+    //
+    // Without this, "register a file already uploaded" means "register any
+    // object in the bucket": a coach could point a row at another coach's
+    // video and then read it back through GET with a signed URL, because the
+    // row would legitimately belong to a session they own. The sibling
+    // attachments route has carried this check all along; this one did not.
+    //
+    // The prefix is the one ../videos/upload-url/route.ts mints:
+    // `${user.id}/${sessionId}/${Date.now()}.${ext}`.
+    if (typeof storagePath !== 'string' || !storagePath.startsWith(`${user.id}/${sessionId}/`)) {
+      return attach(NextResponse.json({ error: 'Forbidden' }, { status: 403 }), cookiesToSet)
     }
 
     const { data: videoRow, error: insertErr } = await admin

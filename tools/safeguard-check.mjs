@@ -304,6 +304,105 @@ const RULES = [
       return found
     },
   },
+  {
+    id: 'SG8',
+    title: 'A session route that signs storage compares the session to the caller',
+    why: 'This is the KNOWN GAP below, realised in production. GET /api/sessions/[id]/videos authenticated the caller, read their global `role`, and then queried session_videos filtered by nothing but the id in the URL — through the service-role client, so RLS was not a backstop either. Any signed-in coach could name any session id and receive every video of another coach\'s athletes, each with an hour-long signed URL that outlives the request. SG1 passed it the whole time, because authenticating is not authorising. A route that mints a signed URL for a child\'s video or audio must first prove the session belongs to the caller.',
+    cite: 'app/api/sessions/[id]/detail/route.ts — the ownership check this rule generalises',
+    check(files) {
+      const found = []
+      for (const f of files) {
+        if (!f.isRoute) continue
+        // Only the session-scoped routes: the id in the path is the thing that
+        // has to be checked against the caller.
+        if (!/^app\/api\/(sessions|share)\//.test(f.rel)) continue
+        const src = code(f)
+
+        /* Per HANDLER, not per file.
+         *
+         * The first version of this rule tested the whole file and was proven
+         * useless by its own mutation test: the vulnerable GET was reinstated
+         * and the rule stayed green, because POST in the same file carries a
+         * correct `.eq('coach_id', user.id)`. One handler's check was standing
+         * in for another handler's missing one — which is the precise shape of
+         * the bug being guarded against, so the rule was passing the thing it
+         * existed to catch.
+         *
+         * Split on the exported handlers and judge each one alone. */
+        const STORAGE = /createSignedUrl|createSignedUploadUrl|\.storage\s*\.\s*from\(/
+
+        // Helpers defined at module scope that sign on a handler's behalf.
+        // `generateSignedUrls(admin, …)` is the one here: the handler that
+        // calls it hands out URLs without the word `createSignedUrl` in it.
+        const OWNS = /\.eq\(\s*['"](?:coach_id|athlete_user_id)['"]\s*,\s*user(Id)?\.?(id)?\s*\)|(?:coach_id|athlete_user_id)\s*===\s*user(Id)?\.?(id)?/
+
+        const moduleFns = [...src.matchAll(/(?:async\s+)?function\s+(\w+)[\s\S]{0,900}?\n\}/g)]
+
+        // Helpers defined at module scope that sign on a handler's behalf.
+        // `generateSignedUrls(admin, …)` is the one here: the handler that
+        // calls it hands out URLs without the word `createSignedUrl` in it.
+        const signingHelpers = moduleFns.filter((m) => STORAGE.test(m[0])).map((m) => m[1])
+
+        // Helpers defined at module scope that do the ownership comparison for
+        // a handler. Recognised by what they CONTAIN, not by what they are
+        // called — `requireOwnedSession` and `authorize` are the same idea with
+        // different names, and a rule keyed on names would fail the next one.
+        const authorizingHelpers = moduleFns.filter((m) => OWNS.test(m[0])).map((m) => m[1])
+
+        const blocks = src
+          .split(/(?=export\s+async\s+function\s+(?:GET|POST|PUT|PATCH|DELETE)\b)/)
+          .filter((b) => /^export\s+async\s+function\s+(?:GET|POST|PUT|PATCH|DELETE)\b/.test(b))
+
+        for (const block of blocks) {
+          const handler = (block.match(/function\s+(\w+)/) || [])[1] ?? '?'
+          const callsHelper = signingHelpers.some((h) => new RegExp(`\\b${h}\\s*\\(`).test(block))
+          if (!STORAGE.test(block) && !callsHelper) continue
+
+        // An upload-url route proves ownership to mint the path; a read route
+        // proves it to mint the URL. Either way the proof looks the same: the
+        // caller's id is compared against the session's coach, or against the
+        // athlete row's athlete_user_id.
+        //
+        // Deliberately shape-based rather than clever. A route that scopes
+        // correctly some other way will trip this and should then either be
+        // written in the house shape or given a named exemption here — an
+        // unexplained third way of proving ownership is itself the risk.
+          const comparesCoach = /\.eq\(\s*['"]coach_id['"]\s*,\s*user\.id\s*\)|\.coach_id\s*===\s*user(Id)?\.?(id)?/.test(block)
+          const comparesAthlete = /\.eq\(\s*['"]athlete_user_id['"]\s*,\s*user(Id)?\.?(id)?\s*\)|athlete_user_id\s*===\s*user(Id)?\.?(id)?/.test(block)
+
+          // A third shape, and the strongest of the three: the object's path is
+          // *built* from the caller's id, so there is no way to name someone
+          // else's object in the first place. app/api/sessions/audio-upload-url
+          // does this — it mints `coach/${user.id}/${Date.now()}.${ext}` before
+          // any session exists, so there is no session to compare against and
+          // nothing weaker about it. Requiring a session check here would mean
+          // asking for a worse guarantee than the one already in place.
+          const pathScopedToCaller = /(storagePath|path)\s*=\s*`[^`]*\$\{user\.id\}/.test(block)
+
+          // A fourth: the handler delegates to a module-level helper that does
+          // the comparison itself. Those helpers are identified above by their
+          // contents rather than their names.
+          const delegates = authorizingHelpers.some((h) => new RegExp(`\\b${h}\\s*\\(`).test(block))
+
+          // A fifth: the handler validates that a client-supplied path sits
+          // under the caller's own prefix. This is how both POST handlers that
+          // register an already-uploaded file prove scope — there is no session
+          // row to compare at that point, only a string from the client, and
+          // refusing anything outside `${user.id}/…` is the check.
+          const prefixChecked = /startsWith\(\s*`[^`]*\$\{user\.id\}/.test(block)
+
+          if (!comparesCoach && !comparesAthlete && !pathScopedToCaller && !delegates && !prefixChecked) {
+            found.push({
+              file: f.rel,
+              line: lineOf(f, new RegExp(`export\\s+async\\s+function\\s+${handler}\\b`)),
+              msg: `${handler} signs or reads a storage object without comparing the session to the caller (no coach_id or athlete_user_id check against user.id)`,
+            })
+          }
+        }
+      }
+      return found
+    },
+  },
 ]
 
 /**

@@ -617,8 +617,14 @@ export default function AthletePage() {
   const uploadMsgMedia = async (file: File) => {
     if (!athleteId) return
     const msgType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'audio'
+    if (!userId) { alert('Could not send: you are signed out. Sign in and try again.') ; return }
     const ext = file.name.split('.').pop() ?? 'bin'
-    const path = `athlete/${athleteId}/${Date.now()}.${ext}`
+    // First segment must be the uploader's auth id — that is what the
+    // messages-media storage policy scopes on, and it is what the coach side
+    // has always used. The old `athlete/${athleteId}/…` prefix was scoped to
+    // nobody: any athlete could write into any other athlete's folder, and no
+    // policy could tell the difference.
+    const path = `${userId}/${athleteId}/${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('messages-media').upload(path, file)
     if (error) { alert('Upload failed: ' + error.message); return }
     const { data: signedData, error: signErr } = await supabase.storage.from('messages-media').createSignedUrl(path, 3600)
