@@ -11,6 +11,7 @@ import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
 import { apiJson, apiMutate } from '@/lib/api-client'
+import ListState from '@/app/components/ListState'
 import PendingRecordings from '@/app/components/PendingRecordings'
 import { gapLabel, isQuiet, QUIET_AFTER_DAYS, type CoverageRow } from '@/lib/attention'
 import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
@@ -414,6 +415,14 @@ function DashboardPageInner() {
 
   const [athletes, setAthletes] = useState<Athlete[]>([])
   const [loadingAthletes, setLoadingAthletes] = useState(false)
+  /* "Nothing here" and "we could not find out" are different sentences.
+   *
+   * These fetchers all did `if (res.ok) setX(...)` with no else, so a 500 or a
+   * dropped connection left the list at its initial [] and the screen said
+   * "No athletes yet. Add one to get started." to a coach with thirty athletes.
+   * The advice is wrong, the state is wrong, and there is no way back except a
+   * refresh the user has no reason to attempt. */
+  const [athletesError, setAthletesError] = useState<string | null>(null)
   const [wellnessByAthlete, setWellnessByAthlete] = useState<Map<string, WellnessCheckin>>(new Map())
   const [athleteSearch, setAthleteSearch] = useState('')
   // 'INACTIVE' is not a status like the other two, and it deliberately overlaps
@@ -432,6 +441,7 @@ function DashboardPageInner() {
 
   const [groups, setGroups] = useState<Group[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
+  const [groupsError, setGroupsError] = useState<string | null>(null)
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null)
   const [newGroupForm, setNewGroupForm] = useState({ name: '', color: DEFAULT_GROUP_COLOR, description: '' })
   const [groupMsg, setGroupMsg] = useState('')
@@ -452,6 +462,7 @@ function DashboardPageInner() {
    *  must not be reported as one. */
   const [coverageFailed, setCoverageFailed] = useState(false)
   const [loadingSessions, setLoadingSessions] = useState(false)
+  const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [sessionsSearch, setSessionsSearch] = useState('')
   const [sessionsAthleteFilter, setSessionsAthleteFilter] = useState('')
 
@@ -589,10 +600,12 @@ function DashboardPageInner() {
 
   const fetchAthletes = async () => {
     setLoadingAthletes(true)
+    setAthletesError(null)
     try {
-      const res = await fetch('/api/athletes', { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok) setAthletes((json.athletes ?? json) as Athlete[])
+      const json = await apiJson<{ athletes?: Athlete[] }>('/api/athletes', { cache: 'no-store' })
+      setAthletes((json.athletes ?? json) as Athlete[])
+    } catch (e) {
+      setAthletesError(e instanceof Error ? e.message : 'Could not load your athletes.')
     } finally { setLoadingAthletes(false); markAppReady() }
   }
 
@@ -606,28 +619,32 @@ function DashboardPageInner() {
 
   const fetchGroups = async () => {
     setLoadingGroups(true)
+    setGroupsError(null)
     try {
-      const res = await fetch('/api/groups', { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok) setGroups(json.groups ?? [])
+      const json = await apiJson<{ groups?: Group[] }>('/api/groups', { cache: 'no-store' })
+      setGroups(json.groups ?? [])
+    } catch (e) {
+      setGroupsError(e instanceof Error ? e.message : 'Could not load your squads.')
     } finally { setLoadingGroups(false) }
   }
 
   const fetchAllSessions = async (search = '', athleteId = '') => {
     setLoadingSessions(true)
+    setSessionsError(null)
     try {
       const p = new URLSearchParams({ limit: '50' })
       if (search) p.set('search', search)
       if (athleteId) p.set('athlete_id', athleteId)
-      const res = await fetch(`/api/sessions/all?${p}`, { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok) {
-        const rows: Session[] = json.sessions ?? []
-        setAllSessions(rows)
-        // Returned so a caller can diff before/after and work out what a save
-        // actually created — see the receipt in onSaved.
-        return rows
-      }
+      const json = await apiJson<{ sessions?: Session[] }>(`/api/sessions/all?${p}`, { cache: 'no-store' })
+      const rows: Session[] = json.sessions ?? []
+      setAllSessions(rows)
+      // Returned so a caller can diff before/after and work out what a save
+      // actually created — see the receipt in onSaved.
+      return rows
+    } catch (e) {
+      // The list is left exactly as it was. Replacing it with [] here is how
+      // "we could not reach the server" turned into "you have no sessions".
+      setSessionsError(e instanceof Error ? e.message : 'Could not load sessions.')
       return [] as Session[]
     } finally { setLoadingSessions(false) }
   }
@@ -1470,7 +1487,19 @@ function DashboardPageInner() {
                 </button>
               </div>
 
-              {filteredAthletes.length === 0 ? (
+              {athletesError ? (
+                /* The roster could not be read. Saying "No athletes yet. Add
+                   one to get started." here tells a coach with thirty athletes
+                   that their roster is empty AND gives them an action premised
+                   on it. Highest-priority branch for that reason. */
+                <ListState
+                  loading={false}
+                  error={athletesError}
+                  isEmpty={false}
+                  emptyTitle=""
+                  onRetry={fetchAthletes}
+                />
+              ) : filteredAthletes.length === 0 ? (
                 <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
                   {athletes.length === 0
                     ? loadingAthletes ? 'Loading…' : 'No athletes yet. Add one to get started.'
@@ -1563,10 +1592,15 @@ function DashboardPageInner() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 320px', gap: 18, alignItems: 'start' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {loadingGroups ? (
-                    <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
-                  ) : groups.length === 0 ? (
-                    <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>No groups yet. Create one.</div>
+                  {loadingGroups || groupsError || groups.length === 0 ? (
+                    <ListState
+                      loading={loadingGroups}
+                      error={groupsError}
+                      isEmpty={groups.length === 0}
+                      emptyTitle="No squads yet."
+                      emptyHint="Create one to record a single session for a whole squad at once."
+                      onRetry={fetchGroups}
+                    />
                   ) : groups.map(g => {
                     const isExp = expandedGroup === g.id
                     const members = athletes.filter(a => g.member_ids.includes(a.id))
@@ -1677,11 +1711,16 @@ function DashboardPageInner() {
                 <button className="btn btn-primary" onClick={() => fetchAllSessions(sessionsSearch, sessionsAthleteFilter)} style={{ padding: '9px 16px' }}>Search</button>
                 {(sessionsSearch || sessionsAthleteFilter) && <button className="btn btn-ghost" onClick={() => { setSessionsSearch(''); setSessionsAthleteFilter(''); fetchAllSessions('','') }} style={{ padding: '9px 14px' }}>Clear</button>}
               </div>
-              {loadingSessions
-                ? <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
-                : allSessions.length === 0
-                  ? <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>No sessions found.</div>
-                  : (
+              {loadingSessions || sessionsError || allSessions.length === 0
+                ? <ListState
+                    loading={loadingSessions}
+                    error={sessionsError}
+                    isEmpty={allSessions.length === 0}
+                    emptyTitle={sessionsSearch || sessionsAthleteFilter ? 'No sessions match that search.' : 'No sessions yet.'}
+                    emptyHint={sessionsSearch || sessionsAthleteFilter ? 'Try a different name or clear the filters.' : 'Record one and it will appear here.'}
+                    onRetry={() => fetchAllSessions(sessionsSearch, sessionsAthleteFilter)}
+                  />
+                : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {allSessions.map(s => {
                         const a = s.athletes

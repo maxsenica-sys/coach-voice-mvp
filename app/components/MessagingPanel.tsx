@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+import { apiJson } from '@/lib/api-client'
 import { fmtTime, fmtDateDivider } from '@/lib/date-utils'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -21,7 +22,10 @@ interface Message {
   sender_role: 'coach' | 'athlete'
   content: string | null
   msg_type: 'text' | 'image' | 'video' | 'audio'
+  /** Signed by the API on every read from `media_path`. Never persisted. */
   media_url: string | null
+  /** The durable storage key. See migration 024. */
+  media_path?: string | null
   media_name: string | null
   read_at: string | null
   created_at: string
@@ -64,6 +68,10 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [msgError, setMsgError] = useState<string | null>(null)
+  // Kept separate from msgError: one is "this thread would not load", the
+  // other is "what you just typed did not go". They appear in different places
+  // and a load failure must not wipe an unsent draft's error.
+  const [sendError, setSendError] = useState<string | null>(null)
 
   const [coachId, setCoachId] = useState<string | null>(null)
 
@@ -188,61 +196,76 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   }, [coachId, selectedId, supabase])
 
   // Send text message
+  /* A message that does not send must never look like one that did.
+   *
+   * This used to clear the textarea first and then, on any failure, write to
+   * console.error and stop. The coach saw an empty box and an empty thread and
+   * had every reason to believe they had sent something. On the only channel in
+   * the product whose entire purpose is one person telling another person
+   * something, a lost message is the worst possible failure, and it was silent.
+   *
+   * The comment that sat here said "Optimistic update — add to local state
+   * immediately" and was positioned AFTER the await, so it was neither
+   * optimistic nor immediate. Genuine optimism is not safe here either: the
+   * send can fail, and a bubble that appears and then vanishes is worse than a
+   * brief wait. So the rule is the honest one — the draft is held until the
+   * server confirms, and handed back with the reason if it does not.
+   */
   const sendText = async () => {
     if (!selectedId || !text.trim() || sending) return
     setSending(true)
+    setSendError(null)
     const content = text.trim()
-    setText('')
     try {
-      const res = await fetch('/api/messages', {
+      const json = await apiJson<{ message?: Message }>('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ athlete_id: selectedId, content, msg_type: 'text' }),
       })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok && json.message) {
-        // Optimistic update — add to local state immediately
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === json.message.id)) return prev
-          return [...prev, json.message]
-        })
-      } else if (!res.ok) {
-        console.error('[MessagingPanel] send failed:', json?.error)
-      }
+      if (!json.message) throw new Error('The message did not save. Try again.')
+      setMessages((prev) => (prev.some((m) => m.id === json.message!.id) ? prev : [...prev, json.message!]))
+      setText('')
     } catch (e) {
-      console.error('[MessagingPanel] send error:', e)
+      // The draft stays exactly where the coach left it.
+      setSendError(e instanceof Error ? e.message : 'Could not send. Try again.')
+    } finally {
+      setSending(false)
     }
-    setSending(false)
   }
 
   // Upload media file
-  const uploadMedia = async (file: File, msgType: 'image' | 'video' | 'audio') => {
-    if (!selectedId) return
+  /** Returns true only if the message was actually saved. */
+  const uploadMedia = async (file: File, msgType: 'image' | 'video' | 'audio'): Promise<boolean> => {
+    if (!selectedId) return false
     setMediaUploading(true)
+    setSendError(null)
     try {
       const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Your session has expired. Sign in again and retry.')
       const ext = file.name.split('.').pop() ?? 'bin'
-      const path = `${user!.id}/${selectedId}/${Date.now()}.${ext}`
+      // First segment is the uploader's auth id — that is what the
+      // messages-media storage policy scopes on (migration 023).
+      const path = `${user.id}/${selectedId}/${Date.now()}.${ext}`
       const { error: upErr } = await supabase.storage.from('messages-media').upload(path, file)
-      if (upErr) { alert('Upload failed: ' + upErr.message); return }
+      if (upErr) throw new Error(`Could not upload that file — ${upErr.message}`)
 
-      // FIX 2: messages-media is a private bucket — use signed URL (1h TTL) instead of getPublicUrl
-      const { data: signedData, error: signErr } = await supabase.storage.from('messages-media').createSignedUrl(path, 3600)
-      if (signErr || !signedData?.signedUrl) { alert('Failed to get media URL'); return }
-      const mediaUrl = signedData.signedUrl
-
-      const res = await fetch('/api/messages', {
+      // Send the PATH, never a URL. A signed URL expires in an hour and cannot
+      // be re-derived from itself, so persisting one made every photo and voice
+      // note in the thread a dead link an hour after sending, with the object
+      // left unreachable and still billed. The API signs the path on read
+      // instead, fresh every request. See migration 024.
+      const json = await apiJson<{ message?: Message }>('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ athlete_id: selectedId, content: null, msg_type: msgType, media_url: mediaUrl, media_name: file.name }),
+        body: JSON.stringify({ athlete_id: selectedId, content: null, msg_type: msgType, media_path: path, media_name: file.name }),
       })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok && json.message) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === json.message.id)) return prev
-          return [...prev, json.message]
-        })
-      }
+      if (!json.message) throw new Error('The file uploaded but the message did not save. Try again.')
+      const saved = json.message
+      setMessages((prev) => (prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]))
+      return true
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : 'Could not send that file. Try again.')
+      return false
     } finally {
       setMediaUploading(false)
     }
@@ -298,7 +321,12 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
     if (!audioBlob || !selectedId) return
     const ext = audioBlob.type.includes('mp4') ? 'mp4' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm'
     const file = new File([audioBlob], `voice-${Date.now()}.${ext}`, { type: audioBlob.type || 'audio/webm' })
-    await uploadMedia(file, 'audio')
+    const sent = await uploadMedia(file, 'audio')
+    // Only discard the recording once it is safely sent. This used to clear
+    // unconditionally, so a failed upload destroyed the only copy of a voice
+    // note the coach had just spoken, with nothing on screen to say so.
+    if (!sent) return
+    if (audioUrl) URL.revokeObjectURL(audioUrl)
     setAudioBlob(null)
     setAudioUrl(null)
   }
@@ -562,6 +590,34 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                     <button className="btn btn-ghost" style={{ padding: '6px 14px', fontSize: 13 }} onClick={discardAudio}>Discard</button>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* A failed send says so, above the box still holding the draft. */}
+            {sendError && (
+              <div
+                role="alert"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '10px 16px', background: 'var(--danger-light)',
+                  borderTop: '1px solid var(--border)', flexShrink: 0,
+                  fontSize: 14, color: 'var(--text)', lineHeight: 1.4,
+                }}
+              >
+                <span aria-hidden="true" style={{ fontSize: 16, flexShrink: 0 }}>⚠</span>
+                <span style={{ flex: 1, overflowWrap: 'anywhere' }}>
+                  {sendError} <strong>Your message has not been sent.</strong>
+                </span>
+                <button
+                  onClick={() => setSendError(null)}
+                  aria-label="Dismiss"
+                  style={{
+                    minWidth: 44, minHeight: 44, border: 'none', background: 'transparent',
+                    cursor: 'pointer', fontSize: 18, color: 'var(--text-2)', flexShrink: 0,
+                  }}
+                >
+                  ×
+                </button>
               </div>
             )}
 

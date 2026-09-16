@@ -16,6 +16,7 @@ import {
   type WellnessCheckin,
 } from '@/lib/wellness-config'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
+import ListState from '@/app/components/ListState'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import TrainingSpine from '@/app/components/TrainingSpine'
 import { apiMutate, apiJson } from '@/lib/api-client'
@@ -361,6 +362,8 @@ export default function AthletePage() {
   const [messages, setMessages] = useState<MessageRow[]>([])
   const [msgText, setMsgText] = useState('')
   const [msgSending, setMsgSending] = useState(false)
+  const [msgSendError, setMsgSendError] = useState<string | null>(null)
+  const [msgLoadError, setMsgLoadError] = useState<string | null>(null)
   const [msgLoading, setMsgLoading] = useState(false)
   const msgBottomRef = useRef<HTMLDivElement>(null)
   const msgFileInputRef = useRef<HTMLInputElement>(null)
@@ -538,14 +541,30 @@ export default function AthletePage() {
   useEffect(() => { void loadWellness() }, [loadWellness])
 
   // ── Load messages ─────────────────────────────────────────
+  /* Named, so the error state can offer a real retry.
+   *
+   * `.then(r => r.json())` with no ok check turned every server error into an
+   * empty thread, and the screen then told a teenager "No messages yet. Send
+   * your coach a message below!" — untrue, and if they had just sent something
+   * difficult, actively distressing. */
+  const loadMessages = useCallback(async () => {
+    if (!athleteId) return
+    setMsgLoading(true)
+    setMsgLoadError(null)
+    try {
+      const j = await apiJson<{ messages?: MessageRow[] }>(`/api/messages?athlete_id=${athleteId}`)
+      setMessages(j.messages ?? [])
+    } catch (e) {
+      setMsgLoadError(e instanceof Error ? e.message : 'Could not load your messages.')
+    } finally {
+      setMsgLoading(false)
+    }
+  }, [athleteId])
+
   useEffect(() => {
     if (tab !== 'messages' || !athleteId) return
-    setMsgLoading(true)
-    fetch(`/api/messages?athlete_id=${athleteId}`)
-      .then((r) => r.json())
-      .then((j) => setMessages(j.messages ?? []))
-      .finally(() => setMsgLoading(false))
-  }, [tab, athleteId])
+    void loadMessages()
+  }, [tab, athleteId, loadMessages])
 
   useEffect(() => {
     msgBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -581,19 +600,34 @@ export default function AthletePage() {
     })()
   }, [tab, athleteId, calMonth])
 
+  /* An athlete's message that does not send must say so.
+   *
+   * This cleared the textarea first, had no catch at all, and no else branch —
+   * so a 500, a 401 or a dropped connection deleted what a teenager had just
+   * written and showed them nothing. `await res.json()` on an HTML error page
+   * threw, and the throw went nowhere. If a child writes something difficult to
+   * their coach and the app quietly eats it, they have no way of knowing it
+   * never arrived, and no reason to think it didn't.
+   *
+   * The draft is now held until the server confirms the write.
+   */
   const sendMessage = async () => {
     if (!athleteId || !msgText.trim() || msgSending) return
     setMsgSending(true)
+    setMsgSendError(null)
     const content = msgText.trim()
-    setMsgText('')
     try {
-      const res = await fetch('/api/messages', {
+      const j = await apiJson<{ message?: MessageRow }>('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ athlete_id: athleteId, content, msg_type: 'text' }),
       })
-      const j = await res.json()
-      if (res.ok && j.message) setMessages((prev) => [...prev, j.message])
+      if (!j.message) throw new Error('Your message did not save. Try sending it again.')
+      const saved = j.message
+      setMessages((prev) => (prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]))
+      setMsgText('')
+    } catch (e) {
+      setMsgSendError(e instanceof Error ? e.message : 'Could not send. Try again.')
     } finally {
       setMsgSending(false)
     }
@@ -617,7 +651,7 @@ export default function AthletePage() {
   const uploadMsgMedia = async (file: File) => {
     if (!athleteId) return
     const msgType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'audio'
-    if (!userId) { alert('Could not send: you are signed out. Sign in and try again.') ; return }
+    if (!userId) { setMsgSendError('Your session has expired. Sign in again and retry.'); return }
     const ext = file.name.split('.').pop() ?? 'bin'
     // First segment must be the uploader's auth id — that is what the
     // messages-media storage policy scopes on, and it is what the coach side
@@ -625,17 +659,23 @@ export default function AthletePage() {
     // nobody: any athlete could write into any other athlete's folder, and no
     // policy could tell the difference.
     const path = `${userId}/${athleteId}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('messages-media').upload(path, file)
-    if (error) { alert('Upload failed: ' + error.message); return }
-    const { data: signedData, error: signErr } = await supabase.storage.from('messages-media').createSignedUrl(path, 3600)
-    if (signErr || !signedData?.signedUrl) { alert('Could not get media URL'); return }
-    const mediaUrl = signedData.signedUrl
-    const res = await fetch('/api/messages', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ athlete_id: athleteId, content: null, msg_type: msgType, media_url: mediaUrl, media_name: file.name }),
-    })
-    const j = await res.json()
-    if (res.ok && j.message) setMessages((prev) => [...prev, j.message])
+    setMsgSendError(null)
+    try {
+      const { error } = await supabase.storage.from('messages-media').upload(path, file)
+      if (error) throw new Error(`Could not upload that file — ${error.message}`)
+
+      // The PATH, not a URL. A signed URL dies in an hour and cannot be
+      // re-derived from itself; the API signs the path fresh on every read.
+      const j = await apiJson<{ message?: MessageRow }>('/api/messages', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete_id: athleteId, content: null, msg_type: msgType, media_path: path, media_name: file.name }),
+      })
+      if (!j.message) throw new Error('The file uploaded but the message did not save. Try again.')
+      const saved = j.message
+      setMessages((prev) => (prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]))
+    } catch (e) {
+      setMsgSendError(e instanceof Error ? e.message : 'Could not send that file. Try again.')
+    }
   }
 
   // ── Session videos ────────────────────────────────────────
@@ -1624,7 +1664,15 @@ export default function AthletePage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16, minHeight: 120 }}>
               {msgLoading && <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-3)', padding: 20 }}>Loading…</div>}
               {!msgLoading && messages.length === 0 && (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-3)', padding: 30 }}>No messages yet. Send your coach a message below!</div>
+                <ListState
+                  loading={false}
+                  error={msgLoadError}
+                  isEmpty={!msgLoadError}
+                  emptyTitle="No messages yet."
+                  emptyHint="Send your coach a message below."
+                  compact
+                  onRetry={msgLoadError ? () => { void loadMessages() } : undefined}
+                />
               )}
               {messages.map((msg) => {
                 const isAthlete = msg.sender_role === 'athlete'
@@ -1666,6 +1714,32 @@ export default function AthletePage() {
               })}
               <div ref={msgBottomRef} />
             </div>
+
+            {/* A failed send says so, above the box that still holds the text. */}
+            {msgSendError && (
+              <div
+                role="alert"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, marginTop: 12,
+                  padding: '10px 12px', borderRadius: 12,
+                  background: 'var(--danger-light)', fontSize: 'var(--fs-4)',
+                  color: 'var(--text)', lineHeight: 1.45,
+                }}
+              >
+                <span aria-hidden="true" style={{ fontSize: 16, flexShrink: 0 }}>⚠</span>
+                <span style={{ flex: 1, overflowWrap: 'anywhere' }}>
+                  {msgSendError} <strong>Your coach has not seen this yet.</strong>
+                </span>
+                <button
+                  onClick={() => setMsgSendError(null)}
+                  aria-label="Dismiss"
+                  style={{
+                    minWidth: 44, minHeight: 44, border: 'none', background: 'transparent',
+                    cursor: 'pointer', fontSize: 18, color: 'var(--text-2)', flexShrink: 0,
+                  }}
+                >×</button>
+              </div>
+            )}
 
             {/* Input */}
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 14 }}>

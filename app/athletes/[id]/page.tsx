@@ -545,6 +545,10 @@ export default function AthleteDetailPage() {
     : true
 
   const [wellnessLatest, setWellnessLatest] = useState<WellnessCheckin | null>(null)
+  /* Distinguishes "no check-in on file" from "we could not read it". The two
+     look identical in state (`wellnessLatest === null`) and mean opposite
+     things to a coach deciding whether a child is training today. */
+  const [wellnessUnavailable, setWellnessUnavailable] = useState(false)
   const [wellnessAlert, setWellnessAlert] = useState<WellnessAlert | null>(null)
   useEffect(() => {
     if (!athleteId) return
@@ -554,10 +558,17 @@ export default function AthleteDetailPage() {
       .then(json => {
         if (cancelled) return
         const list: WellnessCheckin[] = json.checkins ?? []
+        setWellnessUnavailable(false)
         setWellnessLatest(list[list.length - 1] ?? null)
         setWellnessAlert(json.alert ?? null)
       })
-      .catch(() => { if (!cancelled) { setWellnessLatest(null); setWellnessAlert(null) } })
+      .catch(() => {
+        // A read that failed is not a child who has never checked in.
+        // setWellnessLatest(null) renders exactly that, and this panel is on
+        // screen precisely when a coach is responding to a wellness alert —
+        // the one moment the difference matters most.
+        if (!cancelled) { setWellnessLatest(null); setWellnessAlert(null); setWellnessUnavailable(true) }
+      })
     return () => { cancelled = true }
   }, [athleteId])
   const wellnessScore = overallWellnessScore(wellnessLatest)
@@ -566,11 +577,20 @@ export default function AthleteDetailPage() {
   const [alertCaretakers, setAlertCaretakers] = useState<{ id: string; caretaker_name: string; caretaker_email: string; notify_wellness_alerts: boolean | null }[]>([])
   useEffect(() => {
     if (!athleteId) return
+    // `res.ok ? json : { caretakers: [] }` made a server error look identical to
+    // "this athlete has no caretakers on file", so the picker silently
+    // disappeared and the coach was left typing an address by hand — during a
+    // wellness alert, about a child.
+    setCaretakersUnavailable(false)
     fetch(`/api/caretakers?athlete_id=${encodeURIComponent(athleteId)}`)
-      .then(res => (res.ok ? res.json() : { caretakers: [] }))
+      .then(res => {
+        if (!res.ok) throw new Error('caretakers unavailable')
+        return res.json()
+      })
       .then(json => setAlertCaretakers(json.caretakers ?? []))
-      .catch(() => setAlertCaretakers([]))
+      .catch(() => { setAlertCaretakers([]); setCaretakersUnavailable(true) })
   }, [athleteId])
+  const [caretakersUnavailable, setCaretakersUnavailable] = useState(false)
   const [alertSendTo, setAlertSendTo] = useState('')
   const [alertSending, setAlertSending] = useState(false)
   const [alertMsg, setAlertMsg] = useState('')
@@ -1090,6 +1110,12 @@ export default function AthleteDetailPage() {
                       })}
                     </div>
                   </>
+                ) : wellnessUnavailable ? (
+                  <div role="alert" style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55 }}>
+                    ⚠ Could not read {athlete.first_name}&rsquo;s check-ins just now. This is a
+                    connection problem, <strong>not</strong> a sign they have stopped checking in.
+                    Refresh to try again.
+                  </div>
                 ) : (
                   <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.55 }}>
                     No check-ins yet — {athlete.first_name} hasn&rsquo;t submitted one from their portal.
@@ -1318,6 +1344,12 @@ export default function AthleteDetailPage() {
                   {wellnessAlert.reason === 'both' && `Today's score (${wellnessAlert.todayScore}/5) and 7-day average (${wellnessAlert.avgScore}/5) are both low.`}
                   {' '}You can loop in a parent or caretaker below.
                 </div>
+                {caretakersUnavailable && (
+                  <div role="alert" style={{ fontSize: 12, color: 'var(--text)', marginBottom: 8, lineHeight: 1.5 }}>
+                    ⚠ Could not load this athlete&rsquo;s saved caretakers. The list below is
+                    missing, not empty — refresh before assuming there is nobody on file.
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   {alertCaretakers.filter(c => c.notify_wellness_alerts !== false).length > 0 && (
                     <select
