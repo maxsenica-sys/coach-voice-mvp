@@ -293,6 +293,9 @@ export default function AthletePage() {
   const [noteEditText, setNoteEditText] = useState('')
   const [noteRecording, setNoteRecording] = useState(false)
   const [noteTranscribing, setNoteTranscribing] = useState(false)
+  // A failed voice note has to be visible: the athlete has already spoken, and
+  // silence here is indistinguishable from success.
+  const [noteError, setNoteError] = useState<string | null>(null)
   const mediaRecRef = useRef<MediaRecorder | null>(null)
   const noteChunksRef = useRef<BlobPart[]>([])
 
@@ -781,17 +784,31 @@ export default function AthletePage() {
           // reads the codec from the filename.
           fd.append('file', new File([blob], `note.${audioExtension(blob.type)}`, { type: blob.type }))
           if (sport) fd.append('sport', sport)
-          const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
-          const json = await res.json().catch(() => ({}))
-          if (res.ok && json.text) {
-            const savedRes = await fetch('/api/athlete-notes', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: json.text, session_id: noteFilter, note_type: 'voice' }),
-            })
-            const savedJson = await savedRes.json().catch(() => ({}))
-            if (savedRes.ok) setNotes((prev) => [...prev, savedJson.note])
+          /* A voice note that fails must say so.
+           *
+           * `if (res.ok && json.text)` with no else meant a failed
+           * transcription — or a transcription that came back empty — did
+           * nothing at all: no error, no message, the spinner cleared and the
+           * note silently never existed. The athlete has already spoken; they
+           * have no way to know it did not land, and nothing to retry.
+           *
+           * This is CLAUDE.md checklist item 1, on a child-facing path. */
+          const json = await apiJson<{ text?: string }>('/api/transcribe', { method: 'POST', body: fd })
+          const text = (json.text ?? '').trim()
+          if (!text) {
+            throw new Error('We could not make out any words in that recording. Try again somewhere quieter.')
           }
+          const savedJson = await apiJson<{ note?: AthleteNote }>('/api/athlete-notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: text, session_id: noteFilter, note_type: 'voice' }),
+          })
+          if (!savedJson.note) throw new Error('That note did not save. Try again.')
+          const saved = savedJson.note
+          setNotes((prev) => [...prev, saved])
+          setNoteError(null)
+        } catch (e: unknown) {
+          setNoteError(e instanceof Error ? e.message : 'Could not save that voice note. Try again.')
         } finally {
           setNoteTranscribing(false)
         }
@@ -1990,6 +2007,26 @@ export default function AthletePage() {
                     {noteTranscribing ? '…transcribing' : noteRecording ? <><span className="recording-dot" /> Stop recording</> : '🎙️ Voice note'}
                   </button>
                 </div>
+
+                {noteError && (
+                  <div
+                    role="alert"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
+                      padding: '10px 12px', borderRadius: 10,
+                      background: 'var(--danger-light)', color: 'var(--text)',
+                      fontSize: 'var(--fs-3)', lineHeight: 1.45,
+                    }}
+                  >
+                    <span aria-hidden="true" style={{ flexShrink: 0 }}>⚠</span>
+                    <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{noteError}</span>
+                    <button
+                      onClick={() => setNoteError(null)}
+                      aria-label="Dismiss"
+                      style={{ minWidth: 44, minHeight: 44, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--text-2)', flexShrink: 0 }}
+                    >×</button>
+                  </div>
+                )}
               </div>
 
               {filteredNotes.length === 0 ? (

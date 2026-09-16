@@ -62,6 +62,10 @@ async function transcribe(rec: PendingRecording, audioPath: string | null): Prom
     fd.append('file', transcribeFile(rec.blob, rec.mimeType))
   }
   if (rec.coachSport) fd.append('sport', rec.coachSport)
+  // Same roster priming as the live path, from the snapshot taken when the
+  // recording was queued — so a replay hours later primes the same names even
+  // if the squad has been renamed or re-membered since.
+  if (rec.rosterNames?.length) fd.append('roster', rec.rosterNames.join(', '))
 
   const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
   const json = await res.json().catch(() => ({}))

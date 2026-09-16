@@ -87,7 +87,13 @@ const DIM = '\x1b[2m'
 const BOLD = '\x1b[1m'
 const OFF = '\x1b[0m'
 
-const { buildSummaryPrompt, transcriptNames, parseSummaryResponse, MAX_NEXT_LENGTH, TARGET_BULLETS } =
+const { assessTranscript } =
+  await import(pathToFileURL(path.join(ROOT, 'lib/transcript-quality.ts')).href)
+
+const { ALL_SPORTS, SPORT_TERMINOLOGY, getSportTerminologyHint } =
+  await import(pathToFileURL(path.join(ROOT, 'lib/sports.ts')).href)
+
+const { buildSummaryPrompt, transcriptNames, mayPersonalise, parseSummaryResponse, MAX_NEXT_LENGTH, TARGET_BULLETS } =
   await import(pathToFileURL(path.join(ROOT, 'lib/summary-prompt.ts')).href)
 
 const fixtures = JSON.parse(readFileSync(FIXTURES, 'utf8'))
@@ -162,6 +168,171 @@ for (const c of fixtures.cases) {
     console.log(`   ${GREEN}PASS${OFF}  ${c.id.padEnd(20)} ${DIM}${c.why ?? ''}${OFF}`)
   } else {
     failures.push({ name: `name gate · ${c.id}`, detail: wrong.join('; ') })
+    console.log(`   ${RED}FAIL${OFF}  ${c.id.padEnd(20)} ${RED}${wrong.join('; ')}${OFF}`)
+  }
+}
+
+// ── 1a · the transcript quality gate ──────────────────────────────────────
+//
+// whisper-1 hallucinates fluent text from silence. The only guard was
+// `blob.size < 1000`, which forty seconds of a muted microphone exceeds — so a
+// recording of nothing became a paid API call, a confident transcript, a
+// summary, and an email to a child and their caretakers, with nothing in the
+// chain able to tell that the coach never spoke.
+
+console.log(`\n   ${BOLD}Transcript quality${OFF} ${DIM}— silence must not become a summary${OFF}`)
+
+{
+  const seg = (no_speech_prob, avg_logprob) => ({ no_speech_prob, avg_logprob })
+  const cases = [
+    {
+      id: 'silence-hallucinated',
+      why: 'Whisper inventing a plausible sentence from a silent room. Every segment is flagged as non-speech; the words are fluent and mean nothing.',
+      text: 'Thank you for watching. Please subscribe to the channel.',
+      segments: [seg(0.95, -0.4), seg(0.92, -0.5), seg(0.97, -0.3)],
+      expect: 'no-speech',
+    },
+    {
+      id: 'empty-ish',
+      why: 'Below four words there is nothing to summarise, whatever the confidence says.',
+      text: 'Okay.',
+      segments: [seg(0.1, -0.2)],
+      expect: 'no-speech',
+    },
+    {
+      id: 'noisy-hall',
+      why: 'A real session in a loud hall: half the segments are guesses. Usable, but the coach should read it before a child does.',
+      text: 'right so the platform is holding but you are dropping the elbow on follow through keep it locked',
+      segments: [seg(0.1, -1.4), seg(0.7, -0.9), seg(0.2, -1.6), seg(0.1, -0.3)],
+      expect: 'low-confidence',
+    },
+    {
+      id: 'clean',
+      why: 'An ordinary clear recording. Must produce no warning at all — a warning on every session trains the coach to ignore warnings.',
+      text: 'Good session today, the platform is holding up much better under pressure, keep working the elbow.',
+      segments: [seg(0.02, -0.25), seg(0.03, -0.3), seg(0.01, -0.2)],
+      expect: 'ok',
+    },
+    {
+      id: 'one-cough',
+      why: 'A single non-speech segment in an otherwise clean recording is a cough, not a failure.',
+      text: 'Good work on the turns today, keep the tempo through the middle of the set.',
+      segments: [seg(0.9, -0.4), seg(0.02, -0.25), seg(0.03, -0.3), seg(0.01, -0.22)],
+      expect: 'ok',
+    },
+    {
+      id: 'no-segment-data',
+      why: 'An older client, or a provider that returned no segments. Absence of evidence must not become a warning.',
+      text: 'Good session today, keep working that elbow through the follow through.',
+      segments: [],
+      expect: 'ok',
+    },
+  ]
+
+  for (const c of cases) {
+    const got = assessTranscript(c.text, c.segments).quality
+    checks++
+    if (got === c.expect) {
+      console.log(`   ${GREEN}PASS${OFF}  ${c.id.padEnd(20)} ${DIM}${c.why}${OFF}`)
+    } else {
+      failures.push({ name: `transcript quality · ${c.id}`, detail: `expected ${c.expect}, got ${got}` })
+      console.log(`   ${RED}FAIL${OFF}  ${c.id.padEnd(20)} ${RED}expected ${c.expect}, got ${got}${OFF}`)
+    }
+  }
+}
+
+// ── 1b · the sport vocabulary table ───────────────────────────────────────
+//
+// This value is spliced into a Whisper context prompt AND into the summariser's
+// instruction to read ambiguous words as terminology for that sport. Both bias
+// decoding toward the words they contain, so a wrong entry is worse than none.
+//
+// Two things had gone wrong and neither was visible:
+//   · a partial matcher mapped Ice Dancing to Ice Hockey, so an ice dancer was
+//     transcribed with "slap shot, power play, penalty kill" in the prompt
+//   · two keys were not sports at all, reachable only by that partial match
+
+console.log(`\n   ${BOLD}The sport vocabulary${OFF} ${DIM}— exact match or nothing${OFF}`)
+
+{
+  const keys = Object.keys(SPORT_TERMINOLOGY)
+  const notASport = keys.filter((k) => !ALL_SPORTS.includes(k))
+  checks++
+  if (notASport.length) {
+    failures.push({ name: 'sport vocabulary', detail: `keys that are not sports: ${notASport.join(', ')}` })
+    console.log(`   ${RED}FAIL${OFF}  every key is a real sport   ${RED}${notASport.join(', ')}${OFF}`)
+  } else {
+    console.log(`   ${GREEN}PASS${OFF}  every key is a real sport   ${DIM}${keys.length} keys, all in ALL_SPORTS${OFF}`)
+  }
+
+  // No sport may borrow another sport's vocabulary. The check is blunt on
+  // purpose: a hint must be either this sport's own entry, or empty.
+  const borrowed = []
+  for (const sport of ALL_SPORTS) {
+    const hint = getSportTerminologyHint(sport)
+    if (hint && hint !== SPORT_TERMINOLOGY[sport]) borrowed.push(sport)
+  }
+  checks++
+  if (borrowed.length) {
+    failures.push({ name: 'sport vocabulary', detail: `sports given another sport's terms: ${borrowed.slice(0, 6).join(', ')}` })
+    console.log(`   ${RED}FAIL${OFF}  no sport borrows another's   ${RED}${borrowed.slice(0, 6).join(', ')}${OFF}`)
+  } else {
+    console.log(`   ${GREEN}PASS${OFF}  no sport borrows another's   ${DIM}${ALL_SPORTS.filter((s) => getSportTerminologyHint(s)).length}/${ALL_SPORTS.length} have their own${OFF}`)
+  }
+
+  // And a sport without an entry says nothing, rather than describing coaching
+  // in general and calling it terminology.
+  checks++
+  const generic = ALL_SPORTS.filter((s) => /athletic performance, coaching cues/.test(getSportTerminologyHint(s)))
+  if (generic.length) {
+    failures.push({ name: 'sport vocabulary', detail: `${generic.length} sports get the generic filler as "terminology"` })
+    console.log(`   ${RED}FAIL${OFF}  no generic filler            ${RED}${generic.length} sports${OFF}`)
+  } else {
+    console.log(`   ${GREEN}PASS${OFF}  no generic filler            ${DIM}a sport with no entry contributes nothing${OFF}`)
+  }
+}
+
+// ── 2b · the roster gate ──────────────────────────────────────────────────
+//
+// transcriptNames answers "is this name in the transcript". That is not the
+// same question as "may this be personalised", and the difference is a
+// safeguarding bug: on a squad save the same transcript is written once per
+// member, so a roster with two Jacks had "Jack, you're dropping your elbow"
+// delivered to BOTH of them as their coach addressing them by name. The gate
+// reported success each time, because it was only ever shown one name.
+
+console.log(`\n   ${BOLD}The roster gate${OFF} ${DIM}— a first name is not an identifier${OFF}`)
+
+for (const c of fixtures.cases) {
+  const roster = c.roster ?? []
+  const wrong = []
+  for (const name of roster) {
+    const inTranscript = transcriptNames(c.transcript, name)
+    const shared = roster.filter((n) => n.toLowerCase() === name.toLowerCase()).length
+    const allowed = mayPersonalise(c.transcript, name, roster)
+    checks++
+
+    // Named and unique on the roster -> personalise.
+    // Named but shared with a teammate -> refuse, every time.
+    const expected = inTranscript && shared <= 1
+    if (allowed !== expected) {
+      wrong.push(`${name}: expected ${expected} (inTranscript=${inTranscript}, sharing=${shared}), got ${allowed}`)
+    }
+
+    // And the prompt must actually follow the gate: a refused name must not
+    // appear in the instruction half.
+    if (!allowed) {
+      const prompt = buildSummaryPrompt(c.transcript, c.sport, null)
+      checks++
+      if (prompt.includes('WHO THIS IS FOR')) {
+        wrong.push(`${name}: refused by the roster gate but the prompt still personalises`)
+      }
+    }
+  }
+  if (wrong.length === 0) {
+    console.log(`   ${GREEN}PASS${OFF}  ${c.id.padEnd(20)} ${DIM}${c.why ?? ''}${OFF}`)
+  } else {
+    failures.push({ name: `roster gate · ${c.id}`, detail: wrong.join('; ') })
     console.log(`   ${RED}FAIL${OFF}  ${c.id.padEnd(20)} ${RED}${wrong.join('; ')}${OFF}`)
   }
 }

@@ -62,16 +62,33 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   const [step, setStep] = useState<'record' | 'review'>('record')
 
   const [micLevel, setMicLevel] = useState(0)
+  /* What Whisper thought of its own output. Shown above the transcript in the
+     review step, where the coach can still act on it. */
+  const [transcriptWarning, setTranscriptWarning] = useState('')
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const analyserRef = useRef<AnalyserNode | null>(null)
   const animFrameRef = useRef<number>(0)
   const streamRef = useRef<MediaStream | null>(null)
+  /* One AudioContext, reused.
+   *
+   * startRecording created a new one on every recording and never closed it —
+   * not on stop, not in the unmount cleanup below. Chrome allows about six per
+   * document. The seventh throws, the bare catch in startRecording turns that
+   * into "Microphone access denied. Please allow microphone access.", and the
+   * coach is told to fix a permission that was never the problem and cannot be
+   * granted. Six sessions in, on the same page, recording simply stops working.
+   *
+   * Contexts also suspend themselves when a tab is backgrounded, so the one
+   * that survives needs resuming rather than replacing. */
+  const audioCtxRef = useRef<AudioContext | null>(null)
 
   useEffect(() => {
     return () => {
       cancelAnimationFrame(animFrameRef.current)
       streamRef.current?.getTracks().forEach((t) => t.stop())
+      void audioCtxRef.current?.close().catch(() => null)
+      audioCtxRef.current = null
     }
   }, [])
 
@@ -112,10 +129,31 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   const startRecording = async () => {
     setError('')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      /* Constraints, rather than whatever the browser felt like.
+       *
+       * This asked for `{ audio: true }`, so a Bluetooth or USB mic delivering
+       * a stereo stream had the 32kbps budget split across two channels — the
+       * coach on a windy pitch recorded at 16kbps per side. channelCount: 1 is
+       * the single most useful line here; speech is mono and Whisper reads mono.
+       *
+       * The three processing flags are requests, not guarantees; a browser that
+       * ignores them behaves exactly as it does today. */
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
       streamRef.current = stream
 
-      const ctx = new AudioContext()
+      // Reused, not recreated. See audioCtxRef.
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioContext()
+      }
+      const ctx = audioCtxRef.current
+      if (ctx.state === 'suspended') await ctx.resume()
       const src = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 256
@@ -142,8 +180,24 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       mr.start(250)
       mediaRecorderRef.current = mr
       setRecording(true)
-    } catch {
-      setError('Microphone access denied. Please allow microphone access.')
+    } catch (e: unknown) {
+      /* Say which thing went wrong.
+       *
+       * Every failure in this block used to report a denied permission, which
+       * sent coaches to their browser settings to fix something that was
+       * already fine. NotAllowedError is the only one that actually means that;
+       * NotFoundError means no microphone exists, and NotReadableError means
+       * another app — a call, a recorder, a meeting — is holding it. */
+      const name = e instanceof Error ? e.name : ''
+      setError(
+        name === 'NotAllowedError' || name === 'SecurityError'
+          ? 'Microphone access denied. Allow microphone access for this site and try again.'
+          : name === 'NotFoundError'
+            ? 'No microphone found. Check that one is connected, then try again.'
+            : name === 'NotReadableError'
+              ? 'Another app is using the microphone. Close it and try again.'
+              : 'Could not start recording. Reload the page and try again.',
+      )
     }
   }
 
@@ -186,6 +240,12 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       // Snapshotted so a queued recording survives the squad being renamed.
       groupName: group?.name ?? null,
       memberIds: mode === 'group' ? (group?.member_ids ?? []) : [],
+      // Snapshotted alongside memberIds, for the same reason: a replay hours
+      // later must prime the names that were in the room, not today's squad.
+      rosterNames: (mode === 'group'
+        ? athletes.filter((a) => (group?.member_ids ?? []).includes(a.id))
+        : athletes.filter((a) => a.id === athleteId)
+      ).map((a) => a.first_name).filter(Boolean),
       targetLabel: mode === 'group'
         ? (group?.name ?? 'Squad')
         : athlete ? `${athlete.first_name} ${athlete.last_name}` : 'an athlete',
@@ -238,8 +298,33 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       }
       if (coachSport) fd.append('sport', coachSport)
 
+      /* The names this recording is about, so Whisper stops mangling them.
+       *
+       * Only the athletes this session is being saved for — the squad's
+       * members, or the one athlete. That bound is the safety property: prompt
+       * bleed can make Whisper insert a primed name that was never said, and an
+       * inserted name would falsely open the personalisation gate. Keeping the
+       * list to people who were actually in the room makes a hallucination
+       * equivalent to a coach being misheard rather than a new failure.
+       *
+       * The `file` append above is untouched — the extension it carries is how
+       * Whisper detects the codec. */
+      const rosterForPrompt = mode === 'group'
+        ? athletes.filter((a) => (groups.find((g) => g.id === groupId)?.member_ids ?? []).includes(a.id))
+        : athletes.filter((a) => a.id === athleteId)
+      const rosterNames = rosterForPrompt.map((a) => a.first_name).filter(Boolean)
+      if (rosterNames.length) fd.append('roster', rosterNames.join(', '))
+
       const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
       const json = await res.json().catch(() => ({}))
+      // Whisper's own confidence, surfaced rather than discarded. A recording
+      // that is mostly silence must not quietly become a summary emailed to a
+      // child — see lib/transcript-quality.ts.
+      if (res.ok && typeof json.qualityReason === 'string' && json.qualityReason) {
+        setTranscriptWarning(json.qualityReason)
+      } else {
+        setTranscriptWarning('')
+      }
       if (!res.ok) {
         if (res.status === 413) {
           throw new Error(
@@ -706,12 +791,29 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   ← Re-record
                 </button>
               </div>
+              {transcriptWarning && (
+                <div
+                  role="status"
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                    padding: '10px 12px', borderRadius: 10, marginBottom: 10,
+                    background: 'var(--wellness-ok-tint)',
+                    fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.45,
+                  }}
+                >
+                  <span aria-hidden="true" style={{ flexShrink: 0 }}>⚠</span>
+                  <span style={{ flex: 1 }}>{transcriptWarning}</span>
+                </div>
+              )}
               <textarea
                 className="input"
                 rows={6}
                 placeholder="Type or paste transcript here…"
                 value={transcript}
                 onChange={(e) => setTranscript(e.target.value)}
+                autoCapitalize="sentences"
+                autoCorrect="on"
+                spellCheck
                 style={{ resize: 'vertical', fontSize: 14, lineHeight: 1.6 }}
               />
             </div>

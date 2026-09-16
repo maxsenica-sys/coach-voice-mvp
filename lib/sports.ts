@@ -184,6 +184,15 @@ export const SPORTS_BY_CATEGORY: Record<string, string[]> = {
 export const ALL_SPORTS: string[] = Object.values(SPORTS_BY_CATEGORY).flat()
 
 // Sport-specific terminology hints used in the AI transcription prompt
+/* Every key here MUST be a string that appears in ALL_SPORTS.
+ *
+ * Two did not: 'Gymnastics (Artistic)' and 'Soccer / Football (Advanced)'. The
+ * matcher used to reach them by partial match, so they looked like they worked
+ * while being unreachable by exact name — and the second is not a sport at all,
+ * it is a second opinion about the first one.
+ *
+ * verify:prompt now asserts this, so a key can never again describe a sport
+ * that does not exist. */
 export const SPORT_TERMINOLOGY: Record<string, string> = {
   'Soccer / Football': 'soccer, dribbling, pressing, offside, through ball, defensive shape, high press, tiki-taka, gegenpressing, false 9, overlapping runs, set pieces, corner kicks, VAR',
   'American Football': 'quarterback, snap, blitz, coverage, route running, zone defense, man coverage, red zone, audible, pocket, pass rush, offensive line, gap scheme, play action',
@@ -201,26 +210,67 @@ export const SPORT_TERMINOLOGY: Record<string, string> = {
   'CrossFit': 'WOD, AMRAP, EMOM, for time, metcon, Rx, scaled, gymnastics, weightlifting, HSPU, kipping, muscle up, clean, snatch, deadlift, squat, benchmark workouts',
   'Weightlifting (Olympic)': 'snatch, clean and jerk, clean, jerk, pull, catch, front squat, overhead squat, footwork, receiving position, bar path, hip contact',
   'Powerlifting': 'squat, bench press, deadlift, total, wilks, IPF, opener, attempt selection, bracing, arch, sticking point, lockout',
-  'Gymnastics (Artistic)': 'release move, connection, amplitude, artistry, deduction, pike, tuck, layout, salto, twist, handstand, cast, giant, dismount, mount',
+  'Artistic Gymnastics': 'release move, connection, amplitude, artistry, deduction, pike, tuck, layout, salto, twist, handstand, cast, giant, dismount, mount',
   'Boxing': 'jab, cross, hook, uppercut, body shot, combination, guard, slipping, rolling, footwork, southpaw, orthodox, clinch, ring IQ',
   'MMA (Mixed Martial Arts)': 'striking, grappling, takedown, guard, mount, back control, submission, choke, kimura, armbar, transition, cage work, dirty boxing',
-  'Soccer / Football (Advanced)': 'pressing triggers, counterpressing, out of possession, in possession, transitions, compactness, width, depth, movements, set pieces, corner routines',
+  // Volleyball had NO entry, which is how the pinned golden prompt came to read
+  // `SPORT: Volleyball` / `Common terms in this sport: athletic performance,
+  // coaching cues, technique…`. That line was untrue, and it has been green in
+  // the rig since the rig existed — the reviewed, gated "most consequential text
+  // in the product" asserting something false about the sport this app was
+  // built around.
+  'Volleyball': 'serve receive, pass, set, hit, spike, tip, roll shot, block, touch, dig, platform, approach, transition, rotation, libero, setter dump, free ball, seam',
+  'Beach Volleyball': 'serve receive, pass, set, hand set, bump set, cut shot, line shot, pokey, block, peel, dig, side out, wind, sand approach',
+  'Netball': 'centre pass, footwork, obstruction, contact, held ball, zone defence, one-on-one defence, drive, dodge, feed, circle edge, shooting percentage',
+  'Field Hockey': 'push pass, slap, hit, drag flick, penalty corner, 16-yard hit, tackle, jink, three-dimensional skills, press, outlet',
+  'Cricket': 'line and length, seam, swing, spin, googly, doosra, front foot, back foot, cover drive, pull shot, sweep, field placement, powerplay, strike rotation',
+  'Badminton': 'clear, drop shot, smash, net shot, lift, drive, footwork, split step, rally, front court, rear court, deception',
+  'Table Tennis': 'topspin, backspin, sidespin, loop, block, flick, push, chop, serve receive, third ball attack, footwork, bat angle',
+  'Water Polo': 'eggbeater, drive, set position, centre forward, wet pass, dry pass, counter attack, six on five, exclusion, press defence, zone',
+  'Rowing': 'catch, drive, finish, recovery, ratio, rate, split, stroke rate, run, bladework, feathering, square blade, ergo, rig',
+  'Golf': 'swing plane, takeaway, transition, impact position, club path, face angle, strike, short game, bunker play, putting stroke, course management',
 }
 
 /**
  * Get a brief vocabulary hint string for use in AI transcription prompts.
  * Falls back to a generic sports coaching hint if sport not found.
  */
+/**
+ * The sport-specific vocabulary to prime transcription and summarisation with,
+ * or an empty string when we do not have any.
+ *
+ * ── Why there is no longer a partial match, and no longer a fallback ───────
+ *
+ * This value is spliced into a Whisper context prompt and into the summariser's
+ * instruction to "interpret ambiguous or misheard words as {sport}
+ * terminology". Both are token prefixes that bias decoding. So a wrong answer
+ * here is worse than no answer: it actively pushes the transcript toward words
+ * the coach never said.
+ *
+ * The partial matcher did exactly that. Measured against the real list:
+ *
+ *   Ice Dancing            -> Ice Hockey          (slap shot, power play, penalty kill)
+ *   Synchronised Swimming  -> Swimming (Pool)
+ *   Table Tennis           -> Tennis
+ *   Rhythmic Gymnastics    -> Gymnastics (Artistic)
+ *
+ * An ice dancer's session was being transcribed with hockey vocabulary and then
+ * summarised under instructions to read ambiguous words as hockey terms. That
+ * is the volleyball-hardcoding bug from the deleted sessions/audio route,
+ * reappearing one layer down.
+ *
+ * And the fallback — "athletic performance, coaching cues, technique, drills,
+ * conditioning, tactical awareness, mental performance" — reached 123 of 154
+ * sports while being presented to the model as "Key terms in this sport". It is
+ * not terminology; it is the words a prompt uses to describe coaching. Priming
+ * a padel transcript with them biases it toward generic sports commentary.
+ *
+ * Exact match or nothing. A caller with no hint says nothing about vocabulary,
+ * which is the honest state for 123 sports and is strictly better than a
+ * confident wrong one. Filling the table in is ordinary incremental work; the
+ * rig asserts every key is a real sport so it cannot drift while being filled.
+ */
 export function getSportTerminologyHint(sport: string): string {
   if (!sport) return ''
-  const exact = SPORT_TERMINOLOGY[sport]
-  if (exact) return exact
-
-  // Partial match
-  const key = Object.keys(SPORT_TERMINOLOGY).find(
-    (k) => k.toLowerCase().includes(sport.toLowerCase()) || sport.toLowerCase().includes(k.toLowerCase().split(' ')[0])
-  )
-  if (key) return SPORT_TERMINOLOGY[key]
-
-  return 'athletic performance, coaching cues, technique, drills, conditioning, tactical awareness, mental performance'
+  return SPORT_TERMINOLOGY[sport.trim()] ?? ''
 }

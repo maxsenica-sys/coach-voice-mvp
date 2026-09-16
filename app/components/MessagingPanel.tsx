@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { apiJson } from '@/lib/api-client'
+import { SUPPORTED_RECORDING_TYPES } from '@/lib/audio-mime'
 import { fmtTime, fmtDateDivider } from '@/lib/date-utils'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -303,8 +304,17 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      setMsgError('Microphone access denied. Please allow microphone access and try again.')
+    } catch (e: unknown) {
+      const name = e instanceof Error ? e.name : ''
+      setMsgError(
+        name === 'NotAllowedError' || name === 'SecurityError'
+          ? 'Microphone access denied. Allow microphone access for this site and try again.'
+          : name === 'NotFoundError'
+            ? 'No microphone found. Check that one is connected, then try again.'
+            : name === 'NotReadableError'
+              ? 'Another app is using the microphone. Close it and try again.'
+              : 'Could not start recording. Reload the page and try again.',
+      )
       return
     }
     streamRef.current = stream
@@ -313,8 +323,11 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
     // browser that can play WebM can also play mp4, so preferring it makes a
     // recording playable everywhere. isTypeSupported still guards the choice,
     // and WebM stays as the fallback for browsers that can't record mp4.
-    const supported = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
-    const mimeType = supported.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
+    // The list and its order live in lib/audio-mime.ts, which exists precisely
+    // so the four capture sites cannot drift apart. This one re-declared it
+    // inline — identical today, and one edit away from not being. The order is
+    // load-bearing and unchanged.
+    const mimeType = SUPPORTED_RECORDING_TYPES.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
     const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {})
     mediaRecRef.current = rec
     rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
