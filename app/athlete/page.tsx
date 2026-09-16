@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
-import WellnessSubmit from '@/app/components/WellnessSubmit'
+import CheckIn from '@/app/components/CheckIn'
 import { currentMonth, toMonthStr } from '@/lib/calendar-month'
 import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import { getDailyQuote } from '@/lib/quotes'
@@ -1824,8 +1824,16 @@ export default function AthletePage() {
                 from a control labelled "Trends →", and it used to answer that
                 with a blank form and nothing else. */}
             <WellnessHistory rows={wellnessHistory} />
-            <WellnessSubmit
+            {/* Two taps, attached to the session when the coach scheduled one.
+                sessionToday is already resolved above from the calendar; when
+                it is null the athlete is checking in proactively, which is
+                explicitly allowed — a coach forgetting to schedule must not
+                cost the signal. */}
+            <CheckIn
               athleteId={athleteId}
+              sessionEventId={sessionToday?.id ?? null}
+              sessionLabel={sessionToday?.title ?? null}
+              openInjuries={openInjuries(injuries).map((i) => ({ id: i.id, body_area: i.body_area, status: i.status }))}
               initial={todayWellness}
               // Was `() => {}`. Because nothing re-read the data after a save,
               // an athlete could check in and then find the home card still

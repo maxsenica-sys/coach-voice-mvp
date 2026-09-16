@@ -87,6 +87,12 @@ const DIM = '\x1b[2m'
 const BOLD = '\x1b[1m'
 const OFF = '\x1b[0m'
 
+const { readinessToMetrics, sorenessFromAreas } =
+  await import(pathToFileURL(path.join(ROOT, 'lib/readiness.ts')).href)
+
+const { overallWellnessScore, computeWellnessAlert } =
+  await import(pathToFileURL(path.join(ROOT, 'lib/wellness-config.ts')).href)
+
 const { preflightVideo, looksLikeHevc } =
   await import(pathToFileURL(path.join(ROOT, 'lib/video-preflight.ts')).href)
 
@@ -173,6 +179,88 @@ for (const c of fixtures.cases) {
     failures.push({ name: `name gate · ${c.id}`, detail: wrong.join('; ') })
     console.log(`   ${RED}FAIL${OFF}  ${c.id.padEnd(20)} ${RED}${wrong.join('; ')}${OFF}`)
   }
+}
+
+// ── 0 · the check-in feeds the safeguarding path ──────────────────────────
+//
+// The five-slider form is replaced by two taps. computeWellnessAlert, the
+// caretaker escalation email and the coach's roster dot all read the five 1-5
+// columns through overallWellnessScore — and that path decides whether a parent
+// is told their child is struggling. So the new check-in DERIVES those columns
+// rather than replacing them, and this is where that is proven rather than
+// assumed.
+//
+// The direction of these assertions is the point. This repo has already shipped
+// a bug where `inverted: true` made computeWellnessAlert run backwards: an
+// athlete answering 4/4/4 with no soreness tripped the alert, and one answering
+// 2/2/2 while very sore did not. Every check below pins a direction.
+
+console.log(`\n   ${BOLD}The check-in${OFF} ${DIM}— two taps must not break the alert${OFF}`)
+
+{
+  const row = (extra) => ({
+    id: 'x', athlete_id: 'a', check_date: '2027-01-01',
+    energy: null, mood: null, sleep_q: null, soreness: null, stress: null, notes: null,
+    ...extra,
+  })
+
+  const flat = row(readinessToMetrics(1, []))
+  const ok = row(readinessToMetrics(2, []))
+  const good = row(readinessToMetrics(3, []))
+
+  const sFlat = overallWellnessScore(flat)
+  const sOk = overallWellnessScore(ok)
+  const sGood = overallWellnessScore(good)
+
+  const assert = (cond, name, detail) => {
+    checks++
+    if (cond) {
+      console.log(`   ${GREEN}PASS${OFF}  ${name}`)
+    } else {
+      failures.push({ name: `check-in · ${name}`, detail })
+      console.log(`   ${RED}FAIL${OFF}  ${name}   ${RED}${detail}${OFF}`)
+    }
+  }
+
+  assert(sFlat < sOk && sOk < sGood, 'Flat scores lower than OK, which scores lower than Good',
+    `${sFlat} / ${sOk} / ${sGood}`)
+
+  // Soreness runs 5 = no soreness, like every other metric in this schema.
+  assert(sorenessFromAreas([]) === 5, 'marking nothing means no soreness',
+    `got ${sorenessFromAreas([])}`)
+  assert(sorenessFromAreas(['knee_l']) < 5, 'marking one area lowers soreness',
+    `got ${sorenessFromAreas(['knee_l'])}`)
+  assert(
+    sorenessFromAreas(['knee_l', 'hamstring_r', 'lower_back']) < sorenessFromAreas(['knee_l']),
+    'marking more areas lowers it further',
+    `${sorenessFromAreas(['knee_l', 'hamstring_r', 'lower_back'])} vs ${sorenessFromAreas(['knee_l'])}`,
+  )
+  assert(sorenessFromAreas(Array.from({ length: 12 }, (_, i) => `r${i}`)) >= 2,
+    'soreness never floors below 2 however much is marked',
+    `got ${sorenessFromAreas(Array.from({ length: 12 }, (_, i) => `r${i}`))}`)
+
+  // A sore Good day must still score below a painless Flat day is NOT asserted:
+  // that is a product judgement, not an invariant. What IS asserted is that
+  // soreness moves the score in the right direction at a fixed readiness.
+  const goodSore = row(readinessToMetrics(3, ['knee_l', 'lower_back']))
+  assert(overallWellnessScore(goodSore) < sGood,
+    'being sore lowers the score at the same readiness',
+    `${overallWellnessScore(goodSore)} vs ${sGood}`)
+
+  // The alert must still fire, and must still not fire, on the same evidence.
+  const week = (r, areas) => Array.from({ length: 7 }, () => row(readinessToMetrics(r, areas)))
+  const alertFlat = computeWellnessAlert(week(1, ['knee_l', 'lower_back']))
+  const alertGood = computeWellnessAlert(week(3, []))
+  assert(alertFlat.active === true, 'a week of Flat and sore raises the alert',
+    JSON.stringify(alertFlat))
+  assert(alertGood.active === false, 'a week of Good and painless does not',
+    JSON.stringify(alertGood))
+
+  // sleep_q is deliberately not derived — inventing a number would put
+  // fabricated data into a chart the coach reads.
+  assert(readinessToMetrics(2, []).sleep_q === undefined,
+    'readiness never invents a sleep score',
+    JSON.stringify(readinessToMetrics(2, [])))
 }
 
 // ── 1 · the video pre-flight ──────────────────────────────────────────────

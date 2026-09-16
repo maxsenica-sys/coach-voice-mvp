@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { computeWellnessAlert, type WellnessCheckin } from '@/lib/wellness-config'
 import { isBodyRegion } from '@/lib/body-map'
+import { readinessToMetrics } from '@/lib/readiness'
 import { notifyWellnessAlert } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
 
@@ -59,7 +60,52 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { athlete_id, check_date, energy, mood, sleep_q, soreness, stress, notes } = body
+  const { athlete_id, check_date, sleep_q, notes } = body
+
+  /* Two shapes, one row.
+   *
+   * The new check-in sends `readiness` (1-3) and `sore_areas`. The legacy form
+   * sends the five 1-5 metrics directly. Both write the same columns, because
+   * computeWellnessAlert, the caretaker escalation email and the coach's roster
+   * dot all read those columns through overallWellnessScore — and that path
+   * decides whether a parent is told their child is struggling, so it is the
+   * last thing that should learn about a UI change.
+   *
+   * See lib/readiness.ts for why Flat/OK/Good maps to 2/3/4 rather than 1/3/5,
+   * and why sleep_q is deliberately NOT derived: nothing in the new check-in
+   * asks about sleep, and inventing a number would put fabricated data into a
+   * chart the coach reads. */
+  const rawReadiness = body?.readiness
+  const readiness =
+    rawReadiness === 1 || rawReadiness === 2 || rawReadiness === 3 ? (rawReadiness as 1 | 2 | 3) : null
+
+  /* An empty array is a real answer here.
+   *
+   * `sore_areas: []` means "the athlete looked at the body map and marked
+   * nothing", which is the normal, healthy case and the whole point of
+   * "only mark it if something is wrong". It must not be collapsed to null the
+   * way the legacy `soreness_areas` is — that column uses null for "not asked",
+   * and conflating the two would turn "I'm fine" into "we don't know". */
+  const rawSoreAreas = body?.sore_areas
+  const sore_areas = Array.isArray(rawSoreAreas)
+    ? Array.from(new Set(rawSoreAreas.filter(isBodyRegion)))
+    : null
+
+  const derived = readiness !== null ? readinessToMetrics(readiness, sore_areas ?? []) : null
+
+  const energy = derived ? derived.energy : body?.energy
+  const mood = derived ? derived.mood : body?.mood
+  const stress = derived ? derived.stress : body?.stress
+  const soreness = derived ? derived.soreness : body?.soreness
+
+  const rawEventId = body?.session_event_id
+  const session_event_id = typeof rawEventId === 'string' && rawEventId ? rawEventId : null
+
+  const rawInjuryUpdate = body?.injury_update
+  const injury_update =
+    typeof rawInjuryUpdate === 'string' && rawInjuryUpdate.trim()
+      ? rawInjuryUpdate.trim().slice(0, 500)
+      : null
 
   // The soreness follow-up. Validated rather than trusted: `soreness_score` is
   // a 0-10 rating and `soreness_areas` must be region ids from lib/body-map.ts,
@@ -90,6 +136,10 @@ export async function POST(req: NextRequest) {
       coach_id: ath.coach_id,
       check_date: check_date ?? new Date().toISOString().split('T')[0],
       energy, mood, sleep_q, soreness, stress, notes,
+      readiness,
+      sore_areas: sore_areas ?? [],
+      session_event_id,
+      injury_update,
       soreness_score,
       // Null, not [], when there is nothing: an empty array reads as "asked and
       // answered nothing", which is a different fact from "never asked".
