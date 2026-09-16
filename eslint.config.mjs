@@ -12,6 +12,21 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+
+    /* Build output anywhere, not just at the repo root.
+     *
+     * `.next/**` only matches the root one, and ESLint flat config does not
+     * read .gitignore — so the moment a git worktree exists under .claude/,
+     * `npm run lint` lints that checkout's minified build chunks and reports
+     * hundreds of errors in code nobody wrote. Measured: 757 errors, every one
+     * of them inside a sibling agent's scratch build.
+     *
+     * CI checks out clean so it never saw this, which is the worst version of
+     * the problem: the gate is green in CI and unusably red for anyone running
+     * it locally, and a gate that is always red cannot fail a bad commit —
+     * the exact failure mode the CI comment in ci.yml warns about. */
+    "**/.next/**",
+    ".claude/**",
   ]),
 
   // ── No raw hex colours on migrated pages ─────────────────────────────────

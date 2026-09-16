@@ -2146,7 +2146,7 @@ export default function AthletePage() {
             null,
             { key: 'calendar' as Tab, icon: 'calendar', label: 'Calendar' },
             { key: 'messages' as Tab, icon: 'messages', label: 'Messages' },
-          ] as ({ key: Tab; icon: string; label: string } | null)[]).map((item, i) => {
+          ] as ({ key: Tab; icon: string; label: string } | null)[]).map((item) => {
             if (item === null) {
               return (
                 <div key="fab" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>

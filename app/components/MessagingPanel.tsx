@@ -533,7 +533,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                 </div>
               )}
 
-              {messagesWithDividers.map((item, i) => {
+              {messagesWithDividers.map((item) => {
                 if (item.type === 'divider') {
                   return (
                     <div key={item.key} style={{

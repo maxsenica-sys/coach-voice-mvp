@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import {
-  WELLNESS_METRICS, metricColor, scoreLabel, overallWellnessScore, overallScoreColor, overallScoreTint,
+  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint,
   type MetricKey, type WellnessCheckin as Checkin,
 } from '@/lib/wellness-config'
 import { fmtShortDate as fmtDate } from '@/lib/date-utils'

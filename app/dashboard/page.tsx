@@ -1381,7 +1381,7 @@ function DashboardPageInner() {
                       </button>
                     </div>
                     <div style={{ display: 'flex', gap: 9, overflowX: 'auto', marginLeft: -16, marginRight: -16, padding: '0 16px 4px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
-                      {athletes.slice(0, 8).map((a, i) => {
+                      {athletes.slice(0, 8).map((a) => {
                         const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
                         const unread = (unreadCounts[a.id] ?? 0) as number
                         const tone = stableTone(a.id)
@@ -1939,7 +1939,7 @@ function DashboardPageInner() {
           padding: '8px 6px',
           paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
         }}>
-          {BOTTOM_NAV_ITEMS.map((item, i) => {
+          {BOTTOM_NAV_ITEMS.map((item) => {
             if ('fab' in item) {
               return (
                 <button key="fab"
