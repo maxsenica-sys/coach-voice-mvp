@@ -65,6 +65,15 @@ export interface PendingRecording {
   /** Snapshotted so a queued group recording survives the squad being renamed. */
   groupName: string | null
   memberIds: string[]
+  /**
+   * First names of everyone this recording is for, snapshotted at stop.
+   *
+   * Sent to Whisper as a context prompt so proper nouns survive transcription —
+   * which the personalisation gate depends on, since it matches the coach's
+   * spoken name against the roster. Optional because recordings queued before
+   * this existed will not have it, and those must still replay.
+   */
+  rosterNames?: string[]
   /** For the UI, so a pending item can say a name rather than an id. */
   targetLabel: string
 

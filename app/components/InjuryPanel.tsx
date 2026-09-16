@@ -115,6 +115,21 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
   }
 
   const open = openInjuries(injuries)
+  /* Cleared injuries, most recent first.
+   *
+   * `openInjuries` filters `cleared` out, and this panel renders only the open
+   * ones — so marking a child Cleared removed the record from the screen with
+   * no UI path back to it, from a single tap, with no confirmation. A coach who
+   * mis-taps has lost the injury and cannot tell you it ever existed.
+   *
+   * Two changes, and the second is the one that matters: clearing now asks, and
+   * cleared injuries remain reachable and reopenable below. A confirmation
+   * prevents the mistake; recoverability survives it. */
+  const cleared = injuries
+    .filter((i) => i.status === 'cleared')
+    .sort((a, b) => b.started_on.localeCompare(a.started_on))
+  const [showCleared, setShowCleared] = useState(false)
+  const [confirmClear, setConfirmClear] = useState<string | null>(null)
 
   return (
     <div>
@@ -167,7 +182,15 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
                   key={opt.value}
                   type="button"
                   aria-pressed={i.status === opt.value}
-                  onClick={() => void setInjuryStatus(i.id, opt.value)}
+                  onClick={() => {
+                    // Out and Modified are both visible and reversible on this
+                    // screen. Cleared is the one that removes the record.
+                    if (opt.value === 'cleared' && i.status !== 'cleared') {
+                      setConfirmClear(i.id)
+                      return
+                    }
+                    void setInjuryStatus(i.id, opt.value)
+                  }}
                   title={opt.meaning}
                   style={{
                     padding: '6px 11px', minHeight: 34, borderRadius: 999,
@@ -182,6 +205,39 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
                 </button>
               ))}
             </div>
+
+            {confirmClear === i.id && (
+              <div
+                role="alertdialog"
+                aria-label="Confirm clearing this injury"
+                style={{
+                  marginTop: 10, padding: 11, borderRadius: 10,
+                  background: 'var(--wellness-good-tint)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text)', lineHeight: 1.5 }}>
+                  Mark this as cleared? It comes off the availability list. You can
+                  reopen it from <strong>Cleared</strong> below.
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{ minHeight: 44, paddingInline: 16, fontSize: 'var(--fs-3)' }}
+                    onClick={() => { setConfirmClear(null); void setInjuryStatus(i.id, 'cleared') }}
+                  >
+                    Yes, cleared
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ minHeight: 44, paddingInline: 16, fontSize: 'var(--fs-3)' }}
+                    onClick={() => setConfirmClear(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
 
@@ -256,6 +312,43 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
               </button>
               <button className="btn btn-ghost" onClick={reset} disabled={saving}>Cancel</button>
             </div>
+          </div>
+        )}
+
+        {cleared.length > 0 && (
+          <div style={{ marginTop: 14, borderTop: '1px solid var(--border-soft)', paddingTop: 12 }}>
+            <button
+              onClick={() => setShowCleared((v) => !v)}
+              aria-expanded={showCleared}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6, minHeight: 44,
+                fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text-2)',
+                fontFamily: 'inherit',
+              }}
+            >
+              <span aria-hidden="true" style={{ display: 'inline-block', transform: showCleared ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>›</span>
+              Cleared ({cleared.length})
+            </button>
+
+            {showCleared && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                {cleared.map((i) => (
+                  <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between' }}>
+                    <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', minWidth: 0, overflowWrap: 'anywhere' }}>
+                      {regionLabel(i.body_area)}{i.note ? ` — ${i.note}` : ''}
+                    </div>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => void setInjuryStatus(i.id, 'recovering')}
+                      style={{ minHeight: 44, paddingInline: 14, fontSize: 'var(--fs-2)', flexShrink: 0 }}
+                    >
+                      Reopen
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

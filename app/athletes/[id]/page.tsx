@@ -14,6 +14,7 @@ import TrainingSpine from '@/app/components/TrainingSpine'
 import InjuryPanel from '@/app/components/InjuryPanel'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile } from '@/lib/profile-cache'
+import { preflightVideo } from '@/lib/video-preflight'
 import {
   WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint,
   type WellnessCheckin, type WellnessAlert,
@@ -125,17 +126,48 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
     setSaving(false)
   }
 
+  /* A delivery check, and it must read as one.
+   *
+   * This sent `• Great work on technique today / • Focus on footwork next
+   * session` — invented feedback about a real child — under the subject
+   * "Session update for {name}", from the coach's own address, with no
+   * confirmation and nothing marking it as a test. A parent receiving it had no
+   * way to tell it apart from a real report of a session that never happened.
+   *
+   * The button is one tap next to a caretaker's name, and it was labelled
+   * "Send".
+   *
+   * Now: it says what it is in the subject, in the body, and on the button, and
+   * it asks first. The point of the feature — proving mail reaches this address
+   * — is unchanged and is arguably better served by a message that says so.
+   */
   const sendTestEmail = async (email: string, name: string) => {
     setEmailSending(true); setEmailMsg('')
     try {
-      const html = buildSessionEmailHtml('Example Session', '• Great work on technique today\n• Focus on footwork next session', athleteName, 'Coach', new Date().toLocaleDateString())
-      const res = await fetch('/api/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, to: email, subject: `Session update for ${athleteName}`, html }) })
-      const j = await res.json()
-      if (!res.ok) throw new Error(j.error)
-      setEmailMsg(`Sent to ${name}!`)
-    } catch (e: unknown) { setEmailMsg(errorMessage(e, 'Failed')) }
+      const html = buildSessionEmailHtml(
+        'Test message',
+        `This is a test, sent by ${athleteName}'s coach to check that CoachVoice emails reach you.\n\nThere is no session to read and nothing you need to do. Real session updates will look like this one and will contain ${athleteName}'s actual notes.`,
+        athleteName,
+        'Coach',
+        new Date().toLocaleDateString(),
+      )
+      await apiMutate('/api/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          athlete_id: athleteId,
+          to: email,
+          subject: `Test — CoachVoice delivery check for ${athleteName}`,
+          html,
+        }),
+      })
+      setEmailMsg(`Test sent to ${name}.`)
+    } catch (e: unknown) { setEmailMsg(errorMessage(e, 'Could not send the test email')) }
     setEmailSending(false)
   }
+
+  /** Which caretaker is being asked about, if any. */
+  const [confirmTestTo, setConfirmTestTo] = useState<string | null>(null)
 
   return (
     <div className="card" style={{ padding: 18 }}>
@@ -148,8 +180,14 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{c.caretaker_name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({c.relationship})</span></div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.caretaker_email}</div>
               </div>
-              <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11, gap: 4 }} onClick={() => sendTestEmail(c.caretaker_email, c.caretaker_name ?? 'there')} disabled={emailSending}>
-                <Icon name="mail" size={12} /> Send
+              <button
+                className="btn btn-ghost"
+                style={{ padding: '4px 8px', fontSize: 11, gap: 4, minHeight: 44 }}
+                onClick={() => setConfirmTestTo(c.id)}
+                disabled={emailSending}
+                title={`Send a test email to ${c.caretaker_email}`}
+              >
+                <Icon name="mail" size={12} /> Send test
               </button>
               <button className="btn btn-danger" style={{ padding: '4px 8px' }} onClick={async () => {
                 try {
@@ -162,11 +200,40 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
               }}>
                 <Icon name="x" size={13} />
               </button>
+              {confirmTestTo === c.id && (
+                <div
+                  role="alertdialog"
+                  aria-label="Confirm test email"
+                  style={{ flexBasis: '100%', marginTop: 8, padding: 10, borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+                >
+                  <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text)' }}>
+                    Email <strong>{c.caretaker_email}</strong> now? They will receive a short
+                    message saying it is a test.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ minHeight: 44, paddingInline: 14, fontSize: 12 }}
+                      disabled={emailSending}
+                      onClick={() => { setConfirmTestTo(null); void sendTestEmail(c.caretaker_email, c.caretaker_name ?? 'there') }}
+                    >
+                      {emailSending ? 'Sending…' : 'Send test'}
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ minHeight: 44, paddingInline: 14, fontSize: 12 }}
+                      onClick={() => setConfirmTestTo(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
-      {emailMsg && <div style={{ fontSize: 12, color: emailMsg.includes('Sent') ? 'var(--success)' : 'var(--danger)', marginBottom: 10, fontWeight: 600 }}>{emailMsg}</div>}
+      {emailMsg && <div style={{ fontSize: 12, color: emailMsg.startsWith('Test sent') ? 'var(--success)' : 'var(--danger)', marginBottom: 10, fontWeight: 600 }}>{emailMsg}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <input className="input" style={{ fontSize: 13 }} placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
         <input className="input" style={{ fontSize: 13 }} type="email" placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
@@ -245,6 +312,10 @@ export default function AthleteDetailPage() {
   const [sessionVideos, setSessionVideos] = useState<Record<string, SessionVideo[]>>({})
   const [videoProgress, setVideoProgress] = useState<Record<string, number | null>>({})
   const [videoEta, setVideoEta] = useState<Record<string, string>>({})
+  /* Per-session, because uploads are per-session and a failure on one clip must
+     not clear the message on another. Carries both a refusal and a warning: the
+     difference is whether the upload also started. */
+  const [videoError, setVideoError] = useState<Record<string, string>>({})
 
   // Profile editing
   const [showProfile, setShowProfile] = useState(false)
@@ -276,15 +347,42 @@ export default function AthleteDetailPage() {
   const [noteMsg, setNoteMsg] = useState('')
   const [notesLoaded, setNotesLoaded] = useState(false)
 
+  /* Four serial round trips used to run here, behind a blank screen, and only
+   * one of them was a real dependency.
+   *
+   * getUser() -> profiles.sport -> /api/athletes/[id] -> /api/sessions, each
+   * waiting on the one before it. But the two API routes authenticate
+   * themselves — neither needs the client's `user` first — and the coach's own
+   * sport is a display detail that nothing on this screen blocks on.
+   *
+   * So: fire everything at once, and paint the coach's sport from the
+   * sessionStorage cache immediately. `readCachedProfile` was already imported
+   * at the top of this file and the boot path simply never called it, which is
+   * the cache paying its cost and delivering none of its benefit.
+   */
   const load = async () => {
     if (!athleteId) return
     setLoading(true); setPageError(null)
+
+    // Synchronous, from the last page that knew. Revalidated below.
+    const cached = readCachedProfile()
+    if (cached?.sport) setCoachSport(cached.sport)
+
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/'); return }
-      const { data: profile } = await supabase.from('profiles').select('sport').eq('id', user.id).single()
-      setCoachSport(profile?.sport ?? '')
-      const aRes = await fetch(`/api/athletes/${athleteId}`)
+      const athletePromise = fetch(`/api/athletes/${athleteId}`)
+      const sessionsPromise = fetch(`/api/sessions?athlete_id=${encodeURIComponent(athleteId)}`)
+
+      // Identity revalidation runs alongside, not in front. A stale cache shows
+      // the wrong sport for one paint; a serial round trip shows nothing at all
+      // for the length of two.
+      void (async () => {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { router.push('/'); return }
+        const { data: profile } = await supabase.from('profiles').select('sport').eq('id', user.id).maybeSingle()
+        if (profile?.sport) setCoachSport(profile.sport)
+      })()
+
+      const aRes = await athletePromise
       if (aRes.status === 401) { router.push('/'); return }
       if (!aRes.ok) throw new Error((await aRes.json().catch(() => ({}))).error ?? 'Failed to load athlete')
       const { athlete: a } = await aRes.json()
@@ -299,7 +397,7 @@ export default function AthleteDetailPage() {
         sport_metrics: a.sport_metrics ?? {},
         custom_fields: a.custom_fields ?? [],
       })
-      const sRes = await fetch(`/api/sessions?athlete_id=${encodeURIComponent(athleteId)}`)
+      const sRes = await sessionsPromise
       if (!sRes.ok) throw new Error((await sRes.json().catch(() => ({}))).error ?? 'Failed to load sessions')
       const { sessions: s } = await sRes.json()
       setSessions(s ?? [])
@@ -545,6 +643,10 @@ export default function AthleteDetailPage() {
     : true
 
   const [wellnessLatest, setWellnessLatest] = useState<WellnessCheckin | null>(null)
+  /* Distinguishes "no check-in on file" from "we could not read it". The two
+     look identical in state (`wellnessLatest === null`) and mean opposite
+     things to a coach deciding whether a child is training today. */
+  const [wellnessUnavailable, setWellnessUnavailable] = useState(false)
   const [wellnessAlert, setWellnessAlert] = useState<WellnessAlert | null>(null)
   useEffect(() => {
     if (!athleteId) return
@@ -554,10 +656,17 @@ export default function AthleteDetailPage() {
       .then(json => {
         if (cancelled) return
         const list: WellnessCheckin[] = json.checkins ?? []
+        setWellnessUnavailable(false)
         setWellnessLatest(list[list.length - 1] ?? null)
         setWellnessAlert(json.alert ?? null)
       })
-      .catch(() => { if (!cancelled) { setWellnessLatest(null); setWellnessAlert(null) } })
+      .catch(() => {
+        // A read that failed is not a child who has never checked in.
+        // setWellnessLatest(null) renders exactly that, and this panel is on
+        // screen precisely when a coach is responding to a wellness alert —
+        // the one moment the difference matters most.
+        if (!cancelled) { setWellnessLatest(null); setWellnessAlert(null); setWellnessUnavailable(true) }
+      })
     return () => { cancelled = true }
   }, [athleteId])
   const wellnessScore = overallWellnessScore(wellnessLatest)
@@ -566,11 +675,20 @@ export default function AthleteDetailPage() {
   const [alertCaretakers, setAlertCaretakers] = useState<{ id: string; caretaker_name: string; caretaker_email: string; notify_wellness_alerts: boolean | null }[]>([])
   useEffect(() => {
     if (!athleteId) return
+    // `res.ok ? json : { caretakers: [] }` made a server error look identical to
+    // "this athlete has no caretakers on file", so the picker silently
+    // disappeared and the coach was left typing an address by hand — during a
+    // wellness alert, about a child.
+    setCaretakersUnavailable(false)
     fetch(`/api/caretakers?athlete_id=${encodeURIComponent(athleteId)}`)
-      .then(res => (res.ok ? res.json() : { caretakers: [] }))
+      .then(res => {
+        if (!res.ok) throw new Error('caretakers unavailable')
+        return res.json()
+      })
       .then(json => setAlertCaretakers(json.caretakers ?? []))
-      .catch(() => setAlertCaretakers([]))
+      .catch(() => { setAlertCaretakers([]); setCaretakersUnavailable(true) })
   }, [athleteId])
+  const [caretakersUnavailable, setCaretakersUnavailable] = useState(false)
   const [alertSendTo, setAlertSendTo] = useState('')
   const [alertSending, setAlertSending] = useState(false)
   const [alertMsg, setAlertMsg] = useState('')
@@ -625,6 +743,26 @@ export default function AthleteDetailPage() {
   }
 
   const handleVideoUpload = (file: File, sessionId: string) => {
+    /* Decide before uploading, not after.
+     *
+     * There was no size limit anywhere on the path that actually runs — the
+     * 500MB guard lives in a FormData branch of the videos route that has no
+     * caller. An iPhone at 4K60 makes roughly 400MB a minute, so a coach could
+     * spend four minutes uploading on pitch-side data before anything objected,
+     * and nothing ever did.
+     *
+     * And an HEVC clip uploads perfectly and is then a black rectangle on the
+     * coach's own laptop, with no error raised anywhere, because nothing failed.
+     *
+     * See lib/video-preflight.ts. */
+    const verdict = preflightVideo(file)
+    if (!verdict.ok) {
+      setVideoError(prev => ({ ...prev, [sessionId]: verdict.reason }))
+      setVideoProgress(prev => { const n = { ...prev }; delete n[sessionId]; return n })
+      setVideoEta(prev => { const n = { ...prev }; delete n[sessionId]; return n })
+      return
+    }
+    setVideoError(prev => ({ ...prev, [sessionId]: verdict.warning ?? '' }))
     setVideoProgress(prev => ({ ...prev, [sessionId]: 0 }))
     setVideoEta(prev => ({ ...prev, [sessionId]: 'Preparing…' }))
 
@@ -682,7 +820,10 @@ export default function AthleteDetailPage() {
         const { video } = await regRes.json()
         setSessionVideos(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), video] }))
       } catch (err: unknown) {
-        setPageError(errorMessage(err, 'Upload failed'))
+        // Next to the clip that failed, not in a page-level banner at the top of
+        // a long scroll — the coach may be several sessions down by now, and the
+        // input has already been cleared so the retry is one tap.
+        setVideoError(prev => ({ ...prev, [sessionId]: errorMessage(err, 'That clip did not upload. Try again.') }))
       } finally {
         setVideoProgress(prev => ({ ...prev, [sessionId]: null }))
         setVideoEta(prev => ({ ...prev, [sessionId]: '' }))
@@ -1090,6 +1231,12 @@ export default function AthleteDetailPage() {
                       })}
                     </div>
                   </>
+                ) : wellnessUnavailable ? (
+                  <div role="alert" style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55 }}>
+                    ⚠ Could not read {athlete.first_name}&rsquo;s check-ins just now. This is a
+                    connection problem, <strong>not</strong> a sign they have stopped checking in.
+                    Refresh to try again.
+                  </div>
                 ) : (
                   <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.55 }}>
                     No check-ins yet — {athlete.first_name} hasn&rsquo;t submitted one from their portal.
@@ -1229,7 +1376,13 @@ export default function AthleteDetailPage() {
                           </button>
                           <label className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', gap: 5, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}>
                             <Icon name="video" size={13} /> {uploading ? `${uploadPct}%` : 'Video'}
-                            <input type="file" accept="video/*" style={{ display: 'none' }} disabled={uploading} onChange={e => { const f = e.target.files?.[0]; if (f) { if (!isOpen) openSession(s.id); handleVideoUpload(f, s.id) } }} />
+                            {/* `e.target.value = ''` on EVERY change, not just success.
+                                Without it the input still holds the last file, so
+                                re-picking the same clip after a failed upload fires
+                                no onChange at all and nothing happens — the coach
+                                taps, sees nothing, and has to reload the page to
+                                retry the thing that just failed. */}
+                            <input type="file" accept="video/*" style={{ display: 'none' }} disabled={uploading} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { if (!isOpen) openSession(s.id); handleVideoUpload(f, s.id) } }} />
                           </label>
                         </div>
 
@@ -1278,6 +1431,27 @@ export default function AthleteDetailPage() {
                                 </div>
                               </div>
                             )}
+                            {videoError[s.id] && (
+                              <div
+                                role={uploading ? 'status' : 'alert'}
+                                style={{
+                                  display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12,
+                                  padding: '10px 12px', borderRadius: 10,
+                                  // A refusal and a warning are different news: one
+                                  // stopped the upload, the other did not.
+                                  background: uploading ? 'var(--wellness-ok-tint)' : 'var(--danger-light)',
+                                  fontSize: 13, color: 'var(--text)', lineHeight: 1.5,
+                                }}
+                              >
+                                <span aria-hidden="true" style={{ flexShrink: 0 }}>⚠</span>
+                                <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{videoError[s.id]}</span>
+                                <button
+                                  onClick={() => setVideoError(prev => ({ ...prev, [s.id]: '' }))}
+                                  aria-label="Dismiss"
+                                  style={{ minWidth: 44, minHeight: 44, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--text-2)', flexShrink: 0 }}
+                                >×</button>
+                              </div>
+                            )}
                             {uploading && <div style={{ marginTop: 12 }}><VideoUploadBar pct={uploadPct} eta={videoEta[s.id] ?? ''} /></div>}
                           </div>
                         )}
@@ -1318,6 +1492,12 @@ export default function AthleteDetailPage() {
                   {wellnessAlert.reason === 'both' && `Today's score (${wellnessAlert.todayScore}/5) and 7-day average (${wellnessAlert.avgScore}/5) are both low.`}
                   {' '}You can loop in a parent or caretaker below.
                 </div>
+                {caretakersUnavailable && (
+                  <div role="alert" style={{ fontSize: 12, color: 'var(--text)', marginBottom: 8, lineHeight: 1.5 }}>
+                    ⚠ Could not load this athlete&rsquo;s saved caretakers. The list below is
+                    missing, not empty — refresh before assuming there is nobody on file.
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   {alertCaretakers.filter(c => c.notify_wellness_alerts !== false).length > 0 && (
                     <select
@@ -1540,7 +1720,7 @@ export default function AthleteDetailPage() {
                   <span className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>
                     {photoUploading ? 'Uploading…' : 'Change photo'}
                   </span>
-                  <input type="file" accept="image/*" style={{ display: 'none' }} disabled={photoUploading} onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f) }} />
+                  <input type="file" accept="image/*" style={{ display: 'none' }} disabled={photoUploading} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadPhoto(f) }} />
                 </label>
               </div>
 

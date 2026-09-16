@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
-import WellnessSubmit from '@/app/components/WellnessSubmit'
+import CheckIn from '@/app/components/CheckIn'
 import { currentMonth, toMonthStr } from '@/lib/calendar-month'
 import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
 import { getDailyQuote } from '@/lib/quotes'
@@ -16,6 +16,7 @@ import {
   type WellnessCheckin,
 } from '@/lib/wellness-config'
 import { fmtDate, fmtDateTime } from '@/lib/date-utils'
+import ListState from '@/app/components/ListState'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import TrainingSpine from '@/app/components/TrainingSpine'
 import { apiMutate, apiJson } from '@/lib/api-client'
@@ -88,6 +89,14 @@ function AthleteIcon({ name, size = 20, strokeWidth = 2 }: { name: string; size?
     case 'calendar': return <svg {...p}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     case 'messages': return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     case 'mic':      return <svg {...p}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    /* A pulse line. The check-in button used the mic glyph, in the coach's rust
+       gradient, at the exact size and position where the coach's own app puts
+       the recorder — so the largest control in the athlete's app promised the
+       one thing this product deliberately does not do. Athletes do not record
+       for their coach; PROJECT-STATE says so. The same file uses `mic` 600
+       lines further up to mean "your coach recorded this", correctly, which is
+       what made the FAB read as recording rather than as anything else. */
+    case 'pulse':    return <svg {...p}><path d="M2 12h4l2.5-7 4 14L15.5 12H22"/></svg>
     case 'video':    return <svg {...p}><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
     case 'pencil':   return <svg {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
     default:         return null
@@ -284,6 +293,9 @@ export default function AthletePage() {
   const [noteEditText, setNoteEditText] = useState('')
   const [noteRecording, setNoteRecording] = useState(false)
   const [noteTranscribing, setNoteTranscribing] = useState(false)
+  // A failed voice note has to be visible: the athlete has already spoken, and
+  // silence here is indistinguishable from success.
+  const [noteError, setNoteError] = useState<string | null>(null)
   const mediaRecRef = useRef<MediaRecorder | null>(null)
   const noteChunksRef = useRef<BlobPart[]>([])
 
@@ -361,6 +373,11 @@ export default function AthletePage() {
   const [messages, setMessages] = useState<MessageRow[]>([])
   const [msgText, setMsgText] = useState('')
   const [msgSending, setMsgSending] = useState(false)
+  const [msgSendError, setMsgSendError] = useState<string | null>(null)
+  // Pointer capability, not width: a tablet with a keyboard is wide and touch.
+  const [isTouch, setIsTouch] = useState(false)
+  useEffect(() => { setIsTouch(window.matchMedia('(pointer: coarse)').matches) }, [])
+  const [msgLoadError, setMsgLoadError] = useState<string | null>(null)
   const [msgLoading, setMsgLoading] = useState(false)
   const msgBottomRef = useRef<HTMLDivElement>(null)
   const msgFileInputRef = useRef<HTMLInputElement>(null)
@@ -538,14 +555,30 @@ export default function AthletePage() {
   useEffect(() => { void loadWellness() }, [loadWellness])
 
   // ── Load messages ─────────────────────────────────────────
+  /* Named, so the error state can offer a real retry.
+   *
+   * `.then(r => r.json())` with no ok check turned every server error into an
+   * empty thread, and the screen then told a teenager "No messages yet. Send
+   * your coach a message below!" — untrue, and if they had just sent something
+   * difficult, actively distressing. */
+  const loadMessages = useCallback(async () => {
+    if (!athleteId) return
+    setMsgLoading(true)
+    setMsgLoadError(null)
+    try {
+      const j = await apiJson<{ messages?: MessageRow[] }>(`/api/messages?athlete_id=${athleteId}`)
+      setMessages(j.messages ?? [])
+    } catch (e) {
+      setMsgLoadError(e instanceof Error ? e.message : 'Could not load your messages.')
+    } finally {
+      setMsgLoading(false)
+    }
+  }, [athleteId])
+
   useEffect(() => {
     if (tab !== 'messages' || !athleteId) return
-    setMsgLoading(true)
-    fetch(`/api/messages?athlete_id=${athleteId}`)
-      .then((r) => r.json())
-      .then((j) => setMessages(j.messages ?? []))
-      .finally(() => setMsgLoading(false))
-  }, [tab, athleteId])
+    void loadMessages()
+  }, [tab, athleteId, loadMessages])
 
   useEffect(() => {
     msgBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -581,19 +614,34 @@ export default function AthletePage() {
     })()
   }, [tab, athleteId, calMonth])
 
+  /* An athlete's message that does not send must say so.
+   *
+   * This cleared the textarea first, had no catch at all, and no else branch —
+   * so a 500, a 401 or a dropped connection deleted what a teenager had just
+   * written and showed them nothing. `await res.json()` on an HTML error page
+   * threw, and the throw went nowhere. If a child writes something difficult to
+   * their coach and the app quietly eats it, they have no way of knowing it
+   * never arrived, and no reason to think it didn't.
+   *
+   * The draft is now held until the server confirms the write.
+   */
   const sendMessage = async () => {
     if (!athleteId || !msgText.trim() || msgSending) return
     setMsgSending(true)
+    setMsgSendError(null)
     const content = msgText.trim()
-    setMsgText('')
     try {
-      const res = await fetch('/api/messages', {
+      const j = await apiJson<{ message?: MessageRow }>('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ athlete_id: athleteId, content, msg_type: 'text' }),
       })
-      const j = await res.json()
-      if (res.ok && j.message) setMessages((prev) => [...prev, j.message])
+      if (!j.message) throw new Error('Your message did not save. Try sending it again.')
+      const saved = j.message
+      setMessages((prev) => (prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]))
+      setMsgText('')
+    } catch (e) {
+      setMsgSendError(e instanceof Error ? e.message : 'Could not send. Try again.')
     } finally {
       setMsgSending(false)
     }
@@ -617,19 +665,31 @@ export default function AthletePage() {
   const uploadMsgMedia = async (file: File) => {
     if (!athleteId) return
     const msgType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'audio'
+    if (!userId) { setMsgSendError('Your session has expired. Sign in again and retry.'); return }
     const ext = file.name.split('.').pop() ?? 'bin'
-    const path = `athlete/${athleteId}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('messages-media').upload(path, file)
-    if (error) { alert('Upload failed: ' + error.message); return }
-    const { data: signedData, error: signErr } = await supabase.storage.from('messages-media').createSignedUrl(path, 3600)
-    if (signErr || !signedData?.signedUrl) { alert('Could not get media URL'); return }
-    const mediaUrl = signedData.signedUrl
-    const res = await fetch('/api/messages', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ athlete_id: athleteId, content: null, msg_type: msgType, media_url: mediaUrl, media_name: file.name }),
-    })
-    const j = await res.json()
-    if (res.ok && j.message) setMessages((prev) => [...prev, j.message])
+    // First segment must be the uploader's auth id — that is what the
+    // messages-media storage policy scopes on, and it is what the coach side
+    // has always used. The old `athlete/${athleteId}/…` prefix was scoped to
+    // nobody: any athlete could write into any other athlete's folder, and no
+    // policy could tell the difference.
+    const path = `${userId}/${athleteId}/${Date.now()}.${ext}`
+    setMsgSendError(null)
+    try {
+      const { error } = await supabase.storage.from('messages-media').upload(path, file)
+      if (error) throw new Error(`Could not upload that file — ${error.message}`)
+
+      // The PATH, not a URL. A signed URL dies in an hour and cannot be
+      // re-derived from itself; the API signs the path fresh on every read.
+      const j = await apiJson<{ message?: MessageRow }>('/api/messages', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete_id: athleteId, content: null, msg_type: msgType, media_path: path, media_name: file.name }),
+      })
+      if (!j.message) throw new Error('The file uploaded but the message did not save. Try again.')
+      const saved = j.message
+      setMessages((prev) => (prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]))
+    } catch (e) {
+      setMsgSendError(e instanceof Error ? e.message : 'Could not send that file. Try again.')
+    }
   }
 
   // ── Session videos ────────────────────────────────────────
@@ -724,17 +784,31 @@ export default function AthletePage() {
           // reads the codec from the filename.
           fd.append('file', new File([blob], `note.${audioExtension(blob.type)}`, { type: blob.type }))
           if (sport) fd.append('sport', sport)
-          const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
-          const json = await res.json().catch(() => ({}))
-          if (res.ok && json.text) {
-            const savedRes = await fetch('/api/athlete-notes', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: json.text, session_id: noteFilter, note_type: 'voice' }),
-            })
-            const savedJson = await savedRes.json().catch(() => ({}))
-            if (savedRes.ok) setNotes((prev) => [...prev, savedJson.note])
+          /* A voice note that fails must say so.
+           *
+           * `if (res.ok && json.text)` with no else meant a failed
+           * transcription — or a transcription that came back empty — did
+           * nothing at all: no error, no message, the spinner cleared and the
+           * note silently never existed. The athlete has already spoken; they
+           * have no way to know it did not land, and nothing to retry.
+           *
+           * This is CLAUDE.md checklist item 1, on a child-facing path. */
+          const json = await apiJson<{ text?: string }>('/api/transcribe', { method: 'POST', body: fd })
+          const text = (json.text ?? '').trim()
+          if (!text) {
+            throw new Error('We could not make out any words in that recording. Try again somewhere quieter.')
           }
+          const savedJson = await apiJson<{ note?: AthleteNote }>('/api/athlete-notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: text, session_id: noteFilter, note_type: 'voice' }),
+          })
+          if (!savedJson.note) throw new Error('That note did not save. Try again.')
+          const saved = savedJson.note
+          setNotes((prev) => [...prev, saved])
+          setNoteError(null)
+        } catch (e: unknown) {
+          setNoteError(e instanceof Error ? e.message : 'Could not save that voice note. Try again.')
         } finally {
           setNoteTranscribing(false)
         }
@@ -1535,18 +1609,26 @@ export default function AthletePage() {
                                     initialAnnotations={v.annotations ?? []}
                                     sessionId={v.session_id}
                                     videoId={v.id}
-                                    onAnnotationsChange={async (strokes) => {
-                                      // FIX 3: athletes can now annotate; save via PATCH endpoint
-                                      try {
-                                        await apiMutate(`/api/sessions/${v.session_id}/videos?video_id=${v.id}`, {
-                                          method: 'PATCH',
-                                          headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({ annotations: strokes }),
-                                        })
-                                      } catch (e: unknown) {
-                                        setActionError(errorMessage(e, 'Could not save your drawing — it is on screen but not stored.'))
-                                      }
-                                    }}
+                                    /* Read-only, because that is what it has always
+                                     * been.
+                                     *
+                                     * The drawing tools were wired up under a comment
+                                     * reading "FIX 3: athletes can now annotate", and
+                                     * the PATCH they save through requires
+                                     * coach_id === user.id — so every stroke an
+                                     * athlete drew 403'd, silently until this release
+                                     * and with an error message after it. The control
+                                     * has never once worked.
+                                     *
+                                     * Enabling it is not a permission tweak: coach and
+                                     * athlete would share one `annotations` column, so
+                                     * an athlete saving would erase their coach's
+                                     * marks. If athlete annotations are wanted they
+                                     * need their own column and their own decision
+                                     * about who sees them. Until then this shows the
+                                     * coach's drawings, which is the point of the
+                                     * feature for the athlete anyway. */
+                                    readOnly
                                   />
                                 ))}
                               </div>
@@ -1618,7 +1700,15 @@ export default function AthletePage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16, minHeight: 120 }}>
               {msgLoading && <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-3)', padding: 20 }}>Loading…</div>}
               {!msgLoading && messages.length === 0 && (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-3)', padding: 30 }}>No messages yet. Send your coach a message below!</div>
+                <ListState
+                  loading={false}
+                  error={msgLoadError}
+                  isEmpty={!msgLoadError}
+                  emptyTitle="No messages yet."
+                  emptyHint="Send your coach a message below."
+                  compact
+                  onRetry={msgLoadError ? () => { void loadMessages() } : undefined}
+                />
               )}
               {messages.map((msg) => {
                 const isAthlete = msg.sender_role === 'athlete'
@@ -1661,6 +1751,32 @@ export default function AthletePage() {
               <div ref={msgBottomRef} />
             </div>
 
+            {/* A failed send says so, above the box that still holds the text. */}
+            {msgSendError && (
+              <div
+                role="alert"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, marginTop: 12,
+                  padding: '10px 12px', borderRadius: 12,
+                  background: 'var(--danger-light)', fontSize: 'var(--fs-4)',
+                  color: 'var(--text)', lineHeight: 1.45,
+                }}
+              >
+                <span aria-hidden="true" style={{ fontSize: 16, flexShrink: 0 }}>⚠</span>
+                <span style={{ flex: 1, overflowWrap: 'anywhere' }}>
+                  {msgSendError} <strong>Your coach has not seen this yet.</strong>
+                </span>
+                <button
+                  onClick={() => setMsgSendError(null)}
+                  aria-label="Dismiss"
+                  style={{
+                    minWidth: 44, minHeight: 44, border: 'none', background: 'transparent',
+                    cursor: 'pointer', fontSize: 18, color: 'var(--text-2)', flexShrink: 0,
+                  }}
+                >×</button>
+              </div>
+            )}
+
             {/* Input */}
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
               <button
@@ -1675,7 +1791,21 @@ export default function AthletePage() {
                 placeholder="Type a message…"
                 value={msgText}
                 onChange={(e) => { setMsgText(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px' }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+                /* See MessagingPanel: Enter-to-send with no Shift key made a
+                 * paragraph break impossible on a phone. This side matters more
+                 * — it is a teenager writing to an adult about training, and
+                 * they should be able to write more than one paragraph. */
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || e.shiftKey) return
+                  if (isTouch) return
+                  e.preventDefault()
+                  sendMessage()
+                }}
+                enterKeyHint={isTouch ? 'enter' : 'send'}
+                autoCapitalize="sentences"
+                autoCorrect="on"
+                spellCheck
+                maxLength={4000}
                 rows={1}
               />
               <button
@@ -1694,8 +1824,16 @@ export default function AthletePage() {
                 from a control labelled "Trends →", and it used to answer that
                 with a blank form and nothing else. */}
             <WellnessHistory rows={wellnessHistory} />
-            <WellnessSubmit
+            {/* Two taps, attached to the session when the coach scheduled one.
+                sessionToday is already resolved above from the calendar; when
+                it is null the athlete is checking in proactively, which is
+                explicitly allowed — a coach forgetting to schedule must not
+                cost the signal. */}
+            <CheckIn
               athleteId={athleteId}
+              sessionEventId={sessionToday?.id ?? null}
+              sessionLabel={sessionToday?.title ?? null}
+              openInjuries={openInjuries(injuries).map((i) => ({ id: i.id, body_area: i.body_area, status: i.status }))}
               initial={todayWellness}
               // Was `() => {}`. Because nothing re-read the data after a save,
               // an athlete could check in and then find the home card still
@@ -1885,6 +2023,26 @@ export default function AthletePage() {
                     {noteTranscribing ? '…transcribing' : noteRecording ? <><span className="recording-dot" /> Stop recording</> : '🎙️ Voice note'}
                   </button>
                 </div>
+
+                {noteError && (
+                  <div
+                    role="alert"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
+                      padding: '10px 12px', borderRadius: 10,
+                      background: 'var(--danger-light)', color: 'var(--text)',
+                      fontSize: 'var(--fs-3)', lineHeight: 1.45,
+                    }}
+                  >
+                    <span aria-hidden="true" style={{ flexShrink: 0 }}>⚠</span>
+                    <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{noteError}</span>
+                    <button
+                      onClick={() => setNoteError(null)}
+                      aria-label="Dismiss"
+                      style={{ minWidth: 44, minHeight: 44, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--text-2)', flexShrink: 0 }}
+                    >×</button>
+                  </div>
+                )}
               </div>
 
               {filteredNotes.length === 0 ? (
@@ -1988,7 +2146,7 @@ export default function AthletePage() {
             null,
             { key: 'calendar' as Tab, icon: 'calendar', label: 'Calendar' },
             { key: 'messages' as Tab, icon: 'messages', label: 'Messages' },
-          ] as ({ key: Tab; icon: string; label: string } | null)[]).map((item, i) => {
+          ] as ({ key: Tab; icon: string; label: string } | null)[]).map((item) => {
             if (item === null) {
               return (
                 <div key="fab" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
@@ -1997,17 +2155,17 @@ export default function AthletePage() {
                     style={{
                       width: 46, height: 46,
                       borderRadius: '50%',
-                      background: 'linear-gradient(135deg, var(--coach-color) 0%, var(--coach-on-light) 100%)',
+                      background: 'linear-gradient(135deg, var(--athlete-color) 0%, var(--primary-dark) 100%)',
                       border: '2px solid var(--card)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(181,92,62,0.35), 0 0 0 3px var(--bg)',
+                      boxShadow: '0 4px 14px rgba(111,142,107,0.35), 0 0 0 3px var(--bg)',
                       color: '#fff',
                     }}
                   >
-                    <AthleteIcon name="mic" size={18} strokeWidth={2.2} />
+                    <AthleteIcon name="pulse" size={20} strokeWidth={2.4} />
                   </button>
-                  <span style={{ fontSize: 'var(--fs-1)', color: 'var(--coach-color)', fontWeight: 600, lineHeight: 1 }}>Wellness</span>
+                  <span style={{ fontSize: 'var(--fs-1)', color: 'var(--athlete-color)', fontWeight: 600, lineHeight: 1 }}>Check in</span>
                 </div>
               )
             }

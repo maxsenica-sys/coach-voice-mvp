@@ -1,6 +1,8 @@
 // lib/wellness-config.ts
 // Single source of truth for wellness metric definitions.
-// Used by WellnessGraph (display/chart) and WellnessSubmit (input form).
+// Used by WellnessGraph (display/chart) and CheckIn (input). WellnessSubmit,
+// the five-slider form, was deleted on 2026-09-16 — see lib/readiness.ts and
+// migration 025 for what replaced it and why the 1-5 columns below survive it.
 
 export type MetricKey = 'energy' | 'mood' | 'sleep_q' | 'soreness' | 'stress'
 
@@ -105,6 +107,29 @@ export interface WellnessCheckin {
   id: string
   athlete_id: string
   check_date: string
+  /**
+   * The two-tap check-in, added 2026-09-16. See lib/readiness.ts.
+   *
+   * 1 = Flat, 2 = OK, 3 = Good. Absent on every row written by the old
+   * five-slider form, which is why it is optional — and why the five columns
+   * below remain the single scoring input: a readiness check-in DERIVES them
+   * rather than replacing them, so computeWellnessAlert, the caretaker
+   * escalation and the coach's roster dot read old and new rows through one
+   * path, with no branch and no backfill.
+   */
+  readiness?: number | null
+  /**
+   * Region ids from lib/body-map.ts.
+   *
+   * An EMPTY ARRAY is a real answer meaning "nothing hurts" — distinct from the
+   * legacy `soreness_areas` below, which uses null for "not asked". Do not
+   * conflate them: doing so turns "I'm fine" into "we don't know".
+   */
+  sore_areas?: string[] | null
+  /** The scheduled session this was made against, when there was one. */
+  session_event_id?: string | null
+  /** Answer to the follow-up shown only when an injury is already on file. */
+  injury_update?: string | null
   energy: number | null
   mood: number | null
   sleep_q: number | null

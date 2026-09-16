@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
 import {
   buildSummaryPrompt,
+  mayPersonalise,
   parseSummaryResponse,
   EMPTY_SUMMARY,
   type QuickSummary,
@@ -44,11 +45,24 @@ async function makeQuickSummary(
   transcript: string,
   sport?: string | null,
   athleteName?: string | null,
+  /** Every first name this recording is saved against — see mayPersonalise. */
+  rosterFirstNames: readonly string[] = [],
 ): Promise<QuickSummary> {
   const key = process.env.OPENAI_API_KEY
   if (!key) return EMPTY_SUMMARY
 
-  const prompt = buildSummaryPrompt(transcript, sport, athleteName)
+  /* The name reaches the prompt only if it can safely identify one child.
+   *
+   * On a squad save the same transcript is posted once per member, so "Jack,
+   * you're dropping your elbow" used to be delivered to BOTH Jacks as their
+   * coach speaking to them by name. buildSummaryPrompt gates on the name being
+   * present; mayPersonalise additionally refuses when the roster makes that
+   * name ambiguous, and falls back to the generic summary. */
+  const safeName = mayPersonalise(transcript, athleteName, rosterFirstNames)
+    ? athleteName
+    : null
+
+  const prompt = buildSummaryPrompt(transcript, sport, safeName)
 
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -203,7 +217,7 @@ export async function POST(req: NextRequest) {
   // transcriptNames. It is one lookup by primary key sitting next to an OpenAI
   // call, so the added cost is not measurable. The coach profile is still only
   // read when it is actually needed.
-  const [{ data: athleteRow }, { data: coachProfile }, { data: groupRow }] = await Promise.all([
+  const [{ data: athleteRow }, { data: coachProfile }, { data: groupRow }, { data: memberRows }] = await Promise.all([
     supabase.from('athletes').select('sport, first_name').eq('id', athlete_id).maybeSingle(),
     sport_context
       ? Promise.resolve({ data: null })
@@ -215,6 +229,17 @@ export async function POST(req: NextRequest) {
     // session leaks, so a rejected id must not silently become "individual".
     group_id
       ? supabase.from('groups').select('id').eq('id', group_id).eq('coach_id', user.id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    /* Who else this recording is being written for.
+     *
+     * Only for a squad save: an individual session has no roster to be
+     * ambiguous against. One indexed read, alongside calls that already run in
+     * parallel, next to an OpenAI request — not measurable. */
+    group_id
+      ? supabase
+          .from('group_members')
+          .select('athletes(first_name)')
+          .eq('group_id', group_id)
       : Promise.resolve({ data: null }),
   ])
 
@@ -231,10 +256,16 @@ export async function POST(req: NextRequest) {
   // AI quick scan summary (if it fails, we still save with summary = null).
   // The first name is a gate, not an instruction: if the coach never said it,
   // the prompt is unchanged from what it was before personalisation existed.
+  const rosterFirstNames = ((memberRows ?? []) as Array<{ athletes?: { first_name?: string | null } | { first_name?: string | null }[] | null }>)
+    .flatMap((r) => (Array.isArray(r.athletes) ? r.athletes : r.athletes ? [r.athletes] : []))
+    .map((a) => (a?.first_name ?? '').trim())
+    .filter(Boolean)
+
   const { summary, next: nextFocus } = await makeQuickSummary(
     transcript.trim(),
     resolvedSport,
     athleteRow?.first_name ?? null,
+    rosterFirstNames,
   )
 
   const { data, error } = await supabase

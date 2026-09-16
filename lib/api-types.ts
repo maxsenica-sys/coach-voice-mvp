@@ -43,7 +43,14 @@ export interface MessageRow {
   msg_type: 'text' | 'image' | 'video' | 'audio'
   /** Null for a media-only message. The column is `content`, not `body`. */
   content: string | null
+  /**
+   * Signed fresh by the API on every read, derived from `media_path`. Never
+   * persisted — a stored signed URL is dead an hour later and cannot be
+   * re-derived. Rows written before migration 024 carry a dead one here.
+   */
   media_url: string | null
+  /** The durable storage key inside `messages-media`. See migration 024. */
+  media_path?: string | null
   media_name?: string | null
   /** Nullable in the schema (`timestamptz DEFAULT now()`), so guard before use. */
   created_at: string | null

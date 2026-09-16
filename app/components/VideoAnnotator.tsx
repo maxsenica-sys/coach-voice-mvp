@@ -18,6 +18,15 @@ type Props = {
   readOnly?: boolean
   sessionId?: string
   videoId?: string
+  /**
+   * Where to begin playback, in seconds.
+   *
+   * The share link this component builds carries `?t=`, and the page receiving
+   * it parsed the value, printed it, and threw it away — under copy telling the
+   * viewer to "seek manually or reload to jump there", which also did nothing.
+   * The sending half worked; nothing ever acted on it.
+   */
+  startTime?: number
 }
 
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#ffffff', '#000000']
@@ -61,7 +70,7 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: AnnotationStroke, alp
 }
 
 
-export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAnnotationsChange, readOnly = false, sessionId, videoId }: Props) {
+export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAnnotationsChange, readOnly = false, sessionId, videoId, startTime = 0 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -103,6 +112,31 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
     if (video.readyState >= 1) sync()
     return () => video.removeEventListener('loadedmetadata', sync)
   }, [videoUrl])
+
+  /* Jump to the shared moment, once the browser knows how long the clip is.
+   *
+   * Seeking before `loadedmetadata` is a no-op — duration is NaN and
+   * currentTime silently refuses — which is the trap a naive version of this
+   * falls into. Clamping matters too: a link built from a longer cut of the
+   * same clip would otherwise land the viewer on a black frame past the end.
+   */
+  useEffect(() => {
+    if (!startTime || startTime <= 0) return
+    const video = videoRef.current
+    if (!video) return
+
+    let done = false
+    const seek = () => {
+      if (done) return
+      const d = video.duration
+      if (!Number.isFinite(d) || d <= 0) return
+      video.currentTime = Math.min(startTime, Math.max(0, d - 0.1))
+      done = true
+    }
+    video.addEventListener('loadedmetadata', seek)
+    if (video.readyState >= 1) seek()
+    return () => video.removeEventListener('loadedmetadata', seek)
+  }, [videoUrl, startTime])
 
   // Render loop
   useEffect(() => {
@@ -227,6 +261,17 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
           ref={videoRef}
           src={videoUrl}
           controls
+          /* Metadata only until someone presses play.
+           *
+           * Without this, expanding a session with three clips starts three full
+           * video downloads at once — on a phone, on mobile data, for clips the
+           * coach may not watch. app/sessions/[id]/page.tsx already gets this
+           * right; this component did not.
+           *
+           * `metadata` rather than `none` because the seek-to-shared-timestamp
+           * below needs duration, and `none` would leave it NaN until play. */
+          preload="metadata"
+          playsInline
           style={{ width: '100%', display: 'block', maxHeight: 480 }}
         />
         <canvas

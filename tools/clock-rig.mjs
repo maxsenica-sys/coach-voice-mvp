@@ -91,6 +91,12 @@ async function runZone(zone, year) {
     await import(pathToFileURL(path.join(ROOT, 'lib/session-date.ts')).href)
   const { buildSpine, startOfWeek, SPINE_WEEKS } =
     await import(pathToFileURL(path.join(ROOT, 'lib/training-spine.ts')).href)
+  // date-utils was outside this rig while carrying the exact bug the rig
+  // exists for: two `Math.floor(diffMs / 86400000)` calls deciding whether a
+  // message says "Today" or "Yesterday". A rig that does not import a module
+  // cannot hold an opinion about it.
+  const { fmtDateDivider, fmtTime } =
+    await import(pathToFileURL(path.join(ROOT, 'lib/date-utils.ts')).href)
 
   const failures = []
   let checks = 0
@@ -190,6 +196,52 @@ async function runZone(zone, year) {
       'P8 sessionDate keeps the day',
       `${label} -> ${sd ? iso(sd) : 'null'}`,
     )
+
+    // ── P10 · the divider names the right calendar day, at any hour ───────
+    //
+    // The shipped bug: `Math.floor(diffMs / 86400000)`. A message sent at 23:40
+    // and read at 01:10 the next morning is 90 minutes old, floors to zero
+    // whole days, and gets labelled "Today" when it was yesterday.
+    //
+    // `now` is passed in rather than read from the wall clock, which is the
+    // whole point: the first version of this property built its timestamps from
+    // the year being walked (2027) while the real clock said 2026, so every
+    // stamp was in the future, the Today/Yesterday branches never ran, and it
+    // passed against the broken code. A property that cannot reach the failing
+    // state is not a test.
+    for (const [sentH, sentM, nowH, nowM, dayShift, expected] of [
+      [23, 40,  1, 10, 1, 'Yesterday'],  // the exact reported case
+      [23, 59,  0,  1, 1, 'Yesterday'],  // one minute apart, across midnight
+      [ 0,  5, 23, 55, 0, 'Today'],      // 23h50m apart, same calendar day
+      [12,  0, 12,  0, 0, 'Today'],      // same instant
+      [ 9,  0, 10,  0, 2, null],         // two days back is neither
+    ]) {
+      const sent = new Date(today.getFullYear(), today.getMonth(), today.getDate(), sentH, sentM)
+      const nowD = new Date(today.getFullYear(), today.getMonth(), today.getDate() + dayShift, nowH, nowM)
+      const divider = fmtDateDivider(sent.toISOString(), nowD)
+      if (expected) {
+        check(
+          divider === expected,
+          'P10 divider names the right day',
+          `sent ${label} ${sentH}:${String(sentM).padStart(2, '0')}, read +${dayShift}d ${nowH}:${String(nowM).padStart(2, '0')} -> "${divider}", expected "${expected}"`,
+        )
+      } else {
+        check(
+          divider !== 'Today' && divider !== 'Yesterday',
+          'P10 an older message is neither Today nor Yesterday',
+          `sent ${label}, read +${dayShift}d -> "${divider}"`,
+        )
+      }
+
+      // fmtTime answers the same question and must never disagree with it.
+      const t = fmtTime(sent.toISOString(), nowD)
+      if (expected === 'Yesterday') {
+        check(t === 'Yesterday', 'P10 fmtTime agrees on Yesterday', `${label} -> "${t}"`)
+      }
+      if (expected === 'Today') {
+        check(t !== 'Yesterday', 'P10 fmtTime never calls today Yesterday', `${label} -> "${t}"`)
+      }
+    }
   }
 
   // ── P9 · todayISODate agrees with the local clock ───────────────────────

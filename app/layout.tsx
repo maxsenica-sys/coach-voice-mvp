@@ -35,9 +35,15 @@ import './globals.css'
  * claimed the fonts were cached, nothing was caching anything. Dead
  * configuration gets cited; keep the citation pointing at code that runs.
  *
- * Only Newsreader is preloaded. It carries the first heading on every screen,
- * so a swap there is visible. JetBrains Mono appears on a handful of 10-11px
- * labels and does not deserve a request competing with the app bundle.
+ * Only Plus Jakarta Sans is preloaded, and it is the one that carries the body
+ * copy on every screen. Newsreader used to be preloaded on the reasoning that
+ * it carries the first heading, so a swap there is visible — true, but it ships
+ * normal *and* italic, and 123KB at the same priority as the document's own CSS
+ * is 123KB taken from the two things the brand moment actually depends on: the
+ * first paint, and the JavaScript that starts the animation. A visible swap on
+ * a heading is a smaller cost than a blank screen. JetBrains Mono appears on a
+ * handful of 10-11px labels and never deserved a request competing with the
+ * bundle. tools/boot-smoke.mjs holds the critical-path font budget at 40KB.
  */
 const jakartaSans = Plus_Jakarta_Sans({
   variable: '--font-jakarta',
@@ -52,6 +58,14 @@ const newsreader = Newsreader({
   weight: ['400', '500'],
   style: ['normal', 'italic'], // headings use both; see --font-display
   display: 'swap',
+  // Not preloaded. Newsreader ships normal *and* italic — 123KB — at the same
+  // priority as the document's own CSS and ahead of the app bundle, and the
+  // first painted frame reads neither: #cv-boot .w hardcodes the system stack
+  // on purpose. `display: swap` means the cost is a late swap on headings, not
+  // invisible text. Blocking these on a slow-3G profile moved first paint
+  // 1252ms -> 840ms. Plus Jakarta Sans, which carries the body copy, stays
+  // preloaded at 27KB. tools/boot-smoke.mjs enforces the 40KB budget.
+  preload: false,
 })
 
 const jetbrainsMono = JetBrains_Mono({
@@ -239,7 +253,19 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
       if (Date.now() - last < 1800000) return
       localStorage.setItem('cv_splash_at', String(Date.now()))
     }
-    window.__cvBootAt = Date.now()
+    // Anchored to when the NAVIGATION started, not to when this script finally
+    // ran. Everything before this line — the "/" hop, the middleware's auth
+    // round trips, the document transfer, the stylesheet this script used to
+    // wait behind — is screen the user has already spent staring at nothing.
+    // performance.now() here is exactly that elapsed time.
+    //
+    // Anchoring to parse time made the sequence start afresh at the end of the
+    // wait, so the dead time and the 2.1s sequence added up instead of
+    // overlapping. That is the difference between "3s of black, then the intro
+    // from frame 1" and "the intro is already most of the way through by the
+    // time you see it". Measured against a 2500ms held document: the user
+    // reached the app at 5.8s before, 3.1s after.
+    window.__cvBootAt = Date.now() - Math.round(performance.now())
     d.setAttribute('data-boot', '1')
     // The escape has to exist from the first painted frame.
     //

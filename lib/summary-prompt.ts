@@ -70,17 +70,81 @@ export const TARGET_BULLETS = 5
  * misfires on names like "Zoë" or "Łukasz". This tests for a non-letter (or a
  * string edge) either side instead, under the `u` flag.
  */
+/* Names that are also ordinary English words.
+ *
+ * The gate matched case-insensitively, so "you **will** need to get your hands
+ * up" personalised a summary for Will, and "nice **mark** on the turn" for
+ * Mark. Verified against transcripts that address neither. Every one of these
+ * is a real first name AND a word a coach says constantly.
+ *
+ * For these, and only these, the match must be capitalised — which is Whisper's
+ * most reliable proper-noun signal and the one the `i` flag was throwing away.
+ * A coach who says "Grace, hands up" gets the capital; "with more grace" does
+ * not. The cost of being wrong here is asymmetric: a missed personalisation is
+ * a generic summary, a false one is a fabricated instruction addressed to a
+ * child who was never spoken to.
+ */
+const NAMES_THAT_ARE_ALSO_WORDS = new Set([
+  'will', 'grace', 'may', 'summer', 'mark', 'rocky', 'sunny', 'art', 'bill',
+  'brook', 'brooke', 'chase', 'dawn', 'drew', 'faith', 'hope', 'joy', 'lance',
+  'miles', 'rose', 'sky', 'skye', 'stone', 'victor', 'wade', 'hunter', 'melody',
+  'harmony', 'destiny', 'serenity', 'justice', 'reign', 'rain', 'river', 'ray',
+])
+
 export function transcriptNames(transcript: string, firstName: string | null | undefined): boolean {
   const name = (firstName ?? '').trim()
   // One-letter "names" are almost always placeholder roster data and would
   // match far too much prose.
   if (name.length < 2) return false
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const caseSensitive = NAMES_THAT_ARE_ALSO_WORDS.has(name.toLowerCase())
   try {
-    return new RegExp(`(^|[^\\p{L}])${escaped}([^\\p{L}]|$)`, 'iu').test(transcript)
+    return new RegExp(
+      `(^|[^\\p{L}])${escaped}([^\\p{L}]|$)`,
+      caseSensitive ? 'u' : 'iu',
+    ).test(transcript)
   } catch {
     return false
   }
+}
+
+/**
+ * May this transcript be personalised for this athlete, given who else is on
+ * the roster for this recording?
+ *
+ * ── The bug this exists for ───────────────────────────────────────────────
+ *
+ * `transcriptNames(t, 'Jack')` is true for EVERY Jack. A squad save fans the
+ * same transcript out to one session per member, so a coach who said "Jack,
+ * you're dropping your elbow" to one Jack had that delivered to the other Jack
+ * as "your coach used your name" — a real criticism, attributed to the wrong
+ * child, with the gate reporting success.
+ *
+ * That is precisely the failure the gate was built to prevent. It could not see
+ * it, because it was only ever shown one name at a time.
+ *
+ * A first name is not an identifier. When the roster makes it ambiguous, there
+ * is no way to tell from the transcript alone which person was addressed, so
+ * the honest answer is to decline and send the generic summary. A generic
+ * summary is a small loss; the alternative is telling a fourteen-year-old their
+ * coach said something about them that their coach said about someone else.
+ */
+export function mayPersonalise(
+  transcript: string,
+  firstName: string | null | undefined,
+  /** Every first name this recording is being saved against, this one included. */
+  rosterFirstNames: readonly string[] = [],
+): boolean {
+  const name = (firstName ?? '').trim()
+  if (!transcriptNames(transcript, name)) return false
+
+  const key = name.toLowerCase()
+  const sharing = rosterFirstNames.filter((n) => (n ?? '').trim().toLowerCase() === key).length
+  // Zero means the caller passed no roster (an individual session): that is not
+  // ambiguity, it is an absence of information about anyone else.
+  if (sharing > 1) return false
+
+  return true
 }
 
 /**
@@ -157,6 +221,10 @@ NEVER
 - Never invent drills, numbers, scores or names that are not in the transcript.
 - Never repeat the whole transcript back; this is a summary.
 - No preamble, no heading, no sign-off. Bullets only.
+
+ABOUT THEIR BODY
+The reader may be thirteen. If the coach said anything about their weight, their body shape, their size, their appearance, or what they eat, leave it out — even if the coach meant it kindly, and even if it was the main thing said. Do not soften it, do not rephrase it, do not allude to it. Write the rest.
+Injuries, pain, tiredness and what a body can do today are training information and stay in: "keep off the ankle this week" is a coaching point, "you need to lose a bit" is not.
 
 TRANSCRIPT
 ${transcript}

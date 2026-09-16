@@ -41,6 +41,47 @@ export async function POST(
 
     const sessionIds = (sessionRows ?? []).map((s: { id: string }) => s.id)
 
+    // ── Delete the files, not just the rows that point at them ─────────────
+    //
+    // This route deleted eight tables and the auth user and touched no bucket,
+    // so every recording and every video of the child survived a deletion the
+    // coach was told had succeeded — and survived it unreachably, because the
+    // rows carrying the storage paths were gone a line later. A parent's
+    // erasure request could not be honoured through the product at all.
+    //
+    // Collect the paths BEFORE the rows are deleted, and remove the objects
+    // before the rows so a failure here leaves a recoverable reference rather
+    // than an orphan nobody can find. Storage failures are logged and do not
+    // abort the delete: the row removal is what the coach asked for, and a
+    // half-deleted athlete is worse than a leftover file we can sweep later.
+    if (sessionIds.length > 0) {
+      const [{ data: videoRows }, { data: audioRows }, { data: attachmentRows }] = await Promise.all([
+        admin.from('session_videos').select('storage_path').in('session_id', sessionIds),
+        admin.from('sessions').select('audio_path').in('id', sessionIds),
+        // session_attachments is ON DELETE CASCADE from sessions, so its rows
+        // go on their own — which is exactly why its files need collecting
+        // here. Nothing else will ever know these paths existed.
+        admin.from('session_attachments').select('storage_path').in('session_id', sessionIds),
+      ])
+
+      const videoPaths = [...(videoRows ?? []), ...(attachmentRows ?? [])]
+        .map((v: { storage_path: string | null }) => v.storage_path)
+        .filter((p): p is string => typeof p === 'string' && p.length > 0)
+
+      const audioPaths = (audioRows ?? [])
+        .map((s: { audio_path: string | null }) => s.audio_path)
+        .filter((p): p is string => typeof p === 'string' && p.length > 0)
+
+      if (videoPaths.length > 0) {
+        const { error } = await admin.storage.from('session-videos').remove(videoPaths)
+        if (error) console.error('hard-delete: session-videos remove failed', error.message, videoPaths.length)
+      }
+      if (audioPaths.length > 0) {
+        const { error } = await admin.storage.from('session-audio').remove(audioPaths)
+        if (error) console.error('hard-delete: session-audio remove failed', error.message, audioPaths.length)
+      }
+    }
+
     if (sessionIds.length > 0) {
       await admin.from('session_videos').delete().in('session_id', sessionIds)
     }

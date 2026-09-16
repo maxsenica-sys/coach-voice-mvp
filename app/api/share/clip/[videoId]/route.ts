@@ -24,7 +24,7 @@ export async function GET(
     // Fetch the video row — verify it belongs to the session
     const { data: video, error: vErr } = await admin
       .from('session_videos')
-      .select('id, session_id, storage_path, file_name, annotations, created_at')
+      .select('id, session_id, storage_path, file_name, annotations, created_at, shared_with_athlete')
       .eq('id', videoId)
       .eq('session_id', sessionId)
       .single()
@@ -44,6 +44,16 @@ export async function GET(
     // Athlete access: athlete_user_id on athletes table where athlete_id matches
     let hasAccess = session.coach_id === user.id
     if (!hasAccess && session.athlete_id) {
+      // An athlete reaches a clip only once the coach has shared that clip.
+      //
+      // This route honoured the link between athlete and session and then
+      // ignored `shared_with_athlete` on the video itself — the one flag every
+      // other surface checks. On a squad session that is a real leak rather
+      // than a technicality: the clip a coach deliberately withheld shows the
+      // other children in it, to a child who was never meant to see it.
+      if (!video.shared_with_athlete) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
       const { data: athlete } = await admin
         .from('athletes')
         .select('athlete_user_id')

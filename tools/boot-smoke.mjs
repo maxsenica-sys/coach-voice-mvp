@@ -204,6 +204,59 @@ function assertBuildOutput() {
     check('the boot shell markup is server-rendered', html.includes('id="cv-boot"'))
     const ext = (html.match(/<link[^>]+rel="stylesheet"[^>]+href="https?:[^"]*"/g) || [])
     check('no third-party stylesheet in <head>', ext.length === 0, ext.join(', '))
+
+    // ── Nothing render-blocking that the first frame does not need ─────────
+    //
+    // The shell paints at first paint, and first paint is whatever the browser
+    // has to finish first. A `<link rel="stylesheet">` is render-blocking by
+    // definition, so if one is emitted the shell — which needs no stylesheet
+    // at all, its CSS is inline in the same document — waits for a second
+    // request before a single pixel appears. Measured on a slow-3G profile:
+    // the HTML was complete at 606ms and first paint was at 1568ms, the whole
+    // gap spent on a 37KB stylesheet the first frame does not read one rule
+    // from. `experimental.inlineCss` in next.config.ts is what removes it.
+    //
+    // Same-origin, not third-party: the check above bans a *foreign*
+    // stylesheet, which is a different bug. This one bans the extra round trip.
+    const blocking = (html.match(/<link[^>]+rel="stylesheet"[^>]*>/g) || [])
+    check(
+      'no render-blocking stylesheet delays the boot shell',
+      blocking.length === 0,
+      blocking.length
+        ? `${blocking.length} <link rel=stylesheet> in the document — first paint cannot happen before it lands`
+        : 'CSS is inlined',
+    )
+
+    // ── The font budget on the critical path ──────────────────────────────
+    //
+    // `<link rel="preload" as="font">` is fetched at the same priority as the
+    // stylesheet and ahead of the app bundle, so every byte here is a byte
+    // taken from the two things the brand moment actually depends on: the
+    // document's own paint, and the JavaScript that starts the animation.
+    //
+    // This shipped at 150,824 bytes — Newsreader normal *and* italic (123KB)
+    // plus Plus Jakarta Sans — while the first painted frame deliberately uses
+    // neither: the boot shell hardcodes the system stack precisely because no
+    // webfont can be relied on that early. Blocking those three requests on a
+    // slow-3G profile moved first paint 412ms earlier and the whole bundle
+    // more than two seconds earlier. `display: 'swap'` means the cost of not
+    // preloading is a late swap, not invisible text.
+    const FONT_PRELOAD_BUDGET = 40_000
+    const fontPreloads = [...html.matchAll(/<link[^>]*rel="preload"[^>]*>/g)]
+      .map((m) => m[0])
+      .filter((tag) => /as="font"/.test(tag))
+      .map((tag) => (tag.match(/href="([^"]+)"/) || [])[1])
+      .filter(Boolean)
+    let fontBytes = 0
+    for (const href of fontPreloads) {
+      const onDisk = join(NEXT_DIR, href.replace(/^\/_next\//, ''))
+      if (existsSync(onDisk)) fontBytes += statSync(onDisk).size
+    }
+    check(
+      'preloaded fonts stay inside the critical-path budget',
+      fontBytes <= FONT_PRELOAD_BUDGET,
+      `${fontPreloads.length} file(s), ${fontBytes}B (budget ${FONT_PRELOAD_BUDGET}B) — ${fontPreloads.join(', ') || 'none'}`,
+    )
   }
 }
 
@@ -485,6 +538,60 @@ async function assertBoot(base) {
       JSON.stringify(afterTap),
     )
     await escCtx.close()
+
+    /* ── the shell must not be waiting on a second request ──
+     *
+     * The build-output check bans a `<link rel="stylesheet">` in the document.
+     * This is the same rule asked of the browser instead of the HTML, because
+     * the HTML is not the only way a render-blocking request can appear, and
+     * because what actually matters is the observable behaviour: is the brand
+     * on screen when the network has given us nothing but the document?
+     *
+     * The mechanism this exists for. app/layout.tsx states that the boot shell
+     * "may not depend on JavaScript, on the CSS chunk, or on the webfont" —
+     * and it did depend on the CSS chunk, in two ways at once. A stylesheet
+     * link blocks rendering, so no pixel of the shell could paint until it
+     * landed; and it also parser-blocks the inline <script> that arms the
+     * shell, which is emitted after it, so `data-boot` was not even set. The
+     * entire body — shell included — was still unparsed. Measured on a
+     * slow-3G/6x-CPU profile: document complete at 606ms, first paint 1568ms.
+     * Delaying only the stylesheet by two seconds on a fast connection moved
+     * first paint to 2056ms with every script already on disk at 145ms, which
+     * is the causal proof.
+     *
+     * So: stall every stylesheet, forever, and ask whether the shell is up.
+     * If this fails, the app opens to a blank screen for as long as one extra
+     * request takes, on every cold start, and no amount of tuning the
+     * animation that follows can cover it. */
+    heading('The boot shell does not wait for a second request')
+    const stallCtx = await browser.newContext()
+    const stall = await stallCtx.newPage()
+    // Never fulfilled and never continued: the request hangs for the life of
+    // the page, which is the worst case a real network can produce.
+    await stall.route('**/*.css', () => { /* hang */ })
+    await stall.goto(base + '/?splash=1', { waitUntil: 'commit' })
+    await stall.waitForTimeout(1500)
+    const stalled = await stall.evaluate(() => {
+      const el = document.getElementById('cv-boot')
+      const fcp = performance.getEntriesByName('first-contentful-paint')[0]
+      return {
+        armed: document.documentElement.hasAttribute('data-boot'),
+        display: el ? getComputedStyle(el).display : 'MISSING',
+        wordmark: el ? (el.querySelector('.w')?.textContent ?? '') : '',
+        fcp: fcp ? Math.round(fcp.startTime) : 0,
+      }
+    }).catch((e) => ({ error: String(e) }))
+    check(
+      'the shell arms with every stylesheet stalled',
+      stalled.armed === true,
+      JSON.stringify(stalled),
+    )
+    check(
+      'the shell is painted with every stylesheet stalled',
+      stalled.display === 'block' && stalled.wordmark === 'CoachVoice' && stalled.fcp > 0,
+      JSON.stringify(stalled),
+    )
+    await stallCtx.close()
 
     /* ── the service worker ──
      *
