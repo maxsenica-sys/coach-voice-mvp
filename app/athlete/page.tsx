@@ -89,6 +89,14 @@ function AthleteIcon({ name, size = 20, strokeWidth = 2 }: { name: string; size?
     case 'calendar': return <svg {...p}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     case 'messages': return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     case 'mic':      return <svg {...p}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    /* A pulse line. The check-in button used the mic glyph, in the coach's rust
+       gradient, at the exact size and position where the coach's own app puts
+       the recorder — so the largest control in the athlete's app promised the
+       one thing this product deliberately does not do. Athletes do not record
+       for their coach; PROJECT-STATE says so. The same file uses `mic` 600
+       lines further up to mean "your coach recorded this", correctly, which is
+       what made the FAB read as recording rather than as anything else. */
+    case 'pulse':    return <svg {...p}><path d="M2 12h4l2.5-7 4 14L15.5 12H22"/></svg>
     case 'video':    return <svg {...p}><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
     case 'pencil':   return <svg {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
     default:         return null
@@ -363,6 +371,9 @@ export default function AthletePage() {
   const [msgText, setMsgText] = useState('')
   const [msgSending, setMsgSending] = useState(false)
   const [msgSendError, setMsgSendError] = useState<string | null>(null)
+  // Pointer capability, not width: a tablet with a keyboard is wide and touch.
+  const [isTouch, setIsTouch] = useState(false)
+  useEffect(() => { setIsTouch(window.matchMedia('(pointer: coarse)').matches) }, [])
   const [msgLoadError, setMsgLoadError] = useState<string | null>(null)
   const [msgLoading, setMsgLoading] = useState(false)
   const msgBottomRef = useRef<HTMLDivElement>(null)
@@ -1755,7 +1766,21 @@ export default function AthletePage() {
                 placeholder="Type a message…"
                 value={msgText}
                 onChange={(e) => { setMsgText(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px' }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+                /* See MessagingPanel: Enter-to-send with no Shift key made a
+                 * paragraph break impossible on a phone. This side matters more
+                 * — it is a teenager writing to an adult about training, and
+                 * they should be able to write more than one paragraph. */
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || e.shiftKey) return
+                  if (isTouch) return
+                  e.preventDefault()
+                  sendMessage()
+                }}
+                enterKeyHint={isTouch ? 'enter' : 'send'}
+                autoCapitalize="sentences"
+                autoCorrect="on"
+                spellCheck
+                maxLength={4000}
                 rows={1}
               />
               <button
@@ -2077,17 +2102,17 @@ export default function AthletePage() {
                     style={{
                       width: 46, height: 46,
                       borderRadius: '50%',
-                      background: 'linear-gradient(135deg, var(--coach-color) 0%, var(--coach-on-light) 100%)',
+                      background: 'linear-gradient(135deg, var(--athlete-color) 0%, var(--primary-dark) 100%)',
                       border: '2px solid var(--card)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(181,92,62,0.35), 0 0 0 3px var(--bg)',
+                      boxShadow: '0 4px 14px rgba(111,142,107,0.35), 0 0 0 3px var(--bg)',
                       color: '#fff',
                     }}
                   >
-                    <AthleteIcon name="mic" size={18} strokeWidth={2.2} />
+                    <AthleteIcon name="pulse" size={20} strokeWidth={2.4} />
                   </button>
-                  <span style={{ fontSize: 'var(--fs-1)', color: 'var(--coach-color)', fontWeight: 600, lineHeight: 1 }}>Wellness</span>
+                  <span style={{ fontSize: 'var(--fs-1)', color: 'var(--athlete-color)', fontWeight: 600, lineHeight: 1 }}>Check in</span>
                 </div>
               )
             }

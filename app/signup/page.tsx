@@ -386,6 +386,12 @@ export default function SignupPage() {
                     type="text"
                     placeholder="e.g. Alex"
                     value={form.firstName}
+                    autoComplete="given-name"
+                    autoCapitalize="words"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="next"
+                    maxLength={60}
                     autoFocus
                     onChange={(e) => set('firstName', e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && next()}
@@ -398,6 +404,12 @@ export default function SignupPage() {
                     type="text"
                     placeholder="e.g. Johnson"
                     value={form.lastName}
+                    autoComplete="family-name"
+                    autoCapitalize="words"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="next"
+                    maxLength={60}
                     onChange={(e) => set('lastName', e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && next()}
                   />
@@ -421,6 +433,12 @@ export default function SignupPage() {
                     type="email"
                     placeholder="you@example.com"
                     value={form.email}
+                    autoComplete="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="next"
                     autoFocus
                     onChange={(e) => set('email', e.target.value)}
                   />
@@ -432,6 +450,12 @@ export default function SignupPage() {
                     type="password"
                     placeholder="At least 6 characters"
                     value={form.password}
+                    autoComplete="new-password"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="next"
+                    minLength={6}
                     onChange={(e) => set('password', e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && next()}
                   />
@@ -457,6 +481,12 @@ export default function SignupPage() {
                 type="text"
                 placeholder="Filter sports…"
                 value={sportSearch}
+                inputMode="search"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="search"
+                autoComplete="off"
                 onChange={(e) => {
                   setSportSearch(e.target.value)
                   // Auto-select first match when filtering
@@ -493,7 +523,18 @@ export default function SignupPage() {
               ) : (
                 <SportWheelPicker
                   sports={wheelSports}
-                  value={form.sport || wheelSports[0]}
+                  /* Not `form.sport || wheelSports[0]`.
+                   *
+                   * That rendered the first sport in the list as though it were
+                   * chosen — bold, primary-coloured, inside the highlight band —
+                   * while form.sport was still ''. Pressing Continue then said
+                   * "Please select your sport" while pointing at a sport that
+                   * visibly WAS selected, on the last mandatory step before the
+                   * account is created.
+                   *
+                   * The picker already renders an empty value correctly, as a
+                   * muted "Select sport…". It just never got the chance. */
+                  value={form.sport}
                   onChange={(s) => set('sport', s)}
                 />
               )}
@@ -520,6 +561,9 @@ export default function SignupPage() {
                       type="text"
                       placeholder={`e.g. Centre midfielder, 100m sprinter, Goalkeeper…`}
                       value={form.positionOrEvent}
+                      autoCapitalize="sentences"
+                      enterKeyHint="next"
+                      maxLength={80}
                       onChange={(e) => set('positionOrEvent', e.target.value)}
                     />
                   </div>
@@ -592,6 +636,17 @@ export default function SignupPage() {
                       type="text"
                       placeholder="e.g. johndoe4821 — your coach provides this"
                       value={form.coachCode}
+                      /* The value is lowercased on change, but iOS still opened
+                         a shifted keyboard and the first character looked wrong
+                         as it was typed. autoCapitalize="none" makes what the
+                         athlete sees match what is stored. */
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      inputMode="text"
+                      enterKeyHint="done"
+                      autoComplete="off"
+                      maxLength={40}
                       onChange={(e) => set('coachCode', e.target.value.toLowerCase().trim())}
                     />
                     <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>

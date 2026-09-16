@@ -48,6 +48,17 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   const supabaseRef = useRef(createSupabaseBrowserClient())
   const supabase = supabaseRef.current
 
+  /* Whether this device has no Shift key to hold.
+   *
+   * Deliberately a pointer-capability query rather than a width check: a
+   * tablet with a keyboard is wide AND touch, and an iPad user with a Magic
+   * Keyboard should still get Enter-to-send. `coarse` means the primary
+   * pointer is a finger. */
+  const [isTouch, setIsTouch] = useState(false)
+  useEffect(() => {
+    setIsTouch(window.matchMedia('(pointer: coarse)').matches)
+  }, [])
+
   const [isMobile, setIsMobile] = useState(false)
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -391,6 +402,13 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
             placeholder="Search athletes…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            type="search"
+            inputMode="search"
+            enterKeyHint="search"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            autoComplete="off"
           />
         </div>
 
@@ -682,7 +700,25 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                 placeholder={mediaUploading ? 'Uploading…' : 'Type a message…'}
                 value={text}
                 onChange={(e) => { setText(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText() } }}
+                /* Enter sends on a keyboard, where Shift+Enter gives a line
+                 * break. On a phone there is no Shift, so Enter-to-send made a
+                 * paragraph break physically impossible — and `enterKeyHint`
+                 * was unset, so the key did not even say what it would do.
+                 *
+                 * On touch the key now reads "enter" and inserts a newline; the
+                 * send button is right there and is the obvious way to send.
+                 * On a keyboard nothing changes. */
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || e.shiftKey) return
+                  if (isTouch) return
+                  e.preventDefault()
+                  sendText()
+                }}
+                enterKeyHint={isTouch ? 'enter' : 'send'}
+                autoCapitalize="sentences"
+                autoCorrect="on"
+                spellCheck
+                maxLength={4000}
                 disabled={mediaUploading || recordingAudio || !!audioUrl}
                 rows={1}
               />

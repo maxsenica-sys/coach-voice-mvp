@@ -125,17 +125,48 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
     setSaving(false)
   }
 
+  /* A delivery check, and it must read as one.
+   *
+   * This sent `• Great work on technique today / • Focus on footwork next
+   * session` — invented feedback about a real child — under the subject
+   * "Session update for {name}", from the coach's own address, with no
+   * confirmation and nothing marking it as a test. A parent receiving it had no
+   * way to tell it apart from a real report of a session that never happened.
+   *
+   * The button is one tap next to a caretaker's name, and it was labelled
+   * "Send".
+   *
+   * Now: it says what it is in the subject, in the body, and on the button, and
+   * it asks first. The point of the feature — proving mail reaches this address
+   * — is unchanged and is arguably better served by a message that says so.
+   */
   const sendTestEmail = async (email: string, name: string) => {
     setEmailSending(true); setEmailMsg('')
     try {
-      const html = buildSessionEmailHtml('Example Session', '• Great work on technique today\n• Focus on footwork next session', athleteName, 'Coach', new Date().toLocaleDateString())
-      const res = await fetch('/api/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, to: email, subject: `Session update for ${athleteName}`, html }) })
-      const j = await res.json()
-      if (!res.ok) throw new Error(j.error)
-      setEmailMsg(`Sent to ${name}!`)
-    } catch (e: unknown) { setEmailMsg(errorMessage(e, 'Failed')) }
+      const html = buildSessionEmailHtml(
+        'Test message',
+        `This is a test, sent by ${athleteName}'s coach to check that CoachVoice emails reach you.\n\nThere is no session to read and nothing you need to do. Real session updates will look like this one and will contain ${athleteName}'s actual notes.`,
+        athleteName,
+        'Coach',
+        new Date().toLocaleDateString(),
+      )
+      await apiMutate('/api/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          athlete_id: athleteId,
+          to: email,
+          subject: `Test — CoachVoice delivery check for ${athleteName}`,
+          html,
+        }),
+      })
+      setEmailMsg(`Test sent to ${name}.`)
+    } catch (e: unknown) { setEmailMsg(errorMessage(e, 'Could not send the test email')) }
     setEmailSending(false)
   }
+
+  /** Which caretaker is being asked about, if any. */
+  const [confirmTestTo, setConfirmTestTo] = useState<string | null>(null)
 
   return (
     <div className="card" style={{ padding: 18 }}>
@@ -148,8 +179,14 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{c.caretaker_name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({c.relationship})</span></div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.caretaker_email}</div>
               </div>
-              <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11, gap: 4 }} onClick={() => sendTestEmail(c.caretaker_email, c.caretaker_name ?? 'there')} disabled={emailSending}>
-                <Icon name="mail" size={12} /> Send
+              <button
+                className="btn btn-ghost"
+                style={{ padding: '4px 8px', fontSize: 11, gap: 4, minHeight: 44 }}
+                onClick={() => setConfirmTestTo(c.id)}
+                disabled={emailSending}
+                title={`Send a test email to ${c.caretaker_email}`}
+              >
+                <Icon name="mail" size={12} /> Send test
               </button>
               <button className="btn btn-danger" style={{ padding: '4px 8px' }} onClick={async () => {
                 try {
@@ -162,11 +199,40 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
               }}>
                 <Icon name="x" size={13} />
               </button>
+              {confirmTestTo === c.id && (
+                <div
+                  role="alertdialog"
+                  aria-label="Confirm test email"
+                  style={{ flexBasis: '100%', marginTop: 8, padding: 10, borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+                >
+                  <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text)' }}>
+                    Email <strong>{c.caretaker_email}</strong> now? They will receive a short
+                    message saying it is a test.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ minHeight: 44, paddingInline: 14, fontSize: 12 }}
+                      disabled={emailSending}
+                      onClick={() => { setConfirmTestTo(null); void sendTestEmail(c.caretaker_email, c.caretaker_name ?? 'there') }}
+                    >
+                      {emailSending ? 'Sending…' : 'Send test'}
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ minHeight: 44, paddingInline: 14, fontSize: 12 }}
+                      onClick={() => setConfirmTestTo(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
-      {emailMsg && <div style={{ fontSize: 12, color: emailMsg.includes('Sent') ? 'var(--success)' : 'var(--danger)', marginBottom: 10, fontWeight: 600 }}>{emailMsg}</div>}
+      {emailMsg && <div style={{ fontSize: 12, color: emailMsg.startsWith('Test sent') ? 'var(--success)' : 'var(--danger)', marginBottom: 10, fontWeight: 600 }}>{emailMsg}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <input className="input" style={{ fontSize: 13 }} placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
         <input className="input" style={{ fontSize: 13 }} type="email" placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />

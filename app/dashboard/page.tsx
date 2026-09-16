@@ -48,7 +48,9 @@ function Icon({ name, size = 20, strokeWidth = 2 }: { name: string; size?: numbe
   switch (name) {
     case 'home':     return <svg {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
     case 'athletes': return <svg {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-    case 'groups':   return <svg {...p}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+    // Three figures, not a star. A star reads as "favourite" or "rating" and
+    // said nothing at all about a squad of people.
+    case 'groups':   return <svg {...p}><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 14.5a4.5 4.5 0 0 1 4.5 4.5"/></svg>
     case 'sessions': return <svg {...p}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
     case 'calendar': return <svg {...p}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     case 'messages': return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -69,7 +71,7 @@ function Icon({ name, size = 20, strokeWidth = 2 }: { name: string; size?: numbe
 const NAV_ITEMS: { key: Tab; icon: string; label: string }[] = [
   { key: 'home',     icon: 'home',     label: 'Home'     },
   { key: 'athletes', icon: 'athletes', label: 'Athletes' },
-  { key: 'groups',   icon: 'groups',   label: 'Groups'   },
+  { key: 'groups',   icon: 'groups',   label: 'Squads'   },
   { key: 'sessions', icon: 'sessions', label: 'Sessions' },
   { key: 'calendar', icon: 'calendar', label: 'Calendar' },
   { key: 'messages', icon: 'messages', label: 'Messages' },
@@ -81,8 +83,49 @@ const BOTTOM_NAV_ITEMS: ({ key: Tab; icon: string; label: string } | { fab: true
   { key: 'athletes', icon: 'athletes', label: 'Athletes' },
   { fab: true },
   { key: 'calendar', icon: 'calendar', label: 'Calendar' },
-  { key: 'messages', icon: 'messages', label: 'Inbox' },
+  // "Messages", not "Inbox". The sidebar, the page heading and every other
+  // reference in the app say Messages; only this label said Inbox.
+  { key: 'messages', icon: 'messages', label: 'Messages' },
 ]
+
+/* The door Squads never had on a phone.
+ *
+ * Rendered at the top of both the Athletes and the Squads view, so the two
+ * halves of "who do I coach" sit behind one destination and each can reach the
+ * other. The bottom nav keeps Athletes lit across both.
+ *
+ * "Squad", not "Group": the app called the same thing Groups & Squads, Group /
+ * Squad, "No squads yet", "That squad was not found" and "Join Team" in five
+ * different places. One noun.
+ */
+function PeopleSwitch({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+  const opt = (key: Tab, label: string) => {
+    const on = tab === key
+    return (
+      <button
+        key={key}
+        onClick={() => setTab(key)}
+        aria-pressed={on}
+        style={{
+          flex: 1, minHeight: 44, borderRadius: 9, cursor: 'pointer',
+          border: '1.5px solid', borderColor: on ? 'var(--primary)' : 'var(--border)',
+          background: on ? 'var(--primary)' : 'transparent',
+          color: on ? '#fff' : 'var(--text-2)',
+          fontWeight: on ? 800 : 600, fontSize: 'var(--fs-3)',
+          transition: 'background .12s, border-color .12s',
+        }}
+      >
+        {label}
+      </button>
+    )
+  }
+  return (
+    <div role="group" aria-label="Athletes or squads" style={{ display: 'flex', gap: 8 }}>
+      {opt('athletes', 'Athletes')}
+      {opt('groups', 'Squads')}
+    </div>
+  )
+}
 
 // ── Sidebar item style ───────────────────────────────────────────
 function sideItem(active: boolean, color?: string) {
@@ -1345,7 +1388,24 @@ function DashboardPageInner() {
                         const wellnessScore = overallWellnessScore(wellnessByAthlete.get(a.id) ?? null)
                         const wellnessColor = overallScoreColor(wellnessScore)
                         return (
-                          <div key={a.id} style={{ minWidth: 78, background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', flexShrink: 0 }}>
+                          /* A card, not a div.
+                           *
+                           * This carries an avatar, a name, a wellness score
+                           * and an unread badge, sits on a screen where every
+                           * sibling card navigates, and had no handler at all.
+                           * A coach tapping their own athlete got nothing —
+                           * which reads as the app being broken rather than as
+                           * the card being decorative.
+                           *
+                           * A real <button>, so it is keyboard reachable and
+                           * announced as a control, not a click handler bolted
+                           * to a div. */
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => router.push(`/athletes/${a.id}`)}
+                            aria-label={`Open ${a.first_name} ${a.last_name ?? ''}`.trim() + (unread > 0 ? `, ${unread} unread` : '')}
+                            style={{ minWidth: 78, background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', flexShrink: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center' }}>
                             {unread > 0 && <div style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 99, background: 'var(--coach-color)', color: '#fff', fontSize: 'var(--fs-1)', fontWeight: 800, padding: '0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</div>}
                             <div style={{ width: 42, height: 42, borderRadius: '50%', background: tone, color: '#fff', fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               {(a.first_name?.[0] ?? '?').toUpperCase()}
@@ -1359,7 +1419,7 @@ function DashboardPageInner() {
                             ) : (
                               <div style={{ fontSize: 'var(--fs-1)', color: status === 'INVITED' ? 'var(--energy-dark)' : 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{status === 'INVITED' ? 'Pending' : 'Active'}</div>
                             )}
-                          </div>
+                          </button>
                         )
                       })}
                       <button onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ minWidth: 78, background: 'transparent', borderRadius: 14, border: '1.5px dashed var(--border)', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0 }}>
@@ -1470,6 +1530,7 @@ function DashboardPageInner() {
           {/* ════ ATHLETES TAB ════ */}
           {tab === 'athletes' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <PeopleSwitch tab={tab} setTab={setTab} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div>
                   <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Athletes</h2>
@@ -1594,9 +1655,10 @@ function DashboardPageInner() {
           {/* ════ GROUPS TAB ════ */}
           {tab === 'groups' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <PeopleSwitch tab={tab} setTab={setTab} />
               <div>
-                <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Groups & Squads</h2>
-                <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 2 }}>Record one session for an entire group at once</div>
+                <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Squads</h2>
+                <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 2 }}>Record one session for a whole squad at once</div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 320px', gap: 18, alignItems: 'start' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1901,7 +1963,18 @@ function DashboardPageInner() {
                 </button>
               )
             }
-            const active = tab === item.key
+            /* Squads live behind the Athletes destination, so the tab stays lit
+             * while the coach is in them. Before this, `setTab('groups')` was
+             * never called from anywhere on a phone: the only entry was the
+             * desktop sidebar, gated behind `!isMobile`. The tab rendered and
+             * had no door.
+             *
+             * That silently removed squad recording from the product on the
+             * only device it is used on — QuickSessionModal only offers
+             * "Group / Squad" when groups.length > 0, so a phone-only coach
+             * could never create a squad, never saw the mode, and never learned
+             * one recording can reach twelve athletes. */
+            const active = tab === item.key || (item.key === 'athletes' && tab === 'groups')
             const unread = item.key === 'messages' ? totalUnreadAll : 0
             return (
               <button key={item.key} onClick={() => setTab(item.key)} style={{

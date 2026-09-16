@@ -646,6 +646,36 @@ input, textarea, select, button {
   .btn   { min-height: 44px; }
   .input { min-height: 44px; font-size: 16px; }
   select.input { font-size: 16px; }
+
+  /* ── The 16px floor, enforced against inline styles ──────────────────────
+   *
+   * The rule above has existed for a while and does not work, because an
+   * inline `style={{ fontSize: 13 }}` beats a stylesheet every time. Eighteen
+   * controls carry one, including the coach's transcript review and both
+   * message composers.
+   *
+   * Below 16px, iOS Safari zooms the viewport the moment a field is focused,
+   * and does not zoom back out. The coach taps the transcript to fix a word and
+   * the app is left magnified and horizontally scrolled, mid-session.
+   *
+   * These were latent until Round 4 correctly removed maximumScale/
+   * userScalable from app/layout.tsx — the lock had been hiding them, and
+   * removing it un-masked all eighteen at once. The lock is not coming back:
+   * it cost every sub-11px label in the app any means of being enlarged, which
+   * is WCAG 2.2 SC 1.4.4.
+   *
+   * So: !important, deliberately, and only here. This is a platform constraint
+   * rather than a design preference — there is no size below 16px that is
+   * correct on this platform, so nothing downstream should be able to choose
+   * one. It also means the next control written with an inline 13 is fixed
+   * before anyone notices, which a lint rule could not promise.
+   *
+   * Scoped to <768px, so desktop density is untouched. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea,
+  select {
+    font-size: max(16px, 1em) !important;
+  }
 }
 
 /* Hide scrollbars on mobile */
@@ -762,4 +792,20 @@ input, textarea, select, button {
    descendant selector would have made the coach's actual calendar pulse. */
 @media (prefers-reduced-motion: reduce) {
   .cv-skeleton { animation: none }
+}
+
+/* A visible focus ring for the body map's SVG regions.
+ *
+ * `:focus-visible` rather than `:focus`, so a coach tapping a region does not
+ * get a ring they did not ask for, while a keyboard or switch user always knows
+ * where they are. SVG shapes ignore `outline` in several engines, so this uses
+ * a stroke-side drop shadow, which follows the region's actual path instead of
+ * boxing it.
+ */
+.cv-region:focus { outline: none }
+.cv-region:focus-visible {
+  outline: none;
+  filter: drop-shadow(0 0 0 2px var(--primary)) drop-shadow(0 0 3px var(--primary));
+  stroke: var(--primary);
+  stroke-width: 3;
 }

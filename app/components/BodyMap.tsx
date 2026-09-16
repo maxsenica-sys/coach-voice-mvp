@@ -53,7 +53,19 @@ function RegionShape({
     onKeyDown: (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle() }
     },
-    style: { cursor: 'pointer', outline: 'none' } as React.CSSProperties,
+    /* The focus ring stays.
+     *
+     * This read `outline: 'none'`, directly under a docblock stating that
+     * accessibility is not optional here — and the component does everything
+     * else right: role, tabIndex, aria-pressed, aria-label, Enter and Space.
+     * It built a fully keyboard-operable body map and then made it impossible
+     * to see where you were on it.
+     *
+     * `outline: 'none'` is usually written to kill an ugly default ring. The
+     * fix for an ugly ring is a better ring, so this draws one that matches the
+     * rest of the app and only appears for keyboard users. */
+    style: { cursor: 'pointer' } as React.CSSProperties,
+    className: 'cv-region',
     fill: selected ? 'var(--wellness-low-tint)' : 'var(--surface-2)',
     stroke: selected ? 'var(--wellness-low)' : 'var(--border)',
     // Selection is carried by weight as well as colour, so it survives a

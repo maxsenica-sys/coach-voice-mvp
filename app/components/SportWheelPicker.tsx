@@ -4,13 +4,24 @@ import { ALL_SPORTS } from '@/lib/sports'
 export default function SportWheelPicker({
   value,
   onChange,
+  sports,
 }: {
   value: string
   onChange: (v: string) => void
+  /**
+   * The list to choose from. Optional, defaulting to every sport.
+   *
+   * The signup page has always passed its own filtered list here and this
+   * component has always ignored it, reading ALL_SPORTS directly — so typing in
+   * the page's sport filter narrowed nothing. It only decided whether the wheel
+   * rendered at all, while the wheel itself still showed all 154.
+   */
+  sports?: string[]
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const filtered = ALL_SPORTS.filter(s =>
+  const source = sports ?? ALL_SPORTS
+  const filtered = source.filter(s =>
     s.toLowerCase().includes(search.toLowerCase())
   )
   return (

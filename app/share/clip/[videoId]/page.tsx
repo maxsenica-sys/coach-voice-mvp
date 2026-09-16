@@ -89,10 +89,11 @@ export default function ShareClipPage() {
           readOnly
           sessionId={sessionId}
           videoId={videoId}
+          startTime={startTime}
         />
         {startTime > 0 && (
           <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 8, textAlign: 'center' }}>
-            Shared from timestamp {formatTime(startTime)} — seek manually or reload to jump there
+            Starts at {formatTime(startTime)}, where your coach shared it
           </p>
         )}
       </main>

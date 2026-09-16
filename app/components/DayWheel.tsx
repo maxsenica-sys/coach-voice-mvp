@@ -278,8 +278,14 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                     </span>
 
                     {ev.event_time && <span style={{ fontSize: 10.5, color: 'var(--text-muted)', flexShrink: 0 }}>{ev.event_time}</span>}
-                    {isSession && (
-                      <span style={{ fontSize: 12, color: 'var(--primary-dark)', flexShrink: 0, lineHeight: 1 }}>›</span>
+                    {/* The chevron promises a destination, so only draw it when
+                        there is one. A planned session has no session_id yet —
+                        it has not been recorded — and it was rendering the
+                        chevron and the green accent anyway, then falling
+                        through to an inert <div>. The affordance said "tap me"
+                        and nothing happened. */}
+                    {ev.session_id && (
+                      <span aria-hidden="true" style={{ fontSize: 12, color: 'var(--primary-dark)', flexShrink: 0, lineHeight: 1 }}>›</span>
                     )}
                   </>
                 )
