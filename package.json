@@ -8,12 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "deploy": "git add -A && git commit -m \"deploy\" --allow-empty && git push origin main",
-    "verify": "npm run verify:safeguard && npm run verify:clock && npm run verify:prompt && npm run verify:calendar",
+    "verify": "npm run verify:safeguard && npm run verify:clock && npm run verify:prompt && npm run verify:calendar && npm run verify:palette",
     "verify:safeguard": "node tools/safeguard-check.mjs",
     "verify:clock": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/clock-rig.mjs",
     "verify:prompt": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/prompt-rig.mjs",
     "verify:boot": "node tools/boot-smoke.mjs",
-    "verify:calendar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/calendar-rig.mjs"
+    "verify:calendar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/calendar-rig.mjs",
+    "verify:palette": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/palette-rig.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",

@@ -65,6 +65,17 @@ jobs:
       - name: Calendar rig
         run: npm run verify:calendar
 
+      # Contrast, recomputed from globals.css rather than read out of the
+      # comments next to it. Every ratio in that file is a comment, and comments
+      # do not fail: the primary button had been failing AA across half its
+      # gradient at 35 call sites, under a token whose own comment recorded the
+      # passing ratio for the other end. This rig found three more the same way
+      # — the athlete's primary button at 3.65:1 and --energy at 3.17:1 — and it
+      # pins the wellness scale's lightness ordering, which is what makes it
+      # survive colour blindness and a phone screen in sunlight.
+      - name: Palette rig
+        run: npm run verify:palette
+
       # `next build` prerenders /athlete, which constructs a Supabase client at
       # module scope and throws without these. They are placeholders — the build
       # never makes a network call — so no real secrets belong in CI.

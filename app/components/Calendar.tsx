@@ -53,12 +53,32 @@ type Props = {
   loading?: boolean
 }
 
+/* Two colours and a glyph, not five colours.
+ *
+ * These were five stock Tailwind hues carrying meaning in a 6x6px dot with no
+ * second channel. Homework and reminder measured ΔE 6.7 apart to NORMAL vision,
+ * and 4.4 under tritanopia — a coach was being asked to tell amber from orange
+ * at six pixels.
+ *
+ * A session is the thing the app exists for, so it keeps the brand green. Every
+ * other event is one neutral mark, distinguished by the glyph beside it in the
+ * day list — which says what kind of thing it is in a way no dot can, and works
+ * in greyscale, in sunlight and for every form of colour blindness. */
 const EVENT_TYPE_COLOR: Record<string, string> = {
-  session:  '#16a34a',
-  homework: '#d97706',
-  goal:     '#7c3aed',
-  reminder: '#ea580c',
-  other:    '#64748b',
+  session:  'var(--primary)',
+  homework: 'var(--wellness-none)',
+  goal:     'var(--wellness-none)',
+  reminder: 'var(--wellness-none)',
+  other:    'var(--wellness-none)',
+}
+
+/** The second channel the dots never had. */
+export const EVENT_TYPE_GLYPH: Record<string, string> = {
+  session:  '●',
+  homework: '✎',
+  goal:     '◆',
+  reminder: '!',
+  other:    '·',
 }
 
 const EVENT_TYPE_LABEL: Record<string, string> = {

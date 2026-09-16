@@ -3,6 +3,15 @@
 /* ─── Design tokens — CoachVoice · Letter Edition ──────────────── */
 :root {
   /* Surfaces — ivory / parchment */
+  /* Declared, at last.
+   *
+   * Without this the browser assumes it may style its own controls for either
+   * theme, and twelve UA-styled <input type="date"> and <select> controls —
+   * including the one in the coach's recording flow — rendered dark chrome on
+   * a white card for anyone whose OS is set to dark. The app has no dark theme;
+   * saying so is what stops the browser inventing one. */
+  color-scheme: light;
+
   --bg:           #FBF8F3;
   --card:         #FFFFFF;
   --border:       #E3DED2;
@@ -17,9 +26,9 @@
   --skeleton:     #EDE9E1;
 
   /* Primary — sage green (general interactive) */
-  --primary:      #6F8E6B;
+  --primary:      #5D7F59;
   --primary-dark: #4F6B4B;
-  --primary-light:#E6ECDF;
+  --primary-light:#E6EEE2;
 
   /* Coach — warm rust / stamp */
   --coach-color:  #B55C3E;
@@ -36,16 +45,23 @@
   --coach-border: #EBCBBC;   /* decorative hairline on --coach-light */
 
   /* Athlete — sage (mirrors primary) */
-  --athlete-color:#6F8E6B;
-  --athlete-light:#E6ECDF;
+  /* Kept in step with --primary, which it has always been an alias of. When
+     --primary moved to fix the coach button, this stayed behind and the
+     ATHLETE's primary button was left failing at 3.65:1 — found by the palette
+     rig, not by a person. */
+  --athlete-color:#5D7F59;
+  --athlete-light:#E6EEE2;
 
   /* Accent — sage deep */
-  --accent:       #6F8E6B;
+  --accent:       #5D7F59;
   --accent-dark:  #4F6B4B;
-  --accent-light: #E6ECDF;
+  --accent-light: #E6EEE2;
 
   /* Energy — warm amber */
-  --energy:       #B8883A;
+  /* 3.17:1 under white text, in .btn-energy, since it was written. The worst
+     contrast failure in the palette and the one nobody had measured, because
+     the token's only recorded ratio was for --energy-dark. */
+  --energy:       #966E28;
   --energy-light: #F6E9CC;
 
   /* Wellness state scale — good / ok / low / no-data.
@@ -55,14 +71,38 @@
      values (#10b981 2.54:1, #f59e0b 2.15:1, #ef4444 3.76:1) did not. Two are
      existing tokens reused; the other two are deeper members of hue families
      the app already ships, so no new hue is introduced. */
-  --wellness-good:      #4F6B4B;  /* 5.94:1 on white · 4.93:1 on --success-light */
-  --wellness-good-tint: #E6ECDF;
-  --wellness-ok:        #7E5A1C;  /* 6.24:1 on white · 5.18:1 on --warning-light */
-  --wellness-ok-tint:   #F6E9CC;
-  --wellness-low:       #A54034;  /* 6.21:1 on white · 4.80:1 on --danger-light  */
-  --wellness-low-tint:  #F4DED3;
-  --wellness-none:      #5D6661;  /* 5.93:1 on white · 4.95:1 on --border-soft   */
-  --wellness-none-tint: #EFEAE0;
+  /* ── State is carried on LIGHTNESS, not hue ──────────────────────────────
+   *
+   * The four states used to sit at L* 40.9-42.3 — a spread of 1.3 — and were
+   * told apart by hue alone. Worst pair under deuteranopia: ΔE 2.1. Rebuilding
+   * them as three fresh hues still collapsed to ΔE 2.7, so this is a property
+   * of muted palettes rather than of these particular colours: no muted set
+   * carries four roles by hue.
+   *
+   * The separation could not go in the foreground. Requiring every state to
+   * clear 4.5:1 on its own light tint AND on white AND on parchment forces the
+   * ink into a band of about two L* points — which is exactly why the old
+   * values were bunched. It was a constraint, not carelessness.
+   *
+   * So the TINT carries the axis. Good is nearly white, low is visibly deep,
+   * and a filled chip now reads light -> mid -> dark by state in greyscale,
+   * which is the ordering a colour-blind coach actually gets. Tint spread is
+   * now 15.5 L* against 2.7.
+   *
+   * Each foreground was then solved as the LIGHTEST value still clearing
+   * 4.5:1 on all three surfaces, so the ink stays as close to the brand as the
+   * constraint allows. Every number below is computed, not estimated.
+   *
+   * `none` is deliberately off the axis: "no data" is not a degree of wellness.
+   * It is desaturated and sits at the good end's lightness. */
+  --wellness-good:      #46742F;  /* 5.53:1 white · 5.22:1 bg · 4.66:1 own tint */
+  --wellness-good-tint: #E6EEE2;  /* L* 93.2 */
+  --wellness-ok:        #845B15;  /* 6.02:1 white · 5.68:1 bg · 4.55:1 own tint */
+  --wellness-ok-tint:   #EEDEC4;  /* L* 89.1 */
+  --wellness-low:       #8C2F21;  /* 8.26:1 white · 7.79:1 bg · 4.54:1 own tint */
+  --wellness-low-tint:  #E5B5AE;  /* L* 77.7 */
+  --wellness-none:      #626F69;  /* 5.25:1 white · 4.96:1 bg · 4.51:1 own tint */
+  --wellness-none-tint: #ECEEED;  /* L* 93.9 — off the axis on purpose */
 
   /* Semantic */
   --danger:       #B0473A;

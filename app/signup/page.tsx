@@ -291,7 +291,12 @@ export default function SignupPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 40%, #312e81 70%, #6366f1 100%)',
+      // The brand's own ink, not stock indigo. This is the first screen a new
+      // coach sees and it was in a palette the rest of the app never uses —
+      // the largest of the nine surfaces that defected to Tailwind defaults.
+      // These four stops are --text -> --primary-dark -> --primary, the same
+      // ramp the boot shell paints.
+      background: 'linear-gradient(135deg, #1F2421 0%, #2E3B2C 40%, #46603F 70%, #5D7F59 100%)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',

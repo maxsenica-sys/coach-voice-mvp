@@ -6,7 +6,9 @@ export default function SignupConfirmPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 50%, #1d4ed8 100%)',
+      // Matches app/signup/page.tsx — this is the screen immediately after it,
+      // and the two were in different palettes from different systems.
+      background: 'linear-gradient(135deg, #1F2421 0%, #46603F 50%, #5D7F59 100%)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
