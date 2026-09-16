@@ -11,6 +11,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { notifyCalendarEventCreated } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { routeIdentity } from '@/lib/route-identity'
 
 
 function createSupabase(req: NextRequest) {
@@ -45,11 +46,15 @@ function monthRange(month: string | null): { from: string; to: string } | null {
 /** GET /api/calendar */
 export async function GET(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  const role = profile?.role ?? 'coach'
+  // One verified-token read instead of getUser() + a profiles lookup. This
+  // route is fired five times to draw the coach's day strip, so the two
+  // redundant hops were costing ten round trips per paint. See
+  // lib/route-identity.ts for why this is not a weaker check.
+  const who = await routeIdentity(supabase)
+  if (!who.ok) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
+  const user = { id: who.userId }
+  const role = who.role || 'coach'
 
   const mode       = req.nextUrl.searchParams.get('mode')       // 'personal'
   const athleteIdP = req.nextUrl.searchParams.get('athlete_id')
@@ -141,11 +146,10 @@ export async function GET(req: NextRequest) {
 /** POST /api/calendar */
 export async function POST(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
-
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  const role = profile?.role ?? 'coach'
+  const who = await routeIdentity(supabase)
+  if (!who.ok) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
+  const user = { id: who.userId }
+  const role = who.role || 'coach'
 
   const body = await req.json().catch(() => ({}))
   const { athlete_id, group_id, title, description, event_type, event_date, event_time } = body
@@ -282,8 +286,9 @@ export async function POST(req: NextRequest) {
 /** DELETE /api/calendar?id=xxx */
 export async function DELETE(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
+  const who = await routeIdentity(supabase)
+  if (!who.ok) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
+  const user = { id: who.userId }
 
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return attach(NextResponse.json({ error: 'id required' }, { status: 400 }), cookiesToSet)

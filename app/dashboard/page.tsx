@@ -542,6 +542,15 @@ function DashboardPageInner() {
         fetchAthletes(), fetchGroups(), fetchAllSessions(), fetchUnreadCounts(), fetchCoverage(),
       ])
 
+      // The day strip starts here too, not after `await dataReady`.
+      //
+      // refreshHomeEvents fires five calendar requests and is the main content
+      // of the default tab — the first thing the coach looks at. It was queued
+      // behind the roster, the groups, the sessions, the unread counts AND the
+      // coverage read, none of which it uses. It is cookie-authenticated like
+      // the rest, so there was never anything to wait for.
+      const homeEventsReady = refreshHomeEvents()
+
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/'); return }
 
@@ -573,8 +582,7 @@ function DashboardPageInner() {
       setInviteCode(profile?.invite_code ?? null)
       if (profile?.invite_code) setCodeDraft(profile.invite_code)
 
-      await dataReady
-      await refreshHomeEvents()
+      await Promise.all([dataReady, homeEventsReady])
     }
     void boot()
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -112,6 +112,26 @@ function code(file) {
     .join('\n')
 }
 
+/**
+ * A route file's exported handlers, each as its own chunk of source.
+ *
+ * Rules about routes must judge GET and POST separately, and two rules here
+ * learned that the hard way. SG8's first version tested whole files and was
+ * proven useless by its own mutation test: the vulnerable GET was reinstated
+ * and it stayed green, because POST in the same file carried a correct check.
+ * SG1 had the identical flaw and had had it from the start — deleting the auth
+ * call from one handler left the file passing on the strength of its siblings.
+ *
+ * One handler's correctness standing in for another's absence is precisely the
+ * bug these rules exist to catch, so the split lives here and both use it.
+ */
+function handlerBlocks(src) {
+  return src
+    .split(/(?=export\s+async\s+function\s+(?:GET|POST|PUT|PATCH|DELETE)\b)/)
+    .filter((b) => /^export\s+async\s+function\s+(?:GET|POST|PUT|PATCH|DELETE)\b/.test(b))
+    .map((b) => ({ name: (b.match(/function\s+(\w+)/) || [])[1] ?? '?', src: b }))
+}
+
 // ── the rules ─────────────────────────────────────────────────────────────
 
 /**
@@ -131,22 +151,55 @@ const RULES = [
   {
     id: 'SG1',
     title: 'Every API route authenticates before it answers',
-    why: 'A route that forgets `auth.getUser()` serves a child\'s sessions, wellness scores or messages to anyone who guesses the URL. There is no public surface in this product and there must not be one by accident.',
-    cite: 'PROJECT-STATE.md — "CoachVoice has no public surface at all"',
+    why: 'A route that forgets to establish who is calling serves a child\'s sessions, wellness scores or messages to anyone who guesses the URL. There is no public surface in this product and there must not be one by accident.',
+    cite: 'PROJECT-STATE.md — "CoachVoice has no public surface at all"; lib/route-identity.ts',
     check(files) {
       const found = []
       for (const f of files) {
         if (!f.isRoute) continue
         const src = code(f)
-        const handlers = [...src.matchAll(/export\s+async\s+function\s+(GET|POST|PATCH|PUT|DELETE)/g)]
+        const handlers = handlerBlocks(src)
         if (handlers.length === 0) continue
         if (f.rel in UNAUTHENTICATED_BY_DESIGN) continue
-        const authed = /auth\.getUser\(\)/.test(src)
-        const guards401 = /401/.test(src)
-        if (!authed) {
-          found.push({ file: f.rel, line: lineOf(f, /export\s+async\s+function/), msg: 'no auth.getUser() anywhere in the file' })
-        } else if (!guards401) {
-          found.push({ file: f.rel, line: lineOf(f, /auth\.getUser\(\)/), msg: 'calls auth.getUser() but never returns 401' })
+        /* Two accepted ways to establish the caller, and no third.
+         *
+         * `auth.getUser()` asks the Auth server. `routeIdentity()` verifies the
+         * token's signature and expiry locally against a cached JWKS, falling
+         * back to the network only while the project signs with the legacy
+         * shared secret — the same mechanism proxy.ts has used since the
+         * cold-start work, moved into lib/route-identity.ts so routes stop
+         * paying two round trips to learn what the token already says.
+         *
+         * Both are real authentication. What is NOT accepted is reading a user
+         * id out of a body, a query string or a header, which is why this
+         * matches on the two helpers by name rather than on anything looser.
+         */
+        // Module scope counts: a file may resolve the caller once in a helper
+        // and every handler call it. What must not count is a SIBLING handler's
+        // check — see handlerBlocks above.
+        const moduleScope = src.split(/export\s+async\s+function\s+(?:GET|POST|PUT|PATCH|DELETE)\b/)[0]
+        const ESTABLISHES = /auth\.getUser\(\)|\brouteIdentity\s*\(/
+        const helperNames = [...moduleScope.matchAll(/(?:async\s+)?function\s+(\w+)[\s\S]{0,900}?\n\}/g)]
+          .filter((m) => ESTABLISHES.test(m[0]))
+          .map((m) => m[1])
+
+        for (const h of handlers) {
+          const viaHelper = helperNames.some((n) => new RegExp(`\\b${n}\\s*\\(`).test(h.src))
+          const authed = ESTABLISHES.test(h.src) || viaHelper
+          const guards401 = /401/.test(h.src) || (viaHelper && /401/.test(moduleScope))
+          if (!authed) {
+            found.push({
+              file: f.rel,
+              line: lineOf(f, new RegExp(`export\\s+async\\s+function\\s+${h.name}\\b`)),
+              msg: `${h.name} never establishes the caller (no auth.getUser() or routeIdentity())`,
+            })
+          } else if (!guards401) {
+            found.push({
+              file: f.rel,
+              line: lineOf(f, new RegExp(`export\\s+async\\s+function\\s+${h.name}\\b`)),
+              msg: `${h.name} establishes the caller but never returns 401`,
+            })
+          }
         }
       }
       return found
@@ -349,12 +402,7 @@ const RULES = [
         // different names, and a rule keyed on names would fail the next one.
         const authorizingHelpers = moduleFns.filter((m) => OWNS.test(m[0])).map((m) => m[1])
 
-        const blocks = src
-          .split(/(?=export\s+async\s+function\s+(?:GET|POST|PUT|PATCH|DELETE)\b)/)
-          .filter((b) => /^export\s+async\s+function\s+(?:GET|POST|PUT|PATCH|DELETE)\b/.test(b))
-
-        for (const block of blocks) {
-          const handler = (block.match(/function\s+(\w+)/) || [])[1] ?? '?'
+        for (const { name: handler, src: block } of handlerBlocks(src)) {
           const callsHelper = signingHelpers.some((h) => new RegExp(`\\b${h}\\s*\\(`).test(block))
           if (!STORAGE.test(block) && !callsHelper) continue
 

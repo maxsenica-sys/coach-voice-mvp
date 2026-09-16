@@ -156,9 +156,15 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
           if (prev.some((m) => m.id === msg.id)) return prev
           return [...prev, msg]
         })
-        // Mark inbound messages read immediately without awaiting
+        // Mark inbound messages read immediately without awaiting.
+        //
+        // This used to call GET, which re-downloads the whole conversation —
+        // up to 300 rows and a freshly minted signed URL for every piece of
+        // media in it — solely to trigger the read-marking side effect inside
+        // that handler. One inbound message, one full thread transfer. PATCH
+        // does the write and nothing else.
         if (msg.sender_role === 'athlete' && !msg.read_at) {
-          fetch(`/api/messages?athlete_id=${selectedId}`, { cache: 'no-store' }).catch(() => null)
+          fetch(`/api/messages?athlete_id=${selectedId}`, { method: 'PATCH' }).catch(() => null)
         }
       })
       .subscribe()

@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 
 export type WheelEvent = {
   id: string
@@ -292,8 +293,14 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                 }
 
                 // Session events open the session; everything else is just a note.
+                //
+                // `next/link`, not a raw <a>. This is the most-tapped control on
+                // the coach's home screen and a bare href threw away the whole
+                // React tree and re-downloaded the app on every tap — a full
+                // document load where a client transition would do. It was the
+                // only navigational raw anchor left in the app.
                 return ev.session_id
-                  ? <a key={ev.id} href={`/sessions/${ev.session_id}`} style={style}>{body}</a>
+                  ? <Link key={ev.id} href={`/sessions/${ev.session_id}`} style={style}>{body}</Link>
                   : <div key={ev.id} style={style}>{body}</div>
               })}
             </div>

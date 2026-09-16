@@ -276,15 +276,42 @@ export default function AthleteDetailPage() {
   const [noteMsg, setNoteMsg] = useState('')
   const [notesLoaded, setNotesLoaded] = useState(false)
 
+  /* Four serial round trips used to run here, behind a blank screen, and only
+   * one of them was a real dependency.
+   *
+   * getUser() -> profiles.sport -> /api/athletes/[id] -> /api/sessions, each
+   * waiting on the one before it. But the two API routes authenticate
+   * themselves — neither needs the client's `user` first — and the coach's own
+   * sport is a display detail that nothing on this screen blocks on.
+   *
+   * So: fire everything at once, and paint the coach's sport from the
+   * sessionStorage cache immediately. `readCachedProfile` was already imported
+   * at the top of this file and the boot path simply never called it, which is
+   * the cache paying its cost and delivering none of its benefit.
+   */
   const load = async () => {
     if (!athleteId) return
     setLoading(true); setPageError(null)
+
+    // Synchronous, from the last page that knew. Revalidated below.
+    const cached = readCachedProfile()
+    if (cached?.sport) setCoachSport(cached.sport)
+
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/'); return }
-      const { data: profile } = await supabase.from('profiles').select('sport').eq('id', user.id).single()
-      setCoachSport(profile?.sport ?? '')
-      const aRes = await fetch(`/api/athletes/${athleteId}`)
+      const athletePromise = fetch(`/api/athletes/${athleteId}`)
+      const sessionsPromise = fetch(`/api/sessions?athlete_id=${encodeURIComponent(athleteId)}`)
+
+      // Identity revalidation runs alongside, not in front. A stale cache shows
+      // the wrong sport for one paint; a serial round trip shows nothing at all
+      // for the length of two.
+      void (async () => {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { router.push('/'); return }
+        const { data: profile } = await supabase.from('profiles').select('sport').eq('id', user.id).maybeSingle()
+        if (profile?.sport) setCoachSport(profile.sport)
+      })()
+
+      const aRes = await athletePromise
       if (aRes.status === 401) { router.push('/'); return }
       if (!aRes.ok) throw new Error((await aRes.json().catch(() => ({}))).error ?? 'Failed to load athlete')
       const { athlete: a } = await aRes.json()
@@ -299,7 +326,7 @@ export default function AthleteDetailPage() {
         sport_metrics: a.sport_metrics ?? {},
         custom_fields: a.custom_fields ?? [],
       })
-      const sRes = await fetch(`/api/sessions?athlete_id=${encodeURIComponent(athleteId)}`)
+      const sRes = await sessionsPromise
       if (!sRes.ok) throw new Error((await sRes.json().catch(() => ({}))).error ?? 'Failed to load sessions')
       const { sessions: s } = await sRes.json()
       setSessions(s ?? [])

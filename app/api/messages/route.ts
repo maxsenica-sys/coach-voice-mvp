@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { notifyNewMessage } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { routeIdentity } from '@/lib/route-identity'
 
 export const runtime = 'nodejs'
 
@@ -76,8 +77,8 @@ function createSupabase(req: NextRequest) {
 // GET /api/messages?athlete_id=xxx — list conversation for a coach<>athlete pair
 export async function GET(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const who = await routeIdentity(supabase)
+  if (!who.ok) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const athleteId = new URL(req.url).searchParams.get('athlete_id')
   if (!athleteId) return NextResponse.json({ error: 'athlete_id required' }, { status: 400 })
@@ -103,9 +104,10 @@ export async function GET(req: NextRequest) {
 
   const data = await withSignedMedia(supabase, (recent ?? []).slice().reverse() as MessageRow[])
 
-  // Mark incoming messages as read
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  const senderRoleToMark = profile?.role === 'coach' ? 'athlete' : 'coach'
+  // Mark incoming messages as read. The role comes from the verified token
+  // where the access-token hook is enabled, so this no longer costs a
+  // `profiles` round trip on every thread open.
+  const senderRoleToMark = who.role === 'coach' ? 'athlete' : 'coach'
   await supabase
     .from('messages')
     .update({ read_at: new Date().toISOString() })
@@ -121,8 +123,9 @@ export async function GET(req: NextRequest) {
 // POST /api/messages — send a message
 export async function POST(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const who = await routeIdentity(supabase)
+  if (!who.ok) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = { id: who.userId }
 
   const { athlete_id, content, msg_type = 'text', media_path, media_name } = await req.json()
   if (!athlete_id) return NextResponse.json({ error: 'athlete_id required' }, { status: 400 })
@@ -138,8 +141,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  const senderRole = profile?.role ?? 'coach'
+  // Narrowed, not cast. `routeIdentity` returns whatever the token or the
+  // profiles row says, which is a string; everything downstream — the insert,
+  // notifyNewMessage — is a two-value union. Anything that is not 'athlete' is
+  // a coach, which matches the `profile?.role ?? 'coach'` default this replaces.
+  const senderRole: 'coach' | 'athlete' = who.role === 'athlete' ? 'athlete' : 'coach'
 
   let coachId = user.id
   if (senderRole === 'athlete') {
@@ -172,6 +178,41 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ message: withMedia ?? data }, { status: 201 })
+  cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
+  return res
+}
+
+/* PATCH /api/messages — mark this conversation's inbound messages read.
+ *
+ * The realtime handler used to call GET for this, which downloads the entire
+ * conversation — up to 300 rows, plus a signed URL minted for every piece of
+ * media in it — purely as a way of triggering the read-marking side effect
+ * buried in that handler. One inbound message, one full thread transfer.
+ *
+ * Marking read is a write. It gets its own verb.
+ */
+export async function PATCH(req: NextRequest) {
+  const { supabase, cookiesToSet } = createSupabase(req)
+  const who = await routeIdentity(supabase)
+  if (!who.ok) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const athleteId = new URL(req.url).searchParams.get('athlete_id')
+  if (!athleteId) return NextResponse.json({ error: 'athlete_id required' }, { status: 400 })
+
+  // Mark what the caller RECEIVED, never what they sent. RLS scopes the rows to
+  // this conversation underneath.
+  const senderRoleToMark = who.role === 'coach' ? 'athlete' : 'coach'
+
+  const { error } = await supabase
+    .from('messages')
+    .update({ read_at: new Date().toISOString() })
+    .eq('athlete_id', athleteId)
+    .eq('sender_role', senderRoleToMark)
+    .is('read_at', null)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const res = NextResponse.json({ ok: true })
   cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
   return res
 }

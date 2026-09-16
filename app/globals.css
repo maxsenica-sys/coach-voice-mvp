@@ -8,6 +8,13 @@
   --border:       #E3DED2;
   --border-soft:  #EFEAE0;
   --surface-2:    #F4F1EB;   /* tinted tile behind an icon or step number */
+  /* The resting colour of a not-yet-loaded box. Sits between --border-soft and
+     --surface-2 on purpose: dark enough to read as a placeholder against
+     --card, light enough that a screen full of them is not alarming. Defined as
+     a token because the alternative is what happened everywhere else in this
+     stylesheet's history — a hex invented at each call site, because the ramp
+     has no step here to reach for. */
+  --skeleton:     #EDE9E1;
 
   /* Primary — sage green (general interactive) */
   --primary:      #6F8E6B;
@@ -730,3 +737,29 @@ input, textarea, select, button {
 
 /* Home day wheel — hide the scrollbar; the strip is dragged, not scrolled by bar */
 .day-wheel::-webkit-scrollbar { display: none; }
+
+/* ── Loading skeletons ─────────────────────────────────────────────────────
+ *
+ * Used by the route-level loading.tsx boundaries. The animation is a slow
+ * breath rather than a sweeping gradient: a sweep draws the eye to the thing
+ * that is not there yet, which is the opposite of what a placeholder is for.
+ *
+ * Reduced motion gets a flat tone. The boot harness asserts that a reduced
+ * motion preference never hides content; the same principle applies here —
+ * removing the animation must never remove the shape. */
+@keyframes cv-skeleton-breathe {
+  0%, 100% { opacity: 1 }
+  50%      { opacity: 0.62 }
+}
+
+.cv-skeleton {
+  background: var(--skeleton);
+  animation: cv-skeleton-breathe 1.6s ease-in-out infinite;
+}
+
+/* Deliberately a class and not `[aria-busy] > *`. Calendar.tsx sets aria-busy
+   on REAL content while it dims during a refetch — the good pattern — and a
+   descendant selector would have made the coach's actual calendar pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .cv-skeleton { animation: none }
+}
