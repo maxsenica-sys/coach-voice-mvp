@@ -1609,18 +1609,26 @@ export default function AthletePage() {
                                     initialAnnotations={v.annotations ?? []}
                                     sessionId={v.session_id}
                                     videoId={v.id}
-                                    onAnnotationsChange={async (strokes) => {
-                                      // FIX 3: athletes can now annotate; save via PATCH endpoint
-                                      try {
-                                        await apiMutate(`/api/sessions/${v.session_id}/videos?video_id=${v.id}`, {
-                                          method: 'PATCH',
-                                          headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({ annotations: strokes }),
-                                        })
-                                      } catch (e: unknown) {
-                                        setActionError(errorMessage(e, 'Could not save your drawing — it is on screen but not stored.'))
-                                      }
-                                    }}
+                                    /* Read-only, because that is what it has always
+                                     * been.
+                                     *
+                                     * The drawing tools were wired up under a comment
+                                     * reading "FIX 3: athletes can now annotate", and
+                                     * the PATCH they save through requires
+                                     * coach_id === user.id — so every stroke an
+                                     * athlete drew 403'd, silently until this release
+                                     * and with an error message after it. The control
+                                     * has never once worked.
+                                     *
+                                     * Enabling it is not a permission tweak: coach and
+                                     * athlete would share one `annotations` column, so
+                                     * an athlete saving would erase their coach's
+                                     * marks. If athlete annotations are wanted they
+                                     * need their own column and their own decision
+                                     * about who sees them. Until then this shows the
+                                     * coach's drawings, which is the point of the
+                                     * feature for the athlete anyway. */
+                                    readOnly
                                   />
                                 ))}
                               </div>

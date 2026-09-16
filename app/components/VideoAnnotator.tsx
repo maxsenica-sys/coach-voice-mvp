@@ -261,6 +261,17 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
           ref={videoRef}
           src={videoUrl}
           controls
+          /* Metadata only until someone presses play.
+           *
+           * Without this, expanding a session with three clips starts three full
+           * video downloads at once — on a phone, on mobile data, for clips the
+           * coach may not watch. app/sessions/[id]/page.tsx already gets this
+           * right; this component did not.
+           *
+           * `metadata` rather than `none` because the seek-to-shared-timestamp
+           * below needs duration, and `none` would leave it NaN until play. */
+          preload="metadata"
+          playsInline
           style={{ width: '100%', display: 'block', maxHeight: 480 }}
         />
         <canvas

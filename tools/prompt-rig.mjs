@@ -87,6 +87,9 @@ const DIM = '\x1b[2m'
 const BOLD = '\x1b[1m'
 const OFF = '\x1b[0m'
 
+const { preflightVideo, looksLikeHevc } =
+  await import(pathToFileURL(path.join(ROOT, 'lib/video-preflight.ts')).href)
+
 const { assessTranscript } =
   await import(pathToFileURL(path.join(ROOT, 'lib/transcript-quality.ts')).href)
 
@@ -169,6 +172,97 @@ for (const c of fixtures.cases) {
   } else {
     failures.push({ name: `name gate · ${c.id}`, detail: wrong.join('; ') })
     console.log(`   ${RED}FAIL${OFF}  ${c.id.padEnd(20)} ${RED}${wrong.join('; ')}${OFF}`)
+  }
+}
+
+// ── 1 · the video pre-flight ──────────────────────────────────────────────
+//
+// Two failures, both silent. There was no size limit anywhere on the upload
+// path that actually runs — the 500MB guard lives in a FormData branch with no
+// caller — so a 4K60 iPhone clip at roughly 400MB a minute could upload for
+// minutes on pitch-side data with nothing objecting. And an HEVC clip uploads
+// perfectly and is then a black rectangle in the coach's own Chrome, with no
+// error raised anywhere, because nothing failed.
+
+console.log(`\n   ${BOLD}Video pre-flight${OFF} ${DIM}— decided before a byte leaves the phone${OFF}`)
+
+{
+  const MB = 1024 * 1024
+  const cases = [
+    {
+      id: 'oversized-4k',
+      why: 'Two minutes of 4K60 from an iPhone. Must be refused before the upload starts, with advice a coach can act on.',
+      file: { size: 800 * MB, type: 'video/mp4', name: 'IMG_1234.mp4' },
+      expectOk: false,
+    },
+    {
+      id: 'at-the-limit',
+      why: 'Exactly the bucket limit set in migration 023 is allowed; one byte over is not. An off-by-one here means the client and the bucket disagree and the user sees a raw storage error.',
+      file: { size: 500 * MB, type: 'video/mp4', name: 'clip.mp4' },
+      expectOk: true,
+    },
+    {
+      id: 'one-byte-over',
+      why: 'The other side of the same boundary.',
+      file: { size: 500 * MB + 1, type: 'video/mp4', name: 'clip.mp4' },
+      expectOk: false,
+    },
+    {
+      id: 'empty-file',
+      why: 'A zero-byte pick, which happens when a file is still syncing from iCloud.',
+      file: { size: 0, type: 'video/mp4', name: 'clip.mp4' },
+      expectOk: false,
+    },
+    {
+      id: 'not-a-video',
+      why: 'A PDF picked by mistake. Refused here rather than after the upload.',
+      file: { size: 2 * MB, type: 'application/pdf', name: 'plan.pdf' },
+      expectOk: false,
+    },
+    {
+      id: 'ordinary-clip',
+      why: 'A normal 40MB 1080p clip. Must upload with NO warning — a warning on every clip trains the coach to ignore warnings.',
+      file: { size: 40 * MB, type: 'video/mp4', name: 'clip.mp4' },
+      expectOk: true,
+      expectWarning: false,
+    },
+    {
+      id: 'large-but-allowed',
+      why: 'Under the limit and big enough that the coach should know it will take a while on mobile data.',
+      file: { size: 200 * MB, type: 'video/mp4', name: 'clip.mp4' },
+      expectOk: true,
+      expectWarning: true,
+    },
+  ]
+
+  for (const c of cases) {
+    const v = preflightVideo(c.file)
+    checks++
+    let bad = null
+    if (v.ok !== c.expectOk) bad = `expected ok=${c.expectOk}, got ok=${v.ok}`
+    else if (c.expectWarning !== undefined && v.ok && Boolean(v.warning) !== c.expectWarning) {
+      bad = `expected warning=${c.expectWarning}, got ${JSON.stringify(v.warning)}`
+    } else if (!v.ok && !/[.!?]$/.test(v.reason.trim())) {
+      bad = 'refusal is not a written sentence'
+    }
+    if (bad) {
+      failures.push({ name: `video pre-flight · ${c.id}`, detail: bad })
+      console.log(`   ${RED}FAIL${OFF}  ${c.id.padEnd(20)} ${RED}${bad}${OFF}`)
+    } else {
+      console.log(`   ${GREEN}PASS${OFF}  ${c.id.padEnd(20)} ${DIM}${c.why}${OFF}`)
+    }
+  }
+
+  // HEVC is a judgement about the container, not about this browser: the clip
+  // plays fine on the phone that shot it and fails on the coach's laptop.
+  checks++
+  const hevc = looksLikeHevc({ type: 'video/quicktime', name: 'IMG_0042.MOV' })
+  const plain = looksLikeHevc({ type: 'video/mp4', name: 'clip.mp4' })
+  if (hevc && !plain) {
+    console.log(`   ${GREEN}PASS${OFF}  ${'hevc-detection'.padEnd(20)} ${DIM}A .mov is flagged, an .mp4 is not.${OFF}`)
+  } else {
+    failures.push({ name: 'video pre-flight · hevc-detection', detail: `mov=${hevc}, mp4=${plain}` })
+    console.log(`   ${RED}FAIL${OFF}  ${'hevc-detection'.padEnd(20)} ${RED}mov=${hevc}, mp4=${plain}${OFF}`)
   }
 }
 

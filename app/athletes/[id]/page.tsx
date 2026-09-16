@@ -14,6 +14,7 @@ import TrainingSpine from '@/app/components/TrainingSpine'
 import InjuryPanel from '@/app/components/InjuryPanel'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile } from '@/lib/profile-cache'
+import { preflightVideo } from '@/lib/video-preflight'
 import {
   WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint,
   type WellnessCheckin, type WellnessAlert,
@@ -311,6 +312,10 @@ export default function AthleteDetailPage() {
   const [sessionVideos, setSessionVideos] = useState<Record<string, SessionVideo[]>>({})
   const [videoProgress, setVideoProgress] = useState<Record<string, number | null>>({})
   const [videoEta, setVideoEta] = useState<Record<string, string>>({})
+  /* Per-session, because uploads are per-session and a failure on one clip must
+     not clear the message on another. Carries both a refusal and a warning: the
+     difference is whether the upload also started. */
+  const [videoError, setVideoError] = useState<Record<string, string>>({})
 
   // Profile editing
   const [showProfile, setShowProfile] = useState(false)
@@ -738,6 +743,26 @@ export default function AthleteDetailPage() {
   }
 
   const handleVideoUpload = (file: File, sessionId: string) => {
+    /* Decide before uploading, not after.
+     *
+     * There was no size limit anywhere on the path that actually runs — the
+     * 500MB guard lives in a FormData branch of the videos route that has no
+     * caller. An iPhone at 4K60 makes roughly 400MB a minute, so a coach could
+     * spend four minutes uploading on pitch-side data before anything objected,
+     * and nothing ever did.
+     *
+     * And an HEVC clip uploads perfectly and is then a black rectangle on the
+     * coach's own laptop, with no error raised anywhere, because nothing failed.
+     *
+     * See lib/video-preflight.ts. */
+    const verdict = preflightVideo(file)
+    if (!verdict.ok) {
+      setVideoError(prev => ({ ...prev, [sessionId]: verdict.reason }))
+      setVideoProgress(prev => { const n = { ...prev }; delete n[sessionId]; return n })
+      setVideoEta(prev => { const n = { ...prev }; delete n[sessionId]; return n })
+      return
+    }
+    setVideoError(prev => ({ ...prev, [sessionId]: verdict.warning ?? '' }))
     setVideoProgress(prev => ({ ...prev, [sessionId]: 0 }))
     setVideoEta(prev => ({ ...prev, [sessionId]: 'Preparing…' }))
 
@@ -795,7 +820,10 @@ export default function AthleteDetailPage() {
         const { video } = await regRes.json()
         setSessionVideos(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), video] }))
       } catch (err: unknown) {
-        setPageError(errorMessage(err, 'Upload failed'))
+        // Next to the clip that failed, not in a page-level banner at the top of
+        // a long scroll — the coach may be several sessions down by now, and the
+        // input has already been cleared so the retry is one tap.
+        setVideoError(prev => ({ ...prev, [sessionId]: errorMessage(err, 'That clip did not upload. Try again.') }))
       } finally {
         setVideoProgress(prev => ({ ...prev, [sessionId]: null }))
         setVideoEta(prev => ({ ...prev, [sessionId]: '' }))
@@ -1348,7 +1376,13 @@ export default function AthleteDetailPage() {
                           </button>
                           <label className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', gap: 5, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}>
                             <Icon name="video" size={13} /> {uploading ? `${uploadPct}%` : 'Video'}
-                            <input type="file" accept="video/*" style={{ display: 'none' }} disabled={uploading} onChange={e => { const f = e.target.files?.[0]; if (f) { if (!isOpen) openSession(s.id); handleVideoUpload(f, s.id) } }} />
+                            {/* `e.target.value = ''` on EVERY change, not just success.
+                                Without it the input still holds the last file, so
+                                re-picking the same clip after a failed upload fires
+                                no onChange at all and nothing happens — the coach
+                                taps, sees nothing, and has to reload the page to
+                                retry the thing that just failed. */}
+                            <input type="file" accept="video/*" style={{ display: 'none' }} disabled={uploading} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { if (!isOpen) openSession(s.id); handleVideoUpload(f, s.id) } }} />
                           </label>
                         </div>
 
@@ -1395,6 +1429,27 @@ export default function AthleteDetailPage() {
                                     </div>
                                   ))}
                                 </div>
+                              </div>
+                            )}
+                            {videoError[s.id] && (
+                              <div
+                                role={uploading ? 'status' : 'alert'}
+                                style={{
+                                  display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12,
+                                  padding: '10px 12px', borderRadius: 10,
+                                  // A refusal and a warning are different news: one
+                                  // stopped the upload, the other did not.
+                                  background: uploading ? 'var(--wellness-ok-tint)' : 'var(--danger-light)',
+                                  fontSize: 13, color: 'var(--text)', lineHeight: 1.5,
+                                }}
+                              >
+                                <span aria-hidden="true" style={{ flexShrink: 0 }}>⚠</span>
+                                <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{videoError[s.id]}</span>
+                                <button
+                                  onClick={() => setVideoError(prev => ({ ...prev, [s.id]: '' }))}
+                                  aria-label="Dismiss"
+                                  style={{ minWidth: 44, minHeight: 44, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--text-2)', flexShrink: 0 }}
+                                >×</button>
                               </div>
                             )}
                             {uploading && <div style={{ marginTop: 12 }}><VideoUploadBar pct={uploadPct} eta={videoEta[s.id] ?? ''} /></div>}
@@ -1665,7 +1720,7 @@ export default function AthleteDetailPage() {
                   <span className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>
                     {photoUploading ? 'Uploading…' : 'Change photo'}
                   </span>
-                  <input type="file" accept="image/*" style={{ display: 'none' }} disabled={photoUploading} onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f) }} />
+                  <input type="file" accept="image/*" style={{ display: 'none' }} disabled={photoUploading} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadPhoto(f) }} />
                 </label>
               </div>
 
