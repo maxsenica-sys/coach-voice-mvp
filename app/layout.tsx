@@ -1,4 +1,8 @@
 import type { Metadata, Viewport } from 'next'
+import {
+  SPORT_COUNT, DRAW_MS, COLLAPSE_AT, MARK_AT, WORD_AT, SEQUENCE_MS,
+  montageKeyframesCss, at, PEAKS,
+} from '@/lib/montage-schedule'
 import { Plus_Jakarta_Sans, Newsreader, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 
@@ -107,32 +111,147 @@ export const metadata: Metadata = {
   },
 }
 
+/** How long the shell takes to fade off once the app says it is ready. */
+const OUT_MS = 460
+
+/* The earliest the shell may leave, so the montage always completes and the
+ * mark has landed. A splash that outlives the wait is a toll; a splash that is
+ * cut short is the bug this whole change exists to fix, and of the two, the
+ * one Max actually reported is the second. A tap still leaves immediately. */
+const FLOOR_MS = COLLAPSE_AT + 520
+
+/* The montage's frame schedule, generated from lib/montage-schedule.ts so the
+ * CSS below and the JavaScript that has to know how long the sequence lasts
+ * cannot drift apart. It is fourteen step-end stops at their real offsets,
+ * because the cadence accelerates and steps() is even. */
+const MONTAGE_KEYFRAMES = montageKeyframesCss()
+
 const BOOT_CSS = `/* ── The boot shell ────────────────────────────────────────────────────────
  *
- * This exists because the splash it matches could not possibly be the first
- * thing you see. /dashboard and /athlete are client components, so their
- * server HTML is a Suspense bail-out — a full-screen "Loading…" — and
- * ColdStartSplash only unhides itself inside useEffect. That put roughly a
- * megabyte of JavaScript between opening the app and the brand moment: down-
- * load, parse, hydrate, and only then does anything branded appear. The
- * complaint that the app shows a long blank screen and *then* an animation was
- * exactly right, and no amount of tuning the animation could have fixed it.
+ * This is the cold-start sequence. All of it. It is inline CSS over markup the
+ * server already sent, it starts with the document's first paint, and no
+ * JavaScript is involved in playing it.
  *
- * So the resting frame of the splash is server-rendered here in the layout and
- * shown by CSS alone. It paints with the first paint of the document. The
- * animated splash then takes over from it after hydration, at whatever point
- * in its own timeline the wall clock has already reached — see __cvBootAt.
+ * ── Why it is not a React component any more ──────────────────────────────
+ *
+ * It was one, and that is how Max's "you have completely removed the animation
+ * of all the people" happened. Nothing was removed. /dashboard and /athlete are
+ * client components, so their server HTML is a Suspense bail-out and anything
+ * they render waits for roughly a megabyte of JavaScript. The montage of
+ * fourteen sports was drawn by an effect inside that megabyte, on a clock
+ * anchored to the start of the navigation — so on the slow launch it existed
+ * for, its own timeline said the montage was over before the code that draws it
+ * was alive, and on a fast launch the ready-handler jumped the clock past it
+ * deliberately. Both ends closed. The full reasoning is in
+ * lib/montage-schedule.ts.
+ *
+ * So the sequence moved to where the first paint is: here. The fourteen
+ * figures are one image, scrolled by background-position. The timings are
+ * generated from lib/montage-schedule.ts, so the CSS below and anything in
+ * JavaScript that needs to know how long this lasts read the same numbers.
  *
  * Nothing in this block may depend on JavaScript, on the CSS chunk, or on the
  * webfont. It is inline, it is unconditional, and its whole job is to be early.
  */
+/* Nothing on this app is ever allowed to be the browser's default background.
+ *
+ * This is one line and it is the other half of "a black screen when I open the
+ * app". The app's own ground colour lives in globals.css, which is a separate
+ * request: until it lands, html has no background at all, and a full-bleed
+ * element whose own background is an unresolved var() — which is what the old
+ * React splash had, sitting on var(--grad-ink) with the stylesheet still in
+ * flight — paints nothing over nothing. On a phone in dark mode that is a
+ * black screen, produced by two things that are each individually correct.
+ *
+ * Inline, unconditional, and it cannot be late. */
+html { background: #FBF8F3 }
+
 #cv-boot { display: none }
 html[data-boot] #cv-boot { display: block }
-html[data-boot-anim] #cv-boot { display: none }
 #cv-boot {
   position: fixed; inset: 0; z-index: 9000;
-  background: linear-gradient(160deg, #1F2421 0%, #3A4F38 100%);
+  /* Colour and gradient declared separately on purpose. A gradient is a
+     background-IMAGE; on its own it leaves background-color transparent, so
+     anything that stops the image painting leaves a full-bleed z-index 9000
+     element showing whatever is behind it. Naming the near stop as a colour
+     underneath costs nothing and means the worst case is a flat ink screen
+     rather than a black one. */
+  background-color: #1F2421;
+  background-image: linear-gradient(160deg, #1F2421 0%, #3A4F38 100%);
+  opacity: 1; transition: opacity ${OUT_MS}ms ease-out;
 }
+/* The way out. Set by the inline script — on app-ready, on a tap, or by the
+ * dead-man's switch — then the element is removed a beat later. */
+html[data-boot-out] #cv-boot { opacity: 0; pointer-events: none }
+
+/* ── The montage: the people ──────────────────────────────────────────────
+ *
+ * One image, ${SPORT_COUNT} frames wide, generated from the app's own artwork by
+ * tools/build-montage-sprite.mjs and precached by public/sw.js. The frames are
+ * stepped through by background-position, which is why this needs no script
+ * and cannot be late.
+ *
+ * The figures are --ink-figure and that is a safeguarding constraint, not a
+ * style choice: WCAG 2.3.1 permits three flashes a second, a flash being a
+ * luminance swing of 10% or more over a large area, and these are full-height
+ * and change as fast as every 70ms. --ink-figure sits at 7.6% against the ink
+ * ground. --primary-dark is 11.0% and --primary 22.1%; either would flash, for
+ * an audience aged 13-18. If they need to read harder, make them bigger or
+ * slower. Never lighter. The colour is baked into the sprite because a
+ * background-image cannot inherit currentColor; tools/boot-smoke.mjs asserts
+ * the baked value still matches the token.
+ */
+#cv-boot .figs {
+  position: absolute; top: 50%; left: 50%;
+  width: min(62vw, 260px); height: min(84vw, 350px);
+  transform: translate(-50%, -54%);
+  background-image: url(/splash/montage.svg);
+  background-repeat: no-repeat;
+  background-size: ${SPORT_COUNT * 100}% 100%;
+  background-position: 0% 50%;
+  opacity: 0;
+  animation: cv-riffle ${SEQUENCE_MS}ms step-end both,
+             cv-figs ${SEQUENCE_MS}ms linear both;
+}
+${MONTAGE_KEYFRAMES}
+/* On for the montage, off as it collapses into the mark. */
+@keyframes cv-figs {
+  0%, ${at(DRAW_MS - 1)} { opacity: 0 }
+  ${at(DRAW_MS)}, ${at(COLLAPSE_AT - 60)} { opacity: 1 }
+  ${at(COLLAPSE_AT + 120)}, 100% { opacity: 0 }
+}
+
+/* ── The stroke: the voice ────────────────────────────────────────────────
+ *
+ * The amplitude envelope of a real coaching clip, drawn once across the
+ * montage's own clock so sound and sport accelerate together. It is revealed
+ * by a clip-path wipe rather than by animating sixty-four bars, because sixty
+ * bars times sixty frames a second is work for nothing on a phone — and
+ * because one element is one thing that can go wrong.
+ */
+#cv-boot .wave {
+  position: absolute; top: 50%; left: 50%;
+  width: min(86vw, 440px); height: 170px;
+  transform: translate(-50%, -50%);
+  color: #5D7F59;
+  animation: cv-wave ${SEQUENCE_MS}ms linear both;
+}
+@keyframes cv-wave {
+  0%            { clip-path: inset(0 100% 0 0); opacity: 1 }
+  ${at(DRAW_MS)}   { clip-path: inset(0 92% 0 0); opacity: 1 }
+  ${at(COLLAPSE_AT)} { clip-path: inset(0 0 0 0); opacity: 1 }
+  ${at(COLLAPSE_AT + 280)}, 100% { clip-path: inset(0 0 0 0); opacity: 0 }
+}
+
+/* ── What it all arrives at ───────────────────────────────────────────────
+ *
+ * The mark and the wordmark are the app's resting frame, and they are also the
+ * picture in the iOS launch images, so the handoff from the OS screen to this
+ * one is a repaint of the same pixels. They start invisible and are handed
+ * back by the animation's "both" fill mode, which is what guarantees they can
+ * never be left hidden — the failure the "never leave the brand invisible"
+ * rule in CLAUDE.md exists for.
+ */
 #cv-boot .m {
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, calc(-50% - 34px));
@@ -140,6 +259,16 @@ html[data-boot-anim] #cv-boot { display: none }
   background: linear-gradient(135deg, #6F8E6B 0%, #4F6B4B 100%);
   box-shadow: 0 20px 56px rgba(111, 142, 107, .48);
   display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  animation: cv-mark ${SEQUENCE_MS}ms cubic-bezier(.22, 1, .36, 1) both;
+}
+@keyframes cv-mark {
+  0%, ${at(MARK_AT)} {
+    opacity: 0; transform: translate(-50%, calc(-50% - 34px + 46px)) scale(.55);
+  }
+  ${at(MARK_AT + 420)}, 100% {
+    opacity: 1; transform: translate(-50%, calc(-50% - 34px)) scale(1);
+  }
 }
 #cv-boot .w {
   position: absolute; top: calc(50% + 62px); left: 0; right: 0;
@@ -154,12 +283,36 @@ html[data-boot-anim] #cv-boot { display: none }
      webfont by definition, so it asks for what is already on the device. */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
+  opacity: 0;
+  animation: cv-word ${SEQUENCE_MS}ms cubic-bezier(.22, 1, .36, 1) both;
+}
+@keyframes cv-word {
+  0%, ${at(WORD_AT)} { opacity: 0; transform: translateY(14px) }
+  ${at(WORD_AT + 380)}, 100% { opacity: 1; transform: translateY(0) }
 }
 #cv-boot .t {
   position: absolute; left: 0; right: 0;
   bottom: calc(env(safe-area-inset-bottom) + 34px);
   text-align: center; color: rgba(245, 236, 215, .72);
   font-size: 13px; font-style: italic;
+  opacity: 0;
+  animation: cv-word ${SEQUENCE_MS}ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────
+ *
+ * No montage, no wipe, no rise: the resting frame, immediately. Note this has
+ * to hand the mark and wordmark back explicitly — they are opacity: 0 in
+ * their own rules and only the animation makes them visible, so cancelling the
+ * animation without this would leave an ink screen with nothing on it. That is
+ * the worst failure available here and it is one line away at all times.
+ */
+@media (prefers-reduced-motion: reduce) {
+  #cv-boot .figs, #cv-boot .wave { animation: none; opacity: 0 }
+  #cv-boot .m, #cv-boot .w, #cv-boot .t {
+    animation: none; opacity: 1; transform: none;
+  }
+  #cv-boot .m { transform: translate(-50%, calc(-50% - 34px)) }
 }
 
 /* ── The intro's pre-animation frame ───────────────────────────────────────
@@ -182,10 +335,11 @@ html[data-intro] .cv-intro-figure { opacity: 0 }`
 const BOOT_JS = `/* Runs before the body paints, so the shell is either up or never was — there
  * is no frame in which the wrong thing is on screen.
  *
- * It owns the cold-start decision outright. ColdStartSplash used to make it and
- * consume the storage keys itself, which cannot work now: by the time that
- * component runs, the shell has been on screen for a second or more and the
- * answer has to already be known. The component reads data-boot instead.
+ * It owns the cold-start decision outright. The old splash component used to
+ * make it and consume the storage keys itself, which cannot work: by the time
+ * a component in the page bundle runs, the shell has been on screen for a
+ * second or more and the answer has to already be known. That component is
+ * gone; the sequence is CSS above and this script is what arms it.
  *
  * Scoped to the two app pages on purpose. "/" runs its own intro and claims the
  * same session key when you sign in, and arming the shell there would both
@@ -193,7 +347,12 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
  *
  * The timeout is a dead-man's switch. If the bundle never arrives or throws
  * during hydration, nothing else would ever take the shell down, and an ink
- * screen with no way past it is a worse failure than the one being fixed. */
+ * screen with no way past it is a worse failure than the one being fixed.
+ *
+ * Note this script no longer decides only whether to ARM the shell. Since the
+ * cold-start sequence became CSS, it also owns the way out — see
+ * window.__cvBootLeave below, which is the single path all three dismissals
+ * take. */
 (function () {
   try {
     var d = document.documentElement
@@ -209,7 +368,7 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
      *
      * The storage key is consumed here and nowhere else — the page reads the
      * attribute rather than asking the same question a second time, the same
-     * arrangement ColdStartSplash has with data-boot.
+     * arrangement lib/boot-shell.ts has with the shell.
      *
      * Reduced motion is checked here rather than in the component so that the
      * resolved frame simply paints and is never hidden at all. */
@@ -267,27 +426,64 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
     // reached the app at 5.8s before, 3.1s after.
     window.__cvBootAt = Date.now() - Math.round(performance.now())
     d.setAttribute('data-boot', '1')
+
+    /* ── The only way out ──────────────────────────────────────────────────
+     *
+     * One function, three callers: the app saying it has something to show,
+     * a tap, and the dead-man's switch. They used to be three code paths
+     * removing two attributes each, which is three chances to disagree.
+     *
+     * The floor is what guarantees the montage is actually seen. The previous
+     * design had the opposite rule — when the app became ready early it
+     * jumped the animation's clock forward to skip straight to the logo — and
+     * skipping the montage on a fast launch was half of why the fourteen
+     * sports had stopped appearing at all. A cold start is the one moment
+     * this app has to look like something; it is worth ${FLOOR_MS}ms. A tap
+     * overrides it, because someone who taps wants to be in the app.
+     *
+     * With reduced motion there is no sequence to protect, so there is no
+     * floor beyond not being a flash.
+     */
+    var gone = false
+    var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    var FLOOR = REDUCED ? 600 : ${FLOOR_MS}
+    var drop = function () {
+      d.removeAttribute('data-boot')
+      d.removeAttribute('data-boot-out')
+    }
+    window.__cvBootLeave = function (force, instant) {
+      if (gone) return
+      var waited = Date.now() - window.__cvBootAt
+      if (!force && waited < FLOOR) {
+        setTimeout(function () { window.__cvBootLeave(true) }, FLOOR - waited)
+        return
+      }
+      gone = true
+      // A tap, and the dead-man's switch, leave at once. Fading out over
+      // ${OUT_MS}ms is right when the app has finished loading and the shell is
+      // handing over; it is latency the user explicitly asked to skip when they
+      // tapped, and it is the last thing you want on the path that exists
+      // because hydration has already failed.
+      if (instant) return drop()
+      d.setAttribute('data-boot-out', '1')
+      setTimeout(drop, ${OUT_MS})
+    }
+
     // The escape has to exist from the first painted frame.
     //
-    // ColdStartSplash attaches its own pointerdown handler, but only after
-    // hydration — roughly a megabyte of JavaScript too late. Until then the
-    // thing on screen is #cv-boot, a fixed, full-bleed, z-index 9000 div with
-    // no listener on it, so every tap during precisely the window this shell
-    // exists to cover landed on an inert element and was thrown away.
-    //
-    // Removing the attributes here takes the shell down and also disarms the
-    // animated splash, which reads data-boot to decide whether this was a cold
-    // start at all — so one tap means "no splash", not "shell now, animation
-    // in a second". Both paths end at the same two removals, so they cannot
-    // disagree.
+    // The old animated splash attached its own pointerdown handler, but only
+    // after hydration — roughly a megabyte of JavaScript too late. Until then
+    // the thing on screen was #cv-boot, a fixed, full-bleed, z-index 9000 div
+    // with no listener on it, so every tap during precisely the window this
+    // shell exists to cover landed on an inert element and was thrown away.
     window.addEventListener('pointerdown', function () {
-      d.removeAttribute('data-boot')
-      d.removeAttribute('data-boot-anim')
+      window.__cvBootLeave(true, true)
     }, { once: true, capture: true })
-    setTimeout(function () {
-      d.removeAttribute('data-boot')
-      d.removeAttribute('data-boot-anim')
-    }, 6400)
+    // The dead-man's switch. If the bundle never arrives or throws during
+    // hydration, nothing else would ever take the shell down, and an ink
+    // screen with no way past it is a worse failure than the one being fixed.
+    // It has to sit clear of the sequence's own length (${SEQUENCE_MS}ms).
+    setTimeout(function () { window.__cvBootLeave(true, true) }, 6400)
   } catch (e) { /* blocked storage: no shell, no splash, app still opens */ }
 })()
 
@@ -354,27 +550,83 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="CoachVoice" />
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-icon.png" />
-        {/* iOS launch images. This used to be one 512px square icon, which iOS
-            stretched across the whole phone — the "black screen" before the app
-            appeared. These are the resting frame of the splash at each device
-            size, so the OS launch screen and the animation that follows are the
-            same picture and the handoff is invisible. Generated, not hand-made;
-            see the note in ColdStartSplash. */}
+        {/* iOS launch images — the screen the OS paints before the app exists.
+            This is the "black screen delay when I open the app" in its most
+            literal form. On an installed PWA the home-screen tap is answered by
+            SpringBoard, not by us: it paints one of these, and only then does
+            the webview start. No service worker can help — the worker lives
+            inside the webview that has not started yet.
+
+            iOS matches them by exact device geometry, with no nearest match and
+            no fallback: a device whose width, height and pixel ratio are not
+            named below gets BLACK for the whole time the document is in flight.
+            The list used to name nine geometries and missed, among others, the
+            XS Max and 11 Pro Max, the Plus phones, the SE 1st gen and every
+            iPad ever made.
+
+            Generated by tools/build-launch-images.mjs from the same values as
+            the boot shell above, so the OS screen and the first painted frame
+            are the same picture and the handoff is invisible. Regenerate with
+            that script rather than editing this list by hand. */}
+        <link rel="apple-touch-startup-image" href="/splash/launch-640x1136.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/splash/launch-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
-        <link rel="apple-touch-startup-image" href="/splash/launch-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+        <link rel="apple-touch-startup-image" href="/splash/launch-1242x2208.png" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/splash/launch-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/splash/launch-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/splash/launch-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/splash/launch-1206x2622.png" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+        <link rel="apple-touch-startup-image" href="/splash/launch-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+        <link rel="apple-touch-startup-image" href="/splash/launch-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/splash/launch-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/splash/launch-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/splash/launch-1320x2868.png" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+        <link rel="apple-touch-startup-image" href="/splash/launch-1536x2048.png" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+        <link rel="apple-touch-startup-image" href="/splash/launch-1620x2160.png" media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+        <link rel="apple-touch-startup-image" href="/splash/launch-1640x2360.png" media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+        <link rel="apple-touch-startup-image" href="/splash/launch-1668x2224.png" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+        <link rel="apple-touch-startup-image" href="/splash/launch-1668x2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+        <link rel="apple-touch-startup-image" href="/splash/launch-2048x2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+        {/* The montage image, asked for as early as the document can ask. It
+            is the first thing the cold-start sequence draws, and it is the one
+            part of that sequence that is not already in this document. The
+            service worker precaches it too, so after the first launch it comes
+            off disk; this is what covers the first launch. */}
+        <link rel="preload" as="image" href="/splash/montage.svg" type="image/svg+xml" />
         <style dangerouslySetInnerHTML={{ __html: BOOT_CSS }} />
         <script dangerouslySetInnerHTML={{ __html: BOOT_JS }} />
       </head>
       <body>
-        {/* The first painted frame on a cold start. See BOOT_CSS. */}
+        {/* The first painted frame on a cold start, and the whole sequence that
+            follows it. Server-rendered and driven by the inline CSS above, so
+            it plays whether or not the bundle ever arrives. See BOOT_CSS. */}
         <div id="cv-boot" aria-hidden="true">
+          {/* The people. One image, fourteen frames, stepped by
+              background-position — see BOOT_CSS and
+              tools/build-montage-sprite.mjs. */}
+          <div className="figs" />
+
+          {/* The voice: the amplitude envelope of a real coaching clip, wiped
+              in from the left across the montage's own clock. Static bars
+              revealed by a clip-path, not sixty-four animated elements — one
+              thing to go wrong instead of sixty-four, and no per-frame layout
+              work on a phone that is already busy booting. */}
+          <svg className="wave" viewBox="0 0 440 170" preserveAspectRatio="none" aria-hidden="true">
+            {PEAKS.map((peak, i) => {
+              const h = Math.max(3, peak * 2.6)
+              return (
+                <rect
+                  key={i}
+                  x={i * (440 / PEAKS.length) + 1}
+                  y={85 - h / 2}
+                  width={440 / PEAKS.length - 2}
+                  height={h}
+                  rx={2}
+                  fill="currentColor"
+                />
+              )
+            })}
+          </svg>
+
           <div className="m">
             <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round">
               <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />

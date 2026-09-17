@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { activationFields } from '@/lib/athlete-status'
 import type { CookieToSet } from '@/lib/supabase-route'
 
 
@@ -110,6 +111,10 @@ export async function POST(req: NextRequest) {
           email: user.email,
           athlete_user_id: user.id,
           invited_at: new Date().toISOString(),
+          // Same reasoning as /api/join: this athlete created the account and
+          // typed their coach's code seconds ago, and is about to be pushed
+          // straight into the portal. They are here. See lib/athlete-status.ts.
+          ...activationFields(),
         })
       }
     }

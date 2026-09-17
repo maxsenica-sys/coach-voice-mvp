@@ -8,7 +8,7 @@ import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import CheckIn from '@/app/components/CheckIn'
 import { currentMonth, toMonthStr } from '@/lib/calendar-month'
-import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
+import { markAppReady } from '@/lib/boot-shell'
 import { getDailyQuote } from '@/lib/quotes'
 import {
   WELLNESS_METRICS, metricColor,
@@ -450,8 +450,16 @@ export default function AthletePage() {
             sport: profile?.sport ?? '',
             email: user.email ?? '',
           })
-          // Mark this athlete as ACTIVE on their first portal visit
-          fetch('/api/athlete/activate', { method: 'POST' }).catch(() => {})
+          // Mark this athlete as ACTIVE on their first portal visit.
+          //
+          // Deliberately not awaited — nothing on this screen depends on it —
+          // but no longer silently swallowed. A raw fetch with an empty catch
+          // is CLAUDE.md checklist item #1, and the cost of it here is not
+          // cosmetic: a failure means an athlete who is looking at their own
+          // portal reads PENDING on their coach's roster, for ever, with
+          // nothing anywhere to say why.
+          void apiMutate('/api/athlete/activate', { method: 'POST' })
+            .catch((e) => console.error('[athlete] activate failed:', errorMessage(e, 'unknown')))
         } else {
           const first = profile?.first_name ?? ''
           const last = profile?.last_name ?? ''
@@ -936,6 +944,13 @@ export default function AthletePage() {
         setJoinMsg('Successfully joined your coach\'s database! Refresh to see your sessions.')
         setAthleteId(json.athleteId)
         setError('')
+        // Belt and braces on top of the route's own insert. The load effect
+        // above is the only other caller of activate, it already ran — before
+        // this athlete had a roster row at all — and it will not run again. So
+        // without this, an athlete who joins from inside the portal is
+        // recorded as never having opened it. See lib/athlete-status.ts.
+        void apiMutate('/api/athlete/activate', { method: 'POST' })
+          .catch((e) => console.error('[athlete] activate after join failed:', errorMessage(e, 'unknown')))
       } else {
         setJoinMsg(json?.error ?? 'Failed to join')
       }
@@ -1006,7 +1021,6 @@ export default function AthletePage() {
             Let&apos;s go →
           </button>
         </div>
-        <ColdStartSplash />
       </div>
     )
   }
@@ -1016,7 +1030,6 @@ export default function AthletePage() {
 
       {/* Shows only on a genuinely cold launch, over the page while it loads.
           Any touch dismisses it; it never delays anything. */}
-      <ColdStartSplash />
 
       {/* Action failure banner */}
       {actionError && (

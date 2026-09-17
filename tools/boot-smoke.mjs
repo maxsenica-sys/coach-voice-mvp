@@ -336,6 +336,45 @@ async function assertMiddleware(base) {
       (manifest.icons ?? []).some((i) => String(i.purpose ?? '').includes('maskable')),
     )
     check('start_url is "/"', manifest.start_url === '/', String(manifest.start_url))
+
+    /* ── Every device, or a black screen for the ones missed ──
+     *
+     * On an installed iOS PWA the home-screen tap is answered by SpringBoard,
+     * which paints an apple-touch-startup-image and only then starts the
+     * webview. iOS matches these by exact geometry: no nearest match, no
+     * fallback. A device whose width, height and pixel ratio are not named
+     * gets BLACK for the whole time the document is in flight — which is what
+     * "a black screen delay when I open the app" is, literally, and no amount
+     * of work inside the app can reach it.
+     *
+     * The list named nine geometries and missed the XS Max and 11 Pro Max, the
+     * Plus phones, the SE 1st gen and every iPad. Nothing could have noticed:
+     * a missing <link> is not a build error, and the device that needs it is
+     * not the device anyone is testing on.
+     *
+     * So the generator is the source of truth and this asserts the document
+     * agrees with it, file by file. */
+    const devices = JSON.parse(execFileSync(process.execPath,
+      [join(ROOT, 'tools', 'build-launch-images.mjs'), '--list'], { encoding: 'utf8' }))
+    const home = await (await fetch(base + '/')).text()
+    const missingLink = devices.filter((d) =>
+      !home.includes(`/splash/${d.file}`) ||
+      !new RegExp(`device-width:\\s*${d.w}px[^"]*device-height:\\s*${d.h}px[^"]*pixel-ratio:\\s*${d.dpr}`).test(home))
+    check(
+      `every one of the ${devices.length} device geometries has a launch image declared`,
+      missingLink.length === 0,
+      missingLink.length
+        ? `missing: ${missingLink.map((d) => `${d.w}x${d.h}@${d.dpr} (${d.note})`).join(', ')}`
+        : devices.map((d) => d.note).join(' · ').slice(0, 150),
+    )
+    const heads = await Promise.all(devices.map((d) =>
+      fetch(`${base}/splash/${d.file}`, { method: 'HEAD' }).then((r) => ({ f: d.file, s: r.status })).catch(() => ({ f: d.file, s: 0 }))))
+    const missingFile = heads.filter((h) => h.s !== 200)
+    check(
+      'every declared launch image is actually served',
+      missingFile.length === 0,
+      missingFile.length ? missingFile.map((h) => `${h.f} -> ${h.s}`).join(', ') : `${heads.length} files, all 200`,
+    )
   }
 
   const swres = await fetch(base + '/sw.js')
@@ -578,6 +617,9 @@ async function assertBoot(base) {
         armed: document.documentElement.hasAttribute('data-boot'),
         display: el ? getComputedStyle(el).display : 'MISSING',
         wordmark: el ? (el.querySelector('.w')?.textContent ?? '') : '',
+        ground: el ? getComputedStyle(el).backgroundColor : '',
+        groundImage: el ? getComputedStyle(el).backgroundImage : '',
+        htmlGround: getComputedStyle(document.documentElement).backgroundColor,
         fcp: fcp ? Math.round(fcp.startTime) : 0,
       }
     }).catch((e) => ({ error: String(e) }))
@@ -591,7 +633,135 @@ async function assertBoot(base) {
       stalled.display === 'block' && stalled.wordmark === 'CoachVoice' && stalled.fcp > 0,
       JSON.stringify(stalled),
     )
+    /* And it is painted in the brand's ink, not in nothing.
+     *
+     * The old React splash set its own background to var(--grad-ink), which is
+     * declared in globals.css — the request being stalled here. An unresolved
+     * var() makes the declaration invalid, so a fixed, full-bleed, z-index
+     * 9000 element painted transparent over an html element that also had no
+     * background yet. That is a black screen on a phone in dark mode, made
+     * entirely out of correct-looking lines. */
+    check(
+      'the ground is the brand ink with no stylesheet at all',
+      /rgb\(31, ?36, ?33\)/.test(stalled.ground ?? '') && /linear-gradient/.test(stalled.groundImage ?? ''),
+      `#cv-boot background-color = ${stalled.ground}, image = ${(stalled.groundImage ?? '').slice(0, 60)}, html = ${stalled.htmlGround}`,
+    )
     await stallCtx.close()
+
+    /* ── the montage: the people ──
+     *
+     * This section exists because the montage stopped playing and every check
+     * this project owned stayed green. It was not deleted, not broken and not
+     * misconfigured: it was drawn by a React effect inside the page bundle, on
+     * a clock anchored to the start of the navigation, so by the time the code
+     * could run its own timeline said the sequence was over — and when the app
+     * loaded quickly the ready-handler skipped the montage on purpose. tsc,
+     * eslint and next build could not have an opinion about any of that, and
+     * nothing here was looking.
+     *
+     * So the hostile version of the question: kill the bundle outright, and
+     * ask whether the fourteen sports still go past. If this passes with every
+     * chunk hanging, the montage cannot be late for itself again — which is
+     * the property, not the pixel.
+     */
+    heading('The montage — the fourteen sports actually go past')
+
+    const sprite = JSON.parse(execFileSync(process.execPath,
+      [join(ROOT, 'tools', 'build-montage-sprite.mjs'), '--json'], { encoding: 'utf8' }))
+    check(
+      'the sprite is in step with the artwork and the palette',
+      sprite.upToDate,
+      sprite.upToDate ? `${sprite.frames} frames, ${sprite.colour}` : sprite.why,
+    )
+    check(
+      'the figure colour is still flash-safe against the ink ground',
+      sprite.colour.toLowerCase() === sprite.token.toLowerCase(),
+      `sprite ${sprite.colour} vs --ink-figure ${sprite.token} — WCAG 2.3.1 caps a large-area luminance swing at 10%; this one is 7.6%`,
+    )
+
+    const deadCtx = await browser.newContext()
+    const dead = await deadCtx.newPage()
+    const assets = []
+    dead.on('response', (r) => {
+      if (r.url().includes('/splash/montage.svg')) assets.push(r.status())
+    })
+    // Every page chunk hangs for the life of the page: hydration never starts,
+    // which is the worst case a real phone on a real network produces and the
+    // exact condition the old implementation could not survive.
+    await dead.route('**/_next/static/chunks/**', () => { /* hang */ })
+    await dead.goto(base + '/?splash=1', { waitUntil: 'commit' })
+    const film = await dead.evaluate(async () => {
+      const seen = []
+      const el = document.querySelector('#cv-boot .figs')
+      if (!el) return { error: 'no .figs element' }
+      const t0 = performance.now()
+      while (performance.now() - t0 < 3300) {
+        const cs = getComputedStyle(el)
+        seen.push({
+          t: Math.round(performance.now() - t0),
+          x: cs.backgroundPositionX,
+          o: Number(cs.opacity),
+        })
+        await new Promise((r) => requestAnimationFrame(r))
+      }
+      const mark = document.querySelector('#cv-boot .m')
+      const word = document.querySelector('#cv-boot .w')
+      return {
+        seen,
+        hydrated: !!document.querySelector('#cv-boot')?.isConnected && document.readyState,
+        markEnd: mark ? Number(getComputedStyle(mark).opacity) : null,
+        wordEnd: word ? Number(getComputedStyle(word).opacity) : null,
+      }
+    })
+
+    const visible = (film.seen ?? []).filter((f) => f.o > 0.9)
+    const positions = new Set(visible.map((f) => f.x))
+    check(
+      'the sprite is served',
+      assets.length > 0 && assets.every((s) => s === 200),
+      assets.length ? `status ${assets.join(', ')}` : 'never requested — the montage would be a blank rectangle',
+    )
+    check(
+      'the figures are painted at all',
+      visible.length > 0,
+      visible.length ? `visible from ${visible[0].t}ms to ${visible[visible.length - 1].t}ms` : 'opacity never rose above 0.9 — this is the bug',
+    )
+    check(
+      `all ${sprite.frames} sports go past, with the bundle dead`,
+      positions.size >= sprite.frames,
+      `${positions.size} distinct frames of ${sprite.frames}`,
+    )
+    check(
+      'the montage is not over before it is seen',
+      visible.length > 0 && visible[0].t < 600,
+      visible.length ? `first figure at ${visible[0].t}ms` : 'never',
+    )
+    check(
+      'it resolves into the brand rather than stopping on a stranger',
+      film.markEnd > 0.9 && film.wordEnd > 0.9 && (film.seen ?? []).at(-1)?.o < 0.1,
+      `mark=${film.markEnd} word=${film.wordEnd} figures=${(film.seen ?? []).at(-1)?.o}`,
+    )
+    await deadCtx.close()
+
+    /* Reduced motion gets the resting frame and no riffle. Fourteen full-height
+     * figures changing every 70ms is exactly what that setting is asked for. */
+    const rmCtx = await browser.newContext({ reducedMotion: 'reduce' })
+    const rmPage = await rmCtx.newPage()
+    await rmPage.goto(base + '/?splash=1', { waitUntil: 'commit' })
+    await rmPage.waitForTimeout(700)
+    const rmState = await rmPage.evaluate(() => {
+      const g = (sel) => {
+        const el = document.querySelector(sel)
+        return el ? Number(getComputedStyle(el).opacity) : null
+      }
+      return { figs: g('#cv-boot .figs'), mark: g('#cv-boot .m'), word: g('#cv-boot .w') }
+    })
+    check(
+      'reduced motion shows the brand and never riffles',
+      rmState.figs === 0 && rmState.mark === 1 && rmState.word === 1,
+      JSON.stringify(rmState),
+    )
+    await rmCtx.close()
 
     /* ── the service worker ──
      *
@@ -616,10 +786,17 @@ async function assertBoot(base) {
     })
     check('the worker registers', swState.registered === true, JSON.stringify(swState.keys ?? {}))
     if (swState.registered) {
+      /* The montage, and not the launch images.
+       *
+       * The launch images used to be precached here and it can never have
+       * done anything: the OS paints those before the webview exists, so this
+       * worker is not in that path. The montage is — it is fetched by the
+       * webview on every cold start and it is the first thing the shell
+       * draws, so a miss is a blank rectangle where the sports should be. */
       check(
-        'the launch images are precached',
-        (swState.cached ?? []).some((p) => p.startsWith('/splash/')),
-        `${(swState.cached ?? []).length} entries`,
+        'the montage is precached',
+        (swState.cached ?? []).includes('/splash/montage.svg'),
+        `${(swState.cached ?? []).length} entries: ${(swState.cached ?? []).join(', ').slice(0, 120)}`,
       )
       // The one thing this worker must never do. A cached document names
       // content-hashed chunks that stop existing on the next deploy.

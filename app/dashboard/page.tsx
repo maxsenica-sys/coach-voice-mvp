@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
-import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
+import { markAppReady } from '@/lib/boot-shell'
 import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
@@ -1020,7 +1020,12 @@ function DashboardPageInner() {
   )
 
   const filteredAthletes = athletes.filter(a => {
-    const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
+    // The fallback used to be `a.athlete_user_id ? 'ACTIVE' : 'INVITED'` — the
+    // old, wrong definition kept as a default in three places on this screen.
+    // `athlete_user_id` is written at invite time, so it made "we have not heard
+    // from them" render as Active. If the API ever stops sending `status`, the
+    // honest guess about someone we have no evidence for is INVITED.
+    const status = a.status ?? 'INVITED'
     if (athleteFilter === 'INACTIVE') {
       if (!inactiveIds.has(a.id)) return false
     } else if (athleteFilter !== 'all' && status !== athleteFilter) return false
@@ -1057,7 +1062,6 @@ function DashboardPageInner() {
 
       {/* Shows only on a genuinely cold launch, over the dashboard while it
           loads. Any touch dismisses it; it never delays anything. */}
-      <ColdStartSplash />
 
       {/* ════════ DESKTOP SIDEBAR ════════ */}
       {!isMobile && (
@@ -1382,7 +1386,7 @@ function DashboardPageInner() {
                     </div>
                     <div style={{ display: 'flex', gap: 9, overflowX: 'auto', marginLeft: -16, marginRight: -16, padding: '0 16px 4px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                       {athletes.slice(0, 8).map((a) => {
-                        const status = a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')
+                        const status = a.status ?? 'INVITED'
                         const unread = (unreadCounts[a.id] ?? 0) as number
                         const tone = stableTone(a.id)
                         const wellnessScore = overallWellnessScore(wellnessByAthlete.get(a.id) ?? null)
@@ -1592,7 +1596,7 @@ function DashboardPageInner() {
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
                   {filteredAthletes.map(a => {
-                    const status = (a.status ?? (a.athlete_user_id ? 'ACTIVE' : 'INVITED')).toUpperCase()
+                    const status = (a.status ?? 'INVITED').toUpperCase()
                     // Uncapped counts. Falls back to the truncated client list
                     // only while coverage is still loading, so the first paint
                     // is never blank.

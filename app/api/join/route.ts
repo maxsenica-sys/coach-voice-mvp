@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { activationFields } from '@/lib/athlete-status'
 import type { CookieToSet } from '@/lib/supabase-route'
 
 
@@ -85,6 +86,13 @@ export async function POST(req: NextRequest) {
       email: user.email ?? '',
       athlete_user_id: user.id,
       invited_at: new Date().toISOString(),
+      // Active from the first row, not "invited". Reaching this route means
+      // being signed in, in the portal, typing a code into it — the portal has
+      // demonstrably been opened. Inserting `invited_at` alone left these
+      // athletes reading PENDING for ever: the portal's load effect is what
+      // calls /api/athlete/activate, it already ran before the row existed,
+      // and it does not run again. See lib/athlete-status.ts.
+      ...activationFields(),
     })
     .select('id')
     .single()
