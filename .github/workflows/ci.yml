@@ -37,8 +37,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # The three rigs below are fast, need no browser and no network, and each
-      # one exists because a bug of that class already shipped green. They run
+      # The rigs below are fast, need no browser and no network, and each one
+      # exists because a bug of that class already shipped green. They run
       # before the build so a safeguarding or clock failure is reported in
       # seconds rather than behind two minutes of compilation.
       #
@@ -75,6 +75,23 @@ jobs:
       # survive colour blindness and a phone screen in sunlight.
       - name: Palette rig
         run: npm run verify:palette
+
+      # One definition of an "active" athlete, and every route that puts someone
+      # on a roster. Leo Bridgeford signed himself up, typed his coach's code
+      # into his own portal, and read PENDING on the roster for three days: the
+      # route that created his row wrote invited_at and nothing else, and the
+      # portal's activate call fires from a load effect that had already run
+      # before the row existed. Every file involved type-checked. The defect was
+      # in the join between them, which is the shape this rig is for.
+      - name: Roster rig
+        run: npm run verify:roster
+
+      # The cold-start montage is generated from the app's own artwork. A stale
+      # sprite is an opening animation quietly showing something other than what
+      # the app ships, and a drifted colour is a flash-safety regression in front
+      # of thirteen-year-olds. Neither is visible in a diff.
+      - name: Montage sprite is in step with the artwork
+        run: npm run verify:sprite
 
       # `next build` prerenders /athlete, which constructs a Supabase client at
       # module scope and throws without these. They are placeholders — the build
