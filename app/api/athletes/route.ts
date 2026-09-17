@@ -140,7 +140,10 @@ export async function POST(request: Request) {
         athlete_user_id: athlete_user_id_final,
         invited_at: new Date().toISOString(),
       })
-      .select('id, first_name, last_name, email, athlete_user_id, invited_at')
+      // first_login_at comes back so the status below is derived from the same
+      // column GET derives it from. Selecting a different set of fields here
+      // than the list endpoint returns is how the two got to disagree.
+      .select('id, first_name, last_name, email, athlete_user_id, invited_at, first_login_at')
       .single()
 
     if (insertError) {
@@ -150,7 +153,17 @@ export async function POST(request: Request) {
     return NextResponse.json({
       athlete: {
         ...athleteRow,
-        status: athleteRow?.athlete_user_id ? 'ACTIVE' : 'INVITED',
+        // Was `athleteRow?.athlete_user_id ? 'ACTIVE' : 'INVITED'`, which was
+        // always ACTIVE: `athlete_user_id` is set four lines up from the invite
+        // link this route just generated, so the condition could not be false.
+        //
+        // The visible bug: a coach added an athlete and the roster showed them
+        // Active immediately — before the invite email had been opened. On the
+        // next page load GET recomputed it honestly from `first_login_at` and
+        // the same athlete turned Pending, with nothing having happened in
+        // between. That is Max's "I had them as active before and now they're
+        // pending", and it was this line, not the athlete.
+        status: athleteStatus(athleteRow ?? {}),
       },
       ...(emailWarning ? { warning: emailWarning } : {}),
     })
