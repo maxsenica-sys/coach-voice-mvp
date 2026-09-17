@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
-import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
+import { markAppReady } from '@/lib/boot-shell'
 import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
@@ -1062,7 +1062,6 @@ function DashboardPageInner() {
 
       {/* Shows only on a genuinely cold launch, over the dashboard while it
           loads. Any touch dismisses it; it never delays anything. */}
-      <ColdStartSplash />
 
       {/* ════════ DESKTOP SIDEBAR ════════ */}
       {!isMobile && (

@@ -173,9 +173,32 @@ font tokens must resolve to real families, the `/` fast path must route
 correctly, and the console and network must be clean.
 
 **Files that require it:** `app/layout.tsx`, `app/page.tsx`, `app/globals.css`,
-`proxy.ts`, `app/components/IntroSequence.tsx`,
-`app/components/ColdStartSplash.tsx`, `next.config.ts`, and anything touching
+`proxy.ts`, `app/components/IntroSequence.tsx`, `lib/montage-schedule.ts`,
+`lib/boot-shell.ts`, `public/sw.js`, `next.config.ts`, and anything touching
 fonts, routing, caching or the service worker.
+
+> **Updated 2026-09-17.** `app/components/ColdStartSplash.tsx` is deleted and
+> the whole cold-start sequence is CSS in the boot shell in `app/layout.tsx`.
+> It had to be: /dashboard and /athlete are client components, so their server
+> HTML is a Suspense bail-out and anything they render waits on roughly a
+> megabyte of JavaScript — while the sequence's clock was anchored to the start
+> of the navigation. The montage of fourteen sports therefore played to nobody:
+> on a slow launch its own timeline said it was over before the code that drew
+> it existed, and on a fast one the ready-handler skipped it deliberately.
+> Nothing was deleted, nothing type-checked wrong, and it simply never ran.
+>
+> **An animation that lives in the page bundle cannot cover the wait for the
+> page bundle.** If a first-second change has to be seen, it belongs in the
+> inline shell, and the harness now proves it by killing every chunk and
+> asserting the fourteen frames still go past.
+>
+> The figures are one generated sprite (`tools/build-montage-sprite.mjs`), and
+> the iOS launch images are generated too (`tools/build-launch-images.mjs`) —
+> `npm run build:splash` rebuilds both. Do not hand-edit either output. iOS
+> matches a launch image by exact device geometry with no fallback, so a device
+> the list does not name gets a black screen for the whole cold start; that is
+> what "the black screen when I open the app" was, and the list had named nine
+> geometries.
 
 **When you fix a startup bug, add the check that would have caught it**, then
 prove the check works by breaking the fix on purpose and watching that check go
@@ -196,10 +219,10 @@ Two rules that came out of these bugs and are easy to re-break:
 
 ---
 
-## ⚠️ Three rigs that run the code instead of type-checking it
+## ⚠️ The rigs that run the code instead of type-checking it
 
-`npm run verify` — safeguarding rules, then the clock rig, then the prompt rig.
-All three are hard gates in CI. None needs a browser, a network or a key, and
+`npm run verify` — safeguarding rules, then the clock, prompt, calendar, palette
+and roster rigs, then the sprite freshness check. All of them are hard gates in CI. None needs a browser, a network or a key, and
 together they take a few seconds.
 
 They exist for one reason, and it is the same reason `verify:boot` exists:
@@ -218,6 +241,8 @@ March in London, and every string type-checks.
 | `npm run verify:safeguard` | 5 static rules over `app/` and `lib/` | A new route ships with no auth check; the service-role key reaches a browser bundle; a private bucket is made public; coach-attention data reaches an athlete screen; a wellness query loses its scope |
 | `npm run verify:clock` | The real date logic under 9 timezones, every day of a year | Anything that divides milliseconds by 86,400,000. CI runs in UTC, which is precisely why this cannot be left to CI's own clock |
 | `npm run verify:prompt` | The summariser prompt, its name gate and its response parser | A silent edit to the most consequential text in the product; a personalised summary written for a child the coach never named |
+| `npm run verify:roster` | The one definition of an "active" athlete, and every route that puts someone on a roster | An athlete who is holding the app reads PENDING on their coach's roster for ever, because the route that created their row never recorded that they had arrived |
+| `npm run verify:sprite` | The cold-start montage against the artwork it is generated from | The opening animation quietly showing something other than what the app ships, or the silhouette colour drifting off the flash-safe value |
 
 ### The rules that keep them honest
 

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '../lib/supabase-browser'
 import IntroSequence from '@/app/components/IntroSequence'
-import { SPLASH_SESSION_KEY } from '@/app/components/ColdStartSplash'
+import { SPLASH_SESSION_KEY } from '@/lib/boot-shell'
 
 type Mode = 'login' | 'forgot'
 
@@ -32,7 +32,7 @@ export default function Home() {
 
   // Decided before the document painted, by the inline script in app/layout.tsx
   // — once per device, ever, and never for someone arriving on a `next` link.
-  // Read rather than recomputed for the reason ColdStartSplash reads data-boot:
+  // Read rather than recomputed for the reason the boot shell owns data-boot:
   // the answer had to be known long before this component existed, and two
   // independent answers would disagree exactly when it matters. The `cv_intro_v1`
   // key is consumed there and nowhere else.

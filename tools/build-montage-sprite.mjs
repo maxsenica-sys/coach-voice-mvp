@@ -1,0 +1,152 @@
+#!/usr/bin/env node
+/**
+ * tools/build-montage-sprite.mjs — the cold-start montage, as one flat image.
+ *
+ *   node tools/build-montage-sprite.mjs           # write public/splash/montage.svg
+ *   node tools/build-montage-sprite.mjs --check   # fail if it is out of date
+ *
+ * ── Why a sprite ──────────────────────────────────────────────────────────
+ *
+ * The montage has to paint with the document's first paint, which rules out
+ * React: /dashboard and /athlete are client components, their server HTML is a
+ * Suspense bail-out, and anything they render arrives after a megabyte of
+ * JavaScript. That is precisely how the montage came to never play — see the
+ * note in lib/montage-schedule.ts.
+ *
+ * So it moves into the boot shell in app/layout.tsx, which is server-rendered
+ * and inline. But the fourteen silhouettes are 113KB of path data, and inlining
+ * that into every document would buy the animation by making the blank screen
+ * it plays over longer — the other half of the same complaint.
+ *
+ * One image, fourteen frames wide, scrolled by `background-position`, fixes
+ * both. It is a separate request, so it costs the document nothing; it is
+ * static and content-addressable, so the service worker precaches it and the
+ * browser keeps it; and it needs no JavaScript to animate.
+ *
+ * ── Why it is generated rather than drawn ─────────────────────────────────
+ *
+ * It is built from app/components/sportSilhouettes.tsx — the same artwork the
+ * app already ships, not a copy of it. A hand-made sprite would be a second
+ * set of fourteen drawings that looks identical on the day it is made and
+ * drifts from the first time anyone touches the art. `--check` runs in CI so
+ * "the sprite is stale" is a failed build rather than a wrong animation nobody
+ * notices for a month.
+ */
+
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const SRC = join(ROOT, 'app', 'components', 'sportSilhouettes.tsx')
+const CSS = join(ROOT, 'app', 'globals.css')
+const OUT = join(ROOT, 'public', 'splash', 'montage.svg')
+
+/** Each figure is drawn in this box; the strip is N of them side by side. */
+const CELL_W = 120
+const CELL_H = 170
+
+const die = (msg) => { console.error(`\n  tools/build-montage-sprite.mjs: ${msg}\n`); process.exit(1) }
+
+/* The silhouette colour is a safeguarding constraint, not a style choice.
+ *
+ * WCAG 2.3.1 counts a luminance swing of 10% or more over a large area as a
+ * flash, and permits three a second. These are full-height and change as fast
+ * as every 70ms. --ink-figure sits at 7.6% against --ink-base; --primary-dark
+ * is 11.0% and --primary is 22.1%, and either would flash. The audience is
+ * 13-18 year olds.
+ *
+ * A background-image cannot inherit `currentColor`, so the value has to be
+ * baked in — which means it can silently stop matching the token it was chosen
+ * against. It is read from globals.css here, and tools/boot-smoke.mjs asserts
+ * the two still agree. */
+function inkFigure() {
+  const css = readFileSync(CSS, 'utf8')
+  const m = css.match(/--ink-figure:\s*(#[0-9a-fA-F]{3,8})/)
+  if (!m) die('could not find --ink-figure in app/globals.css — it is the silhouette colour and it is a flash-safety constraint, so this refuses to guess')
+  return m[1]
+}
+
+/** JSX attribute spelling -> SVG attribute spelling. */
+function jsxAttrsToSvg(tag) {
+  return tag.replace(/\s([a-zA-Z][a-zA-Z0-9]*)=/g, (whole, name) => {
+    // viewBox and preserveAspectRatio are camelCase in SVG itself.
+    if (name === 'viewBox' || name === 'preserveAspectRatio') return whole
+    if (name === 'className') return ' class='
+    return ' ' + name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()) + '='
+  })
+}
+
+function frames() {
+  const src = readFileSync(SRC, 'utf8')
+  const out = []
+  // Every entry is one line: `{ name: 'X', d: (<g …>…</g>) },`
+  for (const m of src.matchAll(/\{\s*name:\s*'([^']+)',\s*d:\s*\(([\s\S]*?)\)\s*\},?\s*(?=\n)/g)) {
+    out.push({ name: m[1], markup: m[2].trim() })
+  }
+  if (out.length === 0) die(`found no sports in ${SRC} — the generated file's shape has changed and this parser has not`)
+  return out
+}
+
+function build() {
+  const colour = inkFigure()
+  const sports = frames()
+  const n = sports.length
+
+  const cells = sports.map((s, i) => {
+    let markup = jsxAttrsToSvg(s.markup)
+    if (/\{|\}/.test(markup)) die(`${s.name} contains a JSX expression, which cannot be written to a static SVG: ${markup.slice(0, 120)}`)
+    // currentColor has nothing to inherit from inside a background-image.
+    markup = markup.replace(/"currentColor"/g, `"${colour}"`)
+    return `  <g transform="translate(${i * CELL_W} 0)" data-sport="${s.name.replace(/"/g, '')}">${markup}</g>`
+  })
+
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n * CELL_W} ${CELL_H}" width="${n * CELL_W}" height="${CELL_H}" fill="${colour}">`,
+    `  <!-- GENERATED by tools/build-montage-sprite.mjs from app/components/sportSilhouettes.tsx.`,
+    `       ${n} frames of ${CELL_W}x${CELL_H}, scrolled by background-position in the boot shell`,
+    `       in app/layout.tsx. Do not edit by hand; run the generator. -->`,
+    ...cells,
+    `</svg>`,
+    '',
+  ].join('\n')
+}
+
+const svg = build()
+const check = process.argv.includes('--check')
+
+/* A machine-readable report, so tools/boot-smoke.mjs can assert on the sprite
+ * without reimplementing any of this. It never writes and never exits non-zero
+ * — the harness decides what a stale sprite means, and it wants to report it
+ * alongside everything else rather than die halfway through a browser run. */
+if (process.argv.includes('--json')) {
+  const current = existsSync(OUT) ? readFileSync(OUT, 'utf8') : null
+  const token = inkFigure()
+  const baked = (current?.match(/fill="(#[0-9a-fA-F]{3,8})"/) ?? [])[1] ?? null
+  process.stdout.write(JSON.stringify({
+    upToDate: current === svg,
+    why: current === null
+      ? 'public/splash/montage.svg does not exist'
+      : current === svg ? '' : 'the sprite differs from the artwork in app/components/sportSilhouettes.tsx or from --ink-figure — run: node tools/build-montage-sprite.mjs',
+    frames: frames().length,
+    colour: baked ?? '(none)',
+    token,
+    bytes: Buffer.byteLength(svg),
+  }))
+  process.exit(0)
+}
+
+if (check) {
+  if (!existsSync(OUT)) die(`${OUT} does not exist — run: node tools/build-montage-sprite.mjs`)
+  if (readFileSync(OUT, 'utf8') !== svg) {
+    die('public/splash/montage.svg is out of date with the artwork or with --ink-figure.\n' +
+        '  The cold-start montage would animate something other than what the app ships.\n' +
+        '  Run: node tools/build-montage-sprite.mjs')
+  }
+  console.log('  montage sprite is up to date with the artwork.')
+  process.exit(0)
+}
+
+writeFileSync(OUT, svg)
+const kb = (Buffer.byteLength(svg) / 1024).toFixed(1)
+console.log(`\n  Wrote public/splash/montage.svg — ${frames().length} frames, ${kb}KB\n`)

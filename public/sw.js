@@ -36,24 +36,27 @@
 const VERSION = 'v1'
 const STATIC_CACHE = `cv-static-${VERSION}`
 
-/* The OS launch images and the home-screen icons. Precached on install so the
- * very first cold start after installing already has them on disk — they are
- * the frame the user looks at while the document is still in flight. */
+/* What the webview actually fetches on a cold start.
+ *
+ * This list used to hold the nine iOS launch images and the home-screen icons,
+ * on the reasoning that they are "the frame the user looks at while the
+ * document is still in flight". They are — and that is exactly why a service
+ * worker cannot help with them. The OS paints the launch image before the
+ * webview exists, from a copy it stored when the app was added to the home
+ * screen; this worker runs inside that webview. It was never in the path. With
+ * the launch images now covering every iPhone and iPad rather than nine
+ * geometries, keeping them here would have been 1.5MB of a user's phone spent
+ * on files this code can never serve.
+ *
+ * The montage is different, and it is the one thing here that matters. It is
+ * fetched by the webview, on every cold start, and it is the first thing the
+ * boot shell draws — so its absence is a blank rectangle where the fourteen
+ * sports should be, rather than merely a slower load. Everything else the app
+ * needs is content-hashed under /_next/static/ and is cached on first use by
+ * the fetch handler below.
+ */
 const PRECACHE = [
-  '/icon.svg',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/icon-maskable-512.png',
-  '/apple-icon.png',
-  '/splash/launch-750x1334.png',
-  '/splash/launch-828x1792.png',
-  '/splash/launch-1125x2436.png',
-  '/splash/launch-1170x2532.png',
-  '/splash/launch-1179x2556.png',
-  '/splash/launch-1206x2622.png',
-  '/splash/launch-1284x2778.png',
-  '/splash/launch-1290x2796.png',
-  '/splash/launch-1320x2868.png',
+  '/splash/montage.svg',
 ]
 
 /** Immutable, content-hashed, safe to keep for as long as the URL exists. */

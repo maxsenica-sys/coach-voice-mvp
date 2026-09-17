@@ -43,14 +43,13 @@ const FADE_AT = 1100 // waveform collapses
 const MARK_AT = 1200
 const WORD_AT = 1500
 
-/** Amplitude envelope of a real 8-second coaching clip, reduced to 64 peaks.
- *  Shared with ColdStartSplash so both draw the same voice. */
-export const PEAKS = [
-  3, 6, 4, 9, 14, 10, 18, 26, 20, 32, 24, 16, 22, 30, 38, 30,
-  22, 14, 20, 28, 22, 15, 10, 17, 25, 34, 27, 19, 12, 8, 14, 21,
-  29, 23, 16, 11, 7, 12, 18, 26, 20, 13, 9, 15, 22, 17, 11, 7,
-  10, 14, 9, 6, 4, 7, 5, 3, 5, 8, 5, 3, 4, 6, 3, 2,
-]
+/** The voice this sequence draws. It lives in lib/montage-schedule.ts because
+ *  the boot shell in app/layout.tsx draws the same waveform and is a server
+ *  component, which cannot import a constant out of a 'use client' module
+ *  without pulling the component in with it. Re-exported so existing importers
+ *  of this file keep working. */
+export { PEAKS } from '@/lib/montage-schedule'
+import { PEAKS } from '@/lib/montage-schedule'
 
 const MicMark = () => (
   <svg viewBox="0 0 24 24" width="33" height="33" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" aria-hidden="true">

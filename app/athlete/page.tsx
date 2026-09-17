@@ -8,7 +8,7 @@ import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import CheckIn from '@/app/components/CheckIn'
 import { currentMonth, toMonthStr } from '@/lib/calendar-month'
-import ColdStartSplash, { markAppReady } from '@/app/components/ColdStartSplash'
+import { markAppReady } from '@/lib/boot-shell'
 import { getDailyQuote } from '@/lib/quotes'
 import {
   WELLNESS_METRICS, metricColor,
@@ -1021,7 +1021,6 @@ export default function AthletePage() {
             Let&apos;s go →
           </button>
         </div>
-        <ColdStartSplash />
       </div>
     )
   }
@@ -1031,7 +1030,6 @@ export default function AthletePage() {
 
       {/* Shows only on a genuinely cold launch, over the page while it loads.
           Any touch dismisses it; it never delays anything. */}
-      <ColdStartSplash />
 
       {/* Action failure banner */}
       {actionError && (
