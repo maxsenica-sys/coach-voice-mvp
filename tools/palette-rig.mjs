@@ -30,6 +30,9 @@ import path from 'node:path'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const CSS = readFileSync(path.join(ROOT, 'app/globals.css'), 'utf8')
+// The real modules, never a copy — section 4 checks what the product declares.
+const { SESSION_RESPONSES } = await import('../lib/session-response.ts')
+const { INJURY_STATUSES } = await import('../lib/injury.ts')
 
 const GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', BOLD = '\x1b[1m', OFF = '\x1b[0m'
 
@@ -161,6 +164,45 @@ for (const rule of CSS.split('}')) {
 }
 check(gradientsSeen > 0, 'the gradient scan actually found gradients',
   `${gradientsSeen} stop(s) examined — zero means this section is inert, not clean`)
+
+// ── 4 · colour/tint pairs the code actually declares ─────────────────────
+//
+// Sections 1-3 check a token against the surfaces someone listed here. This one
+// checks the pairs the PRODUCT declares, by importing them: `INJURY_STATUSES`
+// and `SESSION_RESPONSES` each carry a `color` and the `tint` it is rendered
+// on, so the pairing is a fact in the source rather than a guess in this file.
+//
+// It exists because a real failure walked straight past section 1. The selected
+// "Working on it" chip paired `--energy-dark` with `--wellness-ok-tint` at
+// 4.05:1, and the identical pair sat in the "Modified" injury status — one
+// wrong token, two screens, both failing 1.4.3, both invisible to a rig that
+// only ever checked tokens against `--bg` and white. `--energy-dark` is fine on
+// white. It is the *pairing* that fails, and only the code knows the pairings.
+//
+// Two design agents found it independently while building mockups. Neither was
+// looking for it. That is the argument for this section: a cartesian product of
+// every token against every other would have found it too, and drowned it in
+// dozens of combinations that never render.
+console.log(`\n   ${BOLD}Declared pairs${OFF} ${DIM}— a colour and the tint it is actually drawn on${OFF}`)
+let pairsSeen = 0
+for (const [label, list] of [
+  ['session response', SESSION_RESPONSES],
+  ['injury status', INJURY_STATUSES],
+]) {
+  for (const opt of list) {
+    const fg = tokens[(opt.color.match(/var\((--[\w-]+)\)/) ?? [])[1]]
+    const bg = tokens[(opt.tint.match(/var\((--[\w-]+)\)/) ?? [])[1]]
+    if (!fg || !bg) continue
+    pairsSeen++
+    const r = ratio(fg, bg)
+    check(r >= 4.5, `${label} "${opt.label}" — ${opt.color} on ${opt.tint}`,
+      `${fg} on ${bg} = ${r.toFixed(2)}:1`)
+  }
+}
+// A scan that finds nothing to judge is inert, not clean — the same lesson the
+// gradient section above records.
+check(pairsSeen >= 6, 'the pair scan actually found pairs',
+  `${pairsSeen} declared pair(s) examined`)
 
 // ── 4 · the browser is told which theme this is ──────────────────────────
 console.log(`\n   ${BOLD}Scheme${OFF}`)
