@@ -127,6 +127,31 @@ the design but because `app/dashboard/page.tsx` and `app/athlete/page.tsx` carry
 1 day tokens, ~3 days repointing those literals (work the register already
 wants), ~4 days rebuilding the two home screens, 1 day font and icon pass.
 
+### The cost nobody had counted: this app is declared light
+
+Added 2026-09-23, from the "Honours" exploration, and it applies to **every**
+dark direction including this one.
+
+`app/globals.css:13` declares `color-scheme: light`, and it is deliberate —
+`verify:palette` has a check protecting it, whose failure message says that
+without it "UA-styled date and select controls render dark chrome on a white
+card". Twelve native controls depend on that declaration today, counted:
+
+    QuickSessionModal.tsx   1 select, 2 date
+    InjuryPanel.tsx         1 date
+    athlete/page.tsx        1 time
+    athletes/[id]/page.tsx  2 select, 1 date, 1 time
+    dashboard/page.tsx      2 select, 1 time
+
+So moving the app onto an ink ground is not a token swap with a new accent. It
+is a **real second theme**, and every one of those twelve controls has to be
+re-checked in a browser on both iOS and Android, because the native picker is
+drawn by the platform and not by anything in this repo. That is the sort of
+work that turns a two-week estimate into a four-week one in week three.
+
+The ~2 weeks above does not include it. Count it separately, and do the
+daylight test before either.
+
 ### What it deliberately does not touch
 
 Not the intro, not the recorder, not any protected route. It keeps every piece of
