@@ -43,7 +43,12 @@ export const SESSION_RESPONSES: ResponseOption[] = [
     value: 'working_on_it',
     label: 'Working on it',
     coachLabel: 'Working on it',
-    color: 'var(--energy-dark)',
+    // --wellness-ok, not --energy-dark. The two are almost the same amber and
+    // the wrong one was 4.05:1 on this tint, which fails WCAG 1.4.3 wherever
+    // the selected "Working on it" chip renders. --wellness-ok is 4.55:1
+    // on it, and globals.css has recorded that exact ratio next to the token
+    // all along. A declared colour/tint pair is now checked by verify:palette.
+    color: 'var(--wellness-ok)',
     tint: 'var(--wellness-ok-tint)',
   },
   {

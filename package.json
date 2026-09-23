@@ -14,7 +14,7 @@
     "verify:prompt": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/prompt-rig.mjs",
     "verify:boot": "node tools/boot-smoke.mjs",
     "verify:calendar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/calendar-rig.mjs",
-    "verify:palette": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/palette-rig.mjs",
+    "verify:palette": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/palette-rig.mjs",
     "verify:roster": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/roster-rig.mjs",
     "verify:sprite": "node tools/build-montage-sprite.mjs --check",
     "build:splash": "node tools/build-montage-sprite.mjs && node tools/build-launch-images.mjs"
