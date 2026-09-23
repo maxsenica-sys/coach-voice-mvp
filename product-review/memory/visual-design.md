@@ -19,6 +19,128 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-23 — DESIGN-010 — "Stadium Night": the whole app on the ink ground, banked
+Status: APPROVED (banked, not built)
+Verdict at proposal: BUILD — Max, 2026-09-23: *"i like the sydney night. BANK that
+entire design, it's really good, keep it in the memory."* (He said "Sydney night";
+three directions were on the table and this is the one called Stadium Night.)
+Priority: not scored — this is a direction, not a finding.
+Grounded in: app/globals.css (every base value below is already in it),
+app/dashboard/page.tsx, app/athlete/page.tsx, lib/session-response.ts
+Evidence: three full phone mockups per direction, rendered in real Chromium at
+390x844. Canvas: https://claude.ai/artifact/TwCKGvyW52EG4imprFYAT4
+
+### Why this is written here and not in the tree
+
+CLAUDE.md is unambiguous: no prototypes, no banked alternatives, no `_banked/`,
+no `/dev/*`. "An idea is either built into the product properly or it is written
+down in `product-review/` and not built." So the mockups stay on the canvas and
+the *specification* lives here, in enough detail to rebuild from without them.
+Nothing about this entry belongs in `app/`.
+
+### The idea, one line
+
+The app stops being a parchment notebook and becomes a broadcast: ink ground
+everywhere, floodlit sage, one enormous number per screen, and the coach's own
+words set like a magazine feature. The coach gets a scoreboard; the athlete gets
+a dispatch.
+
+### Palette — every value, with its measured ratio
+
+Ground and text are already shipped and already pass:
+
+| Token | Value | On | Ratio |
+|---|---|---|---|
+| `--ink-base` | `#1F2421` | — | ground |
+| `--on-ink` | `#F5ECD7` | ink | 13.56:1 |
+| stage floor (new) | `#151916` | — | a step under the ink |
+| secondary text (new) | `rgba(245,236,215,.72)` | ink | 7.60:1 |
+| tertiary text (new) | `rgba(245,236,215,.58)` | ink | 5.41:1 |
+
+An `.46` tertiary step was tried and **dropped at 4.02:1** for failing 1.4.3. Do
+not reinstate it.
+
+The existing hues cannot be used as text on ink and are re-cut, not replaced —
+these are additions to `globals.css`, so the light theme keeps working while this
+is built:
+
+| Purpose | Shipped | On ink | Lifted to | Ratio |
+|---|---|---|---|---|
+| sage, text weight | `--primary #5D7F59` | 3.53:1 ✗ | `#A8CBA0` | 8.79:1 |
+| sage, secondary | — | — | `#7FA878` | 5.85:1 |
+| rust | `--coach-color #B55C3E` | 3.43:1 ✗ | `#E39A7A` | 6.83:1 |
+| amber | `--energy` | — | `#E4BC6B` | 8.70:1 |
+
+`--primary` survives as a bar or fill and **never** as text on ink.
+
+**The one new hue: floodlight chartreuse `#CBEF5E`.** 12.06:1 against ink *and*
+12.06:1 under ink — it works as text on the ground and as a ground under ink text
+with the same arithmetic, which is what earns it. It is spent on exactly three
+things: the record action, the live/new state, and the one bar in a chart that is
+*now*. Nothing decorative wears it. That discipline is the direction; a fourth
+use of it is a regression.
+
+### Typography
+
+Three of four families are already self-hosted, so this ships **one** new font:
+
+- **Newsreader** — the reading, and every oversized numeral. The app already sets
+  stat values in the display serif.
+- **Plus Jakarta Sans** — controls and body.
+- **JetBrains Mono** — timecodes.
+- **Big Shoulders Display** (new) — a condensed grotesque for all uppercase
+  furniture: eyebrows, tickers, surnames, session titles, nav.
+
+That pairing *is* the direction: a scoreboard voice and a reading voice on one
+page.
+
+### Structure
+
+A 20px gutter and a 39px pitch-marking grid run under everything, and the hero
+band deliberately violates it: a skewed translucent beam with a floodlight
+hairline behind the scoreboard, a diagonal clip splitting the record bar, a 100px
+numeral overhanging its own optical margin. Hairline rules on the session rows
+keep it from becoming noise. The coach screen leads on an attention headline
+("Three athletes haven't heard from you in ten days"); the athlete screen leads
+on a readiness hero over the twelve-week spine.
+
+### Motion
+
+Small-area only: a 22s light rake, a 2.4s status dot, a 1.5s VU meter 3px wide.
+Nothing large changes luminance, which is the flash-safety property
+`IntroSequence.tsx` and the boot shell already depend on. All of it dies under
+`prefers-reduced-motion`.
+
+### The risk, in the agent's own words
+
+The chartreuse will look like a highlighter on a bright touchline, and the dark
+ground is gorgeous in a gym at 8pm and **unproven at 10am outdoors**. DESIGN-003
+already warned that a colder, more monochrome system could make `/athlete` read
+as an enterprise dashboard to a teenager. **Test both screens outside before
+anything else is decided.** That test is the gate on this entry, not a nicety.
+
+### Cost, and what it drags with it
+
+~2 weeks, and it is the most expensive of the three directions — not because of
+the design but because `app/dashboard/page.tsx` and `app/athlete/page.tsx` carry
+**161 hex literals** between them (96 and 65) that no theme switch can reach.
+1 day tokens, ~3 days repointing those literals (work the register already
+wants), ~4 days rebuilding the two home screens, 1 day font and icon pass.
+
+### What it deliberately does not touch
+
+Not the intro, not the recorder, not any protected route. It keeps every piece of
+real content those screens already render: the ACTIVE/PENDING split, the five
+wellness metrics, the twelve-week spine, the `NEXT:` line, and the three-word
+response vocabulary from `lib/session-response.ts`, verbatim.
+
+### Carried out of this round regardless of direction
+
+`--coach-color #B55C3E` is **3.43:1 on ink** and fails wherever rust text sits on
+the ink ground. `#E39A7A` (6.83:1) is the re-derived value. This is a live defect,
+independent of whether Stadium Night is ever built. See "Not yet reviewed".
+
+
 ## 2026-09-06 — ROUND 3 SHIPPED (commit 9708772)
 
 All three defect fixes built, plus all three intro directions. Direction A is

@@ -233,6 +233,7 @@ proposal rather than as a footnote.
 | DESIGN-008 | 2026-09-09 | IMPLEMENTED | The Spine — twelve weeks of training as one shared component, on the athlete's home and the coach's athlete profile | BUILD NOW | 72 |
 | WOW-005 | 2026-09-09 | SUPERSEDED by DATA-008 | Where your voice went — minutes of recorded voice per athlete, as a coach-facing mirror | BUILD NOW | 64 |
 | DESIGN-009 | 2026-09-09 | PROPOSED | The Focus Card — render the focus point as a 1080x1350 ink image the athlete saves to their camera roll | TEST | 18 |
+| DESIGN-010 | 2026-09-23 | APPROVED | "Stadium Night" — the whole app moved onto the ink ground: broadcast furniture, one enormous number per screen, one new hue (floodlight `#CBEF5E`) spent on three things only | BANK | not scored |
 
 **The convergence, and it is the strongest this system has produced.** Three of
 four agents independently proposed the same feature: DATA-008 ("Quiet lately"),
@@ -553,6 +554,8 @@ An agent may pick any of these up as its own recommendation on a later run.
 | ~~2026-09-06 DATA-004~~ | ~~Defect~~ | **DONE 2026-09-06** — both colours now `#1F2421`. `public/manifest.webmanifest` painted navy `#0f2042` / blue `#2563eb` — a retired palette — while `app/manifest.ts` holds the correct `#FBF8F3` / `#1F2421` and is **dead code**. Cold launch shows navy → brown → parchment. 2-line fix, cheapest win in the report. |
 | ~~2026-09-06 DESIGN-004~~ | ~~Accessibility~~ | **DONE 2026-09-06** — block added, with `.recording-dot::after` handled deliberately so the mic-live indication survives as a steady halo. Was: zero `prefers-reduced-motion` anywhere. 7 keyframe sets including a 1.2s *infinite* pulse on the athlete page teenagers open daily. |
 | 2026-09-06 DATA-004 | Product | Two first-run intros already exist post-auth and PROJECT-STATE missed both: `app/athlete/page.tsx:540-586` and `app/dashboard/page.tsx:1149-1180+`. |
+| 2026-09-23 DESIGN-010 | Design | **`--coach-color #B55C3E` is 3.43:1 on the ink ground** and fails 1.4.3 wherever rust text sits on ink. `#E39A7A` measures 6.83:1 and is the re-derived value. Found while exploring Stadium Night; it is a live defect whether or not that direction is ever built. |
+| 2026-09-23 DESIGN-010 | Design | Stadium Night is banked unbuilt and its gate is a **daylight test** — the chartreuse and the dark ground are both unproven outdoors at 10am, and the audience is 13-18. Nothing should be decided on the strength of a screenshot viewed indoors. |
 | 2026-09-05 setup | Design | `/` sign-in is visually a different product: dark browns `#1A0E06 → #2C1810` with amber and indigo glows, all inline, none of them tokens. **Superseded by DESIGN-002** (2026-09-06), which proposes a target design and finds the divergence is four grounds, not one. |
 | ~~2026-09-05 DESIGN-001~~ | ~~Design~~ | **DONE 2026-09-05** — identity hue moved to a 7 px dot; pill label now `--text`/`--text-2`. The five series hues are untouched as chart fills. |
 | ~~2026-09-05 DATA-001~~ | ~~Correctness~~ | **DONE 2026-09-05** — athlete query now orders `session_date desc nullsFirst:false`, then `created_at desc`, matching the coach side. |
