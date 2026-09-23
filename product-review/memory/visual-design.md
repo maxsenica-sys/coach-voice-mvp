@@ -19,6 +19,230 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-23 — DESIGN-012 — Twenty-one directions explored, two kept. The other nineteen are REJECTED
+Status: REJECTED (nineteen of twenty-one)
+Verdict at proposal: REJECT — Max, 2026-09-23, after seeing every one of them as
+rendered images: *"nothing that i'm liking apart from the two that i've kept."*
+Priority: not scored — this is a record so the ground is not re-walked.
+Grounded in: the canvas, https://claude.ai/artifact/TwCKGvyW52EG4imprFYAT4
+Evidence: two full phone mockups per direction (coach home + athlete portal),
+each rendered in real Chromium at 390x844 with the real fonts rasterised, every
+text/ground pair measured against its composited background rather than estimated.
+
+**Kept:** A · Stadium Night (DESIGN-010) and K · Floodlit (DESIGN-011).
+
+**Rejected — do not propose again without new evidence.** In the order they were
+shown: B Chalk & Field, C Kinetic, D Tape, E Clinic, F Progression, G Courtside,
+H Dossier, I Terrain, J Nocturne, L Monolith, M Honours, N Instrument, O Ember,
+P Highlight, Q Sodium, R One Light, S Constellation, T Thread, U Vault, plus
+V Margin (rendered, never shown — the round was called before it landed).
+W Contact Sheet and X Tide were commissioned and are not on the canvas.
+
+**What the rejections actually say**, which is the useful part:
+
+- **Light grounds are out, decisively.** Chalk & Field, Clinic, Dossier and
+  Progression are four different good arguments for paper, cream and daylight,
+  and all four lost. Both survivors are near-black. Stop pitching light.
+- **A metaphor is not a direction.** Tape (a tape deck), Terrain (a contour map),
+  Constellation (a night sky), Vault (a strongroom), Contact Sheet, Tide — each
+  was internally coherent and none survived. The two that did are *grades of the
+  app as it already is*, not the app dressed as something else.
+- **Restyling a winner does not produce a second winner.** P, Q and R were three
+  redos of Floodlit commissioned at Max's own suggestion — remove the light, keep
+  the palette. All three were rejected while the original was kept. The tacky
+  thing he named was not the reason the original worked.
+
+**The one finding worth carrying forward, and it is not a visual one.** Three
+independent directions (P Highlight, R One Light, T Thread) each arrived at the
+same structural bet: make the session's key takeaway the single most important
+object on the screen. All three then hit the same wall — **that takeaway does not
+exist as a field.** It is `focus_points[0]`, whichever bullet the summariser
+happened to emit first. Any direction that leans on it, including a future one,
+needs it to become a real field: asked for explicitly in the summariser prompt,
+pinned with its own case in `tools/prompt-rig.mjs`, and coach-editable for a few
+minutes after recording. That is roughly a day of work and it is a prerequisite,
+not a detail. It survives the rejection of all three designs that surfaced it.
+
+A second, smaller one from the same three: rules like "two marks per screen" or
+"one light per screen" are design disciplines the data can break — a bad week
+could qualify six roster rows, and six highlights mark nothing. If such a cap is
+ever adopted it belongs in `lib/` with a rig, not as a number typed into a
+component. Same reason the montage timing had to leave `IntroSequence.tsx`.
+
+Outcome: recorded 2026-09-23. Work paused at Max's request, to resume 2026-09-24.
+
+---
+
+## 2026-09-23 — DESIGN-011 — "Floodlit": attention directed by light instead of by boxes, banked
+Status: APPROVED (banked, not built)
+Verdict at proposal: BUILD — Max, 2026-09-23: *"stadium night keep, also keep
+floodlit"*, and after the full round, *"nothing that i'm liking apart from the two
+that i've kept. let's bank those."*
+Priority: not scored — this is a direction, not a finding.
+Grounded in: app/globals.css (`--grad-ink`, `--ink-base #1F2421`, `--on-ink
+#F5ECD7`, `--energy`), app/dashboard/page.tsx, app/athlete/page.tsx,
+lib/session-response.ts, lib/wellness-config.ts
+Evidence: two phone mockups rendered in real Chromium at 390x844; every text run
+measured against the brightest pixel actually under its glyph box.
+Canvas: https://claude.ai/artifact/TwCKGvyW52EG4imprFYAT4
+
+### Why this is written here and not in the tree
+
+Same reason as DESIGN-010. CLAUDE.md forbids banked alternatives in the
+repository, so the specification lives here in enough detail to rebuild from
+without the mockups, and nothing about this entry belongs in `app/`.
+
+### The idea
+
+Night-sport photography as an interface. One warm floodlight off-frame, a pool of
+light where it lands, and everything else falling into a cold green-black that
+still has detail in it — so **attention is directed by illumination, not by
+boxes, rules or card borders.** On the coach's screen the lit things are the
+record control and the athletes who need him tonight; the ones already dealt with
+sit in shadow. On the athlete's screen the lit thing is the coach's message, and
+the brightest object on the entire screen is the one forward-looking line, "Take
+into next session".
+
+Nothing in it is a photograph. Every bloom, shaft, falloff, cast shadow, motion
+trail and grain field is a CSS gradient, a CSS `box-shadow`, an SVG
+`feGaussianBlur` or an SVG `feTurbulence`.
+
+### Palette — measured, not estimated
+
+Ratios are given as `on --night #0B0E0C / on --ink-base #1F2421`.
+
+Three shadow stops, the same green-black family `--grad-ink` already paints,
+pushed darker so the pools have somewhere to fall off to:
+`--night #0B0E0C` (relative luminance 0.41%), `--night-2 #141815`, and the app's
+existing `--ink-base #1F2421`.
+
+Inks: `--on-ink #F5ECD7` (existing) **16.50 / 13.40**, `--on-ink-2 #C4C0B0`
+**10.64 / 8.64**, `--on-ink-3 #A8A395` **7.70 / 6.26**.
+
+Light: `--sodium #F6B860` **11.03 / 8.96** — and `#1F2421` reads **8.96:1 on it**,
+which is the mic glyph inside the record disc; `--sodium-hot #FFE0AE`
+**15.27 / 12.40**.
+
+**The one new hue is `--mercury #7FC6D6`, hue 191°, 10.12 / 8.22.** A floodlit
+ground needs two lights or the warm key has nothing to be warm against. The
+palette holds sage 114°, rust 15° and amber 38° — nothing within 77° of cyan — so
+this is genuinely new rather than a restyled token, and it carries meaning as
+well as contrast: **warm is the coach speaking, cold is the athlete answering
+back.** It marks the athlete's response on the coach's roster and the selected
+chip on hers, where it measures **5.87:1 sampled off the rendered pixels**, on
+its own tint plus the cold pool.
+
+`--sodium` is deliberately **not** claimed as a new hue: at 35° it is a light stop
+of the existing `--energy` amber (38°), which at `#966E28` measures only 4.21:1 on
+this ground and cannot carry an accent.
+
+Wellness states are lightness-lifted members of the existing families, preserving
+the ordering the daylight palette already encodes: good `#93C97C` **10.06**,
+ok `#E8BE72` **11.12**, low `#F2988A` **8.90**.
+
+### Typography — a re-grade, not a re-brand
+
+The app's own three families. Newsreader Light/Italic carries the two moments
+addressed to a person ("Good evening, *Marcus.*" at 37px; "Evening, *Mathilde.*"
+at 36px), the session title, and the coach's readiness figures — old-style
+numerals in a serif read as an assessment rather than a metric. JetBrains Mono at
+13px, 0.13–0.20em tracking, does every eyebrow, clock and date: in a dark
+cinematic register a sparse tracked mono label is the caption burnt into the
+bottom of a documentary frame. Plus Jakarta Sans does all running text at 13–15px.
+
+**No type below 13px anywhere.** A graded ground eats small type first, and the
+app's usual 11px eyebrow was not survivable here.
+
+### How text stays legible inside a heavy grade
+
+Two rules, one method, and the method is the transferable part.
+
+1. Every light wash reaches *zero* alpha inside its own box, so a gradient never
+   leaves a visible rectangle edge. That is what makes "no borders" actually hold
+   rather than being a claim.
+2. Any wash with text on it is capped, and the cap was found by measurement.
+
+The method: render the screen, collect every text node's exact glyph boxes via
+`Range.getClientRects()`, re-render with all ink set to `transparent`, sample the
+**brightest** background pixel under each glyph box, and compute the true ratio.
+The first pass failed 9 runs — the bloom and the record disc's glow were reaching
+relative luminance 0.15–0.20 where the arithmetic had predicted 0.05. Blooms,
+shafts, pools and disc glow were roughly halved and two labels moved to
+`--sodium-hot`. **Final state: 42/42 text runs pass on the coach screen, 38/38 on
+the athlete screen, worst case 4.75:1 against a 4.5:1 floor**, with nothing
+relying on the 3:1 large-text allowance.
+
+This is the same lesson as the rigs in CLAUDE.md, in a new place: a contrast
+ratio computed from declared hex values is a guess about a composited screen.
+Sample the pixels.
+
+### Motion
+
+One 11s and one 13s `opacity: .90 → 1` breath on the lamp bloom and the record
+disc, plus a 17s/19s ±7px horizontal drift on the motion-trail layer. That is
+0.09 Hz against WCAG 2.3.1's 3 Hz, a ~0.055 relative-luminance swing over about
+2.7% of the viewport against a threshold requiring 25%. Confirmed off under
+`prefers-reduced-motion: reduce` by rendering with `reducedMotion: 'reduce'` and
+asserting `document.getAnimations()` is empty — not by trusting the media query.
+
+### The two things to be nervous about
+
+**A photograph has one subject, and this direction asserts a coach's screen does
+too.** That holds on the night drawn — three athletes need him, four are done. It
+stops holding when nine need him at once, or when none do: with nothing to light,
+the screen is a dark rectangle with a mic on it; with everything lit, the
+metaphor flattens into a normal list on a dark background. **This needs a
+designed empty state and a designed overflow state before it is a system rather
+than a hero shot.** That is the first work to do if it is ever built.
+
+**A graded dark UI is punishing outdoors**, and this is an app used courtside,
+some of it in daylight, where the sodium pool carrying the hierarchy is the first
+thing to disappear. Test both screens outside before anything else — the same
+caveat DESIGN-010 carries, and for both survivors it is now the single largest
+untested assumption.
+
+### Build cost, and the honest GPU answer
+
+Layout is cheap: flex columns, no JS, no images, ~14KB per screen before fonts.
+The atmosphere is where the money goes — two SVG `feGaussianBlur` filters on the
+light shaft (stdDeviation 22 and 12), two more on the motion trails, and one
+full-screen `feTurbulence` grain compositing in `mix-blend-mode: soft-light`. On a
+mid-range Android a full-screen turbulence plus large-radius blurs costs real
+milliseconds on the *first* paint, and a soft-light blend over the whole viewport
+forces an extra compositing pass on every frame anything above it animates.
+
+The mitigation is structural, not lucky: **every expensive layer is static.** The
+turbulence, shafts and blurs rasterise once and are then textures; the only
+animated properties are `opacity` and `transform`, which stay on the compositor.
+
+If it still stutters on a real device, cut in this order: (1) bake the grain to a
+small tiling `data:` URI instead of live turbulence, (2) drop the duplicate
+blur passes and keep the single tight one, (3) drop the grain entirely. The
+direction survives all three, because the bloom, the pools and the falloff are
+plain CSS radial gradients and cost nothing. **What it does not survive is losing
+the pools** — those are the layer to defend.
+
+Also, as with Stadium Night: `app/globals.css` declares `color-scheme: light`,
+and roughly a dozen native controls inherit from it. A dark direction is not a
+token swap; that declaration and every control under it has to move too.
+
+### Content is real, and the strings are the product's own
+
+Mathilde Ross, Nicholas Chuang, Cayden Laurie, Sophie Grabovac, Kai Liang,
+Wyatt Hickson (Leo Bridgeford on the roster, off-screen that night). The five
+metrics and their order are `lib/wellness-config.ts` — Energy, Mood, Sleep,
+Soreness, Stress, all 5-is-good. The three chips are `SESSION_RESPONSES`
+verbatim: "Got it", "Working on it", "Not sure what you mean", with the coach's
+third-person reading "Not clear to them" exactly as `coachLabel` defines it.
+"Take into next session" and "From your coach" are the athlete portal's own
+strings.
+
+Outcome: banked 2026-09-23 alongside DESIGN-010. Not built. Neither direction is
+scheduled; both are waiting on a decision about which one the app becomes, and
+on the daylight test above.
+
+---
+
 ## 2026-09-23 — DESIGN-010 — "Stadium Night": the whole app on the ink ground, banked
 Status: APPROVED (banked, not built)
 Verdict at proposal: BUILD — Max, 2026-09-23: *"i like the sydney night. BANK that
