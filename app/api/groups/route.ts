@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { routeIdentity } from '@/lib/route-identity'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -25,7 +26,15 @@ function attach(res: NextResponse, cs: CookieToSet[]) {
 // GET /api/groups
 export async function GET(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
-  const { data: { user } } = await supabase.auth.getUser()
+  // routeIdentity, not auth.getUser(): getUser() ALWAYS calls the Auth server —
+  // that is its contract — and on this project /auth/v1/user measures 407ms on
+  // average and 1437ms at worst from Australia, where every athlete is. This
+  // route is on the boot path, so that round trip was being paid before the
+  // query the request is actually about had started. getClaims() verifies the
+  // same token locally against a cached JWKS instead. See lib/route-identity.ts;
+  // the token is still cryptographically verified and RLS still scopes the data.
+  const who = await routeIdentity(supabase)
+  const user = who.ok ? { id: who.userId } : null
   if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
 
   const { data, error } = await supabase
