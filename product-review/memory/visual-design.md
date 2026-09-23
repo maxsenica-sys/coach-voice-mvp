@@ -34,9 +34,11 @@ text/ground pair measured against its composited background rather than estimate
 **Rejected — do not propose again without new evidence.** In the order they were
 shown: B Chalk & Field, C Kinetic, D Tape, E Clinic, F Progression, G Courtside,
 H Dossier, I Terrain, J Nocturne, L Monolith, M Honours, N Instrument, O Ember,
-P Highlight, Q Sodium, R One Light, S Constellation, T Thread, U Vault, plus
-V Margin (rendered, never shown — the round was called before it landed).
-W Contact Sheet and X Tide were commissioned and are not on the canvas.
+P Highlight, Q Sodium, R One Light, S Constellation, T Thread, U Vault.
+V Margin and X Tide were rendered but never shown — the round was called before
+they landed — and W Contact Sheet was commissioned in the same batch. None of the
+three reached the canvas and none was seen by Max, so none of them is rejected on
+its merits; they are simply not in play.
 
 **What the rejections actually say**, which is the useful part:
 
