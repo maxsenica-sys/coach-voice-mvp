@@ -38,7 +38,7 @@
 export const SPORT_COUNT = 14
 
 /** The hairline drawing across, before any figure appears. */
-export const DRAW_MS = 240
+export const DRAW_MS = 200
 
 /**
  * How long each sport holds, in order: a geometric decay from 220ms to 70ms.
@@ -48,6 +48,12 @@ export const DRAW_MS = 240
  * at 40ms — two frames — the last third is a smear rather than a run of
  * sports. 70ms is four frames, still a riffle, and you can still tell what
  * went past. If the montage needs to be shorter, drop sports, not this number.
+ *
+ * Flattening this to shorten the sequence was tried on 2026-09-23 and undone
+ * the same day: 120ms to 70ms across fourteen frames is not a ramp, it is a
+ * constant, and the accelerando is the whole effect. The length of the
+ * sequence is not the thing to tune. How much of it anyone sits through is,
+ * and that is the floor in app/layout.tsx.
  */
 export const FIG_MS: number[] = (() => {
   const first = 220, last = 70

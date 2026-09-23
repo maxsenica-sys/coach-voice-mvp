@@ -114,11 +114,23 @@ export const metadata: Metadata = {
 /** How long the shell takes to fade off once the app says it is ready. */
 const OUT_MS = 460
 
-/* The earliest the shell may leave, so the montage always completes and the
- * mark has landed. A splash that outlives the wait is a toll; a splash that is
- * cut short is the bug this whole change exists to fix, and of the two, the
- * one Max actually reported is the second. A tap still leaves immediately. */
-const FLOOR_MS = COLLAPSE_AT + 520
+/* The earliest the shell may leave.
+ *
+ * This was COLLAPSE_AT + 520 — about 2.6 seconds — for one day, and it was
+ * wrong. The reasoning was that being cut short is what killed the montage, so
+ * the montage should always finish. But the montage was never cut short by the
+ * floor; it was cut short by a clock it could not keep up with, and that is
+ * fixed elsewhere. Holding the shell for the full sequence just turned a fix
+ * for a missing animation into a second and a half of new waiting, on an app
+ * whose actual complaint is that it takes too long to open.
+ *
+ * A splash covers a wait. Where there is no wait it has no job, and the right
+ * length is "long enough not to be a flash". So: one second, about five sports,
+ * and then it dissolves into whatever is ready underneath. The full sequence —
+ * all fourteen, the collapse, the mark rising — still plays in full whenever
+ * the app is genuinely slow to arrive, which is the only time anyone was ever
+ * going to watch it. A tap leaves immediately, as before. */
+const FLOOR_MS = 1000
 
 /* The montage's frame schedule, generated from lib/montage-schedule.ts so the
  * CSS below and the JavaScript that has to know how long the sequence lasts
