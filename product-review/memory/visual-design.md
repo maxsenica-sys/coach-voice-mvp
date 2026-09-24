@@ -40,10 +40,32 @@ The two approved home screens (DESIGN-010) are the reference and were not redraw
 
 ### What drawing the whole app proved about the direction
 
-It holds. The chartreuse discipline — record, live/unread, the now-bar — survived
-eighteen screens without a fourth use, which is the test that mattered, because
-that restraint *is* the direction and it is the first thing a large surface
-breaks. Screens with no hero number were allowed not to invent one. The
+It mostly holds, and where it does not is worth knowing precisely.
+
+The **loud** uses are clean. Across eighteen screens floodlight is carried by the
+record bar, the VU, the live dot, the unread badge, the now-bar and the drawing
+pill — and by nothing decorative at any size that reads as a block. That was the
+test that mattered, because the restraint *is* the direction and a large surface
+is where it breaks.
+
+**But it has leaked into small furniture**, identically in all eighteen files,
+and the relayed hand-backs did not catch it — a CSS audit did:
+
+- `.nav b.on` and its marker — the active nav tab. A fourth use. The one builder
+  who noticed flagged it and matched `dirA`, which draws it that way, rather than
+  diverging on a single screen. That was the right call locally and it still
+  means the approved chrome is already outside the rule.
+- `.rolecap` — the role caption under the wordmark. A fifth.
+- `.eyebrow`, `.cap` and the skewed tick — section eyebrows. A sixth, and the
+  expensive one, because an eyebrow is exactly the decoration the rule names.
+
+So the honest statement is that **the discipline as written in DESIGN-010 is not
+what the concept implements**, and it was not what the approved reference
+implemented either. Three ways out, in increasing cost: rewrite the rule as
+"floodlight marks state, plus the app's own chrome"; pull it out of eyebrows and
+role captions and keep nav; or hold the line and make nav-active sage. This is a
+decision, not a defect — but leaving the rule and the code disagreeing is how a
+discipline quietly becomes a suggestion. Screens with no hero number were allowed not to invent one. The
 scoreboard/reading type pairing carried a month grid, a body map and a chat
 thread without any of them becoming generic.
 
