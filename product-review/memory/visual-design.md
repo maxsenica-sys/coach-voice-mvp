@@ -19,6 +19,114 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-24 — DESIGN-013 — Stadium Night drawn end to end: eighteen screens, and the nine decisions they surfaced
+Status: PROPOSED (concept complete, nothing built)
+Verdict at proposal: DECIDE — Max, 2026-09-24: *"i want you to fully design the
+stadium night one, all pages within as a concept for me to look at. we may
+integrate this one soon, had a lot of good responses for it."*
+Priority: not scored — this is a direction being taken to a decision.
+Grounded in: every route under `app/`, `app/components/*`, `lib/session-response.ts`,
+`lib/wellness-config.ts`, `lib/injury.ts`, `lib/body-map.ts`, `lib/attention.ts`
+Evidence: eighteen screens rendered in real Chromium at 390x844, every text run
+measured against its own composited ground. Canvas:
+https://claude.ai/artifact/TwCKGvyW52EG4imprFYAT4
+
+Six builders worked from one written specification rather than inventing in
+parallel, which is why the set is a system and not eighteen interpretations.
+The screens: roster, athlete record, invite · recorder setup, recording, review ·
+saved session, month, annotator · athlete session, check-in, twelve-week spine ·
+messages coach-side, messages athlete-side, injury · sign-in, signup, edge states.
+The two approved home screens (DESIGN-010) are the reference and were not redrawn.
+
+### What drawing the whole app proved about the direction
+
+It mostly holds, and where it does not is worth knowing precisely.
+
+The **loud** uses are clean. Across eighteen screens floodlight is carried by the
+record bar, the VU, the live dot, the unread badge, the now-bar and the drawing
+pill — and by nothing decorative at any size that reads as a block. That was the
+test that mattered, because the restraint *is* the direction and a large surface
+is where it breaks.
+
+**But it has leaked into small furniture**, identically in all eighteen files,
+and the relayed hand-backs did not catch it — a CSS audit did:
+
+- `.nav b.on` and its marker — the active nav tab. A fourth use. The one builder
+  who noticed flagged it and matched `dirA`, which draws it that way, rather than
+  diverging on a single screen. That was the right call locally and it still
+  means the approved chrome is already outside the rule.
+- `.rolecap` — the role caption under the wordmark. A fifth.
+- `.eyebrow`, `.cap` and the skewed tick — section eyebrows. A sixth, and the
+  expensive one, because an eyebrow is exactly the decoration the rule names.
+
+So the honest statement is that **the discipline as written in DESIGN-010 is not
+what the concept implements**, and it was not what the approved reference
+implemented either. Three ways out, in increasing cost: rewrite the rule as
+"floodlight marks state, plus the app's own chrome"; pull it out of eyebrows and
+role captions and keep nav; or hold the line and make nav-active sage. This is a
+decision, not a defect — but leaving the rule and the code disagreeing is how a
+discipline quietly becomes a suggestion. Screens with no hero number were allowed not to invent one. The
+scoreboard/reading type pairing carried a month grid, a body map and a chat
+thread without any of them becoming generic.
+
+### The nine decisions it surfaced — none of them are drawing problems
+
+1. **The summary should be generated at stop-and-transcribe, not at save.** The
+   review screen only works if the coach can read the draft before it sends, and
+   the shipped modal says the summary is generated on save. A pipeline change.
+2. **The athlete-facing takeaway becomes a written field**, with its own counter,
+   editable before send. This is the same conclusion four rejected directions
+   reached from the outside (DESIGN-012) and it is cheaper from inside the
+   recorder than from inside the prompt.
+3. **Reduced motion makes a stopped recording look identical to a running one.**
+   The frozen VU is the only proof of life. It needs a second one that is not
+   luminance — a ticking seconds digit, free, since the clock is already there.
+   This is a correctness bug in the design, not a preference.
+4. **The twelve-week chart ends on an incomplete week**, so it reads as *down* to
+   a teenager who sees the shape before the caption. Either hold the current week
+   back until it closes, or end the window at the last completed week. Neither is
+   obviously right and it should be tested on a real athlete.
+5. **The roster's quiet column is coach-only data on a handed-over phone.**
+   `28d QUIET` beside a fourteen-year-old's name, sortable, in the alarm colour,
+   courtside where a parent can read it. `lib/attention.ts` deliberately says
+   "Inactive" and says the ranking is coach-only. The marker needs to vanish when
+   the phone is handed over.
+6. **A day cell is 48px at 390px width** — a numeral and three marks, nothing
+   else. A busy month under-reports on exactly the days that matter most.
+7. **The body map cannot show a whole body at phone width.** At 0.91 scale the
+   ankle target is 20x20px, under the 24px WCAG 2.5.8 floor, so the map has to
+   zoom to a band. Five band chips, every region then >= 33x43px.
+8. **The five-metric check-in no longer ships.** It was replaced on 2026-09-16 by
+   the two-tap `CheckIn.tsx`, the five columns surviving as the derived scoring
+   input. That screen is therefore a proposal to bring the long form back, not a
+   repaint of what is live, and should be read as one.
+9. **The annotator's nine stock drawing colours are all outside the system.**
+   Replaced with five system colours, and floodlight deliberately not offered as
+   a drawing colour. A product change, not a restyle.
+
+### Two defects in the approved reference, found by drawing around it
+
+- **Contrast.** See the correction on DESIGN-010 above: `--cream-3` is not a text
+  colour on this ground, and the grain is the dominant contributor.
+- **The weekdays are wrong.** `dirA-coach` says `TUE 23 SEP` and `dirA-athlete`
+  says `FRI 19 SEP`; in 2026 those are a Wednesday and a Saturday. Trivial, and it
+  would have shipped, because nothing type-checks a date written into a mockup.
+- Naming is inconsistent between the reference (`M. SENICA`) and the eighteen new
+  screens (`Marcus Reyes`). The eighteen are internally consistent. A
+  find-and-replace, once Max says which.
+
+### Cost, unchanged and still the honest number
+
+~2 weeks for the design work, **plus** the second-theme cost recorded on
+DESIGN-010: `color-scheme: light` and the twelve native controls that depend on
+it, each needing a hand check on iOS and Android. Four weeks is the realistic
+figure, not two. And the gate has not moved and is not a nicety: **neither of us
+has seen this outdoors at 10am**, and the chartreuse is the risk.
+
+Outcome: concept complete 2026-09-24, waiting on Max. Nothing in `app/` changed.
+
+---
+
 ## 2026-09-23 — DESIGN-012 — Twenty-one directions explored, two kept. The other nineteen are REJECTED
 Status: REJECTED (nineteen of twenty-one)
 Verdict at proposal: REJECT — Max, 2026-09-23, after seeing every one of them as
@@ -281,10 +389,40 @@ Ground and text are already shipped and already pass:
 | `--on-ink` | `#F5ECD7` | ink | 13.56:1 |
 | stage floor (new) | `#151916` | — | a step under the ink |
 | secondary text (new) | `rgba(245,236,215,.72)` | ink | 7.60:1 |
-| tertiary text (new) | `rgba(245,236,215,.58)` | ink | 5.41:1 |
+| ~~tertiary text (new)~~ | ~~`rgba(245,236,215,.58)`~~ | ~~ink~~ | ~~5.41:1~~ |
 
 An `.46` tertiary step was tried and **dropped at 4.02:1** for failing 1.4.3. Do
 not reinstate it.
+
+> **CORRECTED 2026-09-24 — the `.58` tertiary step is not usable as text either,
+> and the two boards banked above ship the failure.** Both figures in this table
+> were computed against *flat* `--ink`. The ground is not flat: it carries a
+> skewed beam, a 39px grid and a grain field, and a glyph sits on whatever pixel
+> is under it. Measured on the real composited pixels — render, render again with
+> every glyph `transparent`, sample the ground only where a glyph actually
+> covered it, take the worst — `--cream-3` lands at **3.76–4.48:1**, and on the
+> approved boards themselves `TUE 23 SEP` measures **3.74:1** and `TRENDS →`
+> **3.07:1**. Six independent builders reproduced it on their own screens.
+>
+> **The dominant contributor is the grain, not the beam.** `rgba(245,236,215,.22)`
+> dots on a 13px pitch lift individual pixels to roughly `rgb(84,82,66)`, and at
+> that value even `--cream-2` fails, at 4.37:1.
+>
+> The fix, applied across all eighteen concept screens and verified there:
+> **retire `.58` as a text colour** (it survives as hairlines and dots), move
+> every label on a lit region to `--cream-2`, and **damp the grain dot to `.13`**.
+> After that the worst glyph pixel across eighteen screens is 4.90:1 against a
+> 4.5 floor.
+>
+> Two method notes worth keeping, because both produced false results first:
+> sampling inside the glyph *box* is corrupted by antialiased edges and fails
+> clean screens; and both captures must have animations frozen, or the drifting
+> rake reads as glyph coverage. `snE-contrast.mjs` in the design scratchpad is
+> the working implementation.
+>
+> **The general rule, for the third time in this file:** a contrast ratio
+> computed from declared hex values is a guess about a composited screen. It was
+> `--energy-dark` on a tint, then Floodlit's blooms, now this. Measure pixels.
 
 The existing hues cannot be used as text on ink and are re-cut, not replaced —
 these are additions to `globals.css`, so the light theme keeps working while this
