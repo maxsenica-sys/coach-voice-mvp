@@ -81,8 +81,8 @@ const name = (d) => `launch-${d.w * d.dpr}x${d.h * d.dpr}.png`
  * not the ground the browser computes for --bg. (This comment claimed that
  * comparison for a week before it existed. In that week the shell's wordmark
  * sat 7px lower than it does here, because it inherited body's line-height.) */
-const INK_FROM = '#FBF8F3'
-const INK_TO = '#F4F1EB'
+const INK_FROM = '#1F2421'
+const INK_TO = '#3A4F38'
 const MARK_FROM = '#6F8E6B'
 const MARK_TO = '#4F6B4B'
 const ON_INK = '#F5ECD7'

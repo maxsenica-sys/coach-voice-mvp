@@ -1079,7 +1079,12 @@ async function assertBoot(base) {
       const seek = (t) => pg.evaluate((tt) => {
         window.__cvShellAnims().forEach((a) => { a.pause(); a.currentTime = Math.min(tt, a.effect.getComputedTiming().endTime) })
       }, t)
-      const shot = () => pg.screenshot({ type: 'png' })
+      // Straight from the compositor. page.screenshot() first waits on
+      // document.fonts.ready, and with the chunks hung and several hundred
+      // captures per run that wait timed out once on a loaded machine. The
+      // shell uses only the system stack, so there is nothing to wait for.
+      const cdp = await ctx.newCDPSession(pg)
+      const shot = async () => Buffer.from((await cdp.send('Page.captureScreenshot', { format: 'png' })).data, 'base64')
       return { ctx, pg, end, seek, shot }
     }
 
@@ -1261,6 +1266,79 @@ async function assertBoot(base) {
           `${figFrames} frames of the figures alone: largest change ΔL ${maxD.toFixed(3)} at ${at}ms, ${maxArea}px² at ≥10% — the rule is under 0.100, and --ink-figure is designed at 0.076`,
         )
       }
+    }
+
+    /* ── The other cold start: "/" and its intro ──
+     *
+     * A signed-out launch — which is every first launch after install — goes
+     * from the OS screen to "/", not to the shell, and "/" plays its own intro.
+     * The intro is driven by requestAnimationFrame rather than CSS, so it
+     * cannot be seeked; it is filmed in real time from the compositor with a
+     * CDP screencast instead, and run through the same analysis.
+     *
+     * The film is what the compositor delivered, so its resolution is
+     * reported. A dropped frame merges two steps into one, which can only
+     * make the per-frame area look larger (conservative) but could hide a
+     * very fast on-off at a single pixel; the intro has none by design.
+     *
+     * Its waveform is var(--primary), and Stadium Night lifted --primary from
+     * a mid sage to #A8CBA0 — about a 52% swing against the ink, where it had
+     * been far less. It rises once and falls once, so it should be one flash
+     * per pixel at most. That is now measured rather than reasoned. */
+    if (sharp) {
+      const W = 390, H = 844, N = W * H
+      const ictx = await browser.newContext({ viewport: { width: W, height: H } })
+      const ipg = await ictx.newPage()
+      const cdp = await ictx.newCDPSession(ipg)
+      const film = []
+      cdp.on('Page.screencastFrame', (f) => {
+        film.push({ t: f.metadata.timestamp * 1000, data: f.data })
+        cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => {})
+      })
+      await cdp.send('Page.startScreencast', { format: 'png', maxWidth: W, maxHeight: H, everyNthFrame: 1 })
+      await ipg.goto(base + '/', { waitUntil: 'commit' })
+      await ipg.waitForTimeout(3600)
+      await cdp.send('Page.stopScreencast').catch(() => {})
+      const played = await ipg.evaluate(() => localStorage.getItem('cv_intro_v1') === '1')
+      await ictx.close()
+
+      const iosPng = join(ROOT, 'public', 'splash', 'launch-1170x2532.png')
+      const iosFrame = existsSync(iosPng) ? await lumaFrame(readFileSync(iosPng), W, H) : null
+      const androidFrame = flatFrame(bgc || '#FFFFFF', N)
+      const mI = flashMeter(N, W), mA = flashMeter(N, W)
+      if (iosFrame) mI.push(-1, iosFrame)
+      mA.push(-1, androidFrame)
+      // Drop leading frames from before the document painted (about:blank).
+      let first = null, gaps = [], prevT = null
+      for (const f of film) {
+        const L = await lumaFrame(Buffer.from(f.data, 'base64'), W, H)
+        if (!first) first = L
+        const t = f.t - film[0].t
+        if (prevT !== null) gaps.push(t - prevT)
+        prevT = t
+        mI.push(t, L); mA.push(t, L)
+      }
+      gaps.sort((a, b) => a - b)
+      const med = gaps.length ? Math.round(gaps[gaps.length >> 1]) : 0
+      const worstGap = gaps.length ? Math.round(gaps[gaps.length - 1]) : 0
+      const pct = (s) => `${(s.frac * 100).toFixed(1)}% of the screen (${s.area}px²) swings ≥10%, mean ΔL ${s.mean.toFixed(3)}`
+      if (first) {
+        const hI = iosFrame ? swing(iosFrame, first) : null
+        const hA = swing(androidFrame, first)
+        check(
+          'launch screen → first frame of "/" is not a large-area swing (iOS and Android)',
+          Boolean(hI) && hI.area < FLASH_AREA_PX && hA.area < FLASH_AREA_PX,
+          `iOS ${hI ? pct(hI) : 'no image'}; Android ${bgc}: ${pct(hA)} — limit ${FLASH_AREA_PX}px²`,
+        )
+      }
+      const rI = mI.result(), rA = mA.result()
+      check(
+        'no general flash in the "/" cold start, intro included (WCAG 2.3.1)',
+        film.length > 20 && played && rI.failing < FLASH_AREA_PX && rA.failing < FLASH_AREA_PX && rI.bursts < 7 && rA.bursts < 7,
+        `${film.length} compositor frames (median ${med}ms apart, worst gap ${worstGap}ms), intro ${played ? 'played' : 'DID NOT PLAY — nothing was measured'}. ` +
+        `Large-area transitions: ${rI.events}, at most ${Math.max(rI.bursts, rA.bursts)} in any second (limit 6). ` +
+        `Worst ${Math.max(rI.peakFlashesPerSecond, rA.peakFlashesPerSecond)} flashes/s at any pixel; area over 3/s: iOS ${rI.failing}px² (${rI.where}), Android ${rA.failing}px²`,
+      )
     }
 
     /* ── The mark is legible on its own ground ──
