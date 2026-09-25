@@ -181,9 +181,16 @@
 
      If a label does not fit at --fs-1, the label is too long. Do not add a
      smaller step. */
-  --fs-1:         11px;  /* eyebrows, badges, micro-labels, nav */
-  --fs-2:         12px;  /* secondary/meta */
-  --fs-3:         13px;  /* body */
+  /* RAISED 2026-09-25. These were 11 / 12 / 13px — the same floor judgement as
+     above, made when the floor was 11. Max raised it to 13, so the bottom three
+     steps are now aliases of the one scale rather than a second scale that
+     quietly disagrees with it. That matters beyond tidiness: ~150 call sites
+     use these tokens, and while they held 11 and 12 the type-floor rig reported
+     the app clean while a fifth of its type rendered under the floor. A check
+     that reads 0 while the product ships 11px is worse than no check. */
+  --fs-1:         var(--t-furniture);  /* 13px — eyebrows, badges, nav */
+  --fs-2:         var(--t-body-tight); /* 14px — secondary/meta */
+  --fs-3:         var(--t-body);       /* 15px — body */
   --fs-4:         16px;  /* card titles, lead */
   --fs-5:         19px;  /* section headings */
   --fs-6:         30px;  /* display */
@@ -244,6 +251,16 @@ html, body {
   overflow-x: hidden;
   overflow-x: clip;
 }
+/* `clip` alone is near-absolute, not absolute: it does not contain a
+ * `position: absolute` descendant, because a static body is not that element's
+ * containing block, so its overflow feeds the viewport instead. Measured — a
+ * 900px absolutely-positioned div in a 390px viewport drove window.scrollX to
+ * 510 with clip on both html and body. Making body the containing block closes
+ * it. Static, fixed, float and margin overflow were already contained.
+ *
+ * Both halves of the selector above are load-bearing too: with clip on html
+ * only, the same probe scrolled 510px. Do not simplify it to one. */
+body { position: relative; }
 
 body {
   background: var(--bg);

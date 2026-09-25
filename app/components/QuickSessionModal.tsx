@@ -652,7 +652,19 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
             <div style={{ fontWeight: 900, fontSize: 20 }}>Quick Session</div>
             <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 3 }}>Record a session without leaving the dashboard</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: 'var(--text-muted)', lineHeight: 1 }}>×</button>
+          {/* 44px square: it was a 26px glyph, which is a miss-and-lose-your-place
+              on a phone. Same colour, same glyph, bigger target. */}
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              background: 'none', border: 'none', fontSize: 24, cursor: 'pointer',
+              color: 'var(--text-muted)', lineHeight: 1,
+              minWidth: 44, minHeight: 44, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginTop: -8, marginRight: -10,
+            }}
+          >×</button>
         </div>
 
         {/* Step 1: Record */}
@@ -868,7 +880,6 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                         beside it — no new colour, and nothing that blinks. */}
                     <span
                       role="timer"
-                      data-testid="rec-elapsed"
                       aria-label={`${recStalled ? 'Recording stopped at' : 'Recording'} ${elapsedSpoken}`}
                       style={{
                         fontFamily: 'var(--font-mono)',
@@ -886,7 +897,6 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                       ticking seconds become the only honest signal left. */}
                   {reducedMotion && !recStalled && (
                     <div
-                      data-testid="rec-motion-hint"
                       style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-2)', textAlign: 'center', maxWidth: 320, lineHeight: 1.4 }}
                     >
                       The counter above moves every second while the microphone is live.
@@ -895,7 +905,6 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   {recStalled && (
                     <div
                       role="alert"
-                      data-testid="rec-stalled"
                       style={{ fontSize: 'var(--t-body-tight)', fontWeight: 600, color: 'var(--danger)', textAlign: 'center', maxWidth: 340, lineHeight: 1.4 }}
                     >
                       The microphone stopped — another app may have taken it. Tap Stop &amp; Transcribe to keep what was recorded up to {elapsedClock}.

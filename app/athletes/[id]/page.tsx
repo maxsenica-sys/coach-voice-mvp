@@ -177,7 +177,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
           {caretakers.map(c => (
             <div key={c.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '8px 10px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 'var(--t-body)', fontWeight: 600 }}>{c.caretaker_name} <span style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)' }}>({c.relationship})</span></div>
+                <div style={{ fontSize: 'var(--t-body)', fontWeight: 600, overflowWrap: 'break-word' }}>{c.caretaker_name} <span style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)' }}>({c.relationship})</span></div>
                 <div style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{c.caretaker_email}</div>
               </div>
               <button
@@ -1040,10 +1040,17 @@ export default function AthleteDetailPage() {
                     {(athlete.first_name?.[0] ?? '?').toUpperCase()}
                   </div>
                 )}
-                <div style={{ flex: '1 1 90px', minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{athlete.first_name} {athlete.last_name}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Wraps rather than ellipsising: a truncated name is the one
+                      thing on this bar that must never happen. */}
+                  <div style={{ fontWeight: 800, fontSize: 15, overflowWrap: 'break-word' }}>{athlete.first_name} {athlete.last_name}</div>
                   {!isMobile && <div style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)', marginTop: -1, overflowWrap: 'anywhere' }}>{athlete.email}</div>}
                 </div>
+              </div>
+
+              <div style={isMobile
+                ? { flexBasis: '100%', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }
+                : { display: 'contents' }}>
                 {athlete.status && <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 'var(--t-furniture)', flexShrink: 0 }}>{athlete.status}</span>}
                 {wellnessScore !== null && (
                   <button
@@ -1059,15 +1066,15 @@ export default function AthleteDetailPage() {
                     <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
                   </button>
                 )}
+                {/* Record Session CTA */}
+                <button
+                  className="btn btn-coach"
+                  style={{ fontSize: 'var(--t-furniture)', padding: '7px 14px', gap: 6, fontWeight: 700, flexShrink: 0, marginLeft: 'auto' }}
+                  onClick={() => setShowQuickSession(true)}
+                >
+                  <Icon name="mic" size={13} /> Record Session
+                </button>
               </div>
-              {/* Record Session CTA */}
-              <button
-                className="btn btn-coach"
-                style={{ fontSize: 'var(--t-furniture)', padding: '7px 14px', gap: 6, fontWeight: 700, ...(isMobile ? { flex: '1 1 100%' } : { flexShrink: 0, marginLeft: 'auto' }) }}
-                onClick={() => setShowQuickSession(true)}
-              >
-                <Icon name="mic" size={13} /> Record Session
-              </button>
             </>
           )}
         </div>
@@ -1157,7 +1164,7 @@ export default function AthleteDetailPage() {
                     <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 20, lineHeight: 1, letterSpacing: '-0.03em', color: 'var(--text)' }}>
                       {stat.value}
                     </div>
-                    <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                       {stat.label}
                     </div>
                   </button>

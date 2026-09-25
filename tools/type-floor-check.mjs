@@ -33,6 +33,42 @@ const BASELINE = 0
 const SCAN = ['app', 'lib']
 const SKIP = /node_modules|\.next|\/pdf\//   /* the PDF routes are print, not screen */
 
+/* Resolve the app's own size tokens, transitively.
+ *
+ * The rig read 0 while ~150 call sites rendered at 11 and 12px, because they
+ * said `fontSize: 'var(--fs-1)'` and the scanner only understood numbers. A
+ * floor that a token can walk under is not a floor, and a green check that is
+ * wrong is worse than no check — so the token values are read from the
+ * stylesheet and followed through aliases before anything is judged. */
+function sizeTokens() {
+  const css = fs.readFileSync(path.join(ROOT, 'app/globals.css'), 'utf8')
+  const raw = new Map()
+  for (const m of css.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) raw.set(m[1], m[2].trim())
+  const seen = new Map()
+  const resolve = (name, depth = 0) => {
+    if (seen.has(name)) return seen.get(name)
+    if (depth > 8) return null
+    const v = raw.get(name)
+    if (!v) return null
+    let px = null
+    const direct = v.match(/^([\d.]+)px$/)
+    if (direct) px = parseFloat(direct[1])
+    else {
+      const alias = v.match(/^var\(\s*(--[\w-]+)/)
+      if (alias) px = resolve(alias[1], depth + 1)
+    }
+    seen.set(name, px)
+    return px
+  }
+  const out = new Map()
+  for (const name of raw.keys()) {
+    const px = resolve(name)
+    if (px !== null) out.set(name, px)
+  }
+  return out
+}
+const TOKENS = sizeTokens()
+
 /* A Tailwind size class that is below the floor. text-xs is 12px. */
 const TW = { 'text-xs': 12, 'text-\\[10px\\]': 10, 'text-\\[11px\\]': 11, 'text-\\[12px\\]': 12 }
 
@@ -93,6 +129,11 @@ for (const file of SCAN.flatMap(d => walk(path.join(ROOT, d)))) {
      * size is almost always SMALLER than the number, never larger. */
     for (const m of line.matchAll(/\bfont-?[sS]ize\s*=\s*["']?([\d.]+)["']?/g))
       if (parseFloat(m[1]) < FLOOR) add(parseFloat(m[1]), line)
+    /* a token used as a font size, resolved to the px it actually paints */
+    for (const m of line.matchAll(/font-?[sS]ize\s*[:=]\s*['"]?var\(\s*(--[\w-]+)/g)) {
+      const px = TOKENS.get(m[1])
+      if (px !== undefined && px !== null && px < FLOOR) add(px, line)
+    }
     for (const [cls, px] of Object.entries(TW))
       if (new RegExp(`(^|["'\\s])${cls}(["'\\s]|$)`).test(line)) add(px, line)
   })
