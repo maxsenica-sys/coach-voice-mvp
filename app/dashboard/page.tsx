@@ -657,6 +657,11 @@ function DashboardPageInner() {
   const [addMemberMap, setAddMemberMap] = useState<Record<string, string>>({})
 
   const [allSessions, setAllSessions] = useState<Session[]>([])
+  /* The same newest-N list with no search or athlete filter applied, which is
+   * what Home counts from. The Sessions tab's search used to replace the one
+   * list both screens read, so searching "serve" and going back to Home turned
+   * "sessions this week", the spark and Latest into counts of the matches. */
+  const [homeSessions, setHomeSessions] = useState<Session[]>([])
   const [coverage, setCoverage] = useState<CoverageRow[]>([])
   /* Whether the coverage read has come back at all — not the same question as
    * whether it is empty.
@@ -858,6 +863,7 @@ function DashboardPageInner() {
       const json = await apiJson<{ sessions?: Session[] }>(`/api/sessions/all?${p}`, { cache: 'no-store' })
       const rows: Session[] = json.sessions ?? []
       setAllSessions(rows)
+      if (!search && !athleteId) setHomeSessions(rows)
       // Returned so a caller can diff before/after and work out what a save
       // actually created — see the receipt in onSaved.
       return rows
@@ -1205,7 +1211,7 @@ function DashboardPageInner() {
     return !s || a.first_name.toLowerCase().includes(s) || a.last_name.toLowerCase().includes(s) || a.email.toLowerCase().includes(s)
   })
 
-  const recentSessions = allSessions.slice(0, 3)
+  const recentSessions = homeSessions.slice(0, 3)
   const totalUnreadAll = Object.values(unreadCounts).reduce((a: number, b: number) => a + b, 0)
 
   const calTitle = calMode === 'personal'
@@ -1230,14 +1236,14 @@ function DashboardPageInner() {
    * count a rolling 7 x 86,400,000ms instead, which is the arithmetic that rig
    * exists to catch — and a spark whose "now" bar disagreed with the number
    * printed above it would be worse than either. */
-  const spine = buildSpine(allSessions)
-  /* allSessions is the SESSIONS_WINDOW newest rows across the whole roster. Once
+  const spine = buildSpine(homeSessions)
+  /* homeSessions is the SESSIONS_WINDOW newest rows across the whole roster. Once
    * that window is full, the oldest weeks in it are only partly inside it, and
    * a spark drawn from them would show a busy coach's record tapering away
    * when it did not. So only the weeks the window wholly contains are drawn:
    * the ones after the week of its oldest session. */
-  const windowFull = allSessions.length >= SESSIONS_WINDOW
-  const completeWeeks = completeSpineWeeks(allSessions, windowFull)
+  const windowFull = homeSessions.length >= SESSIONS_WINDOW
+  const completeWeeks = completeSpineWeeks(homeSessions, windowFull)
   const sparkWeeks = completeWeeks > 0 ? spine.weeks.slice(SPINE_WEEKS - completeWeeks) : []
   const sparkTotal = sparkWeeks.reduce((a, b) => a + b, 0)
   const sparkMax = Math.max(1, ...sparkWeeks)
@@ -1841,10 +1847,10 @@ function DashboardPageInner() {
                   const cov = coverageByAthlete.get(a.id)
                   const lastDate = cov
                     ? cov.last_session_date
-                    : allSessions.find(s => s.athlete_id === a.id)?.session_date ?? null
+                    : homeSessions.find(s => s.athlete_id === a.id)?.session_date ?? null
                   const count = cov
                     ? cov.session_count
-                    : allSessions.filter(s => s.athlete_id === a.id).length
+                    : homeSessions.filter(s => s.athlete_id === a.id).length
                   const quiet = !!cov && isQuiet(cov)
                   const unread = unreadCounts[a.id] ?? 0
                   const name = `${a.first_name} ${a.last_name}`
@@ -2598,7 +2604,7 @@ function DashboardPageInner() {
             // this save created. The modal reports nothing back, and reading it
             // from the list means the receipt describes what the server
             // actually wrote rather than what the client asked for.
-            const before = new Set(allSessions.map((s) => s.id))
+            const before = new Set(homeSessions.map((s) => s.id))
             const [after] = await Promise.all([fetchAllSessions(), fetchAthletes(), fetchCoverage()])
             const created = (after ?? []).filter((s) => !before.has(s.id))
             if (created.length === 0) return

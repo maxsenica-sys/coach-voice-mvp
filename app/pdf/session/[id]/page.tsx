@@ -319,9 +319,9 @@ export default function SessionPDFPage() {
   const athleteName = session.athletes
     ? `${session.athletes.first_name} ${session.athletes.last_name}`
     : 'Athlete'
-  const coachName = coach
+  const coachName = (coach
     ? [coach.first_name, coach.last_name].filter(Boolean).join(' ')
-    : 'Coach'
+    : '') || 'Coach'
   const sessionDate = formatSessionDate(session, {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   })

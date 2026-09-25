@@ -348,11 +348,17 @@ export default function FocusCard({ point, dateLabel }: { point: string; dateLab
     // `fonts.ready` only waits for faces something has already asked for. The
     // wordmark's weight of Big Shoulders may never have been used on the page
     // this button sits on, so ask for all three faces the card draws in.
+    //
+    // Each face is asked for by its first family alone and settled separately.
+    // next/font also declares a "… Fallback" face built on local() fonts, and
+    // on a device without that local font the whole load() rejects — early,
+    // before the real face has arrived — which drew the card in Times.
+    const first = (list: string) => list.split(',')[0].trim()
     try {
-      await Promise.all([
-        document.fonts.load(`500 ${SENTENCE_MAX}px ${family}`),
-        document.fonts.load(`800 ${WORDMARK}px ${cast}`),
-        document.fonts.load(`500 ${FURNITURE}px ${mono}`),
+      await Promise.allSettled([
+        document.fonts.load(`500 ${SENTENCE_MAX}px ${first(family)}`),
+        document.fonts.load(`800 ${WORDMARK}px ${first(cast)}`),
+        document.fonts.load(`500 ${FURNITURE}px ${first(mono)}`),
       ])
     } catch { /* draw in whatever has arrived */ }
 

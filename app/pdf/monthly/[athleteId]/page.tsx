@@ -233,7 +233,7 @@ body { box-shadow: none !important; }
 
 .pdf .tablewrap { padding-top: 6px; }
 .pdf .wtable { width: 100%; border-collapse: collapse; }
-.pdf .wtable th { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .18em; color: var(--p-sage); text-align: right; padding: 7px 10px 6px 0; border-bottom: 1px solid var(--p-rule-2); white-space: nowrap; }
+.pdf .wtable th { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--p-sage); text-align: right; padding: 7px 10px 6px 0; border-bottom: 1px solid var(--p-rule-2); white-space: nowrap; }
 .pdf .wtable th:first-child { text-align: left; }
 .pdf .wtable th:last-child { padding-right: 0; }
 .pdf .wtable td { font-family: var(--font-mono); font-weight: 500; font-size: 14px; color: var(--p-ink); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--p-rule); text-align: right; }
@@ -401,7 +401,7 @@ export default function MonthlyReportPage() {
 
   const athleteName = athlete ? `${athlete.first_name} ${athlete.last_name}` : 'Athlete'
   const firstName = athlete?.first_name || 'the athlete'
-  const coachName = coach ? [coach.first_name, coach.last_name].filter(Boolean).join(' ') : 'Coach'
+  const coachName = (coach ? [coach.first_name, coach.last_name].filter(Boolean).join(' ') : '') || 'Coach'
 
   const avgWellness = checkins.length > 0
     ? avg(checkins.map(wellnessScore))
