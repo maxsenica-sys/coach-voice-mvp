@@ -1387,7 +1387,7 @@ export default function AthletePage() {
                       {s.summary && (
                         // Deliberately not in quotation marks: this is the model's
                         // summary of the recording, not words the coach said.
-                        <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.55, marginTop: 6, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.55, marginTop: 6, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
                           {s.summary.replace(/^[•\s]+/, '')}
                         </div>
                       )}
@@ -2165,7 +2165,7 @@ export default function AthletePage() {
                   {new Date(addEventModal + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
                 </div>
               </div>
-              <button onClick={() => setAddEventModal(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-muted)' }}>×</button>
+              <button onClick={() => setAddEventModal(null)} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-muted)', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '-11px -11px -11px 0', flexShrink: 0 }}>×</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>

@@ -1942,9 +1942,16 @@ function DashboardPageInner() {
           backdropFilter: 'blur(14px)',
           WebkitBackdropFilter: 'blur(14px)',
           borderTop: '1px solid var(--border)',
-          display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 2,
+          /* Five equal tracks that content cannot widen, plus a wider gap paid
+             for out of the side padding. At 320px the longest label ("Messages"
+             at the 13px furniture floor) is ~5px wider than its share of the
+             bar, so it overhangs ~2.5px each side; the 4px gap keeps that
+             overhang off its neighbour. `1fr` without the minmax let the labels
+             size the tracks, which fits at 320 with under a pixel to spare and
+             pushes the Messages tab off the screen edge the moment it does not. */
+          display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 4,
           alignItems: 'center',
-          padding: '8px 6px',
+          padding: '8px 2px',
           paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
         }}>
           {BOTTOM_NAV_ITEMS.map((item) => {
