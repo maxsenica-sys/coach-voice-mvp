@@ -2,6 +2,28 @@
 
 /* ─── Design tokens — CoachVoice · Letter Edition ──────────────── */
 :root {
+  /* ── STADIUM NIGHT — 2026-09-25 ───────────────────────────────────────
+   * Max: "allow it, go ahead with the redesign." The banked direction
+   * (DESIGN-010) applied at the token layer: ink ground everywhere, cream
+   * text, sage lifted so it can be READ on ink, the existing hues re-cut
+   * rather than replaced.
+   *
+   * Every token keeps its NAME and its ROLE, so ~1,000 call sites convert
+   * without being edited — only what a role looks like has changed. Value
+   * comments further down describe the old light palette and are kept as the
+   * record of why each role exists; verify:palette recomputes every ratio
+   * from the values declared here, so no comment can go stale unnoticed.
+   *
+   * --primary is now LIGHT. Anything on it must be ink, not white: white on
+   * #A8CBA0 is 1.6:1. --on-primary exists so no call site has to know that.
+   * --coach-color is deliberately unchanged: it is only ever a background
+   * under white text, 4.60:1, and that holds on either ground.
+   *
+   * color-scheme is dark now, and for the same reason it used to be light:
+   * native date, time and select controls take their chrome from it, and
+   * their chrome must match the card they sit on. */
+  --on-primary:   #1F2421;
+  --flood:        #CBEF5E;  /* the one new hue. Record, live, unread, the bar that is now. Nothing else. */
   /* Surfaces — ivory / parchment */
   /* Declared, at last.
    *
@@ -10,29 +32,29 @@
    * including the one in the coach's recording flow — rendered dark chrome on
    * a white card for anyone whose OS is set to dark. The app has no dark theme;
    * saying so is what stops the browser inventing one. */
-  color-scheme: light;
+  color-scheme: dark;
 
-  --bg:           #FBF8F3;
-  --card:         #FFFFFF;
-  --border:       #E3DED2;
-  --border-soft:  #EFEAE0;
-  --surface-2:    #F4F1EB;   /* tinted tile behind an icon or step number */
+  --bg:           #1F2421;
+  --card:         #2A312C;
+  --border:       #3D453F;
+  --border-soft:  #333A35;
+  --surface-2:    #333B35;   /* tinted tile behind an icon or step number */
   /* The resting colour of a not-yet-loaded box. Sits between --border-soft and
      --surface-2 on purpose: dark enough to read as a placeholder against
      --card, light enough that a screen full of them is not alarming. Defined as
      a token because the alternative is what happened everywhere else in this
      stylesheet's history — a hex invented at each call site, because the ramp
      has no step here to reach for. */
-  --skeleton:     #EDE9E1;
+  --skeleton:     #353D37;
 
   /* Primary — sage green (general interactive) */
-  --primary:      #5D7F59;
-  --primary-dark: #4F6B4B;
-  --primary-light:#E6EEE2;
+  --primary:      #A8CBA0;
+  --primary-dark: #BFDBB8;
+  --primary-light:#2E3B2F;
 
   /* Coach — warm rust / stamp */
   --coach-color:  #B55C3E;
-  --coach-light:  #F4DED3;
+  --coach-light:  #3A2A24;
   /* --coach-color is safe as text on white (4.60:1) but NOT on its own light
      tint: #B55C3E on --coach-light measures 3.56:1, failing 1.4.3. That gap in
      the token set is why the one forward-looking line the product produces —
@@ -41,28 +63,28 @@
      and 7.27:1 on white, and is not a new hue: it was already in the app as
      the dark stop of the athlete wellness FAB gradient. Use this, not
      --coach-color, for rust text on any rust-tinted ground. */
-  --coach-on-light: #8E3F27;
-  --coach-border: #EBCBBC;   /* decorative hairline on --coach-light */
+  --coach-on-light: #E39A7A;
+  --coach-border: #5A3E33;   /* decorative hairline on --coach-light */
 
   /* Athlete — sage (mirrors primary) */
   /* Kept in step with --primary, which it has always been an alias of. When
      --primary moved to fix the coach button, this stayed behind and the
      ATHLETE's primary button was left failing at 3.65:1 — found by the palette
      rig, not by a person. */
-  --athlete-color:#5D7F59;
-  --athlete-light:#E6EEE2;
+  --athlete-color:#A8CBA0;
+  --athlete-light:#2E3B2F;
 
   /* Accent — sage deep */
-  --accent:       #5D7F59;
-  --accent-dark:  #4F6B4B;
-  --accent-light: #E6EEE2;
+  --accent:       #A8CBA0;
+  --accent-dark:  #BFDBB8;
+  --accent-light: #2E3B2F;
 
   /* Energy — warm amber */
   /* 3.17:1 under white text, in .btn-energy, since it was written. The worst
      contrast failure in the palette and the one nobody had measured, because
      the token's only recorded ratio was for --energy-dark. */
-  --energy:       #966E28;
-  --energy-light: #F6E9CC;
+  --energy:       #E4BC6B;
+  --energy-light: #3A3322;
 
   /* Wellness state scale — good / ok / low / no-data.
      These render as *text* (scores on the coach's roster strip, the athlete
@@ -95,37 +117,37 @@
    *
    * `none` is deliberately off the axis: "no data" is not a degree of wellness.
    * It is desaturated and sits at the good end's lightness. */
-  --wellness-good:      #46742F;  /* 5.53:1 white · 5.22:1 bg · 4.66:1 own tint */
-  --wellness-good-tint: #E6EEE2;  /* L* 93.2 */
-  --wellness-ok:        #845B15;  /* 6.02:1 white · 5.68:1 bg · 4.55:1 own tint */
-  --wellness-ok-tint:   #EEDEC4;  /* L* 89.1 */
-  --wellness-low:       #8C2F21;  /* 8.26:1 white · 7.79:1 bg · 4.54:1 own tint */
-  --wellness-low-tint:  #E5B5AE;  /* L* 77.7 */
-  --wellness-none:      #626F69;  /* 5.25:1 white · 4.96:1 bg · 4.51:1 own tint */
-  --wellness-none-tint: #ECEEED;  /* L* 93.9 — off the axis on purpose */
+  --wellness-good:      #A6D98F;  /* 5.53:1 white · 5.22:1 bg · 4.66:1 own tint */
+  --wellness-good-tint: #3A5A33;  /* L* 93.2 */
+  --wellness-ok:        #F0C97E;  /* 6.02:1 white · 5.68:1 bg · 4.55:1 own tint */
+  --wellness-ok-tint:   #4A3E24;  /* L* 89.1 */
+  --wellness-low:       #F5A596;  /* 8.26:1 white · 7.79:1 bg · 4.54:1 own tint */
+  --wellness-low-tint:  #4A2626;  /* L* 77.7 */
+  --wellness-none:      #B7B2A3;  /* 5.25:1 white · 4.96:1 bg · 4.51:1 own tint */
+  --wellness-none-tint: #343934;  /* L* 93.9 — off the axis on purpose */
 
   /* Semantic */
-  --danger:       #B0473A;
-  --danger-light: #F4DED3;
-  --warning:      #B8883A;
-  --warning-light:#F6E9CC;
-  --warning-border:#E4CE9A;  /* decorative hairline on --warning-light */
+  --danger:       #F2988A;
+  --danger-light: #43292A;
+  --warning:      #E4BC6B;
+  --warning-light:#3E3522;
+  --warning-border:#5E5030;  /* decorative hairline on --warning-light */
   /* Amber as TEXT. --warning/--energy are fills: #B8883A is 2.98:1 on white and
      fails 1.4.3. The dashboard had reached for #C9933A (2.72:1, on the INVITED
      status label) and #9A7229 (4.36:1, on the Unread stat) instead of a token,
      and both failed. 5.35:1 on white, 5.05:1 on --bg. */
-  --energy-dark:  #8A6420;
-  --success:      #5D8257;
-  --success-light:#E6ECDF;
-  --success-border:#CBD7C0;  /* decorative hairline on --success-light */
+  --energy-dark:  #E4BC6B;
+  --success:      #93C97C;
+  --success-light:#2A3A26;
+  --success-border:#3F5A38;  /* decorative hairline on --success-light */
 
   /* Typography */
-  --text:         #1F2421;
-  --text-2:       #5D6661;
+  --text:         #F5ECD7;
+  --text-2:       #B9B4A4;
   /* Was #9BA29B — 2.47:1 on --bg, failing AA (4.5:1) and even the 3:1 large-text
      floor, while carrying session dates, stat sub-labels and empty-state copy at
      10-13px on every page. #6B736D measures 4.61:1 on --bg and 4.89:1 on --card. */
-  --text-muted:   #6B736D;
+  --text-muted:   #A8A395;
 
   /* Fonts — all three are self-hosted by next/font in app/layout.tsx, which is
      what defines these three variables. They used to name the families as bare
@@ -306,17 +328,17 @@ body {
 /* Gradient card header */
 .card-header-gradient {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-  color: #fff;
+  color: var(--on-primary);
   border-radius: var(--radius) var(--radius) 0 0;
   padding: 16px 20px;
 }
 
 /* ─── Journal / diary card ───────────────────────────────────── */
 .card-journal {
-  background: #FEFAF2;
-  border: 1px solid #DDD0B8;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 2px 8px rgb(92 78 66 / .10);
+  box-shadow: 0 2px 8px rgb(0 0 0 / .28);
   position: relative;
 }
 .card-journal::before {
@@ -325,7 +347,7 @@ body {
   left: 36px;
   top: 0; bottom: 0;
   width: 1px;
-  background: rgba(245, 158, 11, .25);
+  background: rgba(228, 188, 107, .22);
   border-radius: 1px;
 }
 
@@ -337,7 +359,7 @@ body {
   background: var(--coach-light);
   padding: 14px 16px;
   border-radius: 12px;
-  border: 1px solid #EBCBBC;
+  border: 1px solid var(--coach-border);
 }
 
 /* ─── Note content ───────────────────────────────────────────── */
@@ -369,13 +391,13 @@ body {
 
 .btn-primary {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-  color: #fff;
+  color: var(--on-primary);
   border-color: transparent;
-  box-shadow: 0 2px 8px rgb(111 142 107 / .30);
+  box-shadow: 0 2px 8px rgb(0 0 0 / .35);
 }
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 6px 20px rgb(111 142 107 / .40);
+  box-shadow: 0 6px 20px rgb(0 0 0 / .45);
 }
 .btn-primary:active:not(:disabled) { transform: translateY(0) scale(0.98); }
 
@@ -394,9 +416,9 @@ body {
 .btn-danger {
   background: var(--danger-light);
   color: var(--danger);
-  border-color: #EBCBBC;
+  border-color: #5A3530;
 }
-.btn-danger:hover:not(:disabled) { background: #EDCFC5; }
+.btn-danger:hover:not(:disabled) { background: #522F2E; }
 
 .btn-coach {
   background: linear-gradient(135deg, #9A4930 0%, var(--coach-color) 100%);
@@ -411,9 +433,9 @@ body {
 
 .btn-athlete {
   background: linear-gradient(135deg, var(--athlete-color) 0%, var(--primary-dark) 100%);
-  color: #fff;
+  color: var(--on-primary);
   border-color: transparent;
-  box-shadow: 0 2px 8px rgb(111 142 107 / .30);
+  box-shadow: 0 2px 8px rgb(0 0 0 / .35);
 }
 .btn-athlete:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
@@ -421,8 +443,8 @@ body {
 }
 
 .btn-energy {
-  background: linear-gradient(135deg, var(--energy) 0%, #9A6820 100%);
-  color: #fff;
+  background: linear-gradient(135deg, var(--energy) 0%, #C99A45 100%);
+  color: var(--on-primary);
   border-color: transparent;
   box-shadow: 0 2px 8px rgb(184 136 58 / .30);
 }
@@ -480,14 +502,14 @@ textarea.input { resize: vertical; min-height: 80px; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.badge-active   { background: var(--success-light); color: var(--success);       border: 1px solid #CBD7C0; }
-.badge-invited  { background: var(--warning-light); color: #8B6621;               border: 1px solid #E4CE9A; }
-.badge-coach    { background: var(--coach-light);   color: var(--coach-on-light); border: 1px solid #EBCBBC; }
-.badge-athlete  { background: var(--athlete-light); color: var(--athlete-color); border: 1px solid #CBD7C0; }
-.badge-session  { background: var(--primary-light); color: var(--primary);       border: 1px solid #CBD7C0; }
-.badge-homework { background: var(--warning-light); color: #8B6621;               border: 1px solid #E4CE9A; }
-.badge-goal     { background: var(--accent-light);  color: var(--accent-dark);   border: 1px solid #CBD7C0; }
-.badge-reminder { background: var(--primary-light); color: var(--primary-dark);  border: 1px solid #CBD7C0; }
+.badge-active   { background: var(--success-light); color: var(--success);       border: 1px solid var(--success-border); }
+.badge-invited  { background: var(--warning-light); color: var(--warning);        border: 1px solid var(--warning-border); }
+.badge-coach    { background: var(--coach-light);   color: var(--coach-on-light); border: 1px solid var(--coach-border); }
+.badge-athlete  { background: var(--athlete-light); color: var(--athlete-color); border: 1px solid var(--success-border); }
+.badge-session  { background: var(--primary-light); color: var(--primary);       border: 1px solid var(--success-border); }
+.badge-homework { background: var(--warning-light); color: var(--warning);        border: 1px solid var(--warning-border); }
+.badge-goal     { background: var(--accent-light);  color: var(--accent-dark);   border: 1px solid var(--success-border); }
+.badge-reminder { background: var(--primary-light); color: var(--primary-dark);  border: 1px solid var(--success-border); }
 .badge-other    { background: var(--border-soft); color: var(--text-2); border: 1px solid var(--border); }
 
 /* ─── Divider / Typography ───────────────────────────────────── */
@@ -589,13 +611,13 @@ textarea.input { resize: vertical; min-height: 80px; }
 }
 .nav-pill.active {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-  color: #fff;
+  color: var(--on-primary);
   border-color: transparent;
-  box-shadow: 0 3px 12px rgb(111 142 107 / .30);
+  box-shadow: 0 3px 12px rgb(0 0 0 / .35);
 }
 .nav-pill.active-athlete {
   background: linear-gradient(135deg, var(--athlete-color) 0%, var(--primary-dark) 100%);
-  color: #fff;
+  color: var(--on-primary);
   border-color: transparent;
   box-shadow: 0 3px 12px rgb(111 142 107 / .30);
 }
@@ -664,7 +686,7 @@ textarea.input { resize: vertical; min-height: 80px; }
 .recording-dot {
   width: 10px; height: 10px;
   border-radius: 50%;
-  background: #EF4444;
+  background: var(--flood);
   position: relative;
   display: inline-block;
 }
@@ -672,7 +694,7 @@ textarea.input { resize: vertical; min-height: 80px; }
   content: '';
   position: absolute; inset: 0;
   border-radius: 50%;
-  background: #EF4444;
+  background: var(--flood);
   animation: pulse-ring 1.2s ease-out infinite;
 }
 
@@ -789,13 +811,13 @@ input, textarea, select, button {
 
 /* ─── Gradient backgrounds ───────────────────────────────────── */
 .bg-gradient-sport {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 50%, var(--coach-color) 100%);
+  background: linear-gradient(135deg, #1F2421 0%, #3A4F38 50%, #7A3E2A 100%);
 }
 .bg-gradient-coach {
   background: linear-gradient(135deg, #1F2421 0%, #4F6B4B 50%, #6F8E6B 100%);
 }
 .bg-gradient-athlete {
-  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--athlete-color) 50%, #8EA887 100%);
+  background: linear-gradient(135deg, #1F2421 0%, #3A4F38 50%, #4F6B4B 100%);
 }
 
 /* ─── Progress bar ───────────────────────────────────────────── */
@@ -835,7 +857,7 @@ input, textarea, select, button {
   inset: 0;
   pointer-events: none;
   opacity: var(--grain-opacity, 0.4);
-  background-image: radial-gradient(#E3DED2 0.5px, transparent 0.5px);
+  background-image: radial-gradient(rgba(245, 236, 215, 0.35) 0.5px, transparent 0.5px);
   background-size: 14px 14px;
   z-index: 0;
 }

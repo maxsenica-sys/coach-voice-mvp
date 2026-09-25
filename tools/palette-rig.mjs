@@ -84,6 +84,13 @@ for (const [fg, bg, label] of [
   ['--text-2', '--bg', 'secondary text on the ground'],
   ['--text-2', '--card', 'secondary text on a card'],
   ['--text-muted', '--card', 'muted text on a card'],
+  ['--text-muted', '--bg', 'muted text on the ground'],
+  // Stadium Night lifted --primary so it can be read on ink; it is now used
+  // as text as well as a fill, so it is checked as both.
+  ['--primary', '--bg', 'sage as text on the ground'],
+  ['--primary', '--card', 'sage as text on a card'],
+  ['--on-primary', '--primary', 'text on the primary button'],
+  ['--danger', '--card', 'an error on a card'],
 ]) {
   const r = ratio(t(fg), t(bg))
   check(r >= 4.5, label, `${t(fg)} on ${t(bg)} = ${r.toFixed(2)}:1`)
@@ -94,9 +101,9 @@ console.log(`\n   ${BOLD}Wellness${OFF} ${DIM}— readable, and ordered by light
 const states = ['good', 'ok', 'low', 'none']
 for (const s of states) {
   const fg = t(`--wellness-${s}`), tint = t(`--wellness-${s}-tint`)
-  const worst = Math.min(ratio(fg, '#FFFFFF'), ratio(fg, t('--bg')), ratio(fg, tint))
+  const worst = Math.min(ratio(fg, t('--card')), ratio(fg, t('--bg')), ratio(fg, tint))
   check(worst >= 4.5, `${s} is readable on every surface it appears on`,
-    `worst of white / ground / own tint = ${worst.toFixed(2)}:1`)
+    `worst of card / ground / own tint = ${worst.toFixed(2)}:1`)
 }
 
 /* The ordering check.
@@ -119,7 +126,7 @@ const spread = tintL[0] - tintL[2]
 check(spread >= 10, 'the scale is separated enough to survive greyscale',
   `spread ${spread.toFixed(1)} L* (needs 10+; it was 2.7)`)
 
-// ── 3 · gradients under white text ───────────────────────────────────────
+// ── 3 · gradients under the text colour each rule declares ───────────────────────────────────────
 console.log(`\n   ${BOLD}Gradients${OFF} ${DIM}— both ends, not just the dark one${OFF}`)
 /* A gradient has two ends and only one of them tends to get measured. The
  * primary button passed at its dark stop (5.94:1) and failed at its light one
@@ -144,7 +151,13 @@ for (const rule of CSS.split('}')) {
   const selector = rule.slice(0, brace).trim().split('\n').pop().trim()
   const body = rule.slice(brace + 1)
   if (!/linear-gradient/.test(body)) continue
-  if (!/color:\s*(#fff\b|#ffffff\b|white\b)/i.test(body)) continue
+  const colorDecl = body.match(/(?:^|[;\s])color:\s*(#[0-9a-fA-F]{3,6}\b|white\b|var\((--[\w-]+)\))/i)
+  if (!colorDecl) continue
+  const textHex = colorDecl[2] ? tokens[colorDecl[2]]
+    : /white/i.test(colorDecl[1]) ? '#FFFFFF'
+    : colorDecl[1].length === 4 ? '#' + colorDecl[1].slice(1).split('').map((x) => x + x).join('')
+    : colorDecl[1]
+  if (!textHex) continue
   /* The whole declaration, not a paren-matched slice.
    *
    * A third wrong version lived here: `linear-gradient\(([\s\S]*?)\)` is
@@ -158,8 +171,8 @@ for (const rule of CSS.split('}')) {
     const stop = x[1]
     if (!tokens[stop]) continue
     gradientsSeen++
-    const r = ratio('#FFFFFF', tokens[stop])
-    check(r >= 4.5, `${selector} — white text over ${stop}`, `${tokens[stop]} = ${r.toFixed(2)}:1`)
+    const r = ratio(textHex, tokens[stop])
+    check(r >= 4.5, `${selector} — ${textHex} text over ${stop}`, `${tokens[stop]} = ${r.toFixed(2)}:1`)
   }
 }
 check(gradientsSeen > 0, 'the gradient scan actually found gradients',
@@ -206,8 +219,15 @@ check(pairsSeen >= 6, 'the pair scan actually found pairs',
 
 // ── 4 · the browser is told which theme this is ──────────────────────────
 console.log(`\n   ${BOLD}Scheme${OFF}`)
-check(/color-scheme:\s*light/.test(CSS), 'color-scheme is declared',
-  'without it, UA-styled date and select controls render dark chrome on a white card')
+{
+  const scheme = (CSS.match(/color-scheme:\s*(light|dark)/) || [])[1]
+  const groundIsDark = lstar(t('--bg')) < 50
+  const want = groundIsDark ? 'dark' : 'light'
+  check(scheme === want, `color-scheme matches the ground (${want})`,
+    scheme
+      ? `declared ${scheme}, --bg is L* ${lstar(t('--bg')).toFixed(1)} — native date, time and select controls take their chrome from this, and it must match the card they sit on`
+      : 'not declared — the browser then picks native control chrome for itself')
+}
 
 // ── report ───────────────────────────────────────────────────────────────
 console.log()
