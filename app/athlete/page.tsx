@@ -15,7 +15,7 @@ import {
   overallWellnessScore, overallScoreColor,
   type WellnessCheckin,
 } from '@/lib/wellness-config'
-import { fmtDate, fmtDateTime } from '@/lib/date-utils'
+import { fmtDate, fmtDateTime, fmtDateDivider } from '@/lib/date-utils'
 import ListState from '@/app/components/ListState'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { buildSpine, SPINE_MIN_SESSIONS, SPINE_WEEKS } from '@/lib/training-spine'
@@ -253,7 +253,7 @@ const SN_CSS = `
   color:var(--text);text-transform:uppercase;overflow-wrap:anywhere}
 .ah-d-body{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}
 .ah-d-body li{display:grid;grid-template-columns:13px minmax(0,1fr);gap:9px;align-items:start}
-.ah-d-body li>span{color:var(--primary);font-size:15px;line-height:1.5}
+.ah-d-body li>span{width:5px;height:5px;border-radius:50%;background:var(--primary);margin:9px 0 0 2px}
 .ah-d-body li p{margin:0;font-family:var(--font-display);font-weight:400;font-size:var(--t-body);line-height:1.5;color:var(--text);overflow-wrap:anywhere}
 /* TAKE INTO NEXT SESSION: the brightest thing on the card without spending
    floodlight on it. The only filled field, the largest body type, and the
@@ -294,6 +294,37 @@ const SN_CSS = `
 
 .ah-note{width:100%;min-height:52px;padding:12px 14px;border-radius:14px;border:1px dashed var(--line-2);background:transparent;cursor:pointer;
   display:flex;align-items:center;gap:10px;color:var(--text-2);font-family:var(--font-sans);font-size:var(--fs-2);font-weight:600;text-align:left}
+
+/* Messages: one correspondent, voice picks the type */
+.ah-corr{position:relative;padding-top:13px;margin-bottom:6px}
+.ah-corr .nm{margin:0;font-family:var(--font-cast);font-weight:700;font-size:26px;line-height:1.05;letter-spacing:.045em;color:var(--text);text-transform:uppercase}
+.ah-corr .sub{margin-top:6px;font-size:var(--fs-2);line-height:1.45;color:var(--text-2)}
+.ah-day{display:flex;align-items:center;gap:10px;margin:14px 0 10px;font-family:var(--font-cast);font-weight:700;font-size:13px;
+  letter-spacing:.26em;color:var(--text-2);text-transform:uppercase;text-align:center}
+.ah-day i{flex:1;min-width:16px;height:1px;background:var(--line)}
+.ah-msg{display:flex;flex-direction:column;margin-bottom:8px;min-width:0}
+.ah-msg.in{align-items:flex-start}
+.ah-msg.out{align-items:flex-end}
+.ah-bub{max-width:85%;min-width:0;padding:10px 13px;color:var(--text);overflow-wrap:anywhere}
+.ah-bub.media{padding:6px}
+.ah-msg.in .ah-bub{border-radius:4px 16px 16px 16px;background:var(--coach-light);border:1px solid var(--coach-border);
+  font-family:var(--font-display);font-size:16px;line-height:1.42}
+.ah-msg.out .ah-bub{border-radius:16px 4px 16px 16px;background:var(--card);border:1px solid var(--border-soft);border-left:2px solid var(--primary);
+  font-family:var(--font-sans);font-size:var(--t-body);font-weight:500;line-height:1.46}
+.ah-vlabel{margin-bottom:6px;font-family:var(--font-cast);font-weight:700;font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--text-2)}
+.ah-msg.in .ah-vlabel{color:var(--ember)}
+.ah-stamp{margin-top:4px;padding:0 4px;font-family:var(--font-mono);font-weight:500;font-size:13px;letter-spacing:.04em;color:var(--text-2)}
+.ah-composer{position:sticky;z-index:160;display:flex;align-items:flex-end;gap:8px;padding:8px;
+  border:1px solid var(--line-2);border-radius:24px;background:rgba(21,25,22,0.92);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.ah-composer textarea{flex:1;min-width:0;resize:none;min-height:44px;max-height:100px;padding:11px 8px;border:none;border-radius:12px;
+  background:transparent;color:var(--text);font-family:var(--font-sans);font-size:16px;line-height:1.4;outline:none}
+.ah-composer textarea::placeholder{color:var(--text-2)}
+.ah-composer textarea:focus-visible{box-shadow:inset 0 0 0 1.5px var(--primary)}
+.ah-cbtn{width:44px;height:44px;flex:none;padding:0;border-radius:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--line-2);background:rgba(245,236,215,0.05);color:var(--text-2);font-size:18px;font-weight:800}
+.ah-cbtn:disabled{cursor:not-allowed}
+.ah-cbtn.go{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
 
 /* Bottom nav: floating, five equal tracks */
 .ah-veil{position:fixed;left:0;right:0;bottom:0;height:calc(110px + env(safe-area-inset-bottom));z-index:150;pointer-events:none;
@@ -477,9 +508,17 @@ export default function AthletePage() {
   const [tab, setTab] = useState<Tab>('home')
   const mainRef = useRef<HTMLElement>(null)
 
-  // Scroll to top whenever tab changes
+  // Scroll to top whenever tab changes.
+  //
+  // The window, not <main>: main grows with its content, so the document is
+  // what scrolls, and scrolling main alone was a no-op — a tab opened wherever
+  // the last one had been left. main also no longer declares overflowY:auto,
+  // which made it a scroll container that never scrolled: that silently
+  // disabled position:sticky for everything inside it (the message composer)
+  // and made main, not the clipped body, the box a too-wide child would
+  // scroll sideways.
   useEffect(() => {
-    mainRef.current?.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
   }, [tab])
 
   const [loading, setLoading] = useState(true)
@@ -1314,7 +1353,7 @@ export default function AthletePage() {
       {/* 20px gutter. The bottom pad clears the floating nav — 64px tall,
           10px up from the edge or the safe area — plus room for the last row
           to sit above the veil rather than under it. */}
-      <main ref={mainRef} style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '14px 20px' : '24px 20px', overflowY: 'auto', paddingBottom: isMobile ? 'calc(112px + env(safe-area-inset-bottom))' : 40 }}>
+      <main ref={mainRef} style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '14px 20px' : '24px 20px', paddingBottom: isMobile ? 'calc(112px + env(safe-area-inset-bottom))' : 40 }}>
         <div className="ah-ticker">
           <span className="num">
             {new Date().toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')}
@@ -1616,7 +1655,7 @@ export default function AthletePage() {
                       {bullets.length > 0 && (
                         <ul className="ah-d-body">
                           {bullets.map((b, j) => (
-                            <li key={j}><span aria-hidden>•</span><p>{b}</p></li>
+                            <li key={j}><span aria-hidden /><p>{b}</p></li>
                           ))}
                         </ul>
                       )}
@@ -1808,7 +1847,7 @@ export default function AthletePage() {
                           </div>
                         </div>
                         <div style={{ width: 28, height: 28, borderRadius: '50%', background: isOpen ? 'var(--primary)' : 'var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 }}>
-                          <span style={{ color: isOpen ? 'var(--on-primary)' : 'var(--text-2)', fontSize: 'var(--fs-1)', fontWeight: 900, lineHeight: 1 }}>{isOpen ? '▲' : '▼'}</span>
+                          <span aria-hidden style={{ color: isOpen ? 'var(--on-primary)' : 'var(--text)', fontSize: 'var(--fs-1)', fontWeight: 900, lineHeight: 1 }}>{isOpen ? '▲' : '▼'}</span>
                         </div>
                       </button>
 
@@ -1978,14 +2017,44 @@ export default function AthletePage() {
           </div>
         )}
 
-        {/* ─── Tab: Messages ─── */}
-        {tab === 'messages' && (
-          <div className="ah-panel" style={{ padding: 18 }}>
-            <div className="ah-sec" style={{ marginBottom: 6 }}><h2>Messages from your coach</h2></div>
-            <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 18 }}>All messages between you and your coach stay private here.</div>
+        {/* ─── Tab: Messages ───
+            Stadium Night, the athlete's side of the thread (snE-2). She has
+            exactly one correspondent, so there is no list, no search and no
+            back button: the room goes to who she is talking to, under the
+            coach's ember rule, and to the thread.
+
+            Voice picks the type, not direction — the same rule MessagingPanel
+            follows on the coach's side, so a bubble reads the same in both
+            apps. The coach's words are set in Newsreader on the ember tint;
+            hers are in Plus Jakarta on the card with a sage edge. There is no
+            floodlight here: unread is the only thing that may wear it, and the
+            athlete side has no unread source (see the header button). */}
+        {tab === 'messages' && (() => {
+          // Day dividers, so each message carries only its clock time.
+          // created_at is nullable in the schema; a row without one gets no
+          // divider and no time rather than one stamped 1970.
+          const thread: ({ kind: 'day'; key: string; label: string } | { kind: 'msg'; msg: MessageRow })[] = []
+          let lastDay = ''
+          for (const m of messages) {
+            if (m.created_at) {
+              const day = new Date(m.created_at).toDateString()
+              if (day !== lastDay) {
+                thread.push({ kind: 'day', key: 'day-' + day, label: fmtDateDivider(m.created_at) })
+                lastDay = day
+              }
+            }
+            thread.push({ kind: 'msg', msg: m })
+          }
+          return (
+          <div style={{ maxWidth: 620 }}>
+            <div className="ah-corr">
+              <span className="ah-edge" aria-hidden />
+              <h2 className="nm">Your coach</h2>
+              <div className="sub">All messages between you and your coach stay private here.</div>
+            </div>
 
             {/* Message list */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16, minHeight: 120 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 14, minHeight: 120 }}>
               {msgLoading && <div style={{ textAlign: 'center', color: 'var(--text-2)', fontSize: 'var(--fs-3)', padding: 20 }}>Loading…</div>}
               {!msgLoading && messages.length === 0 && (
                 <ListState
@@ -1998,7 +2067,13 @@ export default function AthletePage() {
                   onRetry={msgLoadError ? () => { void loadMessages() } : undefined}
                 />
               )}
-              {messages.map((msg) => {
+              {thread.map((item) => {
+                if (item.kind === 'day') {
+                  return (
+                    <div key={item.key} className="ah-day"><i aria-hidden />{item.label}<i aria-hidden /></div>
+                  )
+                }
+                const { msg } = item
                 const isAthlete = msg.sender_role === 'athlete'
                 // Bound once so the narrowing survives into the onClick
                 // closure below — inside a callback TypeScript can no longer
@@ -2006,27 +2081,19 @@ export default function AthletePage() {
                 // insist: `messages` is state and could be replaced mid-click.
                 const mediaUrl = msg.media_url
                 return (
-                  <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isAthlete ? 'flex-end' : 'flex-start', marginBottom: 4 }}>
-                    <div style={{
-                      maxWidth: '75%', padding: msg.msg_type === 'text' ? '9px 14px' : 6,
-                      borderRadius: isAthlete ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                      // Sage-lift under ink: --on-primary, never white (1.6:1).
-                      background: isAthlete ? 'var(--athlete-color)' : 'var(--card)',
-                      color: isAthlete ? 'var(--on-primary)' : 'var(--text)',
-                      border: isAthlete ? 'none' : '1px solid var(--border)',
-                      fontSize: 15, lineHeight: 1.5, overflowWrap: 'anywhere',
-                    }}>
+                  <div key={msg.id} className={isAthlete ? 'ah-msg out' : 'ah-msg in'}>
+                    <div className={msg.msg_type === 'text' ? 'ah-bub' : 'ah-bub media'}>
                       {msg.msg_type === 'text' && <span>{msg.content}</span>}
-                      {msg.msg_type === 'image' && msg.media_url && <img src={msg.media_url} alt="image" style={{ maxWidth: 240, maxHeight: 200, borderRadius: 10, display: 'block', cursor: 'pointer' }} onClick={() => { if (mediaUrl) window.open(mediaUrl, '_blank') }} />}
-                      {msg.msg_type === 'video' && msg.media_url && <video src={msg.media_url} controls style={{ maxWidth: 280, maxHeight: 180, borderRadius: 10, display: 'block' }} />}
+                      {msg.msg_type === 'image' && msg.media_url && <img src={msg.media_url} alt="image" style={{ maxWidth: 'min(240px, 100%)', maxHeight: 200, borderRadius: 10, display: 'block', cursor: 'pointer' }} onClick={() => { if (mediaUrl) window.open(mediaUrl, '_blank') }} />}
+                      {msg.msg_type === 'video' && msg.media_url && <video src={msg.media_url} controls style={{ maxWidth: 'min(280px, 100%)', maxHeight: 180, borderRadius: 10, display: 'block' }} />}
                       {msg.msg_type === 'audio' && msg.media_url && (
                         <div style={{ padding: '6px 4px' }}>
-                          <div style={{ fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 4, color: isAthlete ? 'var(--on-primary)' : 'var(--text-2)' }}>🎤 Voice message</div>
-                          <audio controls src={msg.media_url} style={{ height: 36, width: 220 }} />
+                          <div className="ah-vlabel">Voice message</div>
+                          <audio controls src={msg.media_url} style={{ display: 'block', height: 40, width: 240, maxWidth: '100%' }} />
                         </div>
                       )}
                     </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-1)', color: 'var(--text-2)', marginTop: 3, paddingLeft: isAthlete ? 0 : 4, paddingRight: isAthlete ? 4 : 0 }}>
+                    <div className="ah-stamp">
                       {/* created_at is nullable in the schema, and
                           `new Date(null)` is the epoch — a message stamped
                           01:00 in 1970 rather than an empty slot. */}
@@ -2045,14 +2112,14 @@ export default function AthletePage() {
               <div
                 role="alert"
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 8, marginTop: 12,
-                  padding: '10px 12px', borderRadius: 12,
-                  background: 'var(--danger-light)', fontSize: 'var(--fs-4)',
+                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
+                  padding: '4px 4px 4px 12px', borderRadius: 14,
+                  background: 'var(--danger-light)', border: '1px solid var(--danger)', fontSize: 'var(--fs-3)',
                   color: 'var(--text)', lineHeight: 1.45,
                 }}
               >
-                <span aria-hidden="true" style={{ fontSize: 16, flexShrink: 0 }}>⚠</span>
-                <span style={{ flex: 1, overflowWrap: 'anywhere' }}>
+                <span aria-hidden="true" style={{ fontSize: 16, flexShrink: 0, color: 'var(--danger)' }}>⚠</span>
+                <span style={{ flex: 1, minWidth: 0, padding: '8px 0', overflowWrap: 'anywhere' }}>
                   {msgSendError} <strong>Your coach has not seen this yet.</strong>
                 </span>
                 <button
@@ -2066,20 +2133,21 @@ export default function AthletePage() {
               </div>
             )}
 
-            {/* Input */}
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+            {/* Input — held above the floating nav while the thread scrolls,
+                so there is always somewhere to answer. */}
+            <div className="ah-composer" style={{ bottom: isMobile ? 'calc(84px + env(safe-area-inset-bottom))' : 16 }}>
               <button
                 title="Attach photo or video"
                 aria-label="Attach photo or video"
+                className="ah-cbtn"
                 onClick={() => msgFileInputRef.current?.click()}
-                style={{ width: 44, height: 44, borderRadius: '50%', border: '1px solid var(--line-2)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 0 }}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21.4 11.1 12.2 20.3a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" /></svg>
               </button>
               <input ref={msgFileInputRef} type="file" accept="image/*,video/*,audio/*" style={{ display: 'none' }}
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMsgMedia(f); e.target.value = '' }} />
               <textarea
-                style={{ flex: 1, minWidth: 0, resize: 'none', borderRadius: 22, border: '1px solid var(--line-2)', padding: '11px 16px', fontSize: 16, lineHeight: 1.4, minHeight: 44, maxHeight: 100, background: 'var(--bg)', color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
+                aria-label="Message your coach"
                 placeholder="Type a message…"
                 value={msgText}
                 onChange={(e) => { setMsgText(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px' }}
@@ -2104,11 +2172,12 @@ export default function AthletePage() {
                 onClick={sendMessage}
                 disabled={!msgText.trim() || msgSending}
                 aria-label="Send"
-                style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: msgText.trim() ? 'var(--athlete-color)' : 'var(--border)', color: msgText.trim() ? 'var(--on-primary)' : 'var(--text-2)', cursor: msgText.trim() ? 'pointer' : 'not-allowed', fontSize: 18, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s', padding: 0 }}
+                className={msgText.trim() ? 'ah-cbtn go' : 'ah-cbtn'}
               >↑</button>
             </div>
           </div>
-        )}
+          )
+        })()}
 
         {/* ─── Tab: Wellness ─── */}
         {tab === 'wellness' && athleteId && (

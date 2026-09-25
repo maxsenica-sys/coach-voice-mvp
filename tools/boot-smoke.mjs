@@ -128,8 +128,10 @@ function swing(a, b) {
 function flashMeter(n, w) {
   const dir = new Int8Array(n), ref = new Float32Array(n), lo = new Float32Array(n), hi = new Float32Array(n)
   const K = 8, times = new Float32Array(n * K), count = new Uint16Array(n), worst = new Uint8Array(n)
-  let started = false, frames = 0
+  let started = false, frames = 0, moved = 0
+  const events = []   // frames at which a large area transitioned at once
   const mark = (i, t, d, v) => {
+    moved++
     dir[i] = d; ref[i] = v
     times[i * K + (count[i] % K)] = t; count[i]++
     let inWin = 0
@@ -140,6 +142,7 @@ function flashMeter(n, w) {
     push(t, L) {
       frames++
       if (!started) { ref.set(L); lo.set(L); hi.set(L); started = true; return }
+      moved = 0
       for (let i = 0; i < n; i++) {
         const v = L[i]
         if (dir[i] === 0) {
@@ -155,6 +158,7 @@ function flashMeter(n, w) {
           else if (v - ref[i] >= 0.1 && ref[i] < 0.8) mark(i, t, 1, v)
         }
       }
+      if (moved >= FLASH_AREA_PX) events.push({ t, area: moved })
     },
     result() {
       // Transitions in the worst one-second window, per pixel. Seven is three
@@ -176,7 +180,16 @@ function flashMeter(n, w) {
         if (worst[i] > peak) peak = worst[i]
       }
       const where = failing ? `x ${box.x0}-${box.x1}, y ${box.y0}-${box.y1}` : 'nowhere'
-      return { failing, anyFlash, peakFlashesPerSecond: peak / 2, frames, where }
+      /* The other half of the definition. The count above asks whether one
+       * place flashes repeatedly; this asks whether the SCREEN does — a large
+       * area changing at once, even when each change lands on different
+       * pixels. A riffle of light figures is exactly that: every change
+       * swaps one silhouette for another, so no single pixel repeats often
+       * but the region as a whole flickers. The per-pixel count alone passed
+       * that mutation. */
+      let bursts = 0
+      for (const e of events) bursts = Math.max(bursts, events.filter((f) => f.t >= e.t && f.t - e.t < 1000).length)
+      return { failing, anyFlash, peakFlashesPerSecond: peak / 2, frames, where, bursts, events: events.length }
     },
   }
 }
@@ -1194,12 +1207,60 @@ async function assertBoot(base) {
       const rI = meters.ios.result(), rA = meters.android.result()
       check(
         'no general flash anywhere in the cold start (WCAG 2.3.1)',
-        rI.failing < FLASH_AREA_PX && rA.failing < FLASH_AREA_PX,
-        `${rI.frames} frames. Worst: ${Math.max(rI.peakFlashesPerSecond, rA.peakFlashesPerSecond)} flashes/s at any pixel; ` +
+        rI.failing < FLASH_AREA_PX && rA.failing < FLASH_AREA_PX && rI.bursts < 7 && rA.bursts < 7,
+        `${rI.frames} frames. Large-area transitions (≥${FLASH_AREA_PX}px² at once): ${rI.events} in the whole film, at most ${Math.max(rI.bursts, rA.bursts)} in any second (limit 6). ` +
+        `Worst: ${Math.max(rI.peakFlashesPerSecond, rA.peakFlashesPerSecond)} flashes/s at any pixel; ` +
         `area over 3/s: iOS ${rI.failing}px² (${rI.where}), Android ${rA.failing}px² (limit ${FLASH_AREA_PX}); ` +
         `area with any flash at all: iOS ${rI.anyFlash}px², Android ${rA.anyFlash}px²`,
       )
       console.log(`         largest single step inside the shell: ${pct(worstStep)} at ${worstStep.at}`)
+
+      /* ── The montage, alone, never moves by a flash's worth ──
+       *
+       * Stricter than 2.3.1, and on purpose. The layout's own rule is that the
+       * figures sit at 7.6% against the ink and are never made lighter: they
+       * are full-height and turn over every 70ms at the end, for 13-18 year
+       * olds. The only thing that enforced it was a check that the sprite's
+       * colour equals the --ink-figure token — which stays green if the token
+       * is lightened and the sprite regenerated to match. And measured, a
+       * riffle of light figures (the figures inverted, ~0.40 luminance) was
+       * borderline under the WCAG area test rather than a clear fail, because
+       * each change swaps 11-26k px² and the limit is 21.8k.
+       *
+       * So the rule is asserted as the rule: film the figures with everything
+       * else hidden, and no pixel may change by 10% between any two frames. */
+      {
+        const { ctx: fctx, pg: fpg, end: fend, seek: fseek, shot: fshot } = await openShell(W, H)
+        await fpg.evaluate(() => {
+          for (const sel of ['#cv-boot .wave', '#cv-boot .m', '#cv-boot .w', '#cv-boot .t']) {
+            const el = document.querySelector(sel)
+            if (el) el.style.visibility = 'hidden'
+          }
+        })
+        let last = null, maxD = 0, maxArea = 0, at = 0, figFrames = 0
+        for (let t = 0; t <= fend; t += 20) {
+          await fseek(t)
+          const L = await lumaFrame(await fshot(), W, H)
+          figFrames++
+          if (last) {
+            let area = 0, m = 0
+            for (let i = 0; i < N; i++) {
+              const d = Math.abs(L[i] - last[i])
+              if (d > m) m = d
+              if (d >= 0.1) area++
+            }
+            if (m > maxD) { maxD = m; at = t }
+            if (area > maxArea) maxArea = area
+          }
+          last = L
+        }
+        await fctx.close()
+        check(
+          'the montage never changes by a flash\'s worth (figures stay under 10% of the ink)',
+          figFrames > 10 && maxD < 0.1,
+          `${figFrames} frames of the figures alone: largest change ΔL ${maxD.toFixed(3)} at ${at}ms, ${maxArea}px² at ≥10% — the rule is under 0.100, and --ink-figure is designed at 0.076`,
+        )
+      }
     }
 
     /* ── The mark is legible on its own ground ──

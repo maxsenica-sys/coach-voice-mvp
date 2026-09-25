@@ -136,7 +136,7 @@ function StatusChip({ status }: { status: string }) {
 
 function SecHead({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 44, marginBottom: 2 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 10, minHeight: 44, marginBottom: 2 }}>
       <h2 style={EYEBROW}>{title}</h2>
       {children}
     </div>
@@ -1249,8 +1249,8 @@ export default function AthleteDetailPage() {
                       {[athlete.sport, athlete.position, athlete.height].filter(Boolean).join(' · ')}
                     </div>
                   )}
+                  {athlete.status && <div style={{ display: 'flex', marginTop: 9 }}><StatusChip status={athlete.status} /></div>}
                 </div>
-                {athlete.status && <StatusChip status={athlete.status} />}
               </div>
 
               {/* The ticker: what used to be the Shared and Last tiles. */}
@@ -1364,9 +1364,9 @@ export default function AthleteDetailPage() {
             {/* ── Wellness, metric by metric ── */}
             <div>
               <SecHead title="Wellness">
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, marginLeft: 'auto' }}>
                   {wellnessLatest && (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: wellnessAlert?.active ? 'var(--danger)' : 'var(--text-2)', fontWeight: wellnessAlert?.active ? 700 : 500 }}>
+                    <span style={{ whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: wellnessAlert?.active ? 'var(--danger)' : 'var(--text-2)', fontWeight: wellnessAlert?.active ? 700 : 500 }}>
                       {wellnessAlert?.active ? 'Needs attention' : `Checked in ${new Date(wellnessLatest.check_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
                     </span>
                   )}
@@ -1733,7 +1733,7 @@ export default function AthleteDetailPage() {
                     </select>
                   )}
                   <input
-                    className="input" type="email" style={{ fontSize: 'var(--t-body-tight)', width: 200, maxWidth: '100%', minWidth: 0, minHeight: 44 }}
+                    className="input" type="email" style={{ fontSize: 'var(--t-body-tight)', width: 'auto', flex: '1 1 240px', maxWidth: '100%', minWidth: 0, minHeight: 44 }}
                     placeholder="or type a parent's email"
                     value={alertSendTo}
                     onChange={e => setAlertSendTo(e.target.value)}
@@ -1989,8 +1989,8 @@ export default function AthleteDetailPage() {
                     ))}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    <input className="input" style={{ flex: '1 1 150px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Metric (e.g. 40m Sprint)" value={metricKey} onChange={e => setMetricKey(e.target.value)} />
-                    <input className="input" style={{ flex: '1 1 120px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. 5.2s)" value={metricVal} onChange={e => setMetricVal(e.target.value)} />
+                    <input className="input" style={{ flex: '1 1 210px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Metric (e.g. 40m Sprint)" value={metricKey} onChange={e => setMetricKey(e.target.value)} />
+                    <input className="input" style={{ flex: '1 1 160px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. 5.2s)" value={metricVal} onChange={e => setMetricVal(e.target.value)} />
                     <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', flexShrink: 0, minHeight: 44 }} onClick={() => { if (!metricKey.trim()) return; setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [metricKey.trim()]: metricVal.trim() } })); setMetricKey(''); setMetricVal('') }}>+ Add</button>
                   </div>
                 </div>
@@ -2000,16 +2000,16 @@ export default function AthleteDetailPage() {
                   <label className="label">Custom Fields</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                     {profileForm.custom_fields.map((cf, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input className="input" style={{ flex: 1, minWidth: 0, fontSize: 'var(--t-body-tight)', fontWeight: 700 }} value={cf.label} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} />
-                        <input className="input" style={{ flex: 2, minWidth: 0, fontSize: 13 }} value={cf.value} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, value: e.target.value } : x) }))} />
+                      <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                        <input className="input" style={{ flex: '1 1 110px', minWidth: 0, fontSize: 'var(--t-body-tight)', fontWeight: 700 }} value={cf.label} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} />
+                        <input className="input" style={{ flex: '2 1 160px', minWidth: 0, fontSize: 13 }} value={cf.value} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, value: e.target.value } : x) }))} />
                         <button aria-label={`Remove ${cf.label || 'this field'}`} onClick={() => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.filter((_, j) => j !== i) }))} style={{ ...HIT, background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 20, padding: 0, flexShrink: 0 }}>×</button>
                       </div>
                     ))}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    <input className="input" style={{ flex: '1 1 120px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Label (e.g. Club)" value={customLabel} onChange={e => setCustomLabel(e.target.value)} />
-                    <input className="input" style={{ flex: '2 1 150px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. City FC)" value={customVal} onChange={e => setCustomVal(e.target.value)} />
+                    <input className="input" style={{ flex: '1 1 150px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Label (e.g. Club)" value={customLabel} onChange={e => setCustomLabel(e.target.value)} />
+                    <input className="input" style={{ flex: '2 1 190px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. City FC)" value={customVal} onChange={e => setCustomVal(e.target.value)} />
                     <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', flexShrink: 0, minHeight: 44 }} onClick={() => { if (!customLabel.trim()) return; setProfileForm(f => ({ ...f, custom_fields: [...f.custom_fields, { label: customLabel.trim(), value: customVal.trim() }] })); setCustomLabel(''); setCustomVal('') }}>+ Add</button>
                   </div>
                 </div>

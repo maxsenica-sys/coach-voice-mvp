@@ -39,7 +39,7 @@ export default function manifest(): MetadataRoute.Manifest {
     // The static copy is deleted. Do not add one back: there is no warning
     // when it shadows this, and nothing in the build or the type system can
     // see it happen.
-    background_color: '#FBF8F3',
+    background_color: '#1F2421',
     theme_color: '#1F2421',
     categories: ['sports', 'productivity', 'health'],
     // iOS ignores SVG icons on the home screen, so PNGs must be present or the
