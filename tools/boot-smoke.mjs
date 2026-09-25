@@ -79,6 +79,121 @@ async function freePort() {
   })
 }
 
+/* ── luminance, and WCAG 2.3.1 general flashes ─────────────────────────────
+ *
+ * The audience is 13-18 and the cold start is full-screen. "It should be
+ * calmer now" is a claim about pixels, so it is measured on pixels: every
+ * frame is decoded to WCAG relative luminance and the sequence is run through
+ * the general-flash definition —
+ *
+ *   a flash is a pair of opposing changes in relative luminance of 10% or more
+ *   of the maximum, where the darker state is below 0.80; more than three in
+ *   any one second, over more than 25% of a 10° visual field, fails.
+ *
+ * 25% of a 10° field is WCAG's 341x256-at-1024x768 rectangle: 21,824 px². At
+ * arm's length on a phone a 10° field is ~52mm, about 320 CSS px across, which
+ * lands in the same place. This harness is stricter than the rule on purpose:
+ * it sums failing area over the whole screen, not per rectangle, and it rounds
+ * a half-flash up. */
+const FLASH_AREA_PX = 21_824
+const LUM_LUT = Float32Array.from({ length: 256 }, (_, c) => {
+  const v = c / 255
+  return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+})
+async function lumaFrame(png, w, h) {
+  const { default: sharp } = await import('sharp')
+  const raw = await sharp(png).resize(w, h, { fit: 'fill' }).removeAlpha().raw().toBuffer()
+  const L = new Float32Array(w * h)
+  for (let i = 0, j = 0; i < L.length; i++, j += 3) {
+    L[i] = 0.2126 * LUM_LUT[raw[j]] + 0.7152 * LUM_LUT[raw[j + 1]] + 0.0722 * LUM_LUT[raw[j + 2]]
+  }
+  return L
+}
+const hexLum = (hex) => {
+  const n = parseInt(hex.replace('#', '').slice(0, 6), 16)
+  return 0.2126 * LUM_LUT[n >> 16 & 255] + 0.7152 * LUM_LUT[n >> 8 & 255] + 0.0722 * LUM_LUT[n & 255]
+}
+const flatFrame = (hex, n) => new Float32Array(n).fill(hexLum(hex))
+/** One step between two frames: how much of the screen swung by a flash's worth. */
+function swing(a, b) {
+  let area = 0, sum = 0
+  for (let i = 0; i < a.length; i++) {
+    const d = Math.abs(a[i] - b[i]); sum += d
+    if (d >= 0.1 && Math.min(a[i], b[i]) < 0.8) area++
+  }
+  return { area, frac: area / a.length, mean: sum / a.length }
+}
+/** Streaming general-flash counter. Feed frames in time order; memory is a
+ *  few arrays per pixel however long the film is. */
+function flashMeter(n, w) {
+  const dir = new Int8Array(n), ref = new Float32Array(n), lo = new Float32Array(n), hi = new Float32Array(n)
+  const K = 8, times = new Float32Array(n * K), count = new Uint16Array(n), worst = new Uint8Array(n)
+  let started = false, frames = 0
+  const mark = (i, t, d, v) => {
+    dir[i] = d; ref[i] = v
+    times[i * K + (count[i] % K)] = t; count[i]++
+    let inWin = 0
+    for (let k = 0; k < Math.min(count[i], K); k++) if (t - times[i * K + k] < 1000) inWin++
+    if (inWin > worst[i]) worst[i] = inWin
+  }
+  return {
+    push(t, L) {
+      frames++
+      if (!started) { ref.set(L); lo.set(L); hi.set(L); started = true; return }
+      for (let i = 0; i < n; i++) {
+        const v = L[i]
+        if (dir[i] === 0) {
+          if (v < lo[i]) lo[i] = v
+          if (v > hi[i]) hi[i] = v
+          if (v - lo[i] >= 0.1 && Math.min(v, lo[i]) < 0.8) mark(i, t, 1, v)
+          else if (hi[i] - v >= 0.1 && v < 0.8) mark(i, t, -1, v)
+        } else if (dir[i] === 1) {
+          if (v > ref[i]) ref[i] = v
+          else if (ref[i] - v >= 0.1 && v < 0.8) mark(i, t, -1, v)
+        } else {
+          if (v < ref[i]) ref[i] = v
+          else if (v - ref[i] >= 0.1 && ref[i] < 0.8) mark(i, t, 1, v)
+        }
+      }
+    },
+    result() {
+      // Transitions in the worst one-second window, per pixel. Seven is three
+      // and a half flashes: failing, rounded against us. Expect a handful of
+      // pixels to reach it legitimately: a thin stroke that MOVES — the mic
+      // glyph as the mark rises — passes on and off the same few pixels
+      // several times. That is motion, not a flash, and the area limit is
+      // exactly what tells the two apart; `where` says which it is.
+      let failing = 0, anyFlash = 0, peak = 0
+      const box = { x0: Infinity, y0: Infinity, x1: -1, y1: -1 }
+      for (let i = 0; i < n; i++) {
+        if (worst[i] >= 7) {
+          failing++
+          const x = i % w, y = (i / w) | 0
+          box.x0 = Math.min(box.x0, x); box.x1 = Math.max(box.x1, x)
+          box.y0 = Math.min(box.y0, y); box.y1 = Math.max(box.y1, y)
+        }
+        if (worst[i] >= 2) anyFlash++
+        if (worst[i] > peak) peak = worst[i]
+      }
+      const where = failing ? `x ${box.x0}-${box.x1}, y ${box.y0}-${box.y1}` : 'nowhere'
+      return { failing, anyFlash, peakFlashesPerSecond: peak / 2, frames, where }
+    },
+  }
+}
+const toHex = (rgb) => {
+  const m = String(rgb).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/)
+  if (!m) return String(rgb)
+  if (m[4] !== undefined && Number(m[4]) === 0) return 'transparent'
+  return '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('').toUpperCase()
+}
+const contrast = (a, b) => {
+  const [x, y] = [hexLum(a), hexLum(b)].sort((p, q) => q - p)
+  return (x + 0.05) / (y + 0.05)
+}
+
+/* Set in assertMiddleware, read in assertBoot: the manifest as served. */
+let SERVED_MANIFEST = null
+
 async function waitForServer(base, ms = 90_000) {
   const deadline = Date.now() + ms
   while (Date.now() < deadline) {
@@ -408,8 +523,15 @@ async function assertMiddleware(base) {
      * the shadow returns while leaving the colour itself a design decision
      * anyone can change in one place.
      *
-     * The stale value is banned by name as well, because that specific colour
-     * coming back is the regression, whatever route it takes. */
+     * The stale value used to be banned by name here as well — "the launch
+     * screen is not the old near-black", #1F2421. That encoded the bug's
+     * symptom, not its mechanism, and the redesign turned it inside out:
+     * #1F2421 is now the app's ground and is exactly right, while the ivory
+     * that check was protecting had become the launch screen that did not
+     * match. The property was always "the launch screen is the app's own
+     * ground", and that needs a browser to know what the ground computes to,
+     * so it is asserted in assertBoot — see "One ground". */
+    SERVED_MANIFEST = manifest
     const src = readFileSync(join(ROOT, 'app', 'manifest.ts'), 'utf8')
     const intended = (src.match(/background_color:\s*'(#[0-9A-Fa-f]{3,8})'/) || [])[1]
     check('app/manifest.ts declares a background_color', Boolean(intended), String(intended))
@@ -417,11 +539,6 @@ async function assertMiddleware(base) {
       'the served background_color is the one in app/manifest.ts',
       Boolean(intended) && manifest.background_color === intended,
       `served ${manifest.background_color}, source says ${intended} — a public/ file shadowing the route is how this diverges`,
-    )
-    check(
-      'the launch screen is not the old near-black',
-      manifest.background_color !== '#1F2421',
-      `got ${manifest.background_color} — this is the whole cold start's first frame`,
     )
     check(
       'the maskable icon survived',
@@ -824,6 +941,293 @@ async function assertBoot(base) {
       `#cv-boot background-color = ${stalled.ground}, image = ${(stalled.groundImage ?? '').slice(0, 60)}, html = ${stalled.htmlGround}`,
     )
     await stallCtx.close()
+
+    /* ── One ground, from the tap on the icon to the app ─────────────────────
+     *
+     * A cold start is painted by four different things in turn: the operating
+     * system (the manifest's background_color on Android, an
+     * apple-touch-startup-image on iOS), the document before its stylesheet
+     * (the inline html rule in app/layout.tsx), the boot shell, and the app.
+     * Each is a separate literal in a separate file, three of them written in
+     * hex because they paint before any CSS variable exists — so each one can
+     * drift from the app on its own, and every drift has shipped:
+     *
+     *   · the launch screen was near-black for months against an ivory app, via
+     *     a stale public/manifest.webmanifest;
+     *   · when the app went to Stadium Night ink on 2026-09-25, the manifest and
+     *     the inline html rule stayed ivory — a full-screen ~92% luminance
+     *     jump on every Android launch — and the html rule also pinned the
+     *     canvas to ivory for the life of the page, because body's background
+     *     only propagates to the canvas when html has none of its own.
+     *
+     * Nothing about either is visible to tsc, eslint or next build, and a
+     * check that names a colour ("not the old near-black") inverts the moment
+     * the design does. So every surface is compared with what the browser
+     * computes the app's ground to be, and the whole handoff is measured as
+     * luminance. */
+    heading('One ground, from the tap on the icon to the app')
+    const { default: sharp } = await import('sharp').catch(() => ({ default: null }))
+    if (!sharp) check('sharp is available to decode frames', false, 'it ships with next; run npm ci')
+    const gCtx = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    const gPage = await gCtx.newPage()
+    await gPage.goto(base + '/signup', { waitUntil: 'load' })
+    const ground = await gPage.evaluate(() => {
+      const cs = (e) => getComputedStyle(e)
+      const probe = document.createElement('div')
+      probe.style.backgroundColor = 'var(--bg)'
+      document.body.appendChild(probe)
+      const token = cs(probe).backgroundColor
+      probe.remove()
+      const loaded = { token, body: cs(document.body).backgroundColor, html: cs(document.documentElement).backgroundColor }
+      const meta = {
+        theme: document.querySelector('meta[name="theme-color"]')?.getAttribute('content') ?? null,
+        scheme: document.querySelector('meta[name="color-scheme"]')?.getAttribute('content') ?? null,
+      }
+      // The document as it is before any app stylesheet: only the boot CSS in
+      // force. With inlineCss the app's CSS arrives in the same response, but
+      // the inline html rule exists for the case where it does not, and that
+      // is the case this reproduces.
+      let off = 0
+      for (const sh of document.styleSheets) {
+        const n = sh.ownerNode
+        if (n && n.textContent && n.textContent.includes('#cv-boot')) continue
+        sh.disabled = true; off++
+      }
+      const bare = { html: cs(document.documentElement).backgroundColor, scheme: cs(document.documentElement).colorScheme, off }
+      for (const sh of document.styleSheets) sh.disabled = false
+      // Expose the canvas: a body shorter than the screen, then look below it.
+      document.body.style.cssText += ';height:120px;min-height:0;overflow:hidden'
+      return { loaded, meta, bare }
+    })
+    const canvasPx = sharp ? await sharp(await gPage.screenshot({ clip: { x: 8, y: 700, width: 1, height: 1 } })).raw().toBuffer() : null
+    const canvas = canvasPx ? '#' + [...canvasPx.slice(0, 3)].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase() : '?'
+    await gCtx.close()
+
+    const APP = toHex(ground.loaded.body)
+    console.log(`         app ground: body ${APP}, --bg ${toHex(ground.loaded.token)}`)
+    check(
+      'the app ground is the --bg token (body paints it)',
+      APP === toHex(ground.loaded.token) && APP !== 'transparent',
+      `body ${APP}, --bg ${toHex(ground.loaded.token)}`,
+    )
+    const bgc = String(SERVED_MANIFEST?.background_color ?? '').toUpperCase()
+    check(
+      "the launch screen is the app's own ground",
+      bgc === APP,
+      `served background_color ${bgc || 'none'}, app ground ${APP} — this is the whole first frame of an Android cold start; any difference is a full-screen jump into the app`,
+    )
+    const tc = String(SERVED_MANIFEST?.theme_color ?? '').toUpperCase()
+    check(
+      'theme_color and the theme-color meta are the app ground too',
+      tc === APP && String(ground.meta.theme ?? '').toUpperCase() === APP,
+      `manifest theme_color ${tc || 'none'}, <meta theme-color> ${ground.meta.theme}, app ground ${APP}`,
+    )
+    check(
+      'before any stylesheet, html is already the app ground',
+      toHex(ground.bare.html) === APP,
+      `html with only the boot CSS in force (${ground.bare.off} sheet(s) disabled): ${toHex(ground.bare.html)} vs ${APP}`,
+    )
+    check(
+      'the canvas is the app ground, not a colour html pinned it to',
+      canvas === APP,
+      `pixel below a shortened body ${canvas}, html ${toHex(ground.loaded.html)}, body ${APP} — html having its own background stops body's from reaching the canvas: overscroll, short pages and the pre-hydration bail-out all show it`,
+    )
+    check(
+      "the browser's own defaults are dark before any stylesheet",
+      ground.bare.scheme.includes('dark') && String(ground.meta.scheme ?? '').includes('dark'),
+      `html color-scheme with only the boot CSS: ${ground.bare.scheme}; <meta name=color-scheme> ${ground.meta.scheme}`,
+    )
+
+    /* ── The shell's first and last frames, frozen ──
+     *
+     * The boot shell is pure CSS animation, so its frames can be seeked
+     * exactly rather than sampled against a wall clock: pause every animation
+     * and set its currentTime. Chunks are hung so the app never dismisses it,
+     * and the three dismissals are neutralised so the dead-man's switch cannot
+     * fire mid-measurement. */
+    const openShell = async (w, h, dpr = 1) => {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr })
+      const pg = await ctx.newPage()
+      await pg.route('**/_next/static/chunks/**', () => { /* hang */ })
+      await pg.goto(base + '/?splash=1', { waitUntil: 'commit' })
+      await pg.waitForSelector('#cv-boot .w', { state: 'attached' })
+      const end = await pg.evaluate(async () => {
+        window.__cvBootLeave = () => {}
+        const img = new Image(); img.src = '/splash/montage.svg'
+        await img.decode().catch(() => {})
+        // Only the shell's own animations. The page underneath has looping
+        // ones with an infinite end time, and they are not this film.
+        window.__cvShellAnims = () => document.getAnimations()
+          .filter((a) => a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('#cv-boot'))
+        const anims = window.__cvShellAnims()
+        anims.forEach((a) => a.pause())
+        return Math.max(0, ...anims.map((a) => a.effect.getComputedTiming().endTime))
+      })
+      const seek = (t) => pg.evaluate((tt) => {
+        window.__cvShellAnims().forEach((a) => { a.pause(); a.currentTime = Math.min(tt, a.effect.getComputedTiming().endTime) })
+      }, t)
+      const shot = () => pg.screenshot({ type: 'png' })
+      return { ctx, pg, end, seek, shot }
+    }
+
+    /* ── Every launch image is the shell's resting frame ──
+     *
+     * The OS paints the launch image; the webview then paints the shell. They
+     * are supposed to be the same picture — tools/build-launch-images.mjs
+     * renders them from literals that "must match #cv-boot", and its header
+     * said this harness compared the two. It did not; nothing did. A change of
+     * ground, a moved mark or a regenerated set from a stale generator would
+     * have been a visible jump on every iPhone, green. */
+    let devices = []
+    try {
+      devices = JSON.parse(execFileSync(process.execPath,
+        [join(ROOT, 'tools', 'build-launch-images.mjs'), '--list'], { encoding: 'utf8' }))
+    } catch { /* reported below */ }
+    const drift = []
+    let worstDrift = { frac: 0, mean: 0, file: '' }
+    const ownGround = []
+    if (sharp) {
+      for (const d of devices) {
+        const png = join(ROOT, 'public', 'splash', d.file)
+        if (!existsSync(png)) { drift.push(`${d.file} missing`); continue }
+        // At the device's own pixel ratio, as the generator renders it, so
+        // the comparison is pixel for pixel rather than through a resample.
+        const pw = d.w * d.dpr, ph = d.h * d.dpr
+        const { ctx, end, seek, shot } = await openShell(d.w, d.h, d.dpr)
+        await seek(end)
+        const rest = await lumaFrame(await shot(), pw, ph)
+        await ctx.close()
+        const launch = await lumaFrame(readFileSync(png), pw, ph)
+        const s = swing(launch, rest)
+        if (s.frac > worstDrift.frac) worstDrift = { ...s, file: d.file }
+        if (s.frac > 0.005 || s.mean > 0.004) drift.push(`${d.file}: ${(s.frac * 100).toFixed(2)}% of the screen swings ≥10%, mean ΔL ${s.mean.toFixed(4)}`)
+        // And the ground itself, read straight out of the file: the top-left
+        // corner is the gradient's near stop, which is the app ground.
+        const { data } = await sharp(png).extract({ left: 2, top: 2, width: 1, height: 1 }).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+        const corner = '#' + [...data.slice(0, 3)].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()
+        if (Math.abs(hexLum(corner) - hexLum(APP)) >= 0.02) ownGround.push(`${d.file} corner ${corner}`)
+      }
+    }
+    check(
+      `every one of the ${devices.length} launch images is the boot shell's resting frame`,
+      devices.length > 0 && drift.length === 0,
+      drift.length ? drift.slice(0, 4).join('; ') + (drift.length > 4 ? ` (+${drift.length - 4} more) — regenerate with npm run build:splash` : ' — regenerate with npm run build:splash')
+        : `worst ${worstDrift.file}: ${(worstDrift.frac * 100).toFixed(2)}% of pixels ≥10% apart, mean ΔL ${worstDrift.mean.toFixed(4)}`,
+    )
+    check(
+      'every launch image is grounded in the app ground',
+      devices.length > 0 && ownGround.length === 0,
+      ownGround.length ? `${ownGround.slice(0, 4).join(', ')} vs app ${APP}` : `all ${devices.length} within ΔL 0.02 of ${APP} at the corner`,
+    )
+
+    /* ── The handoff, and the whole cold start, as luminance ──
+     *
+     * iOS: the launch image for this geometry, then the shell's frames.
+     * Android: a flat field of the served background_color (the icon on it is
+     * the same on either ground and is left out), then the same frames. The
+     * shell is filmed every 20ms across its whole sequence — the fastest
+     * montage frame is 70ms, so every figure is seen — then its fade-out, then
+     * what it reveals.
+     *
+     * Two properties. The handoff from the OS into the webview is a single
+     * change, not a flash, but a full-screen jump there is the opposite of the
+     * calm first second this audience needs, so it is held under the WCAG
+     * large-area figure on its own. And the film as a whole must contain no
+     * general flash: no area over that figure changing by ≥10% more than
+     * three times in any second. That is the property the ink-figure colour
+     * exists for, measured instead of asserted from a hex. */
+    if (sharp) {
+      const W = 390, H = 844, N = W * H
+      const iosPng = join(ROOT, 'public', 'splash', 'launch-1170x2532.png')
+      const iosFrame = existsSync(iosPng) ? await lumaFrame(readFileSync(iosPng), W, H) : null
+      const androidFrame = flatFrame(bgc || '#FFFFFF', N)
+      const meters = { ios: flashMeter(N, W), android: flashMeter(N, W) }
+      if (iosFrame) meters.ios.push(-1, iosFrame)
+      meters.android.push(-1, androidFrame)
+
+      const { ctx, pg, end, seek, shot } = await openShell(W, H)
+      let prev = null, firstShell = null, worstStep = { area: 0, frac: 0, mean: 0, at: '' }
+      const feed = async (t, label) => {
+        const L = await lumaFrame(await shot(), W, H)
+        if (!firstShell) firstShell = L
+        if (prev) {
+          const s = swing(prev, L)
+          if (s.area > worstStep.area) worstStep = { ...s, at: label }
+        }
+        prev = L
+        meters.ios.push(t, L); meters.android.push(t, L)
+      }
+      for (let t = 0; t <= end; t += 20) { await seek(t); await feed(t, `${t}ms`) }
+      await seek(end)
+      // The way out: the shell's own fade, seeked the same way.
+      await pg.evaluate(() => document.documentElement.setAttribute('data-boot-out', '1'))
+      const fade = await pg.evaluate(() => {
+        const fx = window.__cvShellAnims().filter((a) => a instanceof CSSTransition)
+        fx.forEach((a) => a.pause())
+        return Math.max(0, ...fx.map((a) => a.effect.getComputedTiming().endTime))
+      })
+      for (let t = 0; t <= fade; t += 20) {
+        await pg.evaluate((tt) => window.__cvShellAnims().filter((a) => a instanceof CSSTransition)
+          .forEach((a) => { a.pause(); a.currentTime = tt }), t)
+        await feed(end + t, `fade +${t}ms`)
+      }
+      await pg.evaluate(() => { document.documentElement.removeAttribute('data-boot'); document.documentElement.removeAttribute('data-boot-out') })
+      await feed(end + fade + 20, 'the page under the shell')
+      await ctx.close()
+
+      const hIos = iosFrame ? swing(iosFrame, firstShell) : null
+      const hAnd = swing(androidFrame, firstShell)
+      const pct = (s) => `${(s.frac * 100).toFixed(1)}% of the screen (${s.area}px²) swings ≥10%, mean ΔL ${s.mean.toFixed(3)}`
+      check(
+        'iOS: launch image → first shell frame is not a large-area swing',
+        Boolean(hIos) && hIos.area < FLASH_AREA_PX,
+        hIos ? `${pct(hIos)} — limit ${FLASH_AREA_PX}px²` : 'no launch image for 390x844@3',
+      )
+      check(
+        'Android: background_color → first shell frame is not a large-area swing',
+        hAnd.area < FLASH_AREA_PX,
+        `${bgc} → shell: ${pct(hAnd)} — limit ${FLASH_AREA_PX}px²`,
+      )
+      const rI = meters.ios.result(), rA = meters.android.result()
+      check(
+        'no general flash anywhere in the cold start (WCAG 2.3.1)',
+        rI.failing < FLASH_AREA_PX && rA.failing < FLASH_AREA_PX,
+        `${rI.frames} frames. Worst: ${Math.max(rI.peakFlashesPerSecond, rA.peakFlashesPerSecond)} flashes/s at any pixel; ` +
+        `area over 3/s: iOS ${rI.failing}px² (${rI.where}), Android ${rA.failing}px² (limit ${FLASH_AREA_PX}); ` +
+        `area with any flash at all: iOS ${rI.anyFlash}px², Android ${rA.anyFlash}px²`,
+      )
+      console.log(`         largest single step inside the shell: ${pct(worstStep)} at ${worstStep.at}`)
+    }
+
+    /* ── The mark is legible on its own ground ──
+     *
+     * Stadium Night lifted --primary so it could be read on ink, and anything
+     * drawn ON it has to be ink (--on-primary). The intro's mark on "/" kept a
+     * hard-coded white microphone: 1.79:1 and 1.47:1 on its two gradient stops,
+     * so the brand's own glyph all but disappeared, and nothing failed. A
+     * graphic needs 3:1 (WCAG 1.4.11). Both marks are checked — the shell's and
+     * the intro's — against each stop the browser computed. */
+    const mCtx = await browser.newContext()
+    const mPage = await mCtx.newPage()
+    await mPage.goto(base + '/?next=%2Fx', { waitUntil: 'load' })
+    const marks = await mPage.evaluate(() => {
+      const read = (svg) => {
+        if (!svg) return null
+        const stops = (getComputedStyle(svg.parentElement).backgroundImage.match(/rgba?\([^)]*\)/g) || [])
+        return { glyph: getComputedStyle(svg).stroke, stops }
+      }
+      document.documentElement.setAttribute('data-boot', '1')
+      return { shell: read(document.querySelector('#cv-boot .m svg')), intro: read(document.querySelector('.cv-intro-figure svg')) }
+    })
+    await mCtx.close()
+    for (const [name, m] of [['boot shell', marks.shell], ['intro on "/"', marks.intro]]) {
+      const ratios = m ? m.stops.map((s) => contrast(toHex(m.glyph), toHex(s))) : []
+      check(
+        `the ${name} mark's glyph is ≥3:1 on its ground`,
+        ratios.length > 0 && ratios.every((r) => r >= 3),
+        m ? `${toHex(m.glyph)} on ${m.stops.map(toHex).join(' → ')}: ${ratios.map((r) => r.toFixed(2) + ':1').join(', ')}` : 'mark not found',
+      )
+    }
 
     /* ── the montage: the people ──
      *

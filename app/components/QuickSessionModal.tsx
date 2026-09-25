@@ -657,7 +657,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     ? [coachSport, dateShort].filter(Boolean).join(' · ')
     : phase === 3
       ? [targetLabel, dateShort].filter(Boolean).join(' · ')
-      : recording ? 'Stop when you are done talking' : ''
+      : recording && !recStalled ? 'Stop when you are done talking' : ''
   const targetMeta = [
     mode === 'group' && groupId ? `${groupMembers.length} athlete${groupMembers.length === 1 ? '' : 's'}` : null,
     sessionName.trim() || null,
@@ -880,20 +880,14 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 />
               </div>
 
-              {/* Sport + date. Wraps rather than squeezing: a native date input
+              {/* Session date. The sport and the chosen day already sit in
+                  the data line under the title, so there is no second sport
+                  box here. Wraps rather than squeezing: a native date input
                   has a hard minimum width, and a too-wide row is invisibly
                   clipped rather than scrollable. */}
-              <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-                {coachSport && (
-                  <div style={{ flex: '1 1 120px', minWidth: 0 }}>
-                    <div style={LBL}>Sport</div>
-                    <div style={{ ...FIELD, marginTop: 8, display: 'flex', alignItems: 'center', padding: '0 13px', border: '1.5px solid var(--border)', background: 'var(--card)' }}>
-                      <span style={{ ...CAST, fontSize: 19, letterSpacing: '0.07em', color: 'var(--text)', overflowWrap: 'anywhere', lineHeight: 1.1 }}>{coachSport}</span>
-                    </div>
-                  </div>
-                )}
-                <div style={{ flex: '1 1 160px', minWidth: 0 }}>
-                  <label htmlFor="qs-date-1" style={LBL}>Session date</label>
+              <div>
+                <label htmlFor="qs-date-1" style={LBL}>Session date</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <input
                     id="qs-date-1"
                     className="input"
@@ -901,13 +895,11 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                     value={sessionDate}
                     max={today}
                     onChange={(e) => setSessionDate(e.target.value)}
-                    style={FIELD}
+                    style={{ ...FIELD, maxWidth: 200 }}
                   />
-                  {/* Wraps inside its column rather than widening it: a long
-                      "Wednesday, Sep 24" must not push the sheet sideways. */}
-                  <div style={{ ...MONO, color: 'var(--text-2)', marginTop: 7, lineHeight: 1.35, textTransform: sessionDate ? 'uppercase' : 'none', letterSpacing: sessionDate ? '0.07em' : 0 }}>
+                  <span style={{ ...MONO, marginTop: 8, color: 'var(--text-2)', textTransform: sessionDate ? 'uppercase' : 'none', letterSpacing: sessionDate ? '0.07em' : 0 }}>
                     {sessionDateLabel}
-                  </div>
+                  </span>
                 </div>
               </div>
             </div>
@@ -1108,14 +1100,19 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                         {nextDraft.length}/{MAX_NEXT_LENGTH}
                       </span>
                     </div>
-                    <input
+                    {/* A textarea so the whole line is readable at once — an
+                        input would show a phone's width of it and scroll the
+                        rest out of sight. It is still one line of meaning:
+                        a line break becomes a space. */}
+                    <textarea
                       id="qs-next"
                       className="input"
+                      rows={2}
                       value={nextDraft}
                       maxLength={MAX_NEXT_LENGTH}
-                      onChange={(e) => setNextDraft(e.target.value)}
+                      onChange={(e) => setNextDraft(e.target.value.replace(/\s*\n+\s*/g, ' '))}
                       placeholder="The one thing to work on."
-                      style={{ ...FIELD, fontWeight: 600, borderColor: 'var(--coach-border)' }}
+                      style={{ ...FIELD, minHeight: 0, resize: 'none', fontWeight: 600, lineHeight: 1.4, borderColor: 'var(--coach-border)' }}
                     />
                     <div style={{ marginTop: 7, fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-2)' }}>
                       This is the line your athlete reads first.
@@ -1153,11 +1150,14 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
 
               {/* Share toggle */}
               <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minHeight: 44 }}>
+                {/* appearance is restored here because globals.css strips it
+                    from every input for iOS, which leaves a bare checkbox with
+                    no box at all — the share decision drawn as nothing. */}
                 <input
                   type="checkbox"
                   checked={shareWithAthlete}
                   onChange={(e) => setShareWithAthlete(e.target.checked)}
-                  style={{ width: 22, height: 22, flexShrink: 0, accentColor: 'var(--primary)' }}
+                  style={{ width: 22, height: 22, flexShrink: 0, accentColor: 'var(--primary)', WebkitAppearance: 'checkbox', appearance: 'auto' }}
                 />
                 <span style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.35 }}>
                   Share transcript & summary with athlete{mode === 'group' ? 's' : ''}

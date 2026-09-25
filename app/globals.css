@@ -24,6 +24,13 @@
    * their chrome must match the card they sit on. */
   --on-primary:   #1F2421;
   --flood:        #CBEF5E;  /* the one new hue. Record, live, unread, the bar that is now. Nothing else. */
+  /* The spec's hairline, panel and ember steps, as tokens rather than as a
+     color-mix() re-derived at each call site — the build agents reached for
+     them independently, which is the sign they belong here. */
+  --line:         rgba(245, 236, 215, 0.11);  /* hairline rule between rows */
+  --line-2:       rgba(245, 236, 215, 0.19);  /* stronger rule, heads of lists */
+  --panel:        rgba(245, 236, 215, 0.045); /* a surface lifted off the ground without a box */
+  --ember:        #E39A7A;                    /* rust lifted for ink — 6.83:1 as text */
   /* Surfaces — ivory / parchment */
   /* Declared, at last.
    *
@@ -857,7 +864,7 @@ input, textarea, select, button {
   inset: 0;
   pointer-events: none;
   opacity: var(--grain-opacity, 0.4);
-  background-image: radial-gradient(rgba(245, 236, 215, 0.35) 0.5px, transparent 0.5px);
+  background-image: radial-gradient(rgba(245, 236, 215, 0.32) 0.5px, transparent 0.5px); /* x 0.4 = 0.128, under the 0.13 ceiling */
   background-size: 14px 14px;
   z-index: 0;
 }

@@ -45,32 +45,54 @@ export default function ListState({
   // Nothing to say: the caller has rows and should render them.
   if (!loading && !error && !isEmpty) return null
 
-  const pad = compact ? 20 : 40
+  const pad = compact ? 16 : 22
 
+  /* Stadium Night: the three states are three different surfaces, not one card
+   * with three sentences in it. An empty list is a plain panel with its answer
+   * set in the reading voice. A failure sits on the warm tint with an ember
+   * edge — the coach's-mark colour, never red — because "we could not find
+   * out" is a fact to act on, not an alarm. Loading is a single mono line.
+   * Nothing here spends the floodlight: none of the three is live, new or now. */
   if (error) {
     return (
       <div
         role="alert"
-        className="card"
         style={{
+          position: 'relative',
           padding: pad,
-          textAlign: 'center',
+          borderRadius: 'var(--radius-lg)',
+          background: 'var(--coach-light)',
+          border: '1px solid var(--coach-border)',
+          boxShadow: 'inset 0 2px 0 var(--coach-on-light)',
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           gap: 10,
+          minWidth: 0,
         }}
       >
-        <span aria-hidden="true" style={{ fontSize: 22, lineHeight: 1 }}>⚠</span>
-        <div style={{ fontSize: 'var(--fs-4)', color: 'var(--text)', lineHeight: 1.45, maxWidth: 420, overflowWrap: 'anywhere' }}>
+        <div style={{
+          fontFamily: 'var(--font-cast)', fontWeight: 700, fontSize: 'var(--t-furniture)',
+          letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-2)',
+        }}>
+          Could not load
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-display)', fontSize: 19, lineHeight: 1.35,
+          color: 'var(--text)', overflowWrap: 'anywhere', maxWidth: 520,
+        }}>
           {error}
         </div>
         {onRetry && (
           <button
             className="btn btn-ghost"
             onClick={onRetry}
-            style={{ minHeight: 44, paddingInline: 18, fontSize: 'var(--fs-4)' }}
+            style={{
+              minHeight: 44, paddingInline: 18, borderRadius: 999, fontSize: 'var(--fs-3)',
+              color: 'var(--text)', background: 'var(--bg)', borderColor: 'var(--coach-border)',
+            }}
           >
+            <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>↻</span>
             Try again
           </button>
         )}
@@ -83,7 +105,11 @@ export default function ListState({
       <div
         className="card"
         aria-busy="true"
-        style={{ padding: pad, textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-4)' }}
+        style={{
+          padding: pad, color: 'var(--text-muted)',
+          fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)',
+          letterSpacing: '0.06em', textTransform: 'uppercase',
+        }}
       >
         {loadingLabel}
       </div>
@@ -93,10 +119,22 @@ export default function ListState({
   return (
     <div
       className="card"
-      style={{ padding: pad, textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-4)', lineHeight: 1.5 }}
+      style={{ padding: pad, borderRadius: 'var(--radius-lg)', minWidth: 0 }}
     >
-      <div style={{ color: 'var(--text-2)', fontWeight: 600 }}>{emptyTitle}</div>
-      {emptyHint && <div style={{ marginTop: 4 }}>{emptyHint}</div>}
+      <div style={{
+        fontFamily: 'var(--font-display)', fontSize: 20, lineHeight: 1.3,
+        color: 'var(--text)', overflowWrap: 'anywhere',
+      }}>
+        {emptyTitle}
+      </div>
+      {emptyHint && (
+        <div style={{
+          marginTop: 6, fontSize: 'var(--fs-3)', lineHeight: 1.5,
+          color: 'var(--text-2)', overflowWrap: 'anywhere',
+        }}>
+          {emptyHint}
+        </div>
+      )}
     </div>
   )
 }

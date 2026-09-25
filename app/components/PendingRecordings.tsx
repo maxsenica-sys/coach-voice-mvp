@@ -101,15 +101,28 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
 
   return (
     <section aria-label="Recordings waiting on this device">
+      {/* The section head, as every Stadium Night section is set: the name in
+          the cast face on the left, the count in mono on the right. */}
       <div style={{
-        fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)',
-        textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 9,
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+        gap: 10, flexWrap: 'wrap', marginBottom: 9,
       }}>
-        On this phone
+        <div style={{
+          fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
+          color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.24em',
+        }}>
+          On this phone
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', fontWeight: 500,
+          color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.08em',
+        }}>
+          {pending.length} waiting
+        </div>
       </div>
 
-      <div className="card" style={{ padding: 14 }}>
-        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginBottom: 11, lineHeight: 1.5 }}>
+      <div className="card" style={{ padding: 16, borderRadius: 'var(--radius-lg)' }}>
+        <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 12, lineHeight: 1.5 }}>
           {pending.length === 1 ? 'One recording is' : `${pending.length} recordings are`} saved
           on this device and not sent yet. They send themselves when you have signal.
         </div>
@@ -121,7 +134,7 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
               // flex-start, not centre: an error long enough to run to three
               // lines used to leave Discard floating in the middle of it.
               display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap',
-              paddingTop: 10, borderTop: '1px solid var(--border-soft)',
+              paddingTop: 12, paddingBottom: 12, borderTop: '1px solid var(--border)',
             }}
           >
             {/* 200px, not 160. The basis decides when the row wraps, and 160
@@ -130,11 +143,27 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
                 error string then has to be read down. At 200 the button drops
                 to its own line there and the text gets the full width. */}
             <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-              <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)', overflowWrap: 'anywhere' }}>
-                {rec.targetLabel}
+              <div style={{
+                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                gap: 10, flexWrap: 'wrap',
+              }}>
+                {/* Wraps, never truncates: this is whose recording it is. */}
+                <span style={{
+                  fontFamily: 'var(--font-cast)', fontSize: 19, fontWeight: 700, lineHeight: 1.1,
+                  letterSpacing: '0.04em', textTransform: 'uppercase',
+                  color: 'var(--text)', overflowWrap: 'anywhere', minWidth: 0,
+                }}>
+                  {rec.targetLabel}
+                </span>
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)',
+                  textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap',
+                }}>
+                  {ago(rec.createdAt)}
+                </span>
               </div>
-              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 2 }}>
-                {describe(rec)} · {ago(rec.createdAt)}
+              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 5 }}>
+                {describe(rec)}
               </div>
               {rec.lastError && (
                 // `overflowWrap: anywhere` only ever acts on a token that
@@ -143,9 +172,24 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
                 // server error carries, and without this the token runs under
                 // the Discard button and off the side of the card, where the
                 // page's horizontal clip eats the rest of it silently.
-                // Everything still renders; nothing is shortened.
-                <div style={{ fontSize: 'var(--fs-2)', color: 'var(--wellness-low)', marginTop: 3, lineHeight: 1.45, overflowWrap: 'anywhere' }}>
-                  {rec.lastError}
+                // Everything still renders; nothing is shortened. It sits on
+                // the ground colour, one step darker than the card, so the
+                // warm text keeps its contrast whatever the card is lit by.
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                  marginTop: 8, padding: '8px 11px', borderRadius: 10,
+                  background: 'var(--bg)', border: '1px solid var(--border-soft)',
+                }}>
+                  <span aria-hidden="true" style={{
+                    width: 7, height: 7, borderRadius: '50%', background: 'var(--danger)',
+                    flexShrink: 0, marginTop: 7,
+                  }} />
+                  <span style={{
+                    fontSize: 'var(--fs-2)', color: 'var(--danger)', lineHeight: 1.45,
+                    overflowWrap: 'anywhere', minWidth: 0,
+                  }}>
+                    {rec.lastError}
+                  </span>
                 </div>
               )}
             </div>
@@ -158,19 +202,28 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
                 await deleteRecording(rec.id)
                 await refresh()
               }}
-              style={{ padding: '5px 11px', fontSize: 'var(--fs-2)', marginLeft: 'auto', flexShrink: 0 }}
+              style={{
+                minHeight: 44, padding: '0 16px', borderRadius: 999,
+                fontSize: 'var(--fs-2)', marginLeft: 'auto', flexShrink: 0,
+              }}
             >
               Discard
             </button>
           </div>
         ))}
 
+        {/* Sage, not floodlight. Retrying a send is an action, not a state —
+            the floodlight is kept for record, live, unread and now. */}
         <button
-          className="btn btn-ghost"
+          className="btn btn-primary"
           onClick={() => void drain()}
           disabled={busy}
-          style={{ width: '100%', justifyContent: 'center', marginTop: 12, fontSize: 'var(--fs-2)' }}
+          style={{
+            width: '100%', justifyContent: 'center', marginTop: 4, minHeight: 44,
+            borderRadius: 999, fontSize: 'var(--fs-3)',
+          }}
         >
+          <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>↻</span>
           {busy ? 'Sending…' : 'Try again now'}
         </button>
       </div>

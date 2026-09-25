@@ -17,18 +17,25 @@ import { gapLabel, isQuiet, QUIET_AFTER_DAYS, type CoverageRow } from '@/lib/att
 import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
 import { activeCount } from '@/lib/athlete-status'
-import { formatSessionDate, sessionDate, sessionISODate, todayISODate } from '@/lib/session-date'
-import { GROUP_COLORS, DEFAULT_GROUP_COLOR, stableTone } from '@/lib/group-colors'
+import { calendarDaysBetween, formatSessionDate, sessionDate, sessionISODate, todayISODate } from '@/lib/session-date'
+import { buildSpine, startOfWeek, SPINE_WEEKS, SPINE_MIN_SESSIONS } from '@/lib/training-spine'
+import { GROUP_COLORS, DEFAULT_GROUP_COLOR } from '@/lib/group-colors'
 import { errorMessage } from '@/lib/errors'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
+
+/** /api/sessions/all is read in one page of this many rows, newest first,
+ *  across the whole roster — not per athlete. */
+const SESSIONS_WINDOW = 50
 
 interface Athlete {
   id: string; first_name: string; last_name: string
   email: string; athlete_user_id: string | null; status?: 'INVITED' | 'ACTIVE'
   /** Set the first time they open their portal — the basis for ACTIVE. */
   first_login_at?: string | null
+  /** When the coach sent the invite. Returned by /api/athletes. */
+  invited_at?: string | null
 }
 interface Group {
   id: string; name: string; color: string; description: string | null
@@ -88,6 +95,169 @@ const BOTTOM_NAV_ITEMS: ({ key: Tab; icon: string; label: string } | { fab: true
   { key: 'messages', icon: 'messages', label: 'Messages' },
 ]
 
+/* ── STADIUM NIGHT furniture ─────────────────────────────────────
+ *
+ * The coach's home is a scoreboard now (the approved dirA-coach screen), and
+ * everything on this page is built from the handful of pieces below.
+ *
+ * Every colour is a token from app/globals.css, or a token mixed toward
+ * transparent with color-mix — there is no literal colour in this file, and
+ * the no-restricted-syntax rule in eslint.config.mjs keeps it that way. What
+ * the mockups wrote as 11%-cream hairlines and 4.5%-cream panels are the
+ * existing --border-soft / --border steps and the cream text token at a few
+ * percent, so a change to the ramp reaches them without anyone editing here.
+ *
+ * --flood is spent on exactly: the record action, the active nav tab, the
+ * one spark bar that is this week, and an invite that has just gone. Unread
+ * counts are ember (--coach-on-light), as they are on the approved coach
+ * screen: waiting on the coach, not a live state. Nothing decorative wears it.
+ */
+const INK_DEEP = 'color-mix(in srgb, var(--bg) 62%, black)'
+const HAIR = '1px solid var(--border-soft)'
+const HAIR_2 = '1px solid var(--border)'
+const GUTTER = 'clamp(16px, 5vw, 20px)'
+/** A token at `pct`% over whatever is underneath it. */
+const tint = (token: string, pct: number) => `color-mix(in srgb, ${token} ${pct}%, transparent)`
+/** The panel the mockups draw as 4.5% cream: the beam and grid show through it. */
+const PANEL = tint('var(--text)', 4.5)
+const PANEL_2 = tint('var(--text)', 7.5)
+
+/** Big Shoulders, uppercase, tracked — the scoreboard voice. Sizes are px and
+ *  never below the 13px floor. */
+function cast(size: number, weight = 700, tracking = '.16em'): React.CSSProperties {
+  return {
+    fontFamily: 'var(--font-cast)', fontWeight: weight, fontSize: size,
+    letterSpacing: tracking, textTransform: 'uppercase', lineHeight: 1.15,
+  }
+}
+const MONO: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontWeight: 500, letterSpacing: '.02em' }
+
+const initialsOf = (first?: string | null, last?: string | null) =>
+  `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase() || '?'
+
+const ICON_BTN: React.CSSProperties = {
+  width: 44, height: 44, borderRadius: 12, flex: 'none', position: 'relative',
+  border: HAIR_2, background: tint('var(--text)', 4), color: 'var(--text-2)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0,
+}
+
+/** Keyframes, the stage lighting and the few rules inline styles cannot say
+ *  (pseudo-elements, :focus-within, reduced motion). */
+const STADIUM_CSS = `
+.sn-stage{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(760px 420px at 112% -12%, color-mix(in srgb, var(--primary) 20%, transparent) 0%, transparent 62%),
+    radial-gradient(620px 520px at 50% 118%, color-mix(in srgb, var(--ink-mid) 55%, transparent) 0%, transparent 66%);}
+.sn-stage::after{content:'';position:absolute;inset:0;
+  background-image:
+    repeating-linear-gradient(to right, color-mix(in srgb, var(--text) 4.5%, transparent) 0 1px, transparent 1px 39px),
+    repeating-linear-gradient(to bottom, color-mix(in srgb, var(--text) 3%, transparent) 0 1px, transparent 1px 39px);
+  -webkit-mask-image:linear-gradient(196deg, black 0%, color-mix(in srgb, black 25%, transparent) 48%, color-mix(in srgb, black 85%, transparent) 100%);
+  mask-image:linear-gradient(196deg, black 0%, color-mix(in srgb, black 25%, transparent) 48%, color-mix(in srgb, black 85%, transparent) 100%);}
+@keyframes sn-breathe{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes sn-vu{0%,100%{transform:scaleY(.27)}50%{transform:scaleY(1)}}
+.sn-livedot{animation:sn-breathe 2.4s ease-in-out infinite}
+.sn-vu i{animation:sn-vu 1.5s ease-in-out infinite;transform-origin:center}
+.sn-field{border-bottom:1px solid var(--border-soft)}
+.sn-field:focus-within{border-bottom-color:var(--text-2)}
+.sn-field input::placeholder{color:var(--text-muted)}
+@media (prefers-reduced-motion: reduce){
+  .sn-livedot,.sn-vu i{animation:none}
+  .sn-vu i{transform:scaleY(.6)}
+}
+`
+function StadiumStyles() {
+  return <style>{STADIUM_CSS}</style>
+}
+
+/** The brand lockup. The mark is sage, not floodlight: it is chrome, not state. */
+function Brand({ rolecap }: { rolecap: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+      <div aria-hidden style={{
+        width: 30, height: 30, borderRadius: 10, flex: 'none',
+        border: '1.5px solid var(--primary)', color: 'var(--primary)', background: tint('var(--primary)', 9),
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Icon name="mic" size={15} strokeWidth={2.2} />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ ...cast(16, 700, '.22em'), lineHeight: 1, color: 'var(--text)' }}>CoachVoice</div>
+        <div style={{ ...cast(13, 700, '.26em'), lineHeight: 1, color: 'var(--primary)', marginTop: 4 }}>{rolecap}</div>
+      </div>
+    </div>
+  )
+}
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...cast(13, 700, '.26em'), color: 'var(--text-2)' }}>
+      <i aria-hidden style={{ width: 7, height: 7, background: 'var(--text-2)', flex: 'none', transform: 'skewX(-14deg)' }} />
+      {children}
+    </div>
+  )
+}
+
+/** A section rule: the title, and either a side note or a way through. */
+function SecHead({ title, side, action }: {
+  title: React.ReactNode; side?: React.ReactNode; action?: { label: string; onClick: () => void }
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 12, rowGap: 2, minHeight: 24 }}>
+      <h2 style={{ margin: 0, ...cast(13, 700, '.26em'), color: 'var(--text-2)' }}>{title}</h2>
+      {side && <div style={{ marginLeft: 'auto', ...cast(13, 600, '.16em'), color: 'var(--text-2)' }}>{side}</div>}
+      {action && (
+        <button onClick={action.onClick} style={{
+          marginLeft: 'auto', minHeight: 44, padding: '0 0 0 12px', background: 'none', border: 'none', cursor: 'pointer',
+          ...cast(13, 700, '.12em'), color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 5,
+        }}>
+          {action.label} <Icon name="arrow" size={13} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** A monogram. Solid sage = here; a dashed amber ring = invited, not yet
+ *  arrived. The two states are legible before a word is read, and neither
+ *  looks like an error. */
+function Mono({ initials, pending = false, size = 36, ring }: { initials: string; pending?: boolean; size?: number; ring?: string }) {
+  return (
+    <div aria-hidden style={{
+      width: size, height: size, borderRadius: '50%', flex: 'none',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      ...cast(13, 800, '.04em'), lineHeight: 1,
+      ...(pending
+        ? { background: ring ?? 'transparent', border: `1px dashed ${tint('var(--energy-dark)', 60)}`, color: 'var(--energy-dark)' }
+        : { background: 'var(--primary)', color: 'var(--on-primary)', border: ring ? `2px solid ${ring}` : 'none' }),
+    }}>{initials}</div>
+  )
+}
+
+/** SHARED is sage; DRAFT and PENDING are amber — unfinished, never broken. */
+function Chip({ tone, children }: { tone: 'shared' | 'amber'; children: React.ReactNode }) {
+  const c = tone === 'shared' ? 'var(--primary)' : 'var(--energy-dark)'
+  return (
+    <span style={{
+      ...cast(13, 700, '.14em'), padding: '4px 9px', borderRadius: 999, whiteSpace: 'nowrap', display: 'inline-block',
+      color: c, border: `1px solid ${tint(c, 42)}`, background: tint(c, 9),
+    }}>{children}</span>
+  )
+}
+
+/** The tape under the header: today, who, and anything waiting. Wraps rather
+ *  than clipping — the mockup's nowrap would cut a long name off at 320px. */
+function Ticker({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 9, rowGap: 2,
+      padding: '7px 0', borderTop: HAIR, borderBottom: HAIR,
+      ...cast(13, 600, '.16em'), color: 'var(--text-2)',
+    }}>{children}</div>
+  )
+}
+const TickSep = () => <span aria-hidden style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--text-muted)', flex: 'none' }} />
+
 /* The door Squads never had on a phone.
  *
  * Rendered at the top of both the Athletes and the Squads view, so the two
@@ -107,11 +277,11 @@ function PeopleSwitch({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
         onClick={() => setTab(key)}
         aria-pressed={on}
         style={{
-          flex: 1, minHeight: 44, borderRadius: 9, cursor: 'pointer',
-          border: '1.5px solid', borderColor: on ? 'var(--primary)' : 'var(--border)',
-          background: on ? 'var(--primary)' : 'transparent',
-          color: on ? '#fff' : 'var(--text-2)',
-          fontWeight: on ? 800 : 600, fontSize: 'var(--fs-3)',
+          flex: 1, minHeight: 44, borderRadius: 999, cursor: 'pointer',
+          border: '1px solid', borderColor: on ? tint('var(--text)', 40) : 'var(--border-soft)',
+          background: on ? tint('var(--text)', 10) : 'transparent',
+          color: on ? 'var(--text)' : 'var(--text-2)',
+          ...cast(15, 700, '.14em'),
           transition: 'background .12s, border-color .12s',
         }}
       >
@@ -127,28 +297,44 @@ function PeopleSwitch({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   )
 }
 
-// ── Sidebar item style ───────────────────────────────────────────
-function sideItem(active: boolean, color?: string) {
+// ── Calendar target list item ────────────────────────────────────
+/* The active target used to fill with its own colour under white text —
+ * which on the ink ground meant white on the lifted --primary, 1.6:1. The
+ * colour is now the left rule only, and the text is always cream. */
+function sideItem(active: boolean, color?: string): React.CSSProperties {
   return {
-    display: 'flex', alignItems: 'center', gap: 10,
-    padding: '9px 12px', borderRadius: 8, border: 'none', width: '100%',
-    background: active ? (color ?? 'var(--primary)') : 'transparent',
-    color: active ? '#fff' : 'var(--text-2)',
-    fontWeight: active ? 700 : 500, fontSize: 'var(--fs-3)',
-    cursor: 'pointer', textAlign: 'left' as const, transition: 'all 0.12s',
+    display: 'flex', alignItems: 'center', gap: 10, minHeight: 44,
+    padding: '8px 12px', borderRadius: 8, border: 'none', width: '100%',
+    borderLeft: `3px solid ${active ? (color ?? 'var(--primary)') : 'transparent'}`,
+    background: active ? tint('var(--text)', 8) : 'transparent',
+    color: active ? 'var(--text)' : 'var(--text-2)',
+    fontWeight: active ? 700 : 500, fontSize: 'var(--fs-3)', overflowWrap: 'anywhere',
+    cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
   }
 }
 
-// ── Avatar ───────────────────────────────────────────────────────
-function Avatar({ initials, size = 38, bg = 'var(--coach-color)' }: { initials: string; size?: number; bg?: string }) {
+/** A page title for the tabs that have no scoreboard of their own. */
+function TabTitle({ title, sub }: { title: string; sub?: React.ReactNode }) {
   return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: bg, color: '#fff', fontWeight: 900,
-      fontSize: Math.round(size * 0.37), display: 'flex',
-      alignItems: 'center', justifyContent: 'center',
-    }}>{initials}</div>
+    <div style={{ minWidth: 0 }}>
+      <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, lineHeight: 1.1, letterSpacing: -0.6, color: 'var(--text)' }}>{title}</h1>
+      {sub && <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 4 }}>{sub}</div>}
+    </div>
   )
+}
+
+// ── Toasts ───────────────────────────────────────────────────────
+/* All three were light fills under white text — the ink-side --success under
+ * white is 2.0:1 on the ink palette. They are ink panels now, with the state
+ * carried by a coloured rule and the icon. */
+const TOAST_BOX: React.CSSProperties = {
+  background: 'var(--card)', color: 'var(--text)', borderRadius: 12, overflow: 'hidden',
+  border: HAIR_2, boxShadow: `0 8px 32px ${tint('black', 45)}`,
+  minWidth: 240, maxWidth: 340, width: '100%',
+}
+const TOAST_CLOSE: React.CSSProperties = {
+  width: 44, height: 44, margin: '-10px -10px -10px 0', background: 'none', border: 'none',
+  color: 'var(--text-2)', cursor: 'pointer', fontSize: 20, lineHeight: 1, flexShrink: 0,
 }
 
 // ── Simple Toast (success / error) ───────────────────────────────
@@ -159,25 +345,19 @@ function SimpleToast({ data, onDismiss }: { data: SimpleToastData; onDismiss: ()
   const dismiss = () => { setLeaving(true); setTimeout(onDismiss, 320) }
   useEffect(() => { const t = setTimeout(dismiss, 4000); return () => clearTimeout(t) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const isSuccess = data.type === 'success'
+  const tone = isSuccess ? 'var(--success)' : 'var(--danger)'
   return (
     <div style={{
-      background: isSuccess ? 'var(--success)' : 'var(--danger)',
-      color: '#fff',
-      borderRadius: 12,
-      overflow: 'hidden',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+      ...TOAST_BOX, borderLeft: `3px solid ${tone}`,
       animation: leaving ? 'toastOut 0.32s ease forwards' : 'toastIn 0.35s ease',
-      minWidth: 240,
-      maxWidth: 340,
-      width: '100%',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
-        <span style={{ fontSize: 'var(--fs-4)' }}>{isSuccess ? '✓' : '✕'}</span>
+        <span aria-hidden style={{ fontSize: 'var(--fs-4)', color: tone }}>{isSuccess ? '✓' : '✕'}</span>
         <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontSize: 'var(--fs-3)', fontWeight: 700 }}>{data.message}</span>
-        <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
+        <button onClick={dismiss} aria-label="Dismiss" style={TOAST_CLOSE}>×</button>
       </div>
-      <div style={{ height: 3, background: 'rgba(255,255,255,0.2)' }}>
-        <div style={{ height: '100%', background: 'rgba(255,255,255,0.6)', animation: 'toastProgress 4s linear forwards' }} />
+      <div style={{ height: 3, background: tint('var(--text)', 10) }}>
+        <div style={{ height: '100%', background: tone, animation: 'toastProgress 4s linear forwards' }} />
       </div>
     </div>
   )
@@ -222,21 +402,19 @@ function ReceiptToast({ data, onDismiss }: { data: ReceiptToastData; onDismiss: 
       onMouseEnter={() => setHeld(true)}
       onMouseLeave={() => setHeld(false)}
       style={{
-        background: 'var(--success)', color: '#fff', borderRadius: 12, overflow: 'hidden',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+        ...TOAST_BOX, borderLeft: '3px solid var(--success)',
         animation: leaving ? 'toastOut 0.32s ease forwards' : 'toastIn 0.35s ease',
-        minWidth: 240, maxWidth: 340, width: '100%',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
-        <span style={{ fontSize: 'var(--fs-4)' }}>✓</span>
+        <span aria-hidden style={{ fontSize: 'var(--fs-4)', color: 'var(--success)' }}>✓</span>
         <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontSize: 'var(--fs-3)', fontWeight: 700 }}>{data.message}</span>
         {data.href && (
-          <Link href={data.href} style={{ color: '#fff', fontSize: 'var(--fs-2)', fontWeight: 800, textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+          <Link href={data.href} style={{ color: 'var(--primary)', fontSize: 'var(--fs-2)', fontWeight: 800, textDecoration: 'underline', whiteSpace: 'nowrap', minHeight: 44, display: 'inline-flex', alignItems: 'center', margin: '-10px 0' }}>
             View
           </Link>
         )}
-        <button onClick={dismiss} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+        <button onClick={dismiss} aria-label="Dismiss" style={TOAST_CLOSE}>×</button>
       </div>
     </div>
   )
@@ -257,41 +435,24 @@ function JoinToast({ data, onDismiss }: { data: JoinToastData; onDismiss: () => 
 
   return (
     <div style={{
-      background: 'var(--coach-color)',
-      color: '#fff',
-      borderRadius: 14,
-      overflow: 'hidden',
-      boxShadow: '0 8px 32px rgb(15 32 66 / .40)',
-      border: '1px solid rgba(255,255,255,0.08)',
+      ...TOAST_BOX, borderRadius: 14, minWidth: 290,
       animation: leaving ? 'toastOut 0.32s ease forwards' : 'toastIn 0.35s ease',
-      minWidth: 290,
-      maxWidth: 340,
-      width: '100%',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px 12px' }}>
-        {/* Blue accent bar */}
         <div style={{ width: 4, background: 'var(--primary)', borderRadius: 2, alignSelf: 'stretch', flexShrink: 0 }} />
-        {/* Avatar */}
-        <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--primary)', color: '#fff', fontWeight: 900, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          {data.athlete.first_name[0].toUpperCase()}
-        </div>
-        {/* Text */}
+        <Mono initials={initialsOf(data.athlete.first_name, data.athlete.last_name)} size={38} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2, overflowWrap: 'anywhere' }}>{data.athlete.first_name} {data.athlete.last_name}</div>
-          <div style={{ fontSize: 'var(--fs-2)', opacity: 0.65, marginTop: 2 }}>accepted your invite</div>
+          <div style={{ ...cast(17, 700, '.04em'), overflowWrap: 'anywhere' }}>{data.athlete.first_name} {data.athlete.last_name}</div>
+          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 3 }}>accepted your invite</div>
         </div>
-        {/* Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <Link href={`/athletes/${data.athlete.id}`} style={{ fontSize: 'var(--fs-2)', color: 'var(--primary-dark)', fontWeight: 700, textDecoration: 'none', background: 'rgba(37,99,235,0.15)', padding: '4px 10px', borderRadius: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <Link href={`/athletes/${data.athlete.id}`} style={{ fontSize: 'var(--fs-2)', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none', background: tint('var(--primary)', 12), padding: '0 12px', minHeight: 44, borderRadius: 8, display: 'inline-flex', alignItems: 'center' }}>
             View
           </Link>
-          <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 20, padding: 0, lineHeight: 1, display: 'flex' }}>
-            ×
-          </button>
+          <button onClick={dismiss} aria-label="Dismiss" style={{ ...TOAST_CLOSE, margin: 0 }}>×</button>
         </div>
       </div>
-      {/* Progress bar */}
-      <div style={{ height: 3, background: 'rgba(255,255,255,0.08)' }}>
+      <div style={{ height: 3, background: tint('var(--text)', 8) }}>
         <div style={{ height: '100%', background: 'var(--primary)', animation: 'toastProgress 7s linear forwards', borderRadius: 0 }} />
       </div>
     </div>
@@ -333,34 +494,34 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 560 }}>
-      <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Settings</h2>
+      <TabTitle title="Settings" />
 
       {/* ── Profile ── */}
-      <div className="card" style={{ padding: 26 }}>
-        <div className="section-title" style={{ marginBottom: 4 }}>Your Profile</div>
-        <div className="section-sub" style={{ marginBottom: 18 }}>How you appear to athletes and in session reports.</div>
+      <div className="card" style={{ padding: 22 }}>
+        <SecHead title="Your profile" />
+        <div className="section-sub" style={{ marginBottom: 18, color: 'var(--text-2)' }}>How you appear to athletes and in session reports.</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
             <div style={{ minWidth: 0 }}>
               <label className="label">First name</label>
-              <input className="input" value={profileForm.first_name} onChange={e => setProfileForm(f => ({ ...f, first_name: e.target.value }))} style={{ minWidth: 0 }} />
+              <input className="input" value={profileForm.first_name} onChange={e => setProfileForm(f => ({ ...f, first_name: e.target.value }))} style={{ minWidth: 0, minHeight: 44 }} />
             </div>
             <div style={{ minWidth: 0 }}>
               <label className="label">Last name</label>
-              <input className="input" value={profileForm.last_name} onChange={e => setProfileForm(f => ({ ...f, last_name: e.target.value }))} style={{ minWidth: 0 }} />
+              <input className="input" value={profileForm.last_name} onChange={e => setProfileForm(f => ({ ...f, last_name: e.target.value }))} style={{ minWidth: 0, minHeight: 44 }} />
             </div>
           </div>
           <div>
             <label className="label">Email address</label>
-            <input className="input" type="email" value={profileForm.email} onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))} />
+            <input className="input" type="email" value={profileForm.email} onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))} style={{ minHeight: 44 }} />
             <p style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 4, marginBottom: 0 }}>Changing email updates your login credentials.</p>
           </div>
           <div>
             <label className="label">Sport / discipline (optional)</label>
             <SportWheelPicker value={profileForm.sport} onChange={v => setProfileForm(f => ({ ...f, sport: v }))} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving} style={{ minWidth: 120 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving} style={{ minWidth: 120, minHeight: 44 }}>
               {profileSaving ? 'Saving…' : 'Save profile'}
             </button>
             {profileMsg && (
@@ -373,34 +534,36 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
       </div>
 
       {/* ── Invite Code ── */}
-      <div className="card" style={{ padding: 26 }}>
-        <div className="section-title" style={{ marginBottom: 6 }}>Athlete Invite Code</div>
-        <div className="section-sub" style={{ marginBottom: 18 }}>Share this so athletes can join your roster during sign-up.</div>
+      <div className="card" style={{ padding: 22 }}>
+        <SecHead title="Athlete invite code" />
+        <div className="section-sub" style={{ marginBottom: 16, color: 'var(--text-2)' }}>Share this so athletes can join your roster during sign-up.</div>
         {inviteCode && !codeEditing ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 160px', minWidth: 0, overflowWrap: 'anywhere', padding: '12px 16px', background: 'var(--coach-light)', border: '2px solid var(--coach-color)', borderRadius: 10, fontFamily: 'monospace', fontSize: 18, fontWeight: 900, color: 'var(--coach-color)', letterSpacing: 1 }}>{inviteCode}</div>
-            <button onClick={() => { setCodeDraft(inviteCode); setCodeEditing(true); setCodeMsg('') }} className="btn btn-ghost" title="Edit"><Icon name="edit" size={14} /></button>
-            <button onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!') }} className="btn btn-ghost" title="Copy"><Icon name="copy" size={14} /></button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            {/* Was rust on its own tint — --coach-color on the ink-side --coach-light
+                measures 2.7:1. The code is the thing being read, so it is cream. */}
+            <div style={{ flex: '1 1 160px', minWidth: 0, overflowWrap: 'anywhere', padding: '12px 15px', background: PANEL_2, border: HAIR_2, borderRadius: 14, ...MONO, fontWeight: 700, fontSize: 22, letterSpacing: '.12em', color: 'var(--text)', lineHeight: 1.2 }}>{inviteCode}</div>
+            <button onClick={() => { setCodeDraft(inviteCode); setCodeEditing(true); setCodeMsg('') }} style={ICON_BTN} title="Edit" aria-label="Edit invite code"><Icon name="edit" size={15} /></button>
+            <button onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!') }} style={ICON_BTN} title="Copy" aria-label="Copy invite code"><Icon name="copy" size={15} /></button>
           </div>
         ) : (
           <div style={{ marginBottom: 14 }}>
             <label className="label">Invite code</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input className="input" value={codeDraft} onChange={e => setCodeDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} placeholder="coachsmith4821" style={{ fontFamily: 'monospace', fontWeight: 700, flex: '1 1 160px', minWidth: 0 }} />
-              <button className="btn btn-primary" onClick={saveCode} disabled={codeSaving}>{codeSaving ? '…' : 'Save'}</button>
-              {codeEditing && <button className="btn btn-ghost" onClick={() => { setCodeEditing(false); setCodeMsg('') }}>Cancel</button>}
+              <input className="input" value={codeDraft} onChange={e => setCodeDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} placeholder="coachsmith4821" style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, flex: '1 1 160px', minWidth: 0, minHeight: 44 }} />
+              <button className="btn btn-primary" onClick={saveCode} disabled={codeSaving} style={{ minHeight: 44 }}>{codeSaving ? '…' : 'Save'}</button>
+              {codeEditing && <button className="btn btn-ghost" onClick={() => { setCodeEditing(false); setCodeMsg('') }} style={{ minHeight: 44 }}>Cancel</button>}
             </div>
             <p style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 5 }}>Letters, numbers, hyphens, underscores · 4–32 chars</p>
           </div>
         )}
         {codeMsg && <p style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: codeMsg.includes('Copied') || codeMsg.includes('updated') ? 'var(--success)' : 'var(--danger)' }}>{codeMsg}</p>}
         <div className="divider" />
-        <div className="section-title" style={{ fontSize: 15, marginBottom: 10 }}>How athletes join</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>
+        <SecHead title="How athletes join" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 10 }}>
           {[['Invite via email', 'Use "Add Athlete" on the Athletes tab.'], ['Share your code', 'Athletes enter it at sign-up to auto-join your roster.']].map(([t, d], i) => (
             <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <span style={{ background: 'var(--primary)', color: '#fff', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--fs-1)', fontWeight: 800, lineHeight: 1, flexShrink: 0 }}>{i + 1}</span>
-              <span><strong>{t}</strong> — {d}</span>
+              <span style={{ background: 'var(--primary)', color: 'var(--on-primary)', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', ...cast(13, 800, '0'), lineHeight: 1, flexShrink: 0 }}>{i + 1}</span>
+              <span><strong style={{ color: 'var(--text)' }}>{t}</strong> — {d}</span>
             </div>
           ))}
         </div>
@@ -408,9 +571,9 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
 
       {/* ── Account ── */}
       <div className="card" style={{ padding: 18 }}>
-        <div className="section-title" style={{ fontSize: 15, marginBottom: 4 }}>Account</div>
-        <div className="section-sub" style={{ marginBottom: 14 }}>Signed in as {coachName}</div>
-        <button onClick={logout} className="btn btn-ghost" style={{ gap: 6, fontSize: 'var(--fs-3)', color: 'var(--danger)' }}>
+        <SecHead title="Account" />
+        <div className="section-sub" style={{ marginBottom: 14, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>Signed in as {coachName}</div>
+        <button onClick={logout} className="btn btn-ghost" style={{ gap: 6, fontSize: 'var(--fs-3)', color: 'var(--danger)', minHeight: 44 }}>
           <Icon name="signout" size={14} /> Sign Out
         </button>
       </div>
@@ -480,6 +643,8 @@ function DashboardPageInner() {
   const [addMsg, setAddMsg] = useState('')
   const [addLoading, setAddLoading] = useState(false)
   const [showAddAthlete, setShowAddAthlete] = useState(false)
+  /** The invite that has just gone, shown at the top of the sheet until it closes. */
+  const [lastInvite, setLastInvite] = useState<{ firstName: string; lastName: string; email: string; at: Date } | null>(null)
   const [onboardStep, setOnboardStep] = useState({ code: false, athlete: false, session: false })
 
   const [groups, setGroups] = useState<Group[]>([])
@@ -683,7 +848,7 @@ function DashboardPageInner() {
     setLoadingSessions(true)
     setSessionsError(null)
     try {
-      const p = new URLSearchParams({ limit: '50' })
+      const p = new URLSearchParams({ limit: String(SESSIONS_WINDOW) })
       if (search) p.set('search', search)
       if (athleteId) p.set('athlete_id', athleteId)
       const json = await apiJson<{ sessions?: Session[] }>(`/api/sessions/all?${p}`, { cache: 'no-store' })
@@ -853,8 +1018,11 @@ function DashboardPageInner() {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error)
+      // The sheet stays open: it now shows the row this created and what
+      // PENDING will mean for them, with the form reset for the next one.
+      setLastInvite({ firstName: addForm.firstName.trim(), lastName: addForm.lastName.trim(), email: addForm.email.trim(), at: new Date() })
       setAddForm({ firstName: '', lastName: '', email: '' })
-      setAddMsg('Athlete invited!'); setShowAddAthlete(false)
+      setAddMsg('')
       await fetchAthletes()
     } catch (e: unknown) { setAddMsg(errorMessage(e, 'Failed')) }
     finally { setAddLoading(false) }
@@ -1032,13 +1200,8 @@ function DashboardPageInner() {
     const s = athleteSearch.toLowerCase()
     return !s || a.first_name.toLowerCase().includes(s) || a.last_name.toLowerCase().includes(s) || a.email.toLowerCase().includes(s)
   })
-  const activeAthletes = athletes.filter(a => a.athlete_user_id)
 
   const recentSessions = allSessions.slice(0, 3)
-  const thisWeek = allSessions.filter(s => {
-    const d = sessionDate(s)
-    return d !== null && Date.now() - d.getTime() < 7 * 86400000
-  })
   const totalUnreadAll = Object.values(unreadCounts).reduce((a: number, b: number) => a + b, 0)
 
   const calTitle = calMode === 'personal'
@@ -1056,69 +1219,169 @@ function DashboardPageInner() {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const firstName = coachName.split(' ')[0]
 
+  // ── The scoreboard's numbers ──────────────────────────────────
+  /* The big number and its twelve-week spark both come from buildSpine
+   * (lib/training-spine.ts): calendar weeks, bucketed by local midnight, the
+   * version the clock rig runs under nine timezones. The home stat used to
+   * count a rolling 7 x 86,400,000ms instead, which is the arithmetic that rig
+   * exists to catch — and a spark whose "now" bar disagreed with the number
+   * printed above it would be worse than either. */
+  const spine = buildSpine(allSessions)
+  /* allSessions is the SESSIONS_WINDOW newest rows across the whole roster. Once
+   * that window is full, the oldest weeks in it are only partly inside it, and
+   * a spark drawn from them would show a busy coach's record tapering away
+   * when it did not. So only the weeks the window wholly contains are drawn:
+   * the ones after the week of its oldest session. */
+  const windowFull = allSessions.length >= SESSIONS_WINDOW
+  const completeWeeks = (() => {
+    if (!windowFull) return SPINE_WEEKS
+    const dates = allSessions.map((s) => sessionDate(s)).filter((d): d is Date => d !== null)
+    if (dates.length === 0) return 0
+    const oldest = dates.reduce((a, b) => (a < b ? a : b))
+    return Math.min(SPINE_WEEKS, Math.round(calendarDaysBetween(startOfWeek(oldest), startOfWeek(new Date())) / 7))
+  })()
+  const sparkWeeks = completeWeeks > 0 ? spine.weeks.slice(SPINE_WEEKS - completeWeeks) : []
+  const sparkTotal = sparkWeeks.reduce((a, b) => a + b, 0)
+  const sparkMax = Math.max(1, ...sparkWeeks)
+  const showSpark = sparkWeeks.length >= 2 && sparkTotal >= SPINE_MIN_SESSIONS
+  // A full window that is entirely this week cannot say how many this week had.
+  const weekCountLabel = `${spine.thisWeek}${windowFull && completeWeeks === 0 ? '+' : ''}`
+  const hugeSize = weekCountLabel.length <= 2 ? 100 : weekCountLabel.length === 3 ? 72 : 56
+
+  // Wellness across the roster: the mean of each athlete's latest check-in in
+  // the last fortnight (the same map the roster cards read). An aggregate, so
+  // it compares no child with another.
+  const wellnessScores = athletes
+    .map((a) => overallWellnessScore(wellnessByAthlete.get(a.id) ?? null))
+    .filter((n): n is number => n !== null)
+  const wellnessAvg = wellnessScores.length
+    ? Math.round((wellnessScores.reduce((a, b) => a + b, 0) / wellnessScores.length) * 10) / 10
+    : null
+
+  // The roster's one split. `status` comes from lib/athlete-status via the API;
+  // INVITED is the honest default for a row we have no evidence about.
+  const statusOf = (a: Athlete) => a.status ?? 'INVITED'
+  const activeN = athletes.filter((a) => statusOf(a) === 'ACTIVE').length
+  const pendingN = athletes.length - activeN
+
+  /* The attention headline. Coach-only, like everything derived from
+   * lib/attention.ts, and worded as a fact about sessions rather than a
+   * verdict on the coach. It names nobody when nobody qualifies, and it says
+   * nothing at all until the coverage read has landed — or if it failed —
+   * because "nobody is quiet" is a claim, and the greeting is not. */
+  const quietAthletes = coverageLoaded && !coverageFailed ? athletes.filter((a) => inactiveIds.has(a.id)) : []
+  const NUMBER_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve']
+  const quietWord = NUMBER_WORDS[quietAthletes.length] ?? String(quietAthletes.length)
+  const quietWeeks: number = QUIET_AFTER_DAYS / 7
+  const quietSpan = Number.isInteger(quietWeeks)
+    ? `${(NUMBER_WORDS[quietWeeks] ?? String(quietWeeks)).toLowerCase()} week${quietWeeks === 1 ? '' : 's'}`
+    : `${QUIET_AFTER_DAYS} days`
+  const quietNames = (() => {
+    const names = quietAthletes.map((a) => a.first_name)
+    return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+  })()
+
+  const ROLECAP: Record<Tab, string> = {
+    home: 'Coach desk', athletes: 'Athletes', groups: 'Squads', sessions: 'Sessions',
+    calendar: 'Calendar', messages: 'Messages', settings: 'Settings',
+  }
+  const tickerDate = new Date()
+    .toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })
+    .replace(/,/g, '')
+
+  const openRecorder = (athleteId?: string, groupId?: string) => {
+    setQuickSessionAthleteId(athleteId); setQuickSessionGroupId(groupId); setQuickSessionOpen(true)
+  }
+  const closeAddAthlete = () => { setShowAddAthlete(false); setAddMsg(''); setLastInvite(null) }
+
+  /** Floating nav geometry, shared with the Messages panel's height so the two
+   *  cannot drift apart: bar height + its offset from the bottom edge. */
+  const NAV_H = 62
+  const NAV_BOTTOM = 'max(12px, env(safe-area-inset-bottom))'
+  const TOPBAR_H = 65 // 44px controls + 10px padding each side + the hairline
+
+  /** One session, as a hairline row. The whole row opens the session. */
+  const sessionRow = (s: Session, i: number, opts: { summary: boolean; meta: string | null }) => {
+    const a = s.athletes
+    const d = sessionDate(s)
+    return (
+      <Link key={s.id} href={`/sessions/${s.id}`} style={{
+        display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', gap: 13, alignItems: 'start',
+        padding: '13px 0', borderTop: i === 0 ? HAIR_2 : HAIR, textDecoration: 'none', color: 'inherit',
+      }}>
+        <div aria-hidden>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 24, lineHeight: 0.9, letterSpacing: -1, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{d ? d.getDate() : '—'}</div>
+          {d && <div style={{ ...cast(13, 700, '.14em'), color: 'var(--text-2)', marginTop: 4 }}>{d.toLocaleDateString(undefined, { weekday: 'short' })}</div>}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ ...cast(19, 700, '.04em'), lineHeight: 1.05, color: 'var(--text)', overflowWrap: 'anywhere' }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 400, fontSize: 'var(--t-body)', lineHeight: 1.4, color: 'var(--text-2)', marginTop: 5, overflowWrap: 'anywhere' }}>{s.session_name ?? 'Session'}</div>
+          {opts.summary && s.summary && (
+            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>{s.summary}</div>
+          )}
+          {opts.meta && <div style={{ ...MONO, fontSize: 13, color: 'var(--text-2)', marginTop: 6 }}>{opts.meta}</div>}
+        </div>
+        <div style={{ marginTop: 1 }}>
+          <Chip tone={s.shared_with_athlete ? 'shared' : 'amber'}>{s.shared_with_athlete ? 'Shared' : 'Draft'}</Chip>
+        </div>
+      </Link>
+    )
+  }
+
   // ── Render ────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
-
-      {/* Shows only on a genuinely cold launch, over the dashboard while it
-          loads. Any touch dismisses it; it never delays anything. */}
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)', position: 'relative' }}>
+      <StadiumStyles />
+      {/* The stage: a sage beam from the top corner and the 39px pitch grid.
+          Fixed, static and behind everything — nothing large here moves or
+          changes luminance, which the boot shell's flash-safety depends on. */}
+      <div className="sn-stage" aria-hidden />
 
       {/* ════════ DESKTOP SIDEBAR ════════ */}
       {!isMobile && (
         <nav style={{
           width: 220, minWidth: 220,
           background: 'linear-gradient(180deg, var(--ink-base) 0%, var(--ink-mid) 100%)',
+          borderRight: HAIR,
           display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', zIndex: 100,
         }}>
-          {/* Logo */}
           <div style={{ padding: '22px 18px 18px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 12px rgb(111 142 107 / .4)' }}>
-                <Icon name="mic" size={18} strokeWidth={2.5} />
-              </div>
-              <div>
-                <div style={{ fontWeight: 900, fontSize: 'var(--fs-4)', letterSpacing: -0.3, lineHeight: 1.1, color: '#fff' }}>CoachVoice</div>
-                <div style={{ fontSize: 'var(--fs-1)', color: 'rgba(255,255,255,0.45)', letterSpacing: 0.5 }}>COACH PORTAL</div>
-              </div>
-            </div>
+            <Brand rolecap="Coach desk" />
           </div>
 
-          {/* Record button */}
+          {/* Record — the one floodlit control on this rail. */}
           <div style={{ padding: '0 12px 12px' }}>
             <button
-              onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
+              onClick={() => openRecorder()}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                padding: '11px 12px', fontSize: 14, fontWeight: 800,
-                background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
-                color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer',
-                boxShadow: '0 4px 16px rgb(111 142 107 / .4)',
+                minHeight: 48, padding: '10px 12px', ...cast(16, 800, '.06em'),
+                background: 'var(--flood)', color: 'var(--on-primary)', border: 'none', borderRadius: 14, cursor: 'pointer',
                 transition: 'all 0.18s ease',
               }}
             >
-              <Icon name="mic" size={15} /> Record Session
+              <Icon name="mic" size={16} strokeWidth={2.3} /> Record session
             </button>
           </div>
 
-          {/* Nav items */}
-          <div style={{ flex: 1, padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ flex: 1, padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
             {NAV_ITEMS.map(item => {
               const unread = item.key === 'messages' ? totalUnreadAll : 0
               const active = tab === item.key
               return (
-                <button key={item.key} onClick={() => setTab(item.key)} style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '9px 12px', borderRadius: 9, border: 'none', width: '100%',
-                  background: active ? 'rgba(111,142,107,0.25)' : 'transparent',
-                  color: active ? '#fff' : 'rgba(255,255,255,0.55)',
-                  fontWeight: active ? 700 : 500, fontSize: 'var(--fs-3)',
-                  cursor: 'pointer', textAlign: 'left' as const, transition: 'all 0.12s',
-                  borderLeft: active ? '3px solid var(--primary)' : '3px solid transparent',
+                <button key={item.key} onClick={() => setTab(item.key)} aria-current={active ? 'page' : undefined} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, minHeight: 44,
+                  padding: '8px 12px', borderRadius: 9, border: 'none', width: '100%',
+                  background: active ? tint('var(--text)', 7) : 'transparent',
+                  color: active ? 'var(--flood)' : 'var(--text-2)',
+                  ...cast(15, 700, '.12em'),
+                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
+                  borderLeft: `3px solid ${active ? 'var(--flood)' : 'transparent'}`,
                 }}>
                   <Icon name={item.icon} size={17} />
                   <span style={{ flex: 1 }}>{item.label}</span>
                   {unread > 0 && (
-                    <span style={{ background: 'var(--primary)', color: '#fff', borderRadius: 99, minWidth: 18, minHeight: 18, lineHeight: 1, fontSize: 'var(--fs-1)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                    <span style={{ background: 'var(--coach-on-light)', color: 'var(--on-primary)', borderRadius: 99, minWidth: 20, minHeight: 20, lineHeight: 1, ...cast(13, 800, '0'), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
                       {unread}
                     </span>
                   )}
@@ -1127,16 +1390,15 @@ function DashboardPageInner() {
             })}
           </div>
 
-          {/* Coach info */}
-          <div style={{ padding: '14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <div style={{ padding: '14px', borderTop: HAIR }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <Avatar initials={coachInitials} size={34} bg="linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)" />
+              <Mono initials={coachInitials || '?'} size={34} />
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 'var(--fs-3)', overflowWrap: 'anywhere', color: '#fff' }}>{coachName}</div>
-                {coachSport && <div style={{ fontSize: 'var(--fs-1)', color: 'rgba(255,255,255,0.45)' }}>{coachSport}</div>}
+                <div style={{ fontWeight: 700, fontSize: 'var(--fs-3)', overflowWrap: 'anywhere', color: 'var(--text)' }}>{coachName}</div>
+                {coachSport && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-2)' }}>{coachSport}</div>}
               </div>
             </div>
-            <button onClick={logout} style={{ width: '100%', fontSize: 'var(--fs-3)', padding: '8px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'rgba(255,255,255,0.55)', transition: 'all 0.12s' }}>
+            <button onClick={logout} style={{ width: '100%', minHeight: 44, fontSize: 'var(--fs-3)', padding: '8px', background: 'transparent', border: HAIR_2, borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--text-2)', transition: 'all 0.12s' }}>
               <Icon name="signout" size={13} /> Sign Out
             </button>
           </div>
@@ -1144,194 +1406,208 @@ function DashboardPageInner() {
       )}
 
       {/* ════════ MAIN CONTENT ════════ */}
+      {/* overflowX hidden: the scoreboard's beam is skewed out past its own
+          cells on purpose, and must never become a sideways scroll. */}
       <main ref={mainRef} style={{
-        flex: 1, overflowY: 'auto',
-        maxHeight: isMobile ? 'calc(100dvh - 60px)' : '100vh',
-        paddingBottom: isMobile ? 'max(100px, calc(80px + env(safe-area-inset-bottom)))' : 0,
+        flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', position: 'relative', zIndex: 1,
+        maxHeight: isMobile ? '100dvh' : '100vh',
+        paddingBottom: isMobile && tab !== 'messages' ? `calc(${NAV_H + 44}px + ${NAV_BOTTOM})` : 0,
       }}>
         {/* Mobile top bar */}
         {isMobile && (
           <div style={{
             position: 'sticky', top: 0, zIndex: 100,
-            background: 'rgba(251,248,243,0.94)',
+            background: tint('var(--bg)', 92),
             backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-            borderBottom: '1px solid var(--border)',
-            padding: '10px 16px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderBottom: HAIR,
+            padding: `10px ${GUTTER}`,
+            display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                background: 'var(--text)', color: '#fff', fontWeight: 800, fontSize: 'var(--fs-3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', letterSpacing: 0.2,
-              }}>{coachInitials}</div>
-              <div>
-                <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 1, textTransform: 'uppercase' }}>
-                  {new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
-                </div>
-                <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)', marginTop: 1 }}>{coachName || 'Coach'}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => setTab('messages')} style={{
-                width: 36, height: 36, borderRadius: 10, background: 'var(--card)',
-                border: '1px solid var(--border)', position: 'relative',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', cursor: 'pointer',
-              }}>
-                <Icon name="messages" size={15} strokeWidth={1.8} />
-                {totalUnreadAll > 0 && <span style={{ position: 'absolute', top: 7, right: 7, width: 7, height: 7, borderRadius: '50%', background: 'var(--coach-color)', border: '1.5px solid var(--card)' }} />}
-              </button>
-              <button onClick={() => setTab('settings')} style={{
-                width: 36, height: 36, borderRadius: 10, background: 'var(--card)',
-                border: '1px solid var(--border)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', cursor: 'pointer',
-              }}>
-                <Icon name="settings" size={15} strokeWidth={1.8} />
-              </button>
-            </div>
+            <Brand rolecap={ROLECAP[tab]} />
+            <span style={{ flex: 1 }} />
+            <button onClick={() => setTab('messages')} aria-label={totalUnreadAll > 0 ? `Messages, ${totalUnreadAll} unread` : 'Messages'} style={ICON_BTN}>
+              <Icon name="messages" size={17} strokeWidth={1.8} />
+              {totalUnreadAll > 0 && <span style={{ position: 'absolute', top: 9, right: 9, width: 8, height: 8, borderRadius: '50%', background: 'var(--coach-on-light)', border: '1.5px solid var(--bg)' }} />}
+            </button>
+            {/* The coach's own monogram is the way into Settings, as on the
+                approved screen; it still says so to a screen reader. */}
+            <button onClick={() => setTab('settings')} aria-label="Settings" title={coachName ? `${coachName} · Settings` : 'Settings'} style={{
+              width: 44, height: 44, borderRadius: 12, flex: 'none', border: 'none', cursor: 'pointer',
+              background: 'var(--primary)', color: 'var(--on-primary)', ...cast(15, 800, '.06em'), lineHeight: 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+            }}>
+              {coachInitials || <Icon name="settings" size={17} strokeWidth={1.8} />}
+            </button>
           </div>
         )}
 
+        <div style={{ padding: tab === 'messages' ? 0 : isMobile ? `12px ${GUTTER} 0` : '28px' }}>
 
-<div style={{ padding: isMobile ? '16px' : '28px' }}>
+          {tab !== 'messages' && (
+            <div style={{ marginBottom: 18 }}>
+              <Ticker>
+                <span>{tickerDate}</span>
+                {coachName && <><TickSep /><span style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{coachName}</span></>}
+                {coachSport && <><TickSep /><span style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{coachSport}</span></>}
+                <span style={{ flex: 1 }} />
+                {totalUnreadAll > 0 && (
+                  <span style={{ color: 'var(--coach-on-light)', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                    <i className="sn-livedot" aria-hidden style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--coach-on-light)' }} />
+                    {totalUnreadAll} unread
+                  </span>
+                )}
+              </Ticker>
+            </div>
+          )}
 
           {/* ════ HOME TAB ════ */}
-          {tab === 'home' && (() => {
-            // Day maths now lives in DayWheel, which spans months rather than
-            // one fixed week.
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {tab === 'home' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-                {/* Greeting */}
-                <div style={{ paddingBottom: 4, textAlign: 'center' }}>
-                  <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 'var(--fs-6)', letterSpacing: -0.8, lineHeight: 1.1, color: 'var(--text)' }}>
-                    {greeting}, <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{firstName || 'Coach'}.</span>
-                  </h1>
-                </div>
+              {/* Recordings still on this device. Renders nothing when the
+                  queue is empty, which is almost always — and sits above
+                  everything else when it is not, because an unsent recording
+                  is more urgent than any summary of past ones. */}
+              <PendingRecordings onSynced={() => { fetchAllSessions(); fetchCoverage() }} />
 
-                {/* Stats — 3 cards with delta sub-text */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
-                  {([
-                    // "active" counts athletes who have actually opened their
-                    // portal, matching the ACTIVE/PENDING badges on the roster.
-                    // It used to count anyone with an account, so it read
-                    // "8 active" while two of them had never signed in.
-                    { label: 'Athletes', value: athletes.length, color: 'var(--primary-dark)', delta: athletes.length > 0 ? `${activeCount(athletes)} active` : 'none yet', tab: 'athletes' as Tab },
-                    { label: 'Sessions', value: thisWeek.length, color: 'var(--coach-on-light)', delta: 'this week', tab: 'sessions' as Tab },
-                    { label: 'Unread',   value: totalUnreadAll,  color: 'var(--energy-dark)', delta: totalUnreadAll > 0 ? 'messages' : 'all clear', tab: 'messages' as Tab },
-                  ]).map(stat => (
-                    <button key={stat.label} onClick={() => setTab(stat.tab)} style={{
-                      background: stat.color, border: 'none',
-                      borderRadius: 14, padding: '11px 11px 10px',
-                      position: 'relative', overflow: 'hidden',
-                      cursor: 'pointer', textAlign: 'left',
-                      transition: 'all 0.18s ease',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                    }}>
-                      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 'var(--fs-6)', lineHeight: 1, color: 'var(--card)', letterSpacing: -1.5, marginTop: 4 }}>{stat.value}</div>
-                      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'rgba(255,255,255,0.85)', marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.6 }}>{stat.label}</div>
-                      <div style={{ fontSize: 'var(--fs-1)', color: 'rgba(255,255,255,0.65)', marginTop: 3, fontWeight: 600 }}>{stat.delta}</div>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Day wheel — scrolls back through what you've done and
-                    forward through what's booked, with a Today control. */}
-                <div>
-                  <DayWheel
-                    events={homeWeekEvents as WheelEvent[]}
-                    selectedDay={homeSelectedDay}
-                    onSelectDay={setHomeSelectedDay}
-                    headerAction={
-                      <button onClick={() => setTab('calendar')} style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                        Calendar <Icon name="arrow" size={9} />
+              {/* Attention headline, or the greeting when there is nothing to say. */}
+              <section>
+                {quietAthletes.length > 0 ? (
+                  <>
+                    <Eyebrow>Inactive</Eyebrow>
+                    <h1 style={{ margin: '11px 0 0', fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, lineHeight: 1.12, letterSpacing: -0.6, color: 'var(--text)' }}>
+                      {quietWord} athlete{quietAthletes.length === 1 ? ' hasn’t' : 's haven’t'} had a session in{' '}
+                      <em style={{ fontStyle: 'italic', fontWeight: 500, background: `linear-gradient(transparent 68%, ${tint('var(--primary)', 26)} 68%)` }}>{quietSpan}</em>.
+                    </h1>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 11, flexWrap: 'wrap' }}>
+                      <div aria-hidden style={{ display: 'flex' }}>
+                        {quietAthletes.slice(0, 3).map((a, i) => (
+                          <div key={a.id} style={{ marginLeft: i === 0 ? 0 : -8 }}>
+                            <Mono initials={initialsOf(a.first_name, a.last_name)} pending={statusOf(a) === 'INVITED'} size={30} ring="var(--bg)" />
+                          </div>
+                        ))}
+                      </div>
+                      <p style={{ flex: '1 1 120px', minWidth: 0, margin: 0, fontSize: 'var(--fs-2)', color: 'var(--text-2)', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{quietNames}</p>
+                      <button onClick={() => { setAthleteFilter('INACTIVE'); setTab('athletes') }} style={{ minHeight: 44, background: 'none', border: 'none', padding: '0 0 0 6px', color: 'var(--primary)', fontWeight: 700, fontSize: 'var(--fs-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        Open <Icon name="arrow" size={13} />
                       </button>
-                    }
-                  />
+                    </div>
+                  </>
+                ) : (
+                  <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, lineHeight: 1.12, letterSpacing: -0.6, color: 'var(--text)' }}>
+                    {greeting}, <em style={{ fontStyle: 'italic', fontWeight: 500 }}>{firstName || 'Coach'}.</em>
+                  </h1>
+                )}
+              </section>
+
+              {/* The scoreboard. One enormous number: sessions this week. */}
+              <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0, 1.32fr) minmax(0, 1fr)', gap: 9 }}>
+                <div aria-hidden style={{
+                  position: 'absolute', inset: '-10px -12px -10px -14px', zIndex: 0, pointerEvents: 'none',
+                  background: `linear-gradient(100deg, ${tint('var(--text)', 5)}, transparent 58%)`,
+                  transform: 'skewX(-11deg)', borderLeft: `1px solid ${tint('var(--primary)', 32)}`,
+                }} />
+                <button onClick={() => setTab('sessions')} aria-label={`${weekCountLabel} sessions this week. Open all sessions`} style={{
+                  position: 'relative', zIndex: 1, background: PANEL, border: HAIR, borderRadius: 17, padding: '12px 13px',
+                  display: 'flex', flexDirection: 'column', justifyContent: 'space-between', overflow: 'hidden',
+                  textAlign: 'left', cursor: 'pointer', color: 'inherit', font: 'inherit', minWidth: 0,
+                }}>
+                  <div style={{ marginTop: 2 }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: hugeSize, lineHeight: 0.74, letterSpacing: -hugeSize * 0.06, color: 'var(--text)', fontVariantNumeric: 'tabular-nums', margin: '2px 0 0 -4px', paddingTop: hugeSize * 0.06 }}>{weekCountLabel}</div>
+                    <div style={{ ...cast(13, 700, '.2em'), color: 'var(--text-2)', marginTop: 10 }}>Sessions</div>
+                    <div style={{ ...cast(13, 600, '.2em'), color: 'var(--text-2)', marginTop: 2 }}>This week</div>
+                  </div>
+                  {showSpark && (
+                    <div style={{ width: '100%' }}>
+                      <div aria-hidden style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 28, marginTop: 10 }}>
+                        {sparkWeeks.map((n, i) => {
+                          const now = i === sparkWeeks.length - 1
+                          return <i key={i} style={{ flex: 1, minWidth: 0, height: `${Math.max(7, (n / sparkMax) * 100)}%`, borderRadius: 1, background: now ? 'var(--flood)' : tint('var(--primary)', 55) }} />
+                        })}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 8, marginTop: 8, ...cast(13, 700, '.14em'), color: 'var(--text-2)' }}>
+                        <span>{sparkWeeks.length} weeks</span>
+                        <span style={{ marginLeft: 'auto' }}>Avg {Math.round(sparkTotal / sparkWeeks.length)} / wk</span>
+                      </div>
+                    </div>
+                  )}
+                </button>
+                <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 9, minWidth: 0 }}>
+                  <button onClick={() => setTab('athletes')} style={{ background: PANEL, border: HAIR, borderRadius: 17, padding: '12px 13px', textAlign: 'left', cursor: 'pointer', color: 'inherit', font: 'inherit', minWidth: 0 }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 40, lineHeight: 1, letterSpacing: -1.8, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{athletes.length}</div>
+                    <div style={{ ...cast(13, 700, '.2em'), color: 'var(--text-2)', marginTop: 5 }}>Athletes</div>
+                    {/* "active" counts athletes who have actually opened their
+                        portal, matching the ACTIVE/PENDING split on the roster. */}
+                    <div style={{ ...cast(13, 700, '.1em'), color: 'var(--primary)', marginTop: 4 }}>{athletes.length > 0 ? `${activeCount(athletes)} active` : 'None yet'}</div>
+                  </button>
+                  <div style={{ background: PANEL, border: HAIR, borderRadius: 17, padding: '12px 13px', minWidth: 0 }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 40, lineHeight: 1, letterSpacing: -1.8, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+                      {wellnessAvg ?? '—'}<span style={{ fontSize: 15, letterSpacing: 0, color: 'var(--text-2)', marginLeft: 2 }}>/5</span>
+                    </div>
+                    <div style={{ ...cast(13, 700, '.2em'), color: 'var(--text-2)', marginTop: 5 }}>Wellness</div>
+                    {wellnessAvg !== null && (
+                      <div aria-hidden style={{ display: 'flex', gap: 3, marginTop: 8 }}>
+                        {[1, 2, 3, 4, 5].map((n) => <i key={n} style={{ height: 4, flex: 1, borderRadius: 2, background: n <= Math.round(wellnessAvg) ? 'var(--primary)' : tint('var(--text)', 14) }} />)}
+                      </div>
+                    )}
+                    <div style={{ ...cast(13, 600, '.1em'), color: 'var(--text-2)', marginTop: 7 }}>{wellnessScores.length} checked in · 14d</div>
+                  </div>
                 </div>
+              </div>
 
-                {/* Today's sessions — time-based list */}
-                {todayEvents.length > 0 && (
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 1.2 }}>Today</div>
-                      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)' }}>{todayEvents.length} event{todayEvents.length !== 1 ? 's' : ''}</div>
-                    </div>
-                    <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
-                      {todayEvents.map((ev, i) => {
-                        const m = ev.event_time?.match(/^(\d+):(\d+)/)
-                        const hrs = m ? parseInt(m[1]) : null
-                        const mins = m ? m[2] : null
-                        const ampm = hrs !== null ? (hrs >= 12 ? 'pm' : 'am') : null
-                        const dh = hrs !== null ? (hrs > 12 ? hrs - 12 : hrs === 0 ? 12 : hrs) : null
-                        return (
-                          <Link key={ev.id} href={ev.athlete_id ? `/athletes/${ev.athlete_id}` : '#'} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px', borderTop: i === 0 ? 'none' : '1px solid var(--border-soft)', textDecoration: 'none', color: 'inherit', cursor: ev.athlete_id ? 'pointer' : 'default' }}>
-                            <div style={{ minWidth: 38, flexShrink: 0 }}>
-                              {dh !== null ? (
-                                <>
-                                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-4)', fontWeight: 500, color: 'var(--text)', lineHeight: 1, letterSpacing: -0.4 }}>{dh}:{mins}</div>
-                                  <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{ampm}</div>
-                                </>
-                              ) : <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>—</div>}
-                            </div>
-                            <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border-soft)', flexShrink: 0 }} />
-                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: stableTone(ev.id), color: '#fff', fontWeight: 800, fontSize: 'var(--fs-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              {(ev.title[0] ?? '?').toUpperCase()}
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: 'var(--fs-2)', color: 'var(--text)', overflowWrap: 'anywhere' }}>{ev.title}</div>
-                              {ev.event_type && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-2)', marginTop: 1 }}>{ev.event_type}</div>}
-                            </div>
-                            <Icon name="arrow" size={13} strokeWidth={1.8} />
-                          </Link>
-                        )
-                      })}
-                    </div>
+              {/* Record — the floodlight is spent here. */}
+              <button onClick={() => openRecorder()} style={{
+                position: 'relative', minHeight: 64, borderRadius: 18, overflow: 'hidden', background: 'var(--flood)',
+                border: 'none', display: 'flex', alignItems: 'stretch', cursor: 'pointer', padding: 0, width: '100%', textAlign: 'left',
+              }}>
+                <span style={{ flex: '1 1 auto', minWidth: 0, padding: '12px 8px 12px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <span style={{ display: 'block', ...cast(20, 800, '.045em'), lineHeight: 1, color: 'var(--on-primary)' }}>Record a session</span>
+                  <span style={{ display: 'block', ...MONO, fontSize: 13, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--on-primary)', marginTop: 6 }}>Tap to start</span>
+                </span>
+                <span aria-hidden style={{
+                  flex: 'none', width: 112, background: INK_DEEP, clipPath: 'polygon(30% 0, 100% 0, 100% 100%, 0 100%)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, paddingRight: 15,
+                }}>
+                  <span className="sn-vu" style={{ display: 'flex', alignItems: 'center', gap: 2.5, height: 26 }}>
+                    {[0, 1, 2, 3, 4, 5, 6].map((i) => <i key={i} style={{ width: 2.5, height: 22, borderRadius: 2, background: 'var(--flood)', opacity: 0.85, animationDelay: `${i * 0.12}s` }} />)}
+                  </span>
+                  <span style={{ width: 36, height: 36, borderRadius: '50%', flex: 'none', border: '2px solid var(--flood)', color: 'var(--flood)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: tint('var(--flood)', 10) }}>
+                    <Icon name="mic" size={17} strokeWidth={2.2} />
+                  </span>
+                </span>
+              </button>
+
+              {/* Invite code banner */}
+              {!inviteCode && (
+                <div style={{ background: PANEL_2, border: HAIR_2, borderRadius: 20, padding: '14px 15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                    <div style={{ ...cast(17, 700, '.06em'), color: 'var(--text)' }}>Set your invite code</div>
+                    <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 4 }}>Athletes need your code to join your roster.</div>
                   </div>
-                )}
+                  <button className="btn btn-primary" onClick={() => setTab('settings')} style={{ flexShrink: 0, minHeight: 44 }}>
+                    Settings
+                  </button>
+                </div>
+              )}
 
-                {/* Invite code banner */}
-                {!inviteCode && (
-                  <div style={{ background: 'var(--text)', color: 'var(--bg)', borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: 15 }}>Set your invite code</div>
-                      <div style={{ fontSize: 'var(--fs-3)', opacity: 0.7, marginTop: 3 }}>Athletes need your code to join your roster.</div>
-                    </div>
-                    <button className="btn" onClick={() => setTab('settings')} style={{ background: 'var(--coach-color)', color: '#fff', fontWeight: 800, flexShrink: 0, border: 'none' }}>
-                      Settings
-                    </button>
-                  </div>
-                )}
-
-                {/* Recordings still on this device. Renders nothing when the
-                    queue is empty, which is almost always — and sits above
-                    everything else when it is not, because an unsent recording
-                    is more urgent than any summary of past ones. */}
-                <PendingRecordings onSynced={() => { fetchAllSessions(); fetchCoverage() }} />
-
-                {/* Recent sessions */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                    <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 1.2 }}>Recent sessions</div>
-                    <button onClick={() => setTab('sessions')} style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
-                      All <Icon name="arrow" size={9} />
-                    </button>
-                  </div>
-                  {loadingSessions ? (
-                    <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 20, fontSize: 14 }}>Loading…</div>
+              {/* Latest sessions */}
+              <section>
+                <SecHead title="Latest" action={{ label: 'All', onClick: () => setTab('sessions') }} />
+                <div style={{ marginTop: 6 }}>
+                  {loadingSessions && recentSessions.length === 0 ? (
+                    <div style={{ color: 'var(--text-2)', textAlign: 'center', padding: 20, fontSize: 'var(--fs-3)', borderTop: HAIR_2 }}>Loading…</div>
+                  ) : sessionsError && recentSessions.length === 0 ? (
+                    <ListState loading={false} error={sessionsError} isEmpty={false} emptyTitle="" onRetry={() => fetchAllSessions()} />
                   ) : recentSessions.length === 0 ? (
-                    <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '24px', textAlign: 'center' }}>
-                      <div style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 12 }}>No sessions yet.</div>
-                      <button className="btn btn-primary" onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }} style={{ gap: 6 }}>
+                    <div style={{ borderTop: HAIR_2, padding: '22px 0 4px', textAlign: 'center' }}>
+                      <div style={{ color: 'var(--text-2)', fontSize: 'var(--fs-3)', marginBottom: 12 }}>No sessions yet.</div>
+                      <button className="btn btn-primary" onClick={() => openRecorder()} style={{ gap: 6, minHeight: 44 }}>
                         <Icon name="mic" size={15} /> Record your first session
                       </button>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                      {recentSessions.map((s) => {
-                        const a = s.athletes
-                        const initials = a ? `${a.first_name[0] ?? ''}${a.last_name[0] ?? ''}`.toUpperCase() : '?'
-                        const tone = a ? stableTone(a.id) : 'var(--text-muted)'
+                    <div>
+                      {recentSessions.map((s, i) => {
                         const ago = (() => {
                           // A session recorded today keeps the precise "3h";
                           // a backdated one counts whole days from the day it
@@ -1346,326 +1622,405 @@ function DashboardPageInner() {
                           const d = Math.floor(h / 24)
                           return d === 1 ? 'Yesterday' : `${d}d`
                         })()
-                        return (
-                          // Opens the session, not its athlete. The Sessions tab
-                          // was fixed for this; the home list had been missed.
-                          <Link key={s.id} href={`/sessions/${s.id}`} style={{ background: 'var(--card)', borderRadius: 12, padding: '11px 12px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
-                            <div style={{ position: 'relative', flexShrink: 0 }}>
-                              <div style={{ width: 34, height: 34, borderRadius: '50%', background: tone, color: '#fff', fontWeight: 800, fontSize: 'var(--fs-3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials}</div>
-                              <div style={{ position: 'absolute', bottom: -2, right: -2, width: 16, height: 16, borderRadius: '50%', background: 'var(--card)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid var(--card)' }}>
-                                <div style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--coach-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--coach-color)' }}>
-                                  <Icon name="mic" size={8} strokeWidth={2.4} />
-                                </div>
-                              </div>
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-                                <span style={{ fontWeight: 700, fontSize: 'var(--fs-2)', color: 'var(--text)', minWidth: 0, overflowWrap: 'anywhere' }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</span>
-                                <span style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>· {ago}</span>
-                              </div>
-                              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 2, overflowWrap: 'anywhere' }}>{s.session_name ?? 'Session'}</div>
-                            </div>
-                            <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, padding: '3px 7px', borderRadius: 99, letterSpacing: 0.3, flexShrink: 0, ...(s.shared_with_athlete ? { color: 'var(--primary-dark)', background: 'var(--primary-light)', border: '1px solid var(--success-border)' } : { color: 'var(--text-2)', background: 'var(--border-soft)', border: '1px solid var(--border)' }) }}>
-                              {s.shared_with_athlete ? 'SHARED' : 'DRAFT'}
-                            </div>
-                          </Link>
-                        )
+                        // Opens the session, not its athlete.
+                        return sessionRow(s, i, { summary: false, meta: ago })
                       })}
                     </div>
                   )}
                 </div>
+              </section>
 
-                {/* Your athletes — horizontal scroll strip */}
-                {athletes.length > 0 && (
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 1.2 }}>Athletes</div>
-                      <button onClick={() => setTab('athletes')} style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
-                        Roster <Icon name="arrow" size={9} />
-                      </button>
-                    </div>
-                    <div style={{ display: 'flex', gap: 9, overflowX: 'auto', marginLeft: -16, marginRight: -16, padding: '0 16px 4px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
-                      {athletes.slice(0, 8).map((a) => {
-                        const status = a.status ?? 'INVITED'
-                        const unread = (unreadCounts[a.id] ?? 0) as number
-                        const tone = stableTone(a.id)
-                        const wellnessScore = overallWellnessScore(wellnessByAthlete.get(a.id) ?? null)
-                        const wellnessColor = overallScoreColor(wellnessScore)
-                        return (
-                          /* A card, not a div.
-                           *
-                           * This carries an avatar, a name, a wellness score
-                           * and an unread badge, sits on a screen where every
-                           * sibling card navigates, and had no handler at all.
-                           * A coach tapping their own athlete got nothing —
-                           * which reads as the app being broken rather than as
-                           * the card being decorative.
-                           *
-                           * A real <button>, so it is keyboard reachable and
-                           * announced as a control, not a click handler bolted
-                           * to a div. */
-                          <button
-                            key={a.id}
-                            type="button"
-                            onClick={() => router.push(`/athletes/${a.id}`)}
-                            aria-label={`Open ${a.first_name} ${a.last_name ?? ''}`.trim() + (unread > 0 ? `, ${unread} unread` : '')}
-                            style={{ minWidth: 78, background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', flexShrink: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center' }}>
-                            {unread > 0 && <div style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, minHeight: 16, lineHeight: 1, borderRadius: 99, background: 'var(--coach-color)', color: '#fff', fontSize: 'var(--fs-1)', fontWeight: 800, padding: '0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</div>}
-                            <div style={{ width: 42, height: 42, borderRadius: '50%', background: tone, color: '#fff', fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              {(a.first_name?.[0] ?? '?').toUpperCase()}
-                            </div>
-                            <div style={{ fontWeight: 700, fontSize: 'var(--fs-2)', color: 'var(--text)', marginTop: 1 }}>{a.first_name}</div>
-                            {wellnessScore !== null ? (
-                              <div title={`Wellness ${wellnessScore}/5`} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
-                                <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: 'var(--fs-1)', color: status === 'INVITED' ? 'var(--energy-dark)' : 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{status === 'INVITED' ? 'Pending' : 'Active'}</div>
-                            )}
-                          </button>
-                        )
-                      })}
-                      <button onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ minWidth: 78, background: 'transparent', borderRadius: 14, border: '1.5px dashed var(--border)', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0 }}>
-                        <div style={{ width: 42, height: 42, borderRadius: '50%', border: '1.5px dashed var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Icon name="plus" size={18} />
-                        </div>
-                        <div style={{ fontSize: 'var(--fs-1)', fontWeight: 600 }}>Invite</div>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Onboarding flow (empty state) */}
-                {athletes.length === 0 && !loadingAthletes && (() => {
-                  const completedCount = onboardStep.code ? 1 : 0
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                      {/* Header */}
-                      <div>
-                        <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 28, letterSpacing: -0.6, fontStyle: 'italic', color: 'var(--text)' }}>
-                          You&apos;re all set up.
-                        </h2>
-                        <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>
-                          Complete these steps to get started with your first athlete.
-                        </p>
-                        <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: completedCount > 0 ? 'var(--primary)' : 'var(--text-muted)', marginTop: 6, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                          {completedCount} of 3 complete
-                        </div>
-                      </div>
-
-                      {/* Step 1 — Set invite code */}
-                      <div style={{ background: 'var(--card)', border: `1px solid ${onboardStep.code ? 'var(--success-border)' : 'var(--border)'}`, borderLeft: `4px solid ${onboardStep.code ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 14, padding: 16, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: onboardStep.code ? 'var(--primary)' : 'var(--border-soft)', color: onboardStep.code ? '#fff' : 'var(--text-2)', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
-                          {onboardStep.code ? '✓' : '1'}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 3 }}>Set your invite code</div>
-                          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>Athletes enter this code when signing up to join your roster automatically.</div>
-                          {onboardStep.code ? (
-                            <div style={{ fontFamily: 'monospace', fontSize: 'var(--fs-4)', fontWeight: 900, color: 'var(--primary-dark)', background: 'var(--primary-light)', borderRadius: 8, padding: '6px 12px', display: 'inline-block', maxWidth: '100%', overflowWrap: 'anywhere', letterSpacing: 1 }}>{inviteCode}</div>
-                          ) : (
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                              <input
-                                className="input"
-                                value={codeDraft}
-                                onChange={e => setCodeDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-                                placeholder="coachsmith4821"
-                                style={{ fontFamily: 'monospace', fontWeight: 700, flex: '1 1 140px', minWidth: 0, maxWidth: 200 }}
-                              />
-                              <button className="btn btn-primary" onClick={saveCode} disabled={codeSaving || !codeDraft.trim()}>
-                                {codeSaving ? '…' : 'Save'}
-                              </button>
-                            </div>
-                          )}
-                          {codeMsg && <div style={{ fontSize: 'var(--fs-2)', color: codeMsg.includes('updated') || codeMsg.includes('Copied') ? 'var(--success)' : 'var(--danger)', marginTop: 6, fontWeight: 600 }}>{codeMsg}</div>}
-                        </div>
-                      </div>
-
-                      {/* Step 2 — Add first athlete */}
-                      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderLeft: '4px solid var(--border)', borderRadius: 14, padding: 16, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--border-soft)', color: 'var(--text-2)', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>2</div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 3 }}>Add your first athlete</div>
-                          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>Invite them by email — they&apos;ll get a link to set up their account.</div>
-                          <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6 }}>
-                            <Icon name="plus" size={14} /> Add Athlete →
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Step 3 — Record first session */}
-                      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderLeft: '4px solid var(--border)', borderRadius: 14, padding: 16, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--border-soft)', color: 'var(--text-2)', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>3</div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 3 }}>Record your first session</div>
-                          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>After a training session, hit record and speak your notes. AI transcribes and summarises.</div>
-                          <button className="btn btn-primary" onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }} style={{ gap: 6 }}>
-                            <Icon name="mic" size={14} /> Record Session →
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Share card — only if invite code is set */}
-                      {inviteCode && (
-                        <div style={{ background: 'var(--text)', color: 'var(--bg)', borderRadius: 14, padding: '16px 20px' }}>
-                          <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Share this with your athletes</div>
-                          <div style={{ fontFamily: 'monospace', fontSize: 24, fontWeight: 900, letterSpacing: 2, marginBottom: 14, color: 'var(--bg)', overflowWrap: 'anywhere' }}>{inviteCode}</div>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                            <button
-                              className="btn"
-                              onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!'); setTimeout(() => setCodeMsg(''), 2000) }}
-                              style={{ background: 'rgba(255,255,255,0.12)', color: 'var(--bg)', border: '1px solid rgba(255,255,255,0.18)', gap: 6 }}
-                            >
-                              <Icon name="copy" size={13} /> Copy code
-                            </button>
-                            <span style={{ fontSize: 'var(--fs-2)', color: 'rgba(255,255,255,0.45)' }}>Or go to Athletes tab to invite by email</span>
+              {/* Today's sessions — time-based list */}
+              {todayEvents.length > 0 && (
+                <section>
+                  <SecHead title="Today" side={`${todayEvents.length} event${todayEvents.length !== 1 ? 's' : ''}`} />
+                  <div style={{ marginTop: 8 }}>
+                    {todayEvents.map((ev, i) => {
+                      const m = ev.event_time?.match(/^(\d+):(\d+)/)
+                      const hrs = m ? parseInt(m[1]) : null
+                      const mins = m ? m[2] : null
+                      const ampm = hrs !== null ? (hrs >= 12 ? 'pm' : 'am') : null
+                      const dh = hrs !== null ? (hrs > 12 ? hrs - 12 : hrs === 0 ? 12 : hrs) : null
+                      return (
+                        <Link key={ev.id} href={ev.athlete_id ? `/athletes/${ev.athlete_id}` : '#'} style={{ display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr) auto', alignItems: 'center', gap: 12, minHeight: 44, padding: '11px 0', borderTop: i === 0 ? HAIR_2 : HAIR, textDecoration: 'none', color: 'inherit', cursor: ev.athlete_id ? 'pointer' : 'default' }}>
+                          <div>
+                            {dh !== null ? (
+                              <>
+                                <div style={{ ...MONO, fontSize: 15, color: 'var(--text)', lineHeight: 1 }}>{dh}:{mins}</div>
+                                <div style={{ ...cast(13, 700, '.14em'), color: 'var(--text-2)', marginTop: 3 }}>{ampm}</div>
+                              </>
+                            ) : <div style={{ ...MONO, fontSize: 15, color: 'var(--text-2)' }}>—</div>}
                           </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ ...cast(17, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere' }}>{ev.title}</div>
+                            {ev.event_type && <div style={{ ...cast(13, 600, '.14em'), color: 'var(--text-2)', marginTop: 3 }}>{ev.event_type}</div>}
+                          </div>
+                          <span style={{ color: 'var(--text-2)' }}><Icon name="arrow" size={14} strokeWidth={1.8} /></span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {/* Day wheel — scrolls back through what you've done and
+                  forward through what's booked, with a Today control. */}
+              <div>
+                <DayWheel
+                  events={homeWeekEvents as WheelEvent[]}
+                  selectedDay={homeSelectedDay}
+                  onSelectDay={setHomeSelectedDay}
+                  headerAction={
+                    <button onClick={() => setTab('calendar')} style={{ ...cast(13, 700, '.12em'), color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: 0, minHeight: 44, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                      Calendar <Icon name="arrow" size={13} />
+                    </button>
+                  }
+                />
+              </div>
+
+              {/* Your athletes. A wrapping grid rather than the sideways strip
+                  it was: nothing on this page scrolls horizontally. */}
+              {athletes.length > 0 && (
+                <section>
+                  <SecHead title="Athletes" action={{ label: 'Roster', onClick: () => setTab('athletes') }} />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))', gap: 9, marginTop: 6 }}>
+                    {athletes.slice(0, 8).map((a) => {
+                      const status = statusOf(a)
+                      const unread = (unreadCounts[a.id] ?? 0) as number
+                      const wellnessScore = overallWellnessScore(wellnessByAthlete.get(a.id) ?? null)
+                      const wellnessColor = overallScoreColor(wellnessScore)
+                      return (
+                        /* A real <button>, so it is keyboard reachable and
+                         * announced as a control. A coach tapping their own
+                         * athlete gets their profile. */
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => router.push(`/athletes/${a.id}`)}
+                          aria-label={`Open ${a.first_name} ${a.last_name ?? ''}`.trim() + (unread > 0 ? `, ${unread} unread` : '')}
+                          style={{ minWidth: 0, background: PANEL, borderRadius: 14, border: HAIR, padding: '12px 6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', cursor: 'pointer', font: 'inherit', color: 'inherit', textAlign: 'center' }}>
+                          {unread > 0 && <div style={{ position: 'absolute', top: 5, right: 5, minWidth: 20, minHeight: 20, lineHeight: 1, borderRadius: 99, background: 'var(--coach-on-light)', color: 'var(--on-primary)', ...cast(13, 800, '0'), padding: '0 5px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</div>}
+                          <Mono initials={initialsOf(a.first_name, a.last_name)} pending={status === 'INVITED'} size={40} />
+                          <div style={{ ...cast(15, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere', maxWidth: '100%' }}>{a.first_name}</div>
+                          {wellnessScore !== null ? (
+                            <div title={`Wellness ${wellnessScore}/5`} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
+                              <span style={{ ...MONO, fontSize: 13, fontWeight: 700, color: wellnessColor }}>{wellnessScore}</span>
+                            </div>
+                          ) : (
+                            <div style={{ ...cast(13, 700, '.12em'), color: status === 'INVITED' ? 'var(--energy-dark)' : 'var(--text-2)' }}>{status === 'INVITED' ? 'Pending' : 'Active'}</div>
+                          )}
+                        </button>
+                      )
+                    })}
+                    <button onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ minWidth: 0, background: 'transparent', borderRadius: 14, border: '1px dashed var(--border)', padding: '12px 6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: 'var(--text-2)', cursor: 'pointer', font: 'inherit' }}>
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', border: '1px dashed var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon name="plus" size={18} />
+                      </div>
+                      <div style={{ ...cast(13, 700, '.12em') }}>Invite</div>
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              {/* Onboarding flow (empty state) */}
+              {athletes.length === 0 && !loadingAthletes && (() => {
+                const completedCount = onboardStep.code ? 1 : 0
+                const stepNum = (done: boolean, n: number) => (
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', ...cast(15, 800, '0'), lineHeight: 1, ...(done ? { background: 'var(--primary)', color: 'var(--on-primary)' } : { border: HAIR_2, color: 'var(--text-2)' }) }}>
+                    {done ? '✓' : n}
+                  </div>
+                )
+                const stepRow: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 0', borderTop: HAIR }
+                return (
+                  <section style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ marginBottom: 12 }}>
+                      <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 28, letterSpacing: -0.6, fontStyle: 'italic', color: 'var(--text)' }}>
+                        You&apos;re all set up.
+                      </h2>
+                      <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>
+                        Complete these steps to get started with your first athlete.
+                      </p>
+                      <div style={{ ...cast(13, 700, '.16em'), color: completedCount > 0 ? 'var(--primary)' : 'var(--text-2)', marginTop: 8 }}>
+                        {completedCount} of 3 complete
+                      </div>
+                    </div>
+
+                    {/* Step 1 — Set invite code */}
+                    <div style={{ ...stepRow, borderTop: HAIR_2 }}>
+                      {stepNum(onboardStep.code, 1)}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ ...cast(17, 700, '.04em'), color: 'var(--text)', marginBottom: 4 }}>Set your invite code</div>
+                        <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>Athletes enter this code when signing up to join your roster automatically.</div>
+                        {onboardStep.code ? (
+                          <div style={{ ...MONO, fontWeight: 700, fontSize: 'var(--fs-4)', letterSpacing: '.1em', color: 'var(--text)', background: PANEL_2, border: HAIR_2, borderRadius: 10, padding: '8px 12px', display: 'inline-block', maxWidth: '100%', overflowWrap: 'anywhere' }}>{inviteCode}</div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <input
+                              className="input"
+                              value={codeDraft}
+                              onChange={e => setCodeDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                              placeholder="coachsmith4821"
+                              aria-label="Invite code"
+                              style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, flex: '1 1 140px', minWidth: 0, maxWidth: 220, minHeight: 44 }}
+                            />
+                            <button className="btn btn-primary" onClick={saveCode} disabled={codeSaving || !codeDraft.trim()} style={{ minHeight: 44 }}>
+                              {codeSaving ? '…' : 'Save'}
+                            </button>
+                          </div>
+                        )}
+                        {codeMsg && <div style={{ fontSize: 'var(--fs-2)', color: codeMsg.includes('updated') || codeMsg.includes('Copied') ? 'var(--success)' : 'var(--danger)', marginTop: 6, fontWeight: 600 }}>{codeMsg}</div>}
+                      </div>
+                    </div>
+
+                    {/* Step 2 — Add first athlete */}
+                    <div style={stepRow}>
+                      {stepNum(false, 2)}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ ...cast(17, 700, '.04em'), color: 'var(--text)', marginBottom: 4 }}>Add your first athlete</div>
+                        <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>Invite them by email — they&apos;ll get a link to set up their account.</div>
+                        <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6, minHeight: 44 }}>
+                          <Icon name="plus" size={14} /> Add Athlete →
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Step 3 — Record first session */}
+                    <div style={stepRow}>
+                      {stepNum(false, 3)}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ ...cast(17, 700, '.04em'), color: 'var(--text)', marginBottom: 4 }}>Record your first session</div>
+                        <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>After a training session, hit record and speak your notes. AI transcribes and summarises.</div>
+                        <button className="btn btn-primary" onClick={() => openRecorder()} style={{ gap: 6, minHeight: 44 }}>
+                          <Icon name="mic" size={14} /> Record Session →
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Share card — only if invite code is set */}
+                    {inviteCode && (
+                      <div style={{ position: 'relative', marginTop: 8, background: PANEL_2, border: HAIR_2, borderRadius: 20, padding: '13px 15px', overflow: 'hidden' }}>
+                        <div style={{ ...cast(13, 700, '.2em'), color: 'var(--text-2)', marginBottom: 10 }}>Share this with your athletes</div>
+                        <div style={{ ...MONO, fontSize: 26, fontWeight: 700, letterSpacing: '.14em', lineHeight: 1.1, marginBottom: 12, color: 'var(--text)', overflowWrap: 'anywhere' }}>{inviteCode}</div>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!'); setTimeout(() => setCodeMsg(''), 2000) }}
+                            style={{ minHeight: 44, padding: '0 16px', borderRadius: 12, border: HAIR_2, background: tint('var(--text)', 4), color: 'var(--text-2)', ...cast(13, 700, '.16em'), display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}
+                          >
+                            <Icon name="copy" size={14} /> Copy code
+                          </button>
+                          <span style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)' }}>Or go to Athletes tab to invite by email</span>
                         </div>
-                      )}
+                      </div>
+                    )}
+                  </section>
+                )
+              })()}
+
+            </div>
+          )}
+
+          {/* ════ ATHLETES TAB — the roster ════ */}
+          {tab === 'athletes' && (() => {
+            const activeList = filteredAthletes.filter((a) => statusOf(a) === 'ACTIVE')
+            const pendingList = filteredAthletes.filter((a) => statusOf(a) !== 'ACTIVE')
+            const FILTERS: { key: typeof athleteFilter; label: string; count: number | null }[] = [
+              { key: 'all', label: 'All', count: athletes.length },
+              { key: 'ACTIVE', label: 'Active', count: activeN },
+              // PENDING is the word the roster uses for INVITED everywhere a
+              // coach reads it: invited, not yet arrived — waiting, not broken.
+              { key: 'INVITED', label: 'Pending', count: pendingN },
+              // Only once it is known. Before the coverage read lands, or if it
+              // failed, a count would state something we do not know.
+              { key: 'INACTIVE', label: 'Inactive', count: coverageLoaded && !coverageFailed ? inactiveIds.size : null },
+            ]
+            const rows = (list: Athlete[], pending: boolean) => (
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(auto-fill, minmax(340px, 1fr))', columnGap: 32, marginTop: 6 }}>
+                {list.map((a, i) => {
+                  // Uncapped counts. Falls back to the truncated client list
+                  // only while coverage is still loading, so the first paint
+                  // is never blank.
+                  const cov = coverageByAthlete.get(a.id)
+                  const lastDate = cov
+                    ? cov.last_session_date
+                    : allSessions.find(s => s.athlete_id === a.id)?.session_date ?? null
+                  const count = cov
+                    ? cov.session_count
+                    : allSessions.filter(s => s.athlete_id === a.id).length
+                  const quiet = !!cov && isQuiet(cov)
+                  const unread = unreadCounts[a.id] ?? 0
+                  const name = `${a.first_name} ${a.last_name}`
+                  const invited = a.invited_at ? new Date(a.invited_at) : null
+                  return (
+                    <div key={a.id} style={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', columnGap: 12, rowGap: 10, alignItems: 'center', padding: '12px 0', borderTop: i === 0 ? HAIR_2 : HAIR }}>
+                      <Link href={`/athletes/${a.id}`} tabIndex={-1} aria-hidden style={{ display: 'flex', textDecoration: 'none' }}>
+                        <Mono initials={initialsOf(a.first_name, a.last_name)} pending={pending} />
+                      </Link>
+                      <div style={{ minWidth: 0 }}>
+                        <div>
+                          <Link href={`/athletes/${a.id}`} style={{ ...cast(18, 700, '.04em'), lineHeight: 1.1, color: 'var(--text)', textDecoration: 'none', overflowWrap: 'anywhere' }}>{name}</Link>
+                          {unread > 0 && <span role="img" aria-label={`${unread} unread`} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--coach-on-light)', display: 'inline-block', marginLeft: 8, verticalAlign: 2 }} />}
+                        </div>
+                        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere', marginTop: 4 }}>{a.email}</div>
+                        {pending && (
+                          <div style={{ ...cast(13, 600, '.1em'), color: 'var(--text-2)', marginTop: 4, lineHeight: 1.35 }}>
+                            {invited && <>Invited <span style={{ ...MONO, textTransform: 'none' }}>{invited.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span> · </>}Waiting to arrive
+                          </div>
+                        )}
+                        <div style={{ ...cast(13, 600, '.1em'), color: 'var(--text-2)', marginTop: 4, lineHeight: 1.35 }}>
+                          {lastDate
+                            ? <>Last session <span style={{ ...MONO, textTransform: 'none' }}>{formatSessionDate({ session_date: lastDate }, { day: 'numeric', month: 'short' })}</span></>
+                            : 'No sessions yet'}
+                          {count > 0 && ` · ${count} session${count === 1 ? '' : 's'}`}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, minWidth: 42, textAlign: 'right' }}>
+                        {pending && <Chip tone="amber">Pending</Chip>}
+                        {/* Days since the last session, and QUIET past the
+                            lib/attention.ts threshold. Coach-only, as the
+                            Inactive filter is: this screen is the coach's
+                            dashboard and nothing here reaches an athlete. */}
+                        {cov && (cov.days_since !== null || quiet) && (
+                          <div aria-label={quiet ? `Quiet · ${gapLabel(cov)}` : `${gapLabel(cov)} since the last session`}>
+                            {cov.days_since !== null && <div aria-hidden style={{ ...MONO, fontSize: 15, lineHeight: 1, color: quiet ? 'var(--coach-on-light)' : 'var(--text-2)' }}>{cov.days_since}d</div>}
+                            {quiet && <div aria-hidden style={{ ...cast(13, 700, '.16em'), color: 'var(--coach-on-light)', marginTop: 4 }}>Quiet</div>}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ gridColumn: '2 / -1', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button onClick={() => openRecorder(a.id)} style={{ ...ICON_BTN, color: 'var(--primary)', borderColor: tint('var(--primary)', 45), background: tint('var(--primary)', 9) }} title="Record session" aria-label={`Record a session for ${name}`}>
+                          <Icon name="mic" size={16} />
+                        </button>
+                        <button onClick={() => { setMsgPreselectedId(a.id); setTab('messages') }} style={ICON_BTN} title="Message" aria-label={`Message ${name}${unread > 0 ? `, ${unread} unread` : ''}`}>
+                          <Icon name="messages" size={16} />
+                          {unread > 0 && <span style={{ position: 'absolute', top: 8, right: 8, width: 8, height: 8, background: 'var(--coach-on-light)', borderRadius: '50%' }} />}
+                        </button>
+                        <button onClick={() => { setTab('calendar'); showCalendarFor('athlete', a.id) }} style={ICON_BTN} title="Calendar" aria-label={`${a.first_name}'s calendar`}>
+                          <Icon name="calendar" size={16} />
+                        </button>
+                        <button onClick={() => setDeleteConfirmAthlete(a)} style={{ ...ICON_BTN, color: 'var(--danger)', borderColor: tint('var(--danger)', 35) }} title="Remove athlete" aria-label={`Remove ${name}`}>
+                          <Icon name="trash" size={15} />
+                        </button>
+                      </div>
                     </div>
                   )
-                })()}
+                })}
+              </div>
+            )
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <PeopleSwitch tab={tab} setTab={setTab} />
 
+                {/* The roll call — deliberately not a score. */}
+                <section>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <Eyebrow>Every athlete</Eyebrow>
+                    <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6, marginLeft: 'auto', minHeight: 44 }}>
+                      <Icon name="plus" size={14} /> Add Athlete
+                    </button>
+                  </div>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 12, rowGap: 6, marginTop: 10, paddingBottom: 9 }}>
+                    <div aria-hidden style={{ position: 'absolute', inset: '-9px -12px 0 -14px', zIndex: 0, pointerEvents: 'none', background: `linear-gradient(100deg, ${tint('var(--text)', 5)}, transparent 58%)`, transform: 'skewX(-11deg)', borderLeft: `1px solid ${tint('var(--primary)', 32)}` }} />
+                    {([[activeN, 'Active', 'var(--text)'], [pendingN, 'Pending', 'var(--text)'], [athletes.length, 'Total', 'var(--text-2)']] as const).map(([n, label, color], i) => (
+                      <div key={label} style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'baseline', gap: 7, marginLeft: i === 2 ? 'auto' : 0, paddingLeft: i === 1 ? 12 : 0, borderLeft: i === 1 ? HAIR_2 : 'none' }}>
+                        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 31, lineHeight: 1, letterSpacing: -1.4, color, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+                        <span style={{ ...cast(13, 700, '.2em'), color: 'var(--text-2)' }}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Search + filters */}
+                <div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0, maxWidth: isMobile ? 'none' : 360 }}>
+                      <span aria-hidden style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-2)', display: 'flex' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+                      </span>
+                      <input className="input" placeholder="Search…" aria-label="Search athletes" value={athleteSearch} onChange={e => setAthleteSearch(e.target.value)} style={{ minWidth: 0, minHeight: 44, paddingLeft: 36, borderRadius: 12, border: HAIR_2, background: tint('var(--text)', 4) }} />
+                    </div>
+                    <button onClick={fetchAthletes} disabled={loadingAthletes} style={{ ...ICON_BTN, opacity: loadingAthletes ? 0.5 : 1 }} title="Refresh" aria-label="Refresh the roster">
+                      <Icon name="refresh" size={15} />
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {FILTERS.map(({ key, label, count }) => {
+                      const on = athleteFilter === key
+                      return (
+                        <button key={key} onClick={() => setAthleteFilter(key)} aria-pressed={on} style={{
+                          minHeight: 44, padding: '0 13px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap',
+                          border: '1px solid', borderColor: on ? tint('var(--text)', 40) : 'var(--border-soft)',
+                          background: on ? tint('var(--text)', 10) : 'transparent',
+                          color: on ? 'var(--text)' : 'var(--text-2)', ...cast(13, 700, '.14em'),
+                        }}>
+                          {label}{count !== null && ` ${count}`}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {athletesError ? (
+                  /* The roster could not be read. Saying "No athletes yet. Add
+                     one to get started." here tells a coach with thirty athletes
+                     that their roster is empty AND gives them an action premised
+                     on it. Highest-priority branch for that reason. */
+                  <ListState
+                    loading={false}
+                    error={athletesError}
+                    isEmpty={false}
+                    emptyTitle=""
+                    onRetry={fetchAthletes}
+                  />
+                ) : filteredAthletes.length === 0 ? (
+                  <div style={{ padding: '28px 8px', textAlign: 'center', color: 'var(--text-2)', fontSize: 'var(--fs-3)', borderTop: HAIR_2 }}>
+                    {athletes.length === 0
+                      ? loadingAthletes ? 'Loading…' : 'No athletes yet. Add one to get started.'
+                      : athleteFilter === 'INACTIVE' && !athleteSearch
+                        // An empty Inactive list is the answer, not a dead end —
+                        // but only once we know it. Until the coverage read
+                        // lands the list is empty for want of data, and saying
+                        // nobody is overdue would be asserting the opposite of
+                        // the truth.
+                        ? coverageFailed
+                          // A read that failed is not a roster that is fine.
+                          ? 'Could not work out who has been quiet. Refresh to try again.'
+                          : coverageLoaded
+                            ? `Nobody has gone more than ${QUIET_AFTER_DAYS} days without a recording.`
+                            : 'Working out who has been quiet…'
+                        : athleteFilter === 'INACTIVE'
+                          ? 'Nobody inactive matches your search.'
+                          : 'No athletes match your search.'}
+                  </div>
+                ) : (
+                  <>
+                    {/* ACTIVE and PENDING are two sections under their own
+                        rules, not a badge repeated on every row. */}
+                    {activeList.length > 0 && (
+                      <section>
+                        <SecHead title={`Active · ${activeList.length}`} />
+                        {rows(activeList, false)}
+                      </section>
+                    )}
+                    {pendingList.length > 0 && (
+                      <section>
+                        <SecHead title={`Pending · ${pendingList.length}`} side="Invited, not yet arrived" />
+                        {rows(pendingList, true)}
+                      </section>
+                    )}
+                  </>
+                )}
               </div>
             )
           })()}
-
-          {/* ════ ATHLETES TAB ════ */}
-          {tab === 'athletes' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              <PeopleSwitch tab={tab} setTab={setTab} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div>
-                  <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Athletes</h2>
-                  <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 2 }}>{athletes.length} total · {activeAthletes.length} active</div>
-                </div>
-                <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6 }}>
-                  <Icon name="plus" size={14} /> Add Athlete
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <input className="input" placeholder="Search…" value={athleteSearch} onChange={e => setAthleteSearch(e.target.value)} style={{ flex: '1 1 180px', minWidth: 0, maxWidth: 260 }} />
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {(['all','ACTIVE','INVITED','INACTIVE'] as const).map(f => (
-                    <button key={f} onClick={() => setAthleteFilter(f)} style={{ padding: '7px 12px', borderRadius: 7, border: '1.5px solid', borderColor: athleteFilter === f ? 'var(--primary)' : 'var(--border)', background: athleteFilter === f ? 'var(--primary)' : 'transparent', color: athleteFilter === f ? '#fff' : 'var(--text-2)', fontSize: 'var(--fs-2)', fontWeight: athleteFilter === f ? 700 : 400, cursor: 'pointer' }}>
-                      {f === 'all' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
-                      {f === 'INACTIVE' && inactiveIds.size > 0 && ` · ${inactiveIds.size}`}
-                    </button>
-                  ))}
-                </div>
-                <button className="btn btn-ghost" onClick={fetchAthletes} disabled={loadingAthletes} style={{ fontSize: 'var(--fs-2)', padding: '7px 10px' }}>
-                  <Icon name="refresh" size={14} />
-                </button>
-              </div>
-
-              {athletesError ? (
-                /* The roster could not be read. Saying "No athletes yet. Add
-                   one to get started." here tells a coach with thirty athletes
-                   that their roster is empty AND gives them an action premised
-                   on it. Highest-priority branch for that reason. */
-                <ListState
-                  loading={false}
-                  error={athletesError}
-                  isEmpty={false}
-                  emptyTitle=""
-                  onRetry={fetchAthletes}
-                />
-              ) : filteredAthletes.length === 0 ? (
-                <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                  {athletes.length === 0
-                    ? loadingAthletes ? 'Loading…' : 'No athletes yet. Add one to get started.'
-                    : athleteFilter === 'INACTIVE' && !athleteSearch
-                      // An empty Inactive list is the answer, not a dead end —
-                      // but only once we know it. Until the coverage read
-                      // lands the list is empty for want of data, and saying
-                      // nobody is overdue would be asserting the opposite of
-                      // the truth.
-                      ? coverageFailed
-                        // A read that failed is not a roster that is fine. The
-                        // comment on fetchCoverage said this; the copy did not.
-                        ? 'Could not work out who has been quiet. Refresh to try again.'
-                        : coverageLoaded
-                          ? `Nobody has gone more than ${QUIET_AFTER_DAYS} days without a recording.`
-                          : 'Working out who has been quiet…'
-                      : athleteFilter === 'INACTIVE'
-                        ? 'Nobody inactive matches your search.'
-                        : 'No athletes match your search.'}
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
-                  {filteredAthletes.map(a => {
-                    const status = (a.status ?? 'INVITED').toUpperCase()
-                    // Uncapped counts. Falls back to the truncated client list
-                    // only while coverage is still loading, so the first paint
-                    // is never blank.
-                    const cov = coverageByAthlete.get(a.id)
-                    const lastDate = cov
-                      ? cov.last_session_date
-                      : allSessions.find(s => s.athlete_id === a.id)?.session_date ?? null
-                    const count = cov
-                      ? cov.session_count
-                      : allSessions.filter(s => s.athlete_id === a.id).length
-                    return (
-                      <div key={a.id} className="card" style={{ padding: 16 }}>
-                        <div style={{ display: 'flex', gap: 12 }}>
-                          <Avatar initials={(a.first_name?.[0] ?? '?').toUpperCase()} size={44} bg="var(--coach-color)" />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              <Link href={`/athletes/${a.id}`} style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', textDecoration: 'none', overflowWrap: 'anywhere' }}>{a.first_name} {a.last_name}</Link>
-                              <span className={`badge ${status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 'var(--fs-1)' }}>{status}</span>
-                            </div>
-                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{a.email}</div>
-                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 3 }}>
-                              {lastDate ? `Last session ${formatSessionDate({ session_date: lastDate }, {})}` : 'No sessions yet'}
-                              {count > 0 && ` · ${count} total`}
-                            </div>
-                            {/* Only when it is true, and only ever to the
-                                coach. A date on its own does not read as "this
-                                has been too long" at a glance, which is the
-                                whole point of the Inactive filter. */}
-                            {cov && isQuiet(cov) && (
-                              <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--energy-dark)', marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                Quiet · {gapLabel(cov)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
-                          <Link href={`/athletes/${a.id}`} className="btn btn-ghost" style={{ flex: 1, textAlign: 'center', fontSize: 'var(--fs-2)', padding: 7 }}>View</Link>
-                          <button onClick={() => { setQuickSessionAthleteId(a.id); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }} className="btn btn-primary" style={{ fontSize: 'var(--fs-2)', padding: '7px 12px' }} title="Record session">
-                            <Icon name="mic" size={14} />
-                          </button>
-                          <button onClick={() => { setMsgPreselectedId(a.id); setTab('messages') }} className="btn btn-ghost" style={{ fontSize: 'var(--fs-2)', padding: '7px 12px', position: 'relative' }} title="Message">
-                            <Icon name="messages" size={14} />
-                            {(unreadCounts[a.id] ?? 0) > 0 && <span style={{ position: 'absolute', top: 3, right: 3, width: 8, height: 8, background: 'var(--primary)', borderRadius: '50%' }} />}
-                          </button>
-                          <button onClick={() => { setTab('calendar'); showCalendarFor('athlete', a.id) }} className="btn btn-ghost" style={{ fontSize: 'var(--fs-2)', padding: '7px 12px' }} title="Calendar">
-                            <Icon name="calendar" size={14} />
-                          </button>
-                          <button onClick={() => setDeleteConfirmAthlete(a)} className="btn btn-danger" style={{ fontSize: 'var(--fs-2)', padding: '7px 10px' }}>
-                            <Icon name="trash" size={13} />
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* ════ GROUPS TAB ════ */}
           {tab === 'groups' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               <PeopleSwitch tab={tab} setTab={setTab} />
-              <div>
-                <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Squads</h2>
-                <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 2 }}>Record one session for a whole squad at once</div>
-              </div>
+              <TabTitle title="Squads" sub="Record one session for a whole squad at once" />
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) 320px', gap: 18, alignItems: 'start' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
                   {loadingGroups || groupsError || groups.length === 0 ? (
                     <ListState
                       loading={loadingGroups}
@@ -1680,43 +2035,47 @@ function DashboardPageInner() {
                     const members = athletes.filter(a => g.member_ids.includes(a.id))
                     const nonMembers = athletes.filter(a => !g.member_ids.includes(a.id))
                     return (
-                      <div key={g.id} className="card" style={{ overflow: 'hidden', padding: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', flexWrap: 'wrap' }}>
-                          <div style={{ width: 12, height: 12, borderRadius: '50%', background: g.color, flexShrink: 0 }} />
+                      <div key={g.id} style={{ overflow: 'hidden', background: PANEL, border: HAIR, borderRadius: 17 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 15px', flexWrap: 'wrap' }}>
+                          {/* A squad's colour is data the coach chose, and some
+                              of the stored swatches sit close to the ink. The
+                              cream ring keeps every one of them visible; the
+                              name, never the colour, is what identifies it. */}
+                          <div style={{ width: 14, height: 14, borderRadius: '50%', background: g.color, flexShrink: 0, boxShadow: '0 0 0 1.5px var(--text-muted)' }} />
                           {/* A 160px basis, not `flex: 1`: it is what decides whether the
                               controls below fit on this line or wrap to their own. With a
                               bare `flex: 1` they always fit, and the squad name is left
                               wrapping one letter per line on a phone. */}
                           <div style={{ flex: '1 1 160px', minWidth: 0 }}>
-                            <div style={{ fontWeight: 800, fontSize: 15, overflowWrap: 'anywhere' }}>{g.name}</div>
-                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{g.member_count} athlete{g.member_count !== 1 ? 's' : ''}{g.description ? ` · ${g.description}` : ''}</div>
+                            <div style={{ ...cast(19, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere' }}>{g.name}</div>
+                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere', marginTop: 3 }}>{g.member_count} athlete{g.member_count !== 1 ? 's' : ''}{g.description ? ` · ${g.description}` : ''}</div>
                           </div>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 'auto' }}>
-                            <button onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(g.id); setQuickSessionOpen(true) }} className="btn btn-primary" style={{ fontSize: 'var(--fs-2)', padding: '6px 10px', gap: 5 }}>
-                              <Icon name="mic" size={13} /> Record
+                            <button onClick={() => openRecorder(undefined, g.id)} className="btn btn-primary" style={{ fontSize: 'var(--fs-2)', padding: '0 14px', minHeight: 44, gap: 5 }}>
+                              <Icon name="mic" size={14} /> Record
                             </button>
-                            <button onClick={() => { setTab('calendar'); setCalMode('group'); setCalTargetId(g.id) }} className="btn btn-ghost" style={{ fontSize: 'var(--fs-2)', padding: '6px 8px' }} title="Group calendar">
-                              <Icon name="calendar" size={14} />
+                            <button onClick={() => { setTab('calendar'); setCalMode('group'); setCalTargetId(g.id) }} style={ICON_BTN} title="Group calendar" aria-label={`${g.name} calendar`}>
+                              <Icon name="calendar" size={15} />
                             </button>
-                            <button onClick={() => setExpandedGroup(isExp ? null : g.id)} className="btn btn-ghost" style={{ fontSize: 'var(--fs-2)', padding: '6px 8px' }}>
+                            <button onClick={() => setExpandedGroup(isExp ? null : g.id)} style={ICON_BTN} aria-expanded={isExp} aria-label={isExp ? `Hide ${g.name} members` : `Show ${g.name} members`}>
                               {isExp ? '▲' : '▼'}
                             </button>
-                            <button onClick={() => deleteGroup(g.id)} className="btn btn-danger" style={{ fontSize: 'var(--fs-2)', padding: '6px 8px' }}>
-                              <Icon name="trash" size={13} />
+                            <button onClick={() => deleteGroup(g.id)} style={{ ...ICON_BTN, color: 'var(--danger)', borderColor: tint('var(--danger)', 35) }} title="Delete squad" aria-label={`Delete ${g.name}`}>
+                              <Icon name="trash" size={14} />
                             </button>
                           </div>
                         </div>
                         {isExp && (
-                          <div style={{ borderTop: '1px solid var(--border)', padding: '14px 16px', background: 'var(--bg)' }}>
-                            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Members</div>
+                          <div style={{ borderTop: HAIR, padding: '12px 15px 14px', background: tint('var(--bg)', 60) }}>
+                            <SecHead title="Members" />
                             {members.length === 0
-                              ? <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-muted)', marginBottom: 10 }}>No members yet.</div>
+                              ? <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', margin: '6px 0 10px' }}>No members yet.</div>
                               : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
-                                  {members.map(a => (
-                                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 10px', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                                      <span style={{ fontSize: 'var(--fs-3)', minWidth: 0, overflowWrap: 'anywhere' }}>{a.first_name} {a.last_name}</span>
-                                      <button onClick={() => removeMemberFromGroup(g.id, a.id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
+                                <div style={{ margin: '6px 0 12px' }}>
+                                  {members.map((a, i) => (
+                                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 44, borderTop: i === 0 ? HAIR_2 : HAIR }}>
+                                      <span style={{ fontSize: 'var(--fs-3)', minWidth: 0, overflowWrap: 'anywhere', color: 'var(--text)' }}>{a.first_name} {a.last_name}</span>
+                                      <button onClick={() => removeMemberFromGroup(g.id, a.id)} aria-label={`Remove ${a.first_name} ${a.last_name} from ${g.name}`} style={{ width: 44, height: 44, background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 20, lineHeight: 1, flexShrink: 0 }}>×</button>
                                     </div>
                                   ))}
                                 </div>
@@ -1724,11 +2083,11 @@ function DashboardPageInner() {
                             }
                             {nonMembers.length > 0 && (
                               <div style={{ display: 'flex', gap: 8 }}>
-                                <select className="input" value={addMemberMap[g.id] ?? ''} onChange={e => setAddMemberMap(prev => ({ ...prev, [g.id]: e.target.value }))} style={{ flex: 1, minWidth: 0, maxWidth: '100%', fontSize: 'var(--fs-3)' }}>
+                                <select className="input" aria-label={`Add an athlete to ${g.name}`} value={addMemberMap[g.id] ?? ''} onChange={e => setAddMemberMap(prev => ({ ...prev, [g.id]: e.target.value }))} style={{ flex: 1, minWidth: 0, maxWidth: '100%', fontSize: 'var(--fs-3)', minHeight: 44 }}>
                                   <option value="">Add athlete…</option>
                                   {nonMembers.map(a => <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>)}
                                 </select>
-                                <button className="btn btn-primary" onClick={() => addMemberToGroup(g.id)} disabled={!addMemberMap[g.id]}>Add</button>
+                                <button className="btn btn-primary" onClick={() => addMemberToGroup(g.id)} disabled={!addMemberMap[g.id]} style={{ minHeight: 44 }}>Add</button>
                               </div>
                             )}
                           </div>
@@ -1738,25 +2097,30 @@ function DashboardPageInner() {
                   })}
                 </div>
 
-                <div className="card" style={{ padding: 22 }}>
-                  <div className="section-title" style={{ fontSize: 15, marginBottom: 4 }}>Create Group</div>
-                  <div className="section-sub" style={{ marginBottom: 16 }}>Record one session for all members at once.</div>
+                <div className="card" style={{ padding: 20 }}>
+                  <SecHead title="Create squad" />
+                  <div className="section-sub" style={{ marginBottom: 16, color: 'var(--text-2)' }}>Record one session for all members at once.</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div>
-                      <label className="label">Name *</label>
-                      <input className="input" placeholder="Sprint Squad, U18 Boys…" value={newGroupForm.name} onChange={e => setNewGroupForm(f => ({ ...f, name: e.target.value }))} />
+                      <label className="label" htmlFor="new-squad-name">Name *</label>
+                      <input id="new-squad-name" className="input" placeholder="Sprint Squad, U18 Boys…" value={newGroupForm.name} onChange={e => setNewGroupForm(f => ({ ...f, name: e.target.value }))} style={{ minHeight: 44 }} />
                     </div>
                     <div>
                       <label className="label">Colour</label>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        {GROUP_COLORS.map(c => (
-                          <button key={c} onClick={() => setNewGroupForm(f => ({ ...f, color: c }))} style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: newGroupForm.color === c ? '3px solid var(--text)' : '3px solid transparent', cursor: 'pointer' }} />
-                        ))}
+                      <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                        {GROUP_COLORS.map((c, i) => {
+                          const on = newGroupForm.color === c
+                          return (
+                            <button key={c} onClick={() => setNewGroupForm(f => ({ ...f, color: c }))} aria-label={`Colour ${i + 1}`} aria-pressed={on} style={{ width: 44, height: 44, padding: 0, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <span style={{ width: 28, height: 28, borderRadius: '50%', background: c, boxShadow: on ? '0 0 0 3px var(--text)' : '0 0 0 1.5px var(--text-muted)' }} />
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
                     <div>
-                      <label className="label">Description (optional)</label>
-                      <input className="input" placeholder="Tue/Thu sprint group…" value={newGroupForm.description} onChange={e => setNewGroupForm(f => ({ ...f, description: e.target.value }))} />
+                      <label className="label" htmlFor="new-squad-desc">Description (optional)</label>
+                      <input id="new-squad-desc" className="input" placeholder="Tue/Thu sprint group…" value={newGroupForm.description} onChange={e => setNewGroupForm(f => ({ ...f, description: e.target.value }))} style={{ minHeight: 44 }} />
                     </div>
                     {groupMsg && <p style={{ fontSize: 'var(--fs-3)', color: 'var(--danger)', fontWeight: 600, margin: 0 }}>{groupMsg}</p>}
                     <button className="btn btn-primary btn-lg" onClick={createGroup} disabled={groupSaving || !newGroupForm.name.trim()}>
@@ -1770,24 +2134,21 @@ function DashboardPageInner() {
 
           {/* ════ SESSIONS TAB ════ */}
           {tab === 'sessions' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                <div>
-                  <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>All Sessions</h2>
-                  <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 2 }}>{allSessions.length} session{allSessions.length !== 1 ? 's' : ''}</div>
-                </div>
-                <button className="btn btn-primary" onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }} style={{ gap: 6 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
+                <TabTitle title="All sessions" sub={`${allSessions.length} session${allSessions.length !== 1 ? 's' : ''}`} />
+                <button className="btn btn-primary" onClick={() => openRecorder()} style={{ gap: 6, minHeight: 44 }}>
                   <Icon name="mic" size={15} /> Record Session
                 </button>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <input className="input" placeholder="Search sessions…" value={sessionsSearch} onChange={e => setSessionsSearch(e.target.value)} style={{ flex: '1 1 180px', minWidth: 0, maxWidth: 260 }} onKeyDown={e => e.key === 'Enter' && fetchAllSessions(sessionsSearch, sessionsAthleteFilter)} />
-                <select className="input" value={sessionsAthleteFilter} onChange={e => setSessionsAthleteFilter(e.target.value)} style={{ flex: '0 1 180px', minWidth: 0, maxWidth: 180 }}>
+                <input className="input" placeholder="Search sessions…" aria-label="Search sessions" value={sessionsSearch} onChange={e => setSessionsSearch(e.target.value)} style={{ flex: '1 1 180px', minWidth: 0, maxWidth: isMobile ? 'none' : 260, minHeight: 44 }} onKeyDown={e => e.key === 'Enter' && fetchAllSessions(sessionsSearch, sessionsAthleteFilter)} />
+                <select className="input" aria-label="Filter by athlete" value={sessionsAthleteFilter} onChange={e => setSessionsAthleteFilter(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0, maxWidth: isMobile ? 'none' : 200, minHeight: 44 }}>
                   <option value="">All athletes</option>
                   {athletes.map(a => <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>)}
                 </select>
-                <button className="btn btn-primary" onClick={() => fetchAllSessions(sessionsSearch, sessionsAthleteFilter)} style={{ padding: '9px 16px' }}>Search</button>
-                {(sessionsSearch || sessionsAthleteFilter) && <button className="btn btn-ghost" onClick={() => { setSessionsSearch(''); setSessionsAthleteFilter(''); fetchAllSessions('','') }} style={{ padding: '9px 14px' }}>Clear</button>}
+                <button className="btn btn-primary" onClick={() => fetchAllSessions(sessionsSearch, sessionsAthleteFilter)} style={{ padding: '0 16px', minHeight: 44 }}>Search</button>
+                {(sessionsSearch || sessionsAthleteFilter) && <button className="btn btn-ghost" onClick={() => { setSessionsSearch(''); setSessionsAthleteFilter(''); fetchAllSessions('','') }} style={{ padding: '0 14px', minHeight: 44 }}>Clear</button>}
               </div>
               {loadingSessions || sessionsError || allSessions.length === 0
                 ? <ListState
@@ -1799,36 +2160,13 @@ function DashboardPageInner() {
                     onRetry={() => fetchAllSessions(sessionsSearch, sessionsAthleteFilter)}
                   />
                 : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {allSessions.map(s => {
-                        const a = s.athletes
-                        return (
-                          // The whole row is the link — tapping a session opens
-                          // that session, not its athlete.
-                          <Link
-                            key={s.id}
-                            href={`/sessions/${s.id}`}
-                            className="card"
-                            style={{ padding: '14px 16px', textDecoration: 'none', color: 'inherit', display: 'block' }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                              <Avatar initials={a ? `${a.first_name[0]}${a.last_name[0]}`.toUpperCase() : '?'} size={38} bg="var(--coach-color)" />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                  <span style={{ fontWeight: 800, fontSize: 14, overflowWrap: 'anywhere' }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</span>
-                                  {s.session_name && <span style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>— {s.session_name}</span>}
-                                  {s.shared_with_athlete && <span className="badge badge-active" style={{ fontSize: 'var(--fs-1)' }}>Shared</span>}
-                                </div>
-                                <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 2 }}>{formatSessionDate(s, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</div>
-                                {s.summary && <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{s.summary}</div>}
-                              </div>
-                              <span className="btn btn-ghost" style={{ fontSize: 'var(--fs-1)', padding: '6px 10px', flexShrink: 0, gap: 4 }}>
-                                Open <Icon name="arrow" size={11} />
-                              </span>
-                            </div>
-                          </Link>
-                        )
-                      })}
+                    // The whole row is the link — tapping a session opens that
+                    // session, not its athlete.
+                    <div>
+                      {allSessions.map((s, i) => sessionRow(s, i, {
+                        summary: true,
+                        meta: formatSessionDate(s, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }),
+                      }))}
                     </div>
                   )
               }
@@ -1838,18 +2176,18 @@ function DashboardPageInner() {
           {/* ════ CALENDAR TAB ════ */}
           {tab === 'calendar' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Calendar</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '200px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
-                <div className="card" style={{ padding: 14 }}>
+              <TabTitle title="Calendar" />
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '220px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+                <div className="card" style={{ padding: 10, minWidth: 0 }}>
                   <button onClick={() => showCalendarFor('personal', '')} style={sideItem(calMode === 'personal', 'var(--primary)')}>
                     <Icon name="calendar" size={15} /> My Calendar
                   </button>
                   {athletes.length > 0 && (
                     <>
-                      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.8, padding: '10px 12px 4px' }}>Athletes</div>
+                      <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '12px 12px 4px' }}>Athletes</div>
                       {athletes.map(a => (
-                        <button key={a.id} onClick={() => showCalendarFor('athlete', a.id)} style={sideItem(calMode === 'athlete' && calTargetId === a.id, 'var(--coach-color)')}>
-                          <Avatar initials={a.first_name[0].toUpperCase()} size={22} bg={calMode === 'athlete' && calTargetId === a.id ? 'rgba(255,255,255,0.25)' : 'var(--coach-color)'} />
+                        <button key={a.id} onClick={() => showCalendarFor('athlete', a.id)} style={sideItem(calMode === 'athlete' && calTargetId === a.id, 'var(--coach-on-light)')}>
+                          <Mono initials={initialsOf(a.first_name, a.last_name)} pending={statusOf(a) === 'INVITED'} size={28} />
                           {a.first_name} {a.last_name}
                         </button>
                       ))}
@@ -1857,20 +2195,20 @@ function DashboardPageInner() {
                   )}
                   {groups.length > 0 && (
                     <>
-                      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.8, padding: '10px 12px 4px' }}>Groups</div>
+                      <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '12px 12px 4px' }}>Squads</div>
                       {groups.map(g => (
                         <button key={g.id} onClick={() => showCalendarFor('group', g.id)} style={sideItem(calMode === 'group' && calTargetId === g.id, g.color)}>
-                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: g.color, flexShrink: 0, border: '2px solid rgba(255,255,255,0.5)' }} />
+                          <span style={{ width: 12, height: 12, borderRadius: '50%', background: g.color, flexShrink: 0, boxShadow: '0 0 0 1.5px var(--text-muted)' }} />
                           {g.name}
                         </button>
                       ))}
                     </>
                   )}
                 </div>
-                <div className="card" style={{ padding: 18 }}>
+                <div className="card" style={{ padding: 18, minWidth: 0 }}>
                   <div style={{ marginBottom: 14 }}>
-                    <div className="section-title" style={{ fontSize: 'var(--fs-4)' }}>{calTitle}</div>
-                    <div className="section-sub">{calSubtitle}</div>
+                    <div style={{ ...cast(19, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere' }}>{calTitle}</div>
+                    <div className="section-sub" style={{ color: 'var(--text-2)' }}>{calSubtitle}</div>
                   </div>
                   {calError && (
                     <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 12 }}>
@@ -1897,8 +2235,10 @@ function DashboardPageInner() {
           )}
 
           {/* ════ MESSAGES TAB ════ */}
+          {/* Sized to end just above the floating nav: the viewport, less the
+              top bar, less the nav and its offset from the bottom edge. */}
           {tab === 'messages' && (
-            <div style={{ margin: isMobile ? '-16px' : '-28px', height: isMobile ? 'calc(100dvh - 136px)' : 'calc(100% + 56px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ height: isMobile ? `calc(100dvh - ${TOPBAR_H + NAV_H + 8}px - ${NAV_BOTTOM})` : '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <MessagingPanel
                 athletes={athletes}
                 unreadCounts={unreadCounts}
@@ -1936,163 +2276,249 @@ function DashboardPageInner() {
 
       {/* ════════ MOBILE BOTTOM NAV ════════ */}
       {isMobile && (
-        <nav style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
-          background: 'rgba(251,248,243,0.92)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
-          borderTop: '1px solid var(--border)',
-          /* Five equal tracks that content cannot widen, plus a wider gap paid
-             for out of the side padding. At 320px the longest label ("Messages"
-             at the 13px furniture floor) is ~5px wider than its share of the
-             bar, so it overhangs ~2.5px each side; the 4px gap keeps that
-             overhang off its neighbour. `1fr` without the minmax let the labels
-             size the tracks, which fits at 320 with under a pixel to spare and
-             pushes the Messages tab off the screen edge the moment it does not. */
-          display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 4,
-          alignItems: 'center',
-          padding: '8px 2px',
-          paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
-        }}>
-          {BOTTOM_NAV_ITEMS.map((item) => {
-            if ('fab' in item) {
+        <>
+          {/* The veil: content fades out under the floating bar rather than
+              stopping at a hard edge. Pointer-transparent. */}
+          <div aria-hidden style={{
+            position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 199, pointerEvents: 'none',
+            height: `calc(${NAV_H + 56}px + ${NAV_BOTTOM})`,
+            background: `linear-gradient(180deg, transparent 0%, ${tint(INK_DEEP, 80)} 48%, ${INK_DEEP} 100%)`,
+          }} />
+          <nav aria-label="Coach" style={{
+            position: 'fixed', left: 10, right: 10, bottom: NAV_BOTTOM, height: NAV_H, zIndex: 200,
+            borderRadius: 21, border: HAIR_2,
+            background: tint(INK_DEEP, 88),
+            backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+            boxShadow: `0 -2px 30px ${tint('black', 45)}`,
+            /* Five equal tracks that content cannot widen. `1fr` without the
+               minmax let the labels size the tracks. The labels are Big
+               Shoulders now, which is ~30% narrower than the face they
+               replaced — measured at 320px in the build harness. */
+            display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+            alignItems: 'stretch', padding: '0 2px',
+          }}>
+            {BOTTOM_NAV_ITEMS.map((item) => {
+              if ('fab' in item) {
+                return (
+                  <button key="fab"
+                    onClick={() => openRecorder()}
+                    aria-label="Record a session"
+                    style={{
+                      background: 'none', border: 'none', padding: 0, minWidth: 0,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{
+                      width: 48, height: 32, borderRadius: 11, background: 'var(--flood)', color: 'var(--on-primary)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Icon name="mic" size={18} strokeWidth={2.4} />
+                    </span>
+                    <span style={{ ...cast(13, 700, '.05em'), color: 'var(--text)', whiteSpace: 'nowrap' }}>Record</span>
+                  </button>
+                )
+              }
+              /* Squads live behind the Athletes destination, so the tab stays lit
+               * while the coach is in them. Before this, `setTab('groups')` was
+               * never called from anywhere on a phone: the only entry was the
+               * desktop sidebar, gated behind `!isMobile`. The tab rendered and
+               * had no door.
+               *
+               * That silently removed squad recording from the product on the
+               * only device it is used on — QuickSessionModal only offers
+               * "Group / Squad" when groups.length > 0, so a phone-only coach
+               * could never create a squad, never saw the mode, and never learned
+               * one recording can reach twelve athletes. */
+              const active = tab === item.key || (item.key === 'athletes' && tab === 'groups')
+              const unread = item.key === 'messages' ? totalUnreadAll : 0
               return (
-                <button key="fab"
-                  onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }}
-                  style={{
-                    justifySelf: 'center', background: 'none', border: 'none', padding: 0,
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{
-                    width: 46, height: 46, borderRadius: '50%',
-                    background: 'linear-gradient(135deg, var(--coach-color) 0%, var(--coach-on-light) 100%)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 4px 14px rgba(181,92,62,0.35), 0 0 0 3px var(--bg)',
-                    border: '2px solid var(--card)',
-                  }}>
-                    <Icon name="mic" size={20} strokeWidth={2.4} />
-                  </div>
-                  <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text)', letterSpacing: 0.3, marginTop: 1 }}>Record</span>
+                <button key={item.key} onClick={() => setTab(item.key)} aria-current={active ? 'page' : undefined} style={{
+                  background: 'none', border: 'none', padding: 0, position: 'relative', minWidth: 0,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  color: active ? 'var(--flood)' : 'var(--text-2)',
+                  cursor: 'pointer',
+                }}>
+                  {active && <span aria-hidden style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 18, height: 2.5, background: 'var(--flood)', borderRadius: 2 }} />}
+                  <span style={{ position: 'relative', display: 'flex' }}>
+                    <Icon name={item.icon} size={19} strokeWidth={active ? 2.2 : 1.9} />
+                    {unread > 0 && (
+                      <span style={{ position: 'absolute', top: -7, right: -11, minWidth: 18, minHeight: 18, lineHeight: 1, borderRadius: 99, background: 'var(--coach-on-light)', color: 'var(--on-primary)', ...cast(13, 800, '0'), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{unread > 9 ? '9+' : unread}</span>
+                    )}
+                  </span>
+                  <span style={{ ...cast(13, 700, '.05em'), whiteSpace: 'nowrap' }}>{item.label}</span>
                 </button>
               )
-            }
-            /* Squads live behind the Athletes destination, so the tab stays lit
-             * while the coach is in them. Before this, `setTab('groups')` was
-             * never called from anywhere on a phone: the only entry was the
-             * desktop sidebar, gated behind `!isMobile`. The tab rendered and
-             * had no door.
-             *
-             * That silently removed squad recording from the product on the
-             * only device it is used on — QuickSessionModal only offers
-             * "Group / Squad" when groups.length > 0, so a phone-only coach
-             * could never create a squad, never saw the mode, and never learned
-             * one recording can reach twelve athletes. */
-            const active = tab === item.key || (item.key === 'athletes' && tab === 'groups')
-            const unread = item.key === 'messages' ? totalUnreadAll : 0
-            return (
-              <button key={item.key} onClick={() => setTab(item.key)} style={{
-                background: 'none', border: 'none', padding: 4, position: 'relative', minWidth: 0,
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                color: active ? 'var(--text)' : 'var(--text-muted)',
-                cursor: 'pointer',
-              }}>
-                {active && <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', width: 18, height: 2, background: 'var(--text)', borderRadius: 2 }} />}
-                <div style={{ position: 'relative' }}>
-                  <Icon name={item.icon} size={18} strokeWidth={active ? 2.2 : 1.8} />
-                  {unread > 0 && (
-                    <span style={{ position: 'absolute', top: -6, right: -9, minWidth: 16, minHeight: 16, lineHeight: 1, borderRadius: 99, background: 'var(--coach-color)', color: '#fff', fontSize: 'var(--fs-1)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{unread > 9 ? '9+' : unread}</span>
-                  )}
-                </div>
-                <span style={{ fontSize: 'var(--fs-1)', fontWeight: active ? 800 : 600, letterSpacing: 0.2 }}>{item.label}</span>
-              </button>
-            )
-          })}
-        </nav>
+            })}
+          </nav>
+        </>
       )}
 
       {/* ════════ MODALS ════════ */}
 
+      {/* Add an athlete. After a send it stays open and says what just
+          happened — the row it created, and what PENDING will mean for them —
+          with the form reset under it for the next one. It used to close
+          with nothing said, on the coach's most consequential roster action. */}
       {showAddAthlete && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
-          <div className="card-lg" style={{ width: '100%', maxWidth: 440, padding: 26 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontWeight: 900, fontSize: 18 }}>Add Athlete</div>
-              <button onClick={() => { setShowAddAthlete(false); setAddMsg('') }} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-muted)' }}>×</button>
+        <div role="dialog" aria-modal="true" aria-label="Add athlete" style={isMobile
+          ? { position: 'fixed', inset: 0, zIndex: 300, background: 'var(--bg)', overflowY: 'auto', overflowX: 'hidden' }
+          : { position: 'fixed', inset: 0, background: tint('black', 50), backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 20 }}>
+          <div className={isMobile ? undefined : 'card-lg'} style={isMobile
+            ? { minHeight: '100%', padding: `10px ${GUTTER} calc(32px + env(safe-area-inset-bottom))` }
+            : { width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto', padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {isMobile ? (
+                <>
+                  <button onClick={closeAddAthlete} aria-label="Back" style={ICON_BTN}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 5 8 12l6.5 7" /></svg>
+                  </button>
+                  <Brand rolecap="Add athlete" />
+                </>
+              ) : (
+                <>
+                  <div style={{ ...cast(19, 700, '.08em'), color: 'var(--text)', flex: 1 }}>Add athlete</div>
+                  <button onClick={closeAddAthlete} aria-label="Close" style={{ width: 44, height: 44, background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-2)' }}>×</button>
+                </>
+              )}
             </div>
-            <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 16 }}>An invite email will be sent with a link to set their password.</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-              {([['First name','Alex','firstName'],['Last name','Johnson','lastName']] as const).map(([label,ph,key]) => (
-                <div key={key}>
-                  <label className="label">{label}</label>
-                  <input className="input" placeholder={ph} value={addForm[key]} onChange={e => setAddForm(f => ({ ...f, [key]: e.target.value }))} />
+
+            {lastInvite && (
+              <div role="status" style={{ position: 'relative', marginTop: 14, borderRadius: 20, overflow: 'hidden', background: PANEL, border: HAIR, padding: '12px 15px 13px' }}>
+                <div aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, var(--flood) 0%, ${tint('var(--flood)', 16)} 62%, transparent 100%)` }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...cast(13, 700, '.26em'), color: 'var(--flood)' }}>
+                  <i className="sn-livedot" aria-hidden style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--flood)', flex: 'none' }} />
+                  Invite sent
+                  <span style={{ marginLeft: 'auto', ...MONO, fontSize: 13, color: 'var(--text-2)' }}>
+                    {lastInvite.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', gap: 12, alignItems: 'center', marginTop: 12, paddingTop: 12, borderTop: HAIR }}>
+                  <Mono initials={initialsOf(lastInvite.firstName, lastInvite.lastName)} pending />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ ...cast(18, 700, '.04em'), color: 'var(--text)', lineHeight: 1.1, overflowWrap: 'anywhere' }}>{lastInvite.firstName} {lastInvite.lastName}</div>
+                    <div style={{ ...MONO, fontSize: 13, color: 'var(--text-2)', marginTop: 5, overflowWrap: 'anywhere' }}>{lastInvite.email}</div>
+                  </div>
+                  <Chip tone="amber">Pending</Chip>
+                </div>
+                {/* athleteStatus() in lib/athlete-status.ts, said in English. */}
+                <p style={{ fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 'var(--t-body)', lineHeight: 1.42, color: 'var(--text)', margin: '11px 0 0' }}>
+                  {lastInvite.firstName} is on your roster now. They read{' '}
+                  <em style={{ fontStyle: 'italic', fontWeight: 500, background: `linear-gradient(transparent 68%, ${tint('var(--energy-dark)', 28)} 68%)` }}>Pending</em>{' '}
+                  until the first time they open the app — then they turn Active on their own.
+                </p>
+              </div>
+            )}
+
+            <div style={{ marginTop: 18 }}>
+              <SecHead title={lastInvite ? 'Add another' : 'Invite by email'} side="By email" />
+            </div>
+            <div style={{ marginTop: 4, borderTop: HAIR_2 }}>
+              {([['First name', 'Alex', 'firstName', 'text'], ['Last name', 'Johnson', 'lastName', 'text'], ['Email address', 'alex@example.com', 'email', 'email']] as const).map(([label, ph, key, type]) => (
+                <div key={key} className="sn-field" style={{ padding: '9px 0 2px' }}>
+                  <label htmlFor={`add-${key}`} style={{ display: 'block', ...cast(13, 700, '.2em'), color: 'var(--text-2)' }}>{label}</label>
+                  <input
+                    id={`add-${key}`}
+                    type={type}
+                    placeholder={ph}
+                    value={addForm[key]}
+                    onChange={e => setAddForm(f => ({ ...f, [key]: e.target.value }))}
+                    autoComplete="off"
+                    style={{ width: '100%', minWidth: 0, minHeight: 44, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 16, fontWeight: 500, padding: 0 }}
+                  />
                 </div>
               ))}
-              <div>
-                <label className="label">Email address</label>
-                <input className="input" type="email" placeholder="alex@example.com" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} />
-              </div>
-              {addMsg && <p style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: addMsg.includes('invited') ? 'var(--success)' : 'var(--danger)', margin: 0 }}>{addMsg}</p>}
-              <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-                <button className="btn btn-ghost" onClick={() => { setShowAddAthlete(false); setAddMsg('') }} style={{ flex: '1 1 120px' }}>Cancel</button>
-                <button className="btn btn-primary btn-lg" onClick={createAthlete} disabled={addLoading} style={{ flex: '2 1 180px' }}>{addLoading ? 'Inviting…' : 'Send Invite'}</button>
-              </div>
             </div>
+            <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.42, marginTop: 10 }}>An invite email will be sent with a link to set their password.</div>
+            {addMsg && <p role="alert" style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: 'var(--danger)', margin: '10px 0 0' }}>{addMsg}</p>}
+            <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+              <button className="btn btn-ghost" onClick={closeAddAthlete} style={{ flex: '1 1 110px', minHeight: 48 }}>{lastInvite ? 'Done' : 'Cancel'}</button>
+              <button onClick={createAthlete} disabled={addLoading} style={{
+                flex: '2 1 180px', minHeight: 48, borderRadius: 16, border: 'none', cursor: addLoading ? 'not-allowed' : 'pointer', opacity: addLoading ? 0.6 : 1,
+                background: 'var(--primary)', color: 'var(--on-primary)', ...cast(18, 800, '.1em'),
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+              }}>
+                <Icon name="arrow" size={16} strokeWidth={2.2} /> {addLoading ? 'Inviting…' : 'Send invite'}
+              </button>
+            </div>
+
+            <div style={{ marginTop: 22 }}>
+              <SecHead title="Or share your code" />
+            </div>
+            {inviteCode ? (
+              <div style={{ position: 'relative', marginTop: 8, borderRadius: 20, overflow: 'hidden', background: PANEL_2, border: HAIR_2, padding: '13px 15px' }}>
+                <div style={{ ...MONO, fontWeight: 700, fontSize: 26, letterSpacing: '.14em', color: 'var(--text)', lineHeight: 1.1, overflowWrap: 'anywhere' }}>{inviteCode}</div>
+                <div style={{ fontSize: 'var(--fs-3)', lineHeight: 1.4, color: 'var(--text-2)', marginTop: 8 }}>Athletes enter it at sign-up to auto-join your roster.</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 11, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!'); setTimeout(() => setCodeMsg(''), 2000) }}
+                    style={{ flex: '1 1 120px', minHeight: 44, borderRadius: 12, border: HAIR_2, background: tint('var(--text)', 4), color: 'var(--text-2)', ...cast(13, 700, '.16em'), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, cursor: 'pointer' }}
+                  >
+                    <Icon name="copy" size={14} /> Copy
+                  </button>
+                  {codeMsg && <span role="status" style={{ fontSize: 'var(--fs-2)', fontWeight: 600, color: codeMsg.includes('Copied') || codeMsg.includes('updated') ? 'var(--success)' : 'var(--danger)' }}>{codeMsg}</span>}
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>
+                <span style={{ flex: '1 1 180px' }}>You have not set a code yet. Athletes enter it at sign-up to auto-join your roster.</span>
+                <button className="btn btn-ghost" onClick={() => { closeAddAthlete(); setTab('settings') }} style={{ minHeight: 44 }}>Set it in Settings</button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {addEventModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
-          <div className="card-lg" style={{ width: '100%', maxWidth: 440, padding: 26 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+        <div style={{ position: 'fixed', inset: 0, background: tint('black', 50), backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}>
+          <div className="card-lg" style={{ width: '100%', maxWidth: 440, maxHeight: '92vh', overflowY: 'auto', padding: 22 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 18 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 900, fontSize: 17, overflowWrap: 'anywhere' }}>Add Event — {calTitle}</div>
-                <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 2 }}>
+                <div style={{ ...cast(19, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere' }}>Add Event — {calTitle}</div>
+                <div style={{ ...MONO, fontSize: 13, color: 'var(--text-2)', marginTop: 4 }}>
                   {new Date(addEventModal.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
                 </div>
               </div>
-              <button onClick={() => setAddEventModal(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0 }}>×</button>
+              <button onClick={() => setAddEventModal(null)} aria-label="Close" style={{ width: 44, height: 44, margin: '-10px -10px 0 0', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-2)', flexShrink: 0 }}>×</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
               <div>
-                <label className="label">Title *</label>
-                <input className="input" placeholder="e.g. Team meeting, Speed drills, Rest day" value={eventForm.title} onChange={e => setEventForm(f => ({ ...f, title: e.target.value }))} autoFocus />
+                <label className="label" htmlFor="event-title">Title *</label>
+                <input id="event-title" className="input" placeholder="e.g. Team meeting, Speed drills, Rest day" value={eventForm.title} onChange={e => setEventForm(f => ({ ...f, title: e.target.value }))} autoFocus style={{ minHeight: 44 }} />
               </div>
               <div>
                 <label className="label">Type</label>
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                   {['session','homework','goal','reminder','other'].map(t => (
-                    <button key={t} onClick={() => setEventForm(f => ({ ...f, event_type: t }))} className={`badge badge-${t}`} style={{ cursor: 'pointer', border: `1.5px solid ${eventForm.event_type === t ? 'currentColor' : 'transparent'}`, padding: '5px 10px', fontSize: 'var(--fs-1)' }}>
+                    <button key={t} onClick={() => setEventForm(f => ({ ...f, event_type: t }))} aria-pressed={eventForm.event_type === t} className={`badge badge-${t}`} style={{ cursor: 'pointer', border: `1.5px solid ${eventForm.event_type === t ? 'currentColor' : 'transparent'}`, padding: '0 12px', minHeight: 44, fontSize: 'var(--fs-1)' }}>
                       {t.charAt(0).toUpperCase() + t.slice(1)}
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="label">Time (optional)</label>
-                <input className="input" type="time" value={eventForm.event_time} onChange={e => setEventForm(f => ({ ...f, event_time: e.target.value }))} />
+                <label className="label" htmlFor="event-time">Time (optional)</label>
+                <input id="event-time" className="input" type="time" value={eventForm.event_time} onChange={e => setEventForm(f => ({ ...f, event_time: e.target.value }))} style={{ minHeight: 44 }} />
               </div>
               <div>
-                <label className="label">Notes (optional)</label>
-                <textarea className="input" rows={3} value={eventForm.description} onChange={e => setEventForm(f => ({ ...f, description: e.target.value }))} placeholder="Extra details…" />
+                <label className="label" htmlFor="event-notes">Notes (optional)</label>
+                <textarea id="event-notes" className="input" rows={3} value={eventForm.description} onChange={e => setEventForm(f => ({ ...f, description: e.target.value }))} placeholder="Extra details…" />
               </div>
               {calMode === 'group' && (
-                <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
+                <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', color: 'var(--text-2)', border: HAIR_2 }}>
                   This event will be added to all {groups.find(g => g.id === calTargetId)?.member_count ?? 0} athletes in this group.
                 </div>
               )}
               {(calMode === 'athlete' || calMode === 'group') && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', cursor: 'pointer', fontSize: 'var(--fs-3)', padding: '10px 12px', background: alsoAddToCoach ? 'var(--primary-light)' : 'var(--bg)', border: `1.5px solid ${alsoAddToCoach ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 8 }}>
-                  <input type="checkbox" checked={alsoAddToCoach} onChange={e => setAlsoAddToCoach(e.target.checked)} style={{ width: 15, height: 15, accentColor: 'var(--primary)' }} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', cursor: 'pointer', fontSize: 'var(--fs-3)', minHeight: 44, padding: '10px 12px', background: alsoAddToCoach ? 'var(--primary-light)' : 'var(--bg)', border: `1.5px solid ${alsoAddToCoach ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 8 }}>
+                  <input type="checkbox" checked={alsoAddToCoach} onChange={e => setAlsoAddToCoach(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
                   <span style={{ fontWeight: alsoAddToCoach ? 700 : 400 }}>Also add to my personal calendar</span>
-                  <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--text-muted)' }}>prevents double-booking</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--text-2)' }}>prevents double-booking</span>
                 </label>
               )}
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
-              <button className="btn btn-ghost" onClick={() => { setAddEventModal(null); setAlsoAddToCoach(false) }} style={{ flex: '1 1 120px' }}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setAddEventModal(null); setAlsoAddToCoach(false) }} style={{ flex: '1 1 120px', minHeight: 44 }}>Cancel</button>
               <button className="btn btn-primary btn-lg" onClick={saveEvent} disabled={eventSaving || !eventForm.title.trim()} style={{ flex: '2 1 180px' }}>
                 {eventSaving ? 'Saving…' : calMode === 'group' ? 'Add for Group' : 'Add to Calendar'}
               </button>
@@ -2103,18 +2529,17 @@ function DashboardPageInner() {
 
       {/* ════════ DELETE CONFIRM MODAL ════════ */}
       {deleteConfirmAthlete && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400, padding: 20 }}>
-          <div className="card-lg" style={{ width: '100%', maxWidth: 400, padding: 28 }}>
-            {/* Icon */}
-            <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--danger-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+        <div style={{ position: 'fixed', inset: 0, background: tint('black', 55), backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400, padding: 20 }}>
+          <div className="card-lg" role="alertdialog" aria-modal="true" aria-label="Remove athlete?" style={{ width: '100%', maxWidth: 400, padding: 26 }}>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--danger-light)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
               <Icon name="trash" size={22} strokeWidth={2} />
             </div>
-            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>Remove athlete?</div>
-            <p style={{ fontSize: 14, color: 'var(--text-2)', margin: '0 0 20px', lineHeight: 1.6 }}>
-              This will permanently delete <strong>{deleteConfirmAthlete.first_name} {deleteConfirmAthlete.last_name}</strong> and all their sessions, notes, and data. This cannot be undone.
+            <div style={{ ...cast(22, 700, '.04em'), color: 'var(--text)', marginBottom: 8 }}>Remove athlete?</div>
+            <p style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', margin: '0 0 20px', lineHeight: 1.6 }}>
+              This will permanently delete <strong style={{ color: 'var(--text)' }}>{deleteConfirmAthlete.first_name} {deleteConfirmAthlete.last_name}</strong> and all their sessions, notes, and data. This cannot be undone.
             </p>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button className="btn btn-ghost" onClick={() => setDeleteConfirmAthlete(null)} disabled={deleteLoading} style={{ flex: '1 1 120px' }}>
+              <button className="btn btn-ghost" onClick={() => setDeleteConfirmAthlete(null)} disabled={deleteLoading} style={{ flex: '1 1 120px', minHeight: 44 }}>
                 Cancel
               </button>
               <button className="btn btn-danger btn-lg" onClick={confirmDelete} disabled={deleteLoading} style={{ flex: '1 1 150px', fontWeight: 800 }}>
@@ -2125,11 +2550,11 @@ function DashboardPageInner() {
         </div>
       )}
 
-      {/* ════════ JOIN TOASTS ════════ */}
-      {(joinToasts.length > 0 || simpleToasts.length > 0) && (
+      {/* ════════ TOASTS ════════ */}
+      {(joinToasts.length > 0 || simpleToasts.length > 0 || receipts.length > 0) && (
         <div style={{
           position: 'fixed',
-          bottom: isMobile ? 'calc(env(safe-area-inset-bottom) + 72px)' : 24,
+          bottom: isMobile ? `calc(${NAV_H + 10}px + ${NAV_BOTTOM})` : 24,
           right: isMobile ? 12 : 24,
           left: isMobile ? 12 : 'auto',
           zIndex: 500,

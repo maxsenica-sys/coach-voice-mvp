@@ -254,7 +254,9 @@ export default function Home() {
   }
 
   const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') mode === 'login' ? signIn() : sendResetEmail()
+    if (e.key !== 'Enter') return
+    if (mode === 'login') signIn()
+    else sendResetEmail()
   }
 
   const toMode = (m: Mode) => { setMode(m); setMessage(''); setSentTo('') }
@@ -327,7 +329,6 @@ export default function Home() {
                       <b style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, fontSize: 14, color: 'var(--text)', overflowWrap: 'anywhere' }}>{sentTo}</b>.
                       {' '}Not there in a minute? Look in spam &mdash; nothing is wrong.
                     </p>
-                    {message && <p className="sn-err" role="alert">{message}</p>}
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0 16px', marginTop: 6 }}>
                       <button type="button" className="sn-link" onClick={sendResetEmail} disabled={loading}>
                         {loading ? 'Sending…' : 'Send it again'}

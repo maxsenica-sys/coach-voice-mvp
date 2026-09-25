@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
-import { formatSessionDate } from '@/lib/session-date'
+import { formatSessionDate, parseISODate, todayISODate } from '@/lib/session-date'
+import { WELLNESS_METRICS } from '@/lib/wellness-config'
 
 interface Session {
   id: string
@@ -41,16 +42,278 @@ function avg(vals: (number | null)[]): string {
   return (nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(1)
 }
 
+/**
+ * One check-in's overall score, 1–5, five is good.
+ *
+ * Normalised through WELLNESS_METRICS rather than by hand. This file used to
+ * compute `6 - soreness` and `6 - stress` itself — the flip lib/wellness-config
+ * deleted on 2026-09-09, because both columns are already stored 5-is-good
+ * ("1 = very sore, 5 = no soreness"). The printed report, the one a parent
+ * keeps, was the last place still reading them upside down.
+ */
+function normalised(c: Checkin, key: (typeof WELLNESS_METRICS)[number]['key']): number | null {
+  const raw = c[key]
+  if (raw === null) return null
+  const cfg = WELLNESS_METRICS.find((m) => m.key === key)
+  return cfg?.inverted ? 6 - raw : raw
+}
+
 function wellnessScore(c: Checkin): number | null {
-  const metrics = [
-    c.energy,
-    c.mood,
-    c.sleep_q,
-    c.soreness !== null ? 6 - c.soreness : null,
-    c.stress !== null ? 6 - c.stress : null,
-  ].filter((v): v is number => v !== null)
+  const metrics = WELLNESS_METRICS.map(({ key }) => normalised(c, key)).filter((v): v is number => v !== null)
   if (metrics.length === 0) return null
   return +(metrics.reduce((a, b) => a + b, 0) / metrics.length).toFixed(1)
+}
+
+/** `YYYY-MM-DD` for a local calendar day. */
+function isoDay(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA').format(d)
+}
+
+/** A `YYYY-MM-DD` day as "26 AUG", read as a local date, never as UTC midnight. */
+function shortDay(iso: string, opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }): string {
+  const d = parseISODate(iso)
+  return d ? d.toLocaleDateString(undefined, opts).toUpperCase() : iso
+}
+
+/** A CSS string literal. Names are data, and these ones go inside `content:`. */
+function cssString(s: string): string {
+  return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\n\r\f]+/g, ' ').replace(/</g, '\\3c ')}"`
+}
+
+/** The summary as its bullets when it is written as bullets; otherwise null and it prints as written. */
+function summaryPoints(summary: string): string[] | null {
+  const lines = summary.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (lines.length === 0 || !lines.every((l) => /^[•\-*]\s*/.test(l))) return null
+  return lines.map((l) => l.replace(/^[•\-*]\s*/, ''))
+}
+
+const CHIP_URL = `url("data:image/svg+xml,${encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>" +
+  "<rect width='24' height='24' rx='7' fill='#1F2421'/>" +
+  "<g transform='translate(5 5) scale(0.5833)' fill='none' stroke='#A8CBA0' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'>" +
+  "<rect x='9' y='2' width='6' height='11' rx='3'/><path d='M5 10.5v.5a7 7 0 0 0 14 0v-.5'/><path d='M12 18.5V21'/></g></svg>",
+)}")`
+
+/* ── Print, not screen ────────────────────────────────────────────────────
+ *
+ * Stadium Night flips the app to an ink ground at the token layer. None of it
+ * may reach paper: an ink ground on A4 is a page of toner, and cream text on
+ * white is invisible. This document scopes its own paper palette under `.pdf`
+ * and reads no screen colour token. The ink survives as the page-1 nameplate
+ * only; floodlight is absent (1.35:1 on white, and paper has no "now").
+ * Where the app would light the bar that is today, the strip marks it by
+ * weight instead — one solid ink bar among sage ones.
+ */
+const BASE_CSS = `
+.pdf {
+  --p-paper:  #FFFFFF;
+  --p-wash:   #F4F2EA;
+  --p-ink:    #1F2421;               /* 14.70:1 */
+  --p-ink-2:  #4A544C;               /*  7.90:1 */
+  --p-sage:   #3A5237;               /*  8.60:1 — furniture */
+  --p-ember:  #8A4A2C;               /*  6.78:1 */
+  --p-rule:   rgba(31,36,33,0.16);
+  --p-rule-2: rgba(31,36,33,0.30);
+  --p-tick:   rgba(58,82,55,0.42);
+  --p-bar:    rgba(58,82,55,0.40);
+  --n-ink:    #1F2421;
+  --n-cream:  #F5ECD7;
+  --n-cream-2: rgba(245,236,215,0.72);
+  --n-sage:   #A8CBA0;
+  --gut: clamp(20px, 7vw, 56px);
+  background: var(--p-paper);
+  color: var(--p-ink);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+}
+:root { color-scheme: light; }
+html, body { background: #FFFFFF !important; color: #1F2421; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { box-shadow: none !important; }
+
+.pdf .sheet { max-width: 794px; margin: 0 auto; background: var(--p-paper); }
+.pdf .toolbar { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px var(--gut); max-width: 794px; margin: 0 auto; }
+.pdf .tb-btn { min-height: 44px; padding: 0 20px; border-radius: 10px; cursor: pointer; font-family: var(--font-sans); font-size: 15px; font-weight: 700; }
+.pdf .tb-print { background: var(--p-ink); color: #FFFFFF; border: 1px solid var(--p-ink); }
+.pdf .tb-close { background: var(--p-paper); color: var(--p-ink); border: 1px solid var(--p-rule-2); }
+.pdf .tb-btn:focus-visible { outline: 2px solid var(--p-sage); outline-offset: 2px; }
+.pdf .state {
+  display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 0 var(--gut);
+  font-family: var(--font-display); font-size: 17px; color: var(--p-ink-2); text-align: center;
+}
+
+.pdf .plate {
+  position: relative; height: 140px; overflow: hidden;
+  background: var(--n-ink); color: var(--n-cream);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 82%);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.pdf .plate .beam {
+  position: absolute; top: -40px; left: -60px; width: 500px; height: 420px;
+  background: linear-gradient(100deg, rgba(245,236,215,0.085), rgba(245,236,215,0) 62%);
+  transform: skewX(-17deg); border-right: 1.5px solid rgba(168,203,160,0.34);
+}
+.pdf .plate .gridlines {
+  position: absolute; inset: 0;
+  background-image: repeating-linear-gradient(to right, rgba(245,236,215,0.055) 0 1px, transparent 1px 39px);
+  -webkit-mask-image: linear-gradient(196deg, #000 0%, rgba(0,0,0,0.2) 70%);
+  mask-image: linear-gradient(196deg, #000 0%, rgba(0,0,0,0.2) 70%);
+}
+.pdf .plate .inner { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 13px; padding: 29px var(--gut) 0; }
+.pdf .mark {
+  width: 34px; height: 34px; border-radius: 11px; flex: none;
+  border: 1.5px solid var(--n-sage); color: var(--n-sage); background: rgba(168,203,160,0.12);
+  display: flex; align-items: center; justify-content: center;
+}
+.pdf .wordmark { font-family: var(--font-cast); font-weight: 800; font-size: 22px; letter-spacing: .22em; line-height: 1; color: var(--n-cream); }
+.pdf .rolecap { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .26em; line-height: 1; color: var(--n-sage); margin-top: 5px; }
+.pdf .plate .sp { flex: 1 1 0; min-width: 0; }
+.pdf .plate .stamp { text-align: right; padding-top: 3px; }
+.pdf .plate .stamp .k { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .24em; color: var(--n-cream-2); }
+.pdf .plate .stamp .v { font-family: var(--font-mono); font-weight: 500; font-size: 14px; letter-spacing: .04em; color: var(--n-cream); margin-top: 5px; }
+.pdf .ticks { height: 9px; margin: 0 var(--gut); background-image: repeating-linear-gradient(to right, var(--p-tick) 0 1px, transparent 1px 39px); }
+
+.pdf .doc { padding: 0 var(--gut) 40px; }
+
+.pdf .titleblock { padding: 19px 0 14px; border-bottom: 2px solid var(--p-ink); }
+.pdf .eyebrow { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .26em; color: var(--p-sage); text-transform: uppercase; }
+.pdf h1 {
+  font-family: var(--font-cast); font-weight: 800; font-size: 42px; letter-spacing: .015em; line-height: .98;
+  color: var(--p-ink); margin: 10px 0 0; text-transform: uppercase; overflow-wrap: anywhere;
+}
+.pdf .byline { font-family: var(--font-mono); font-weight: 500; font-size: 13px; letter-spacing: .05em; color: var(--p-ink-2); margin: 9px 0 0; text-transform: uppercase; overflow-wrap: anywhere; }
+
+/* The one enormous number, and the three beside it. */
+.pdf .hero { display: flex; flex-wrap: wrap; gap: 16px 24px; padding: 16px 0 14px; border-bottom: 1px solid var(--p-rule); break-inside: avoid; page-break-inside: avoid; }
+.pdf .hero .big { flex: 0 0 150px; }
+.pdf .huge { font-family: var(--font-display); font-weight: 500; font-size: 84px; line-height: .78; letter-spacing: -5px; color: var(--p-ink); font-variant-numeric: tabular-nums; margin-left: -5px; padding-top: 6px; }
+.pdf .huge-cap { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .22em; color: var(--p-sage); margin-top: 12px; }
+.pdf .huge-sub { font-family: var(--font-mono); font-weight: 500; font-size: 13px; letter-spacing: .04em; color: var(--p-ink-2); margin-top: 5px; }
+.pdf .trio { flex: 1 1 360px; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: start; }
+.pdf .trio > .cell { padding: 0 14px; border-left: 1px solid var(--p-rule); min-width: 0; }
+.pdf .trio > .cell:first-child { padding-left: 0; border-left: 0; }
+.pdf .mid { font-family: var(--font-display); font-weight: 500; font-size: 40px; line-height: 1; letter-spacing: -1.6px; color: var(--p-ink); font-variant-numeric: tabular-nums; }
+.pdf .mid .of { font-size: 16px; letter-spacing: 0; color: var(--p-ink-2); margin-left: 2px; }
+.pdf .lbl { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .2em; color: var(--p-sage); margin-top: 8px; }
+.pdf .sub { font-family: var(--font-mono); font-weight: 400; font-size: 13px; color: var(--p-ink-2); margin-top: 5px; }
+.pdf .strip { grid-column: 1 / -1; margin-top: 14px; }
+.pdf .strip .bars { display: flex; align-items: flex-end; gap: 2px; height: 28px; border-bottom: 1px solid var(--p-rule); }
+.pdf .strip .bars i { flex: 1 1 0; min-width: 0; background: var(--p-bar); border-radius: 1px 1px 0 0; }
+.pdf .strip .bars i.none { background: none; }
+.pdf .strip .bars i.now { background: var(--p-ink); }
+.pdf .strip .cap { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .16em; color: var(--p-sage); }
+.pdf .strip .cap b { margin-left: auto; font-weight: 700; color: var(--p-ink-2); }
+
+/* A section is table-shaped so its head is a header group: when it runs onto
+   another sheet, the print engine repeats the head there itself. */
+.pdf .section { display: table; width: 100%; table-layout: fixed; border-collapse: collapse; }
+.pdf .section > .sechead { display: table-header-group; break-after: avoid; page-break-after: avoid; }
+.pdf .section > .rows { display: table-row-group; }
+.pdf .sechead .in { display: flex; align-items: baseline; gap: 10px; padding: 22px 0 7px; border-bottom: 1px solid var(--p-rule-2); }
+.pdf .sechead h2 { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .26em; color: var(--p-sage); margin: 0; }
+.pdf .sechead .of { margin-left: auto; font-family: var(--font-mono); font-weight: 500; font-size: 13px; letter-spacing: .05em; color: var(--p-ink-2); text-align: right; }
+
+/* Every session row and every note is atomic: nothing splits mid-entry. */
+.pdf .srow, .pdf .nrow { display: table-row; break-inside: avoid; page-break-inside: avoid; }
+.pdf .srow > .cell, .pdf .nrow > .cell { display: table-cell; border-bottom: 1px solid var(--p-rule); vertical-align: top; }
+.pdf .srow > .cell { padding: 10px 0 11px; }
+.pdf .nrow > .cell { padding: 8px 0 9px; }
+.pdf .entry { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 16px; align-items: start; }
+.pdf .when { font-family: var(--font-mono); font-weight: 500; font-size: 13px; letter-spacing: .02em; color: var(--p-ink-2); padding-top: 3px; text-transform: uppercase; }
+.pdf .sname { font-family: var(--font-cast); font-weight: 700; font-size: 17px; letter-spacing: .04em; line-height: 1.1; color: var(--p-ink); text-transform: uppercase; overflow-wrap: anywhere; }
+.pdf .bul { margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.pdf .bul li { list-style: none; display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; }
+.pdf .bul li s { text-decoration: none; font-family: var(--font-display); font-size: 15px; line-height: 1.4; color: var(--p-sage); }
+.pdf .bul li p, .pdf .sprose { font-family: var(--font-display); font-weight: 400; font-size: 15px; line-height: 1.4; color: var(--p-ink-2); margin: 0; overflow-wrap: anywhere; }
+.pdf .sprose { margin-top: 6px; white-space: pre-wrap; }
+
+.pdf .tablewrap { padding-top: 6px; break-inside: avoid; page-break-inside: avoid; }
+.pdf table { width: 100%; border-collapse: collapse; }
+.pdf th { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .18em; color: var(--p-sage); text-align: right; padding: 7px 10px 6px 0; border-bottom: 1px solid var(--p-rule-2); white-space: nowrap; }
+.pdf th:first-child { text-align: left; }
+.pdf th:last-child { padding-right: 0; }
+.pdf td { font-family: var(--font-mono); font-weight: 500; font-size: 14px; color: var(--p-ink); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--p-rule); text-align: right; }
+.pdf td.m { font-family: var(--font-sans); font-weight: 700; text-align: left; }
+.pdf td.t { width: 30%; padding-right: 0; }
+.pdf .track { height: 6px; background: var(--p-wash); border: 1px solid var(--p-rule); border-radius: 3px; overflow: hidden; }
+.pdf .track i { display: block; height: 100%; background: var(--p-sage); }
+.pdf .scale { font-family: var(--font-mono); font-weight: 400; font-size: 13px; letter-spacing: .03em; color: var(--p-ink-2); margin: 9px 0 0; text-transform: uppercase; }
+
+.pdf .said { font-family: var(--font-display); font-style: italic; font-weight: 400; font-size: 15px; line-height: 1.44; color: var(--p-ink); margin: 0; overflow-wrap: anywhere; }
+.pdf .notes-left { font-family: var(--font-display); font-style: italic; font-size: 15px; line-height: 1.44; color: var(--p-ink-2); margin: 0; padding-top: 10px; }
+.pdf .withheld { padding-top: 22px; break-inside: avoid; page-break-inside: avoid; }
+.pdf .withheld p { font-family: var(--font-display); font-style: italic; font-size: 15px; line-height: 1.44; color: var(--p-ink-2); margin: 0; padding-top: 8px; border-top: 1px solid var(--p-rule-2); }
+
+/* The coach's choice, per note. On screen only: none of it prints. */
+.pdf .pick-intro { font-family: var(--font-sans); font-size: 14px; line-height: 1.5; color: var(--p-ink-2); margin: 10px 0 2px; }
+.pdf .pick {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 4px; padding-right: 8px;
+  font-family: var(--font-sans); font-size: 14px; font-weight: 600; color: var(--p-ink); cursor: pointer;
+}
+.pdf .pick input {
+  -webkit-appearance: none; appearance: none; flex: none; margin: 0; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 5px; border: 1.5px solid var(--p-ink-2); background: var(--p-paper);
+  display: inline-grid; place-content: center;
+}
+.pdf .pick input::after { content: ''; width: 11px; height: 6px; border-left: 2px solid transparent; border-bottom: 2px solid transparent; transform: translateY(-1px) rotate(-45deg); }
+.pdf .pick input:checked { background: var(--p-ink); border-color: var(--p-ink); }
+.pdf .pick input:checked::after { border-color: #FFFFFF; }
+.pdf .pick input:focus-visible { outline: 2px solid var(--p-sage); outline-offset: 2px; }
+.pdf .pick-state { font-family: var(--font-mono); font-size: 13px; color: var(--p-ink-2); }
+
+.pdf .endmark { padding-top: 26px; display: flex; align-items: center; gap: 14px; break-before: avoid; page-break-before: avoid; }
+.pdf .endmark i { flex: 1; height: 1px; background: var(--p-rule-2); min-width: 16px; }
+.pdf .endmark span { font-family: var(--font-mono); font-weight: 500; font-size: 13px; letter-spacing: .05em; color: var(--p-ink-2); text-align: center; }
+
+.pdf .screen-foot {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px;
+  margin-top: 36px; padding-top: 12px; border-top: 1px solid var(--p-rule);
+  font-family: var(--font-mono); font-weight: 500; font-size: 13px; letter-spacing: .04em; color: var(--p-ink-2);
+}
+.pdf .screen-foot b { font-weight: 500; color: var(--p-ink); letter-spacing: .07em; }
+
+.print-only { display: none; }
+@media print {
+  html, body { overflow: visible !important; max-width: none !important; padding: 0 !important; margin: 0 !important; }
+  .pdf { --gut: 56px; min-height: 0; }
+  .no-print, .not-in-report { display: none !important; }
+  .print-only { display: block; }
+  .pdf .doc { padding-bottom: 0; }
+}
+`
+
+function pageCss(runRight: string, footLeft: string, footRight: string): string {
+  const box = `font-family: var(--font-mono); font-weight: 500; font-size: 13px; letter-spacing: .04em; color: #4A544C;`
+  const ticks = `background-image: linear-gradient(to right, rgba(58,82,55,0.42) 0 1px, transparent 1px); background-size: 39px 9px; background-repeat: repeat-x; background-position: 0 calc(100% - 12px);`
+  return `
+@page {
+  size: A4;
+  margin: 105px 0 89px;
+  @top-left {
+    content: ${CHIP_URL} "  COACHVOICE  ·  MONTHLY PROGRESS REPORT";
+    font-family: var(--font-cast); font-weight: 800; font-size: 15px; letter-spacing: .2em; color: #1F2421;
+    vertical-align: bottom; margin-left: 56px; width: 429px; padding-bottom: 32px; ${ticks}
+  }
+  @top-right {
+    content: ${cssString(runRight)};
+    ${box} text-align: right; vertical-align: bottom; margin-right: 56px; width: 253px; padding-bottom: 36px; ${ticks}
+  }
+  @bottom-left {
+    content: ${cssString(footLeft)};
+    ${box} vertical-align: top; margin-left: 56px; padding-top: 12px; border-top: 1px solid rgba(31,36,33,0.16);
+  }
+  @bottom-center { content: ""; border-top: 1px solid rgba(31,36,33,0.16); }
+  @bottom-right {
+    content: ${cssString(footRight)} " · PAGE " counter(page) " OF " counter(pages);
+    ${box} text-align: right; vertical-align: top; margin-right: 56px; padding-top: 12px; border-top: 1px solid rgba(31,36,33,0.16);
+  }
+}
+@page :first {
+  margin-top: 0;
+  @top-left { content: none; background: none; }
+  @top-right { content: none; background: none; }
+}
+`
 }
 
 export default function MonthlyReportPage() {
@@ -64,6 +327,17 @@ export default function MonthlyReportPage() {
   const [checkins, setCheckins] = useState<Checkin[]>([])
   const [loading, setLoading] = useState(true)
   const [reportMonth, setReportMonth] = useState('')
+  const [periodFrom, setPeriodFrom] = useState('')
+  const [periodTo, setPeriodTo] = useState('')
+  // Which check-in notes the coach has chosen to print, by their position in
+  // the list below (the list is fixed once loaded).
+  //
+  // Max, 2026-09-25: an athlete writes a check-in note to their coach, having
+  // been told only "Your coach will see this before your next session" — and
+  // parents receive this report. So no note prints unless the coach includes
+  // it, one at a time. Held in component state for this pass: nothing is
+  // remembered between prints, so every report starts from none.
+  const [included, setIncluded] = useState<Set<number>>(() => new Set())
 
   useEffect(() => {
     const load = async () => {
@@ -103,6 +377,8 @@ export default function MonthlyReportPage() {
 
       const now = new Date()
       setReportMonth(now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))
+      setPeriodFrom(sinceDate)
+      setPeriodTo(todayISODate())
       setLoading(false)
     }
     load()
@@ -113,171 +389,304 @@ export default function MonthlyReportPage() {
   }, [loading, athlete])
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Georgia, serif', color: '#666' }}>
-      Preparing monthly report…
+    <div className="pdf">
+      <style>{BASE_CSS}</style>
+      <div className="state">Preparing monthly report…</div>
     </div>
   )
 
   const athleteName = athlete ? `${athlete.first_name} ${athlete.last_name}` : 'Athlete'
+  const firstName = athlete?.first_name || 'the athlete'
   const coachName = coach ? [coach.first_name, coach.last_name].filter(Boolean).join(' ') : 'Coach'
 
   const avgWellness = checkins.length > 0
     ? avg(checkins.map(wellnessScore))
     : '—'
 
-  const metrics = [
-    { label: 'Energy',   key: 'energy'   as const },
-    { label: 'Mood',     key: 'mood'     as const },
-    { label: 'Sleep',    key: 'sleep_q'  as const },
-    { label: 'Soreness', key: 'soreness' as const, inverted: true },
-    { label: 'Stress',   key: 'stress'   as const, inverted: true },
-  ]
+  // The 30-day strip: one bar per local calendar day from the start of the
+  // window to today, so every check-in the query returned has a day to sit on.
+  const byDay = new Map(checkins.map((c) => [c.check_date, c]))
+  const from = parseISODate(periodFrom)
+  const days: { iso: string; score: number | null }[] = []
+  if (from) {
+    for (let i = 0; ; i++) {
+      const iso = isoDay(new Date(from.getFullYear(), from.getMonth(), from.getDate() + i))
+      const c = byDay.get(iso)
+      days.push({ iso, score: c ? wellnessScore(c) : null })
+      if (iso >= periodTo || i > 400) break
+    }
+  }
+
+  const notes = checkins.filter((c) => c.notes)
+  const includedNotes = notes.filter((_, i) => included.has(i))
+  const toggle = (key: number) => setIncluded((prev) => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
+
+  const periodLabel = periodFrom && periodTo
+    ? `${shortDay(periodFrom)} – ${shortDay(periodTo, { day: 'numeric', month: 'short', year: 'numeric' })}`
+    : reportMonth.toUpperCase()
+  const generated = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase()
+
+  const endParts = [`END OF REPORT · ${sessions.length} OF ${sessions.length} ${sessions.length === 1 ? 'SESSION' : 'SESSIONS'}`]
+  if (checkins.length > 0) endParts.push(`${checkins.length} ${checkins.length === 1 ? 'CHECK-IN' : 'CHECK-INS'}`)
+  const endScreen = endParts.join(' · ')
+  const endPrint = includedNotes.length > 0
+    ? `${endScreen} · ${includedNotes.length} ${includedNotes.length === 1 ? 'NOTE' : 'NOTES'} INCLUDED`
+    : endScreen
+
+  const css = BASE_CSS + pageCss(
+    `${athleteName} · ${periodLabel}`.toUpperCase(),
+    `COACHVOICE · GENERATED ${generated}`,
+    `CONFIDENTIAL — ${athleteName.toUpperCase()}`,
+  )
 
   return (
-    <>
-      <style>{`
-        @media print {
-          body { margin: 0; }
-          .no-print { display: none !important; }
-          @page { margin: 18mm; }
-        }
-        body { font-family: 'Georgia', serif; color: #1a1a2e; background: #fff; margin: 0; }
-        .page { max-width: 720px; margin: 0 auto; padding: 36px 32px; }
-        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #2563eb; padding-bottom: 20px; margin-bottom: 28px; }
-        .brand { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #2563eb; margin-bottom: 10px; }
-        .title { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
-        .subtitle { font-size: 13px; color: #64748b; margin: 0; }
-        .badge { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; border-radius: 8px; padding: '8px 14px'; font-size: 13px; font-weight: 600; text-align: center; }
-        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
-        .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; }
-        .stat-num { font-size: 28px; font-weight: 800; color: #2563eb; line-height: 1; }
-        .stat-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
-        .section { margin-bottom: 28px; }
-        .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #2563eb; border-bottom: 1px solid #e2e8f0; padding-bottom: 7px; margin-bottom: 14px; }
-        .session-row { padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
-        .session-name { font-size: 14px; font-weight: 600; color: #1a1a2e; }
-        .session-date { font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
-        .session-summary { font-size: 13px; color: #475569; line-height: 1.6; }
-        table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        th { background: #f8fafc; padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; border-bottom: 2px solid #e2e8f0; }
-        td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; color: #475569; }
-        .footer { border-top: 1px solid #e2e8f0; padding-top: 14px; margin-top: 36px; display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8; }
-      `}</style>
+    <div className="pdf">
+      <style>{css}</style>
 
-      <div className="page">
-        <div className="no-print" style={{ marginBottom: 20, display: 'flex', gap: 10 }}>
-          <button
-            onClick={() => window.print()}
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-          >
-            Print / Save PDF
-          </button>
-          <button
-            onClick={() => window.close()}
-            style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-          >
-            Close
-          </button>
-        </div>
+      <div className="toolbar no-print">
+        <button type="button" className="tb-btn tb-print" onClick={() => window.print()}>
+          Print / Save PDF
+        </button>
+        <button type="button" className="tb-btn tb-close" onClick={() => window.close()}>
+          Close
+        </button>
+      </div>
 
-        {/* Header */}
-        <div className="header">
-          <div>
-            <div className="brand">CoachVoice · Monthly Progress Report</div>
-            <h1 className="title">{athleteName}</h1>
-            <p className="subtitle">{reportMonth} · Prepared by {coachName}{coach?.sport ? ` · ${coach.sport}` : ''}</p>
-          </div>
-        </div>
-
-        {/* Summary stats */}
-        <div className="stats-row">
-          <div className="stat-card">
-            <div className="stat-num">{sessions.length}</div>
-            <div className="stat-label">Sessions</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-num">{checkins.length}</div>
-            <div className="stat-label">Check-ins</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-num" style={{ fontSize: 22 }}>{avgWellness}</div>
-            <div className="stat-label">Avg Wellness</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-num" style={{ fontSize: 18, color: '#16a34a' }}>
-              {checkins.length > 0 ? Math.round((checkins.length / 30) * 100) + '%' : '—'}
+      <div className="sheet">
+        <div className="plate">
+          <div className="beam" />
+          <div className="gridlines" />
+          <div className="inner">
+            <div className="mark" aria-hidden>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10.5v.5a7 7 0 0 0 14 0v-.5" /><path d="M12 18.5V21" />
+              </svg>
             </div>
-            <div className="stat-label">Check-in Rate</div>
+            <div>
+              <div className="wordmark">COACHVOICE</div>
+              <div className="rolecap">MONTHLY PROGRESS REPORT</div>
+            </div>
+            <div className="sp" />
+            {periodFrom && periodTo && (
+              <div className="stamp">
+                <div className="k">PERIOD</div>
+                <div className="v">{periodFrom} → {periodTo}</div>
+              </div>
+            )}
           </div>
         </div>
+        <div className="ticks" />
 
-        {/* Session summaries */}
-        {sessions.length > 0 && (
-          <div className="section">
-            <div className="section-title">Sessions This Month</div>
-            {sessions.map((s) => (
-              <div key={s.id} className="session-row">
-                <div className="session-date">
-                  {formatSessionDate(s, { weekday: 'short', month: 'short', day: 'numeric' })}
-                </div>
-                <div className="session-name">{s.session_name ?? 'Session'}</div>
-                {s.summary && <div className="session-summary">{s.summary}</div>}
-              </div>
-            ))}
+        <div className="doc">
+          {/* Header */}
+          <div className="titleblock">
+            <div className="eyebrow">{reportMonth}</div>
+            <h1>{athleteName}</h1>
+            <p className="byline">Prepared by {coachName}{coach?.sport ? ` · ${coach.sport}` : ''}</p>
           </div>
-        )}
 
-        {/* Wellness summary table */}
-        {checkins.length > 0 && (
-          <div className="section">
-            <div className="section-title">Wellness Overview</div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Metric</th>
-                  <th>Average</th>
-                  <th>Best</th>
-                  <th>Lowest</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.map(({ label, key, inverted }) => {
-                  const rawVals = checkins.map((c) => c[key]).filter((v): v is number => v !== null)
-                  const normVals = inverted ? rawVals.map((v) => 6 - v) : rawVals
+          {/* Summary stats */}
+          <div className="hero">
+            <div className="big">
+              <div className="huge">{sessions.length}</div>
+              <div className="huge-cap">{sessions.length === 1 ? 'SESSION' : 'SESSIONS'}</div>
+              <div className="huge-sub">IN 30 DAYS</div>
+            </div>
+            <div className="trio">
+              <div className="cell">
+                <div className="mid">{checkins.length}</div>
+                <div className="lbl">CHECK-INS</div>
+                <div className="sub">of 30 days</div>
+              </div>
+              <div className="cell">
+                <div className="mid">{avgWellness}{avgWellness !== '—' && <span className="of">/5</span>}</div>
+                <div className="lbl">AVG WELLNESS</div>
+              </div>
+              <div className="cell">
+                <div className="mid">
+                  {checkins.length > 0 ? <>{Math.round((checkins.length / 30) * 100)}<span className="of">%</span></> : '—'}
+                </div>
+                <div className="lbl">CHECK-IN RATE</div>
+              </div>
+              {checkins.length > 0 && days.length > 0 && (
+                <div className="strip">
+                  <div className="bars" aria-hidden>
+                    {days.map((d, i) => (
+                      <i
+                        key={d.iso}
+                        className={d.score === null ? 'none' : i === days.length - 1 ? 'now' : undefined}
+                        style={d.score === null ? undefined : { height: `${Math.max(8, (d.score / 5) * 100)}%` }}
+                      />
+                    ))}
+                  </div>
+                  <div className="cap">
+                    <span>DAILY WELLNESS, {periodLabel}</span>
+                    <b>{days[days.length - 1].score !== null ? 'LAST BAR IS TODAY' : 'ENDS TODAY'}</b>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Session summaries */}
+          {sessions.length > 0 && (
+            <div className="section">
+              <div className="sechead">
+                <div className="in">
+                  <h2>SESSIONS THIS PERIOD</h2>
+                  <span className="of">{sessions.length} RECORDED</span>
+                </div>
+              </div>
+              <div className="rows">
+                {sessions.map((s) => {
+                  const pts = s.summary ? summaryPoints(s.summary) : null
                   return (
-                    <tr key={key}>
-                      <td style={{ fontWeight: 600 }}>{label}</td>
-                      <td>{avg(normVals)}</td>
-                      <td>{normVals.length ? Math.max(...normVals) : '—'}</td>
-                      <td>{normVals.length ? Math.min(...normVals) : '—'}</td>
-                    </tr>
+                    <div key={s.id} className="srow">
+                      <div className="cell">
+                        <div className="entry">
+                          <div className="when">
+                            {formatSessionDate(s, { weekday: 'short' })}<br />
+                            {formatSessionDate(s, { month: 'short', day: 'numeric' })}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="sname">{s.session_name ?? 'Session'}</div>
+                            {pts
+                              ? <ul className="bul">{pts.map((p, i) => <li key={i}><s aria-hidden>–</s><p>{p}</p></li>)}</ul>
+                              : s.summary && <p className="sprose">{s.summary}</p>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   )
                 })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Notes from athlete */}
-        {checkins.some((c) => c.notes) && (
-          <div className="section">
-            <div className="section-title">Athlete Notes</div>
-            {checkins.filter((c) => c.notes).map((c, i) => (
-              <div key={i} style={{ fontSize: 13, color: '#475569', padding: '6px 0', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginRight: 8 }}>
-                  {new Date(c.check_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                </span>
-                {c.notes}
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
 
-        <div className="footer">
-          <span>CoachVoice · {new Date().toLocaleDateString()} · Monthly Report</span>
-          <span>{athleteName} — Confidential</span>
+          {/* Wellness summary table */}
+          {checkins.length > 0 && (
+            <div className="section">
+              <div className="sechead">
+                <div className="in">
+                  <h2>WELLNESS OVERVIEW</h2>
+                  <span className="of">{checkins.length} {checkins.length === 1 ? 'CHECK-IN' : 'CHECK-INS'}</span>
+                </div>
+              </div>
+              <div className="rows">
+                <div className="tablewrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Metric</th>
+                        <th>Average</th>
+                        <th>Best</th>
+                        <th>Lowest</th>
+                        <th>Of 5</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {WELLNESS_METRICS.map(({ label, key }) => {
+                        const normVals = checkins.map((c) => normalised(c, key)).filter((v): v is number => v !== null)
+                        const mean = avg(normVals)
+                        return (
+                          <tr key={key}>
+                            <td className="m">{label}</td>
+                            <td>{mean}</td>
+                            <td>{normVals.length ? Math.max(...normVals) : '—'}</td>
+                            <td>{normVals.length ? Math.min(...normVals) : '—'}</td>
+                            <td className="t">
+                              <div className="track" aria-hidden>
+                                <i style={{ width: mean === '—' ? 0 : `${(parseFloat(mean) / 5) * 100}%` }} />
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                  <p className="scale">Self-scored 1–5 by {firstName}. Five is good in every row.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Notes from athlete.
+              On screen the coach sees every note and chooses, one at a time,
+              which to print. In print, only the chosen ones appear; if none
+              are chosen the section does not print at all, and a single line
+              says the notes were left out so the report does not imply there
+              were none. */}
+          {notes.length > 0 && (
+            <div className={`section${includedNotes.length === 0 ? ' not-in-report' : ''}`}>
+              <div className="sechead">
+                <div className="in">
+                  <h2>ATHLETE NOTES</h2>
+                  <span className="of no-print">{includedNotes.length} OF {notes.length} INCLUDED</span>
+                  <span className="of print-only">
+                    {includedNotes.length} INCLUDED BY {coachName.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              <div className="rows">
+                <div className="no-print" style={{ display: 'table-row' }}>
+                  <div style={{ display: 'table-cell' }}>
+                    <p className="pick-intro">
+                      {firstName} wrote these to you, not for a report. None of them prints unless you include it.
+                    </p>
+                  </div>
+                </div>
+                {notes.map((c, i) => {
+                  const on = included.has(i)
+                  return (
+                    <div key={i} className={`nrow${on ? '' : ' not-in-report'}`}>
+                      <div className="cell">
+                        <div className="entry">
+                          <div className="when">{shortDay(c.check_date)}</div>
+                          <div style={{ minWidth: 0 }}>
+                            <p className="said">“{c.notes}”</p>
+                            <label className="pick no-print">
+                              <input type="checkbox" checked={on} onChange={() => toggle(i)} />
+                              Include in report
+                              <span className="pick-state">{on ? '· will print' : '· not printed'}</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {includedNotes.length > 0 && includedNotes.length < notes.length && (
+                  <div className="print-only">
+                    <p className="notes-left">{firstName}’s other check-in notes are not included in this report.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {notes.length > 0 && includedNotes.length === 0 && (
+            <div className="withheld print-only">
+              <p>{firstName}’s check-in notes are not included in this report.</p>
+            </div>
+          )}
+
+          <div className="endmark">
+            <i />
+            <span className="no-print">{endScreen}</span>
+            <span className="print-only">{endPrint}</span>
+            <i />
+          </div>
+
+          <div className="screen-foot no-print">
+            <span>COACHVOICE · {generated} · MONTHLY REPORT</span>
+            <span>{athleteName.toUpperCase()} — <b>CONFIDENTIAL</b></span>
+          </div>
         </div>
       </div>
-    </>
+    </div>
   )
 }

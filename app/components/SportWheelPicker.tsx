@@ -24,25 +24,54 @@ export default function SportWheelPicker({
   const filtered = source.filter(s =>
     s.toLowerCase().includes(search.toLowerCase())
   )
+  const CAST: React.CSSProperties = {
+    fontFamily: 'var(--font-cast)', fontWeight: 700, textTransform: 'uppercase',
+  }
+  const pick = (v: string) => { onChange(v); setOpen(false); setSearch('') }
+
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', minWidth: 0 }}>
+      {/* The current value as a trigger row: what it is for, in the cast face,
+          over the sport itself. The tick is sage — a chosen value is not one
+          of the floodlight's states. */}
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
         className="input"
         style={{
           width: '100%',
+          minHeight: 56,
           textAlign: 'left',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          gap: 12,
           cursor: 'pointer',
+          borderRadius: 14,
         }}
       >
-        <span style={{ color: value ? 'var(--text)' : 'var(--text-muted)' }}>
-          {value || 'Select sport…'}
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ ...CAST, display: 'block', fontSize: 'var(--t-furniture)', letterSpacing: '0.2em', color: 'var(--text-2)' }}>
+            Your sport
+          </span>
+          <span style={{
+            ...CAST, display: 'block', marginTop: 2, fontSize: 18, letterSpacing: '0.05em', lineHeight: 1.15,
+            color: value ? 'var(--text)' : 'var(--text-muted)', overflowWrap: 'anywhere',
+          }}>
+            {value || 'Select sport…'}
+          </span>
         </span>
-        <span style={{ fontSize: 'var(--t-furniture)' }}>{open ? '▲' : '▼'}</span>
+        {value && (
+          <span aria-hidden="true" style={{
+            width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+            background: 'var(--primary)', color: 'var(--on-primary)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800,
+          }}>✓</span>
+        )}
+        <span aria-hidden="true" style={{
+          fontSize: 18, lineHeight: 1, color: 'var(--text-2)', flexShrink: 0,
+          transform: open ? 'rotate(-90deg)' : 'rotate(90deg)', transition: 'transform .12s',
+        }}>›</span>
       </button>
       {open && (
         <div
@@ -54,64 +83,91 @@ export default function SportWheelPicker({
             zIndex: 300,
             background: 'var(--card)',
             border: '1px solid var(--border)',
-            borderRadius: 10,
-            boxShadow: 'var(--shadow)',
-            marginTop: 4,
+            borderRadius: 14,
+            boxShadow: '0 12px 32px -4px rgb(0 0 0 / .5)',
+            marginTop: 6,
             overflow: 'hidden',
           }}
         >
-          <div
-            style={{
-              padding: '8px 10px',
-              borderBottom: '1px solid var(--border-soft)',
-            }}
-          >
+          <div style={{ padding: '10px 12px 8px' }}>
             <input
               className="input"
-              style={{ fontSize: 'var(--t-body-tight)', padding: '8px 10px' }}
-              placeholder="Search sports…"
+              style={{ fontSize: 'var(--t-body)', padding: '10px 12px', minHeight: 44, background: 'var(--bg)', borderRadius: 12 }}
+              placeholder={`Search ${source.length} sports…`}
+              aria-label="Search sports"
               value={search}
               onChange={e => setSearch(e.target.value)}
               autoFocus
             />
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10,
+              marginTop: 10, paddingBottom: 6, borderBottom: '1px solid var(--text-muted)',
+            }}>
+              <span style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.2em', color: 'var(--text-2)' }}>
+                {value ? 'Change it to' : 'Choose one'}
+              </span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                {filtered.length} of {source.length}
+              </span>
+            </div>
           </div>
-          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+          <div style={{ maxHeight: 264, overflowY: 'auto', padding: '0 12px 6px' }}>
             <button
               type="button"
-              onClick={() => { onChange(''); setOpen(false); setSearch('') }}
+              onClick={() => pick('')}
               style={{
                 width: '100%',
-                padding: '9px 12px',
+                minHeight: 44,
+                padding: '8px 4px',
                 border: 'none',
+                borderBottom: '1px solid var(--border)',
                 background: !value ? 'var(--primary-light)' : 'transparent',
                 cursor: 'pointer',
                 textAlign: 'left',
-                fontSize: 13,
-                color: 'var(--text-muted)',
+                fontSize: 'var(--t-body-tight)',
+                color: 'var(--text-2)',
               }}
             >
               — None —
             </button>
-            {filtered.map(s => (
+            {filtered.length === 0 && (
+              <div style={{ padding: '14px 4px', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+                No sport matches “{search}”. Try a shorter word.
+              </div>
+            )}
+            {filtered.map(s => {
+              const on = value === s
+              return (
               <button
                 key={s}
                 type="button"
-                onClick={() => { onChange(s); setOpen(false); setSearch('') }}
+                aria-pressed={on}
+                onClick={() => pick(s)}
                 style={{
+                  ...CAST,
                   width: '100%',
-                  padding: '9px 12px',
+                  minHeight: 44,
+                  padding: '8px 4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
                   border: 'none',
-                  background: value === s ? 'var(--primary-light)' : 'transparent',
+                  borderBottom: '1px solid var(--border)',
+                  background: 'transparent',
                   cursor: 'pointer',
                   textAlign: 'left',
-                  fontSize: 13,
-                  color: value === s ? 'var(--primary)' : 'var(--text)',
-                  fontWeight: value === s ? 700 : 400,
+                  fontSize: 16,
+                  letterSpacing: '0.06em',
+                  color: on ? 'var(--primary)' : 'var(--text)',
                 }}
               >
-                {s}
+                <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{s}</span>
+                {on
+                  ? <span aria-hidden="true" style={{ fontSize: 15, color: 'var(--primary)' }}>✓</span>
+                  : <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1, color: 'var(--text-muted)' }}>›</span>}
               </button>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}

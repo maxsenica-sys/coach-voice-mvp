@@ -21,7 +21,7 @@ import FocusCard from '@/app/components/FocusCard'
 import { errorMessage } from '@/lib/errors'
 import { metricColor, metricTint, scoreLabel, type MetricKey } from '@/lib/wellness-config'
 import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/session-response'
-import { formatSessionDate, parseISODate } from '@/lib/session-date'
+import { formatSessionDate, parseISODate, sessionDate, sessionISODate } from '@/lib/session-date'
 
 type FocusPoint = string
 
@@ -126,26 +126,132 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
   }
 }
 
-/** Section shell — one consistent frame so the page reads as a sequence, not a pile of cards. */
+/* ── Stadium Night surfaces ──────────────────────────────────────────────────
+ * The spec's --line, --line-2, --panel and ember are not tokens in globals.css
+ * yet. These are those exact values, expressed against the tokens that are, so
+ * a token change still moves them and no hex is invented here. */
+const LINE = 'color-mix(in srgb, var(--text) 11%, transparent)'
+const LINE_2 = 'color-mix(in srgb, var(--text) 19%, transparent)'
+const PANEL = 'color-mix(in srgb, var(--text) 4.5%, transparent)'
+/** #E39A7A — the coach's mark. Everything the athlete's screen spends floodlight on, this page spends ember on. */
+const EMBER = 'var(--coach-on-light)'
+/** #E4BC6B — the forward-looking line. */
+const AMBER = 'var(--energy-dark)'
+/** #A8CBA0 — sage lifted to be read on ink. */
+const SAGE = 'var(--primary)'
+
+/** Uppercase furniture: eyebrows, section heads, tickers. Big Shoulders, tracked. */
+const CAST: React.CSSProperties = {
+  fontFamily: 'var(--font-cast)', fontWeight: 700, fontSize: 'var(--t-furniture)',
+  textTransform: 'uppercase', lineHeight: 1.2,
+}
+
+/* The stage: ink, a sage floodlight from the top right, an ember spill from
+ * the left, and the 39px pitch-marking grid. Positions are in px, not %, because
+ * this element is the whole scrolling page and a percentage of its height would
+ * put the beam thousands of pixels off the top. No grain: the shared .bg-grain
+ * layer composites at 0.14, over the 0.13 ceiling that keeps small text above
+ * 4.5:1. */
+const STAGE_BACKGROUND = [
+  'radial-gradient(740px 430px at calc(100% + 30px) -40px, color-mix(in srgb, var(--primary) 20%, transparent) 0%, transparent 62%)',
+  'radial-gradient(520px 380px at -50px 60px, color-mix(in srgb, var(--coach-on-light) 9%, transparent) 0%, transparent 60%)',
+  'repeating-linear-gradient(to right, color-mix(in srgb, var(--text) 3.5%, transparent) 0 1px, transparent 1px 39px)',
+  'repeating-linear-gradient(to bottom, color-mix(in srgb, var(--text) 2.5%, transparent) 0 1px, transparent 1px 39px)',
+].join(', ')
+
+/** Section shell — one consistent head so the page reads as a sequence, not a pile of cards. */
 function Section({
-  icon, label, accent, children, action,
+  label, meta, children, action,
 }: {
-  icon: string; label: string; accent?: string
+  label: string; meta?: React.ReactNode
   children: React.ReactNode; action?: React.ReactNode
 }) {
-  const tone = accent ?? 'var(--primary)'
   return (
-    <section style={{ marginTop: 22 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
-        <span style={{ color: tone, display: 'flex' }}><Icon name={icon} size={14} /></span>
-        <h2 style={{
-          margin: 0, fontSize: 'var(--t-furniture)', fontWeight: 800, letterSpacing: '0.09em',
-          textTransform: 'uppercase', color: 'var(--text-2, #5D6661)', flex: 1,
-        }}>{label}</h2>
+    <section style={{ marginTop: 26 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, minHeight: 28, flexWrap: 'wrap' }}>
+        <h2 style={{ ...CAST, margin: 0, letterSpacing: '0.26em', color: 'var(--text-2)', flex: '1 1 auto', minWidth: 0 }}>
+          {label}
+        </h2>
+        {meta !== undefined && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.06em', color: 'var(--text-2)' }}>
+            {meta}
+          </span>
+        )}
         {action}
       </div>
       {children}
     </section>
+  )
+}
+
+/**
+ * The summary, set as a feature.
+ *
+ * Summaries are written as "•" bullets (lib/summary-prompt.ts), and older ones
+ * as prose. Each line keeps its words exactly; a bullet line becomes a list
+ * item with the coach's ember mark in place of the glyph, so a wrapped bullet
+ * hangs instead of running back under its own marker. Prose gets the drop cap
+ * — only when it opens on a letter or digit, never on a quote or an emoji.
+ */
+function SummaryFeature({ text }: { text: string }) {
+  type Block = { kind: 'para'; text: string } | { kind: 'list'; items: string[] }
+  const blocks: Block[] = []
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    if (line.startsWith('•')) {
+      const item = line.replace(/^•\s*/, '')
+      const last = blocks[blocks.length - 1]
+      if (last && last.kind === 'list') last.items.push(item)
+      else blocks.push({ kind: 'list', items: [item] })
+    } else {
+      blocks.push({ kind: 'para', text: line })
+    }
+  }
+
+  const read: React.CSSProperties = {
+    fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 17, lineHeight: 1.58,
+    color: 'var(--text)', overflowWrap: 'anywhere',
+  }
+
+  return (
+    <div>
+      {blocks.map((b, bi) => {
+        if (b.kind === 'list') {
+          return (
+            <ul key={bi} style={{ listStyle: 'none', margin: bi ? '10px 0 0' : 0, padding: 0 }}>
+              {b.items.map((item, ii) => (
+                <li key={ii} style={{
+                  ...read, display: 'grid', gridTemplateColumns: '18px minmax(0, 1fr)', alignItems: 'start',
+                  padding: '7px 0', borderTop: ii ? `1px solid ${LINE}` : 'none',
+                }}>
+                  <span aria-hidden style={{
+                    width: 7, height: 7, marginTop: '0.62em', background: EMBER, transform: 'skewX(-14deg)',
+                  }} />
+                  <span style={{ minWidth: 0 }}>{item}</span>
+                </li>
+              ))}
+            </ul>
+          )
+        }
+        const chars = Array.from(b.text)
+        const cap = bi === 0 && /[\p{L}\p{N}]/u.test(chars[0] ?? '') && chars.length > 1
+        return (
+          <p key={bi} style={{ ...read, margin: bi ? '10px 0 0' : 0 }}>
+            {cap ? (
+              <>
+                <span aria-hidden style={{
+                  float: 'left', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 50,
+                  lineHeight: 0.86, padding: '5px 9px 0 0', color: 'var(--text)',
+                }}>{chars[0]}</span>
+                <span className="sr-only">{chars[0]}</span>
+                {chars.slice(1).join('')}
+              </>
+            ) : b.text}
+          </p>
+        )
+      })}
+    </div>
   )
 }
 
@@ -315,12 +421,12 @@ export default function SessionDetailPage() {
   // ── States ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '28px 18px' }}>
-        <div style={{ maxWidth: 760, margin: '0 auto' }}>
-          <div style={{ height: 13, width: 120, background: 'var(--border-soft)', borderRadius: 6 }} />
-          <div style={{ height: 34, width: '62%', background: 'var(--border-soft)', borderRadius: 9, marginTop: 16 }} />
-          <div style={{ height: 132, background: 'var(--border-soft)', borderRadius: 'var(--radius)', marginTop: 22 }} />
-          <div style={{ height: 92, background: 'var(--border-soft)', borderRadius: 'var(--radius)', marginTop: 14 }} />
+      <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '28px 20px' }}>
+        <div style={{ maxWidth: 760, margin: '0 auto' }} aria-busy="true">
+          <div className="cv-skeleton" style={{ height: 13, width: 120, borderRadius: 6 }} />
+          <div className="cv-skeleton" style={{ height: 34, width: '62%', borderRadius: 9, marginTop: 16 }} />
+          <div className="cv-skeleton" style={{ height: 132, borderRadius: 'var(--radius)', marginTop: 22 }} />
+          <div className="cv-skeleton" style={{ height: 92, borderRadius: 'var(--radius)', marginTop: 14 }} />
         </div>
       </div>
     )
@@ -331,10 +437,10 @@ export default function SessionDetailPage() {
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <div className="card" style={{ padding: 24, maxWidth: 420, textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, marginBottom: 8 }}>Session unavailable</div>
-          <p style={{ fontSize: 13.5, color: 'var(--text-2)', margin: '0 0 16px' }}>
+          <p style={{ fontSize: 13.5, color: 'var(--text-2)', margin: '0 0 16px', overflowWrap: 'anywhere' }}>
             {pageError || 'This session could not be opened.'}
           </p>
-          <button className="btn btn-primary" onClick={() => router.back()}>Go back</button>
+          <button className="btn btn-primary" onClick={() => router.back()} style={{ minHeight: 44 }}>Go back</button>
         </div>
       </div>
     )
@@ -348,18 +454,50 @@ export default function SessionDetailPage() {
   const athleteFirst = athlete?.first_name?.trim() ?? ''
   const backHref = isCoach && athlete ? `/athletes/${athlete.id}` : '/athlete'
 
+  /* The dateline: the day of the month is the one enormous number on this
+     page, as a masthead's date is. Split out of the same session date the
+     label above uses, so the two can never disagree. */
+  const hasDate = sessionDate(session) !== null
+  const dayNumeral = hasDate ? formatSessionDate(session, { day: 'numeric' }) : '—'
+  const weekdayMonth = hasDate
+    ? `${formatSessionDate(session, { weekday: 'short' })} ${formatSessionDate(session, { month: 'short' })}`
+    : ''
+  const year = hasDate ? formatSessionDate(session, { year: 'numeric' }) : ''
+  const isoDate = sessionISODate(session) ?? undefined
+  const recorded = Boolean(session.audio_url || session.transcript)
+  const reply = isCoach ? responseOption(data!.session.athlete_response) : null
+  const wordCount = session.transcript ? session.transcript.split(/\s+/).filter(Boolean).length : 0
+
+  /** A hairline panel — the Stadium Night card. */
+  const panel: React.CSSProperties = {
+    background: PANEL, border: `1px solid ${LINE}`, borderRadius: 16,
+  }
+  /** A secondary control in the same furniture voice as the section heads. */
+  const toolButton: React.CSSProperties = {
+    ...CAST, letterSpacing: '0.14em', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    gap: 6, minHeight: 44, padding: '0 14px', borderRadius: 11, border: `1px solid ${LINE_2}`,
+    background: PANEL, color: 'var(--text-2)', cursor: 'pointer', whiteSpace: 'nowrap',
+  }
+
   return (
-    <div className="bg-grain" style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 72 }}>
+    <div style={{
+      minHeight: '100vh', paddingBottom: 72,
+      backgroundColor: 'var(--bg)', backgroundImage: STAGE_BACKGROUND, backgroundRepeat: 'no-repeat, no-repeat, repeat, repeat',
+    }}>
 
       {actionError && (
         <div role="alert" style={{
           position: 'fixed', left: 12, right: 12, bottom: 12, zIndex: 2000, maxWidth: 520, margin: '0 auto',
-          background: 'var(--danger)', color: '#fff', borderRadius: 12, padding: '12px 14px',
-          display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, boxShadow: 'var(--shadow-lg)',
+          background: 'var(--danger)', color: 'var(--on-primary)', borderRadius: 12, padding: '4px 4px 4px 14px',
+          display: 'flex', gap: 10, alignItems: 'center', fontSize: 'var(--t-body-tight)', fontWeight: 600,
+          boxShadow: 'var(--shadow-lg)',
         }}>
-          <span style={{ flex: 1 }}>{actionError}</span>
+          <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', padding: '8px 0' }}>{actionError}</span>
           <button onClick={() => setActionError('')} aria-label="Dismiss"
-            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0 }}>
+            style={{
+              background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0,
+              width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
             <Icon name="x" size={15} />
           </button>
         </div>
@@ -380,102 +518,186 @@ export default function SessionDetailPage() {
         </div>
       )}
 
-      <div style={{ maxWidth: 760, margin: '0 auto', padding: '22px 18px 0' }}>
+      <div style={{ maxWidth: 760, margin: '0 auto', padding: '18px 20px 0' }}>
 
-        <Link href={backHref} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 7, textDecoration: 'none',
-          color: 'var(--text-2)', fontSize: 'var(--t-furniture)', fontWeight: 600, marginBottom: 18,
-        }}>
-          <Icon name="back" size={14} /> {isCoach ? athleteName : 'My portal'}
-        </Link>
-
-        {/* ── Masthead ── */}
-        <header style={{ marginBottom: 4 }}>
-          <div style={{
-            fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.12em',
-            textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 9,
-          }}>
-            {dateLabel}
+        {/* ── Head: back, and the wordmark with the page's role under it ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Link
+            href={backHref}
+            aria-label={isCoach ? `Back to ${athleteName}` : 'Back to my portal'}
+            style={{
+              width: 44, height: 44, borderRadius: 13, flexShrink: 0, textDecoration: 'none',
+              border: `1px solid ${LINE_2}`, background: PANEL, color: 'var(--text-2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Icon name="back" size={16} />
+          </Link>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ ...CAST, fontSize: 16, letterSpacing: '0.22em', lineHeight: 1, color: 'var(--text)' }}>CoachVoice</div>
+            <div style={{ ...CAST, letterSpacing: '0.26em', lineHeight: 1, color: SAGE, marginTop: 4 }}>Session</div>
           </div>
+        </div>
 
-          <h1 style={{
-            fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 'clamp(26px, 5.5vw, 36px)',
-            lineHeight: 1.1, letterSpacing: '-0.015em', margin: 0, color: 'var(--text)',
-            // `text-wrap: balance` is CSS the React type definitions do not
-            // know about yet. Widening the property is honest; `as any` on the
-            // value silenced the whole style object.
-            textWrap: 'balance' as React.CSSProperties['textWrap'],
-            // `balance` chooses where to break between words; it will not break
-            // inside one, and a session name is free text.
-            overflowWrap: 'anywhere',
-          }}>
-            {heading}
-          </h1>
+        {/* ── Ticker ──
+            What this record is and who can see it. Wraps rather than clipping:
+            a sport name is free text, and a ticker that cuts it off is dropping
+            data to make a line fit. */}
+        <div style={{
+          ...CAST, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--text-2)',
+          marginTop: 14, padding: '9px 0', borderTop: `1px solid ${LINE}`, borderBottom: `1px solid ${LINE}`,
+          display: 'flex', alignItems: 'center', gap: '6px 12px', flexWrap: 'wrap',
+        }}>
+          {session.sport_context && (
+            <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{session.sport_context}</span>
+          )}
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, color: isCoach && !session.shared_with_athlete ? EMBER : SAGE }}>
+            {isCoach && !session.shared_with_athlete
+              ? <i aria-hidden style={{ width: 7, height: 7, background: EMBER, transform: 'skewX(-14deg)', flexShrink: 0 }} />
+              : <i aria-hidden style={{ width: 6, height: 6, borderRadius: '50%', background: SAGE, flexShrink: 0 }} />}
+            {isCoach ? (session.shared_with_athlete ? 'Shared' : 'Private') : 'From your coach'}
+          </span>
+        </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', marginTop: 13 }}>
-            {isCoach && athlete && (
-              <Link href={`/athletes/${athlete.id}`} style={{
-                display: 'inline-flex', alignItems: 'center', gap: 7, textDecoration: 'none',
-                color: 'var(--text)', fontSize: 'var(--t-body-tight)', fontWeight: 700,
-              }}>
-                <span style={{
-                  width: 30, height: 30, borderRadius: '50%', background: 'var(--coach-light)',
-                  color: 'var(--coach-color)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 'var(--t-furniture)', fontWeight: 800, overflow: 'hidden',
-                }}>
-                  {athlete.photo_url
-                    ? <img src={athlete.photo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : `${athlete.first_name[0] ?? ''}${athlete.last_name[0] ?? ''}`.toUpperCase()}
+        {/* ── Masthead ──
+            The dateline band deliberately breaks the gutter: a skewed beam with
+            an ember hairline, clipped by its own wrapper so it can never push
+            the page sideways. */}
+        <header style={{ position: 'relative', margin: '0 -20px', padding: '18px 20px 16px' }}>
+          {/* The beam is a clip-path parallelogram rather than a skew
+              transform: a skewed box pokes its corners out past its own
+              bounds, and at the page edge that is a sideways scroll. The ember
+              hairline is its left edge, drawn inside a 14px strip that ends
+              before the gutter, so no glyph of the dateline ever sits on it —
+              measured, a label crossing that line dropped to 4.0:1. */}
+          <div aria-hidden style={{
+            position: 'absolute', inset: '6px 0 4px 0',
+            background: 'linear-gradient(100deg, color-mix(in srgb, var(--text) 5.5%, transparent), transparent 60%)',
+            clipPath: 'polygon(14px 0, 100% 0, 100% 100%, 0 100%)',
+          }} />
+          <div aria-hidden style={{
+            position: 'absolute', top: 6, bottom: 4, left: 0, width: 14,
+            background: 'linear-gradient(to top right, transparent calc(50% - 0.75px), color-mix(in srgb, var(--coach-on-light) 45%, transparent) 50%, transparent calc(50% + 0.75px))',
+          }} />
+          <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+            <time dateTime={isoDate} style={{ display: 'block', paddingTop: 2 }}>
+              <span className="sr-only">{dateLabel}</span>
+              <span aria-hidden style={{
+                display: 'block', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 56, lineHeight: 0.8,
+                letterSpacing: '-3px', color: 'var(--text)', fontVariantNumeric: 'tabular-nums', marginLeft: -3,
+              }}>{dayNumeral}</span>
+              {weekdayMonth && (
+                <span aria-hidden style={{ ...CAST, display: 'block', letterSpacing: '0.2em', color: 'var(--text-2)', marginTop: 10 }}>
+                  {weekdayMonth}
                 </span>
-                {athleteName}
-              </Link>
-            )}
+              )}
+              {year && (
+                <span aria-hidden style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.1em', color: 'var(--text-2)', marginTop: 3 }}>
+                  {year}
+                </span>
+              )}
+            </time>
 
-            {session.sport_context && (
-              <span className="badge badge-session" style={{ fontSize: 'var(--t-furniture)' }}>{session.sport_context}</span>
-            )}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...CAST, letterSpacing: '0.26em', color: EMBER, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i aria-hidden style={{ width: 7, height: 7, background: EMBER, transform: 'skewX(-14deg)', flexShrink: 0 }} />
+                {recorded ? 'Recorded session' : 'Session'}
+              </div>
+              <h1 style={{
+                fontFamily: 'var(--font-cast)', fontWeight: 700, fontSize: 'clamp(26px, 7.4vw, 40px)',
+                lineHeight: 1.02, letterSpacing: '0.02em', textTransform: 'uppercase',
+                margin: '8px 0 0', color: 'var(--text)',
+                // `text-wrap: balance` is CSS the React type definitions do not
+                // know about yet. Widening the property is honest; `as any` on the
+                // value silenced the whole style object.
+                textWrap: 'balance' as React.CSSProperties['textWrap'],
+                // `balance` chooses where to break between words; it will not break
+                // inside one, and a session name is free text.
+                overflowWrap: 'anywhere',
+              }}>
+                {heading}
+              </h1>
 
-            {isCoach ? (
-              <button
-                onClick={toggleShare}
-                className={session.shared_with_athlete ? 'badge badge-active' : 'badge badge-invited'}
-                style={{ fontSize: 'var(--t-furniture)', cursor: 'pointer', border: 'none', font: 'inherit', fontWeight: 700, padding: '4px 9px' }}
-                title={session.shared_with_athlete ? 'Visible to the athlete — tap to make private' : 'Private — tap to share with the athlete'}
-              >
-                {session.shared_with_athlete ? 'Shared' : 'Private'}
-              </button>
-            ) : (
-              <span className="badge badge-active" style={{ fontSize: 'var(--t-furniture)' }}>From your coach</span>
-            )}
+              {isCoach && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '2px 10px', flexWrap: 'wrap', marginTop: 6 }}>
+                  {athlete && (
+                    <Link href={`/athletes/${athlete.id}`} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 9, textDecoration: 'none',
+                      minHeight: 44, minWidth: 0, maxWidth: '100%', color: 'var(--text)',
+                    }}>
+                      <span style={{
+                        width: 28, height: 28, borderRadius: '50%', background: SAGE,
+                        color: 'var(--on-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 800,
+                        letterSpacing: '0.04em', overflow: 'hidden', flexShrink: 0,
+                      }}>
+                        {athlete.photo_url
+                          ? <img src={athlete.photo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : `${athlete.first_name[0] ?? ''}${athlete.last_name[0] ?? ''}`.toUpperCase()}
+                      </span>
+                      <span style={{
+                        ...CAST, fontSize: 17, letterSpacing: '0.04em', color: 'var(--text)',
+                        minWidth: 0, overflowWrap: 'anywhere',
+                      }}>{athleteName}</span>
+                    </Link>
+                  )}
+
+                  {/* The share toggle. The button is the 44px target; the chip
+                      inside it is what is drawn. */}
+                  <button
+                    onClick={toggleShare}
+                    aria-pressed={session.shared_with_athlete}
+                    title={session.shared_with_athlete ? 'Visible to the athlete — tap to make private' : 'Private — tap to share with the athlete'}
+                    style={{
+                      minHeight: 44, padding: 0, background: 'none', border: 'none', cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center',
+                    }}
+                  >
+                    <span style={{
+                      ...CAST, letterSpacing: '0.16em', padding: '5px 11px', borderRadius: 999,
+                      color: session.shared_with_athlete ? SAGE : AMBER,
+                      border: `1px solid color-mix(in srgb, ${session.shared_with_athlete ? SAGE : AMBER} 42%, transparent)`,
+                      background: `color-mix(in srgb, ${session.shared_with_athlete ? SAGE : AMBER} 9%, transparent)`,
+                    }}>
+                      {session.shared_with_athlete ? 'Shared' : 'Private'}
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
-        <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '20px 0 0' }} />
-
-        {/* ── Recording ── */}
+        {/* ── Recording ──
+            A band with an ember hairline across its top — the coach's own voice. */}
         {session.audio_url && (
-          <Section icon="mic" label="Recording" accent="var(--coach-color)">
-            <div className="card" style={{ padding: '13px 15px' }}>
-              <SessionAudioPlayer
-                sessionId={session.id}
-                initialUrl={session.audio_url}
-                mime={session.audio_mime}
-              />
-              <p style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', margin: '9px 0 0' }}>
-                Streams on demand — nothing downloads until you press play.
-              </p>
-            </div>
-          </Section>
+          <section aria-label="Recording" style={{
+            ...panel, position: 'relative', overflow: 'hidden', borderRadius: 18, padding: '6px 14px 12px',
+          }}>
+            <div aria-hidden style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+              background: `linear-gradient(90deg, ${EMBER} 0%, color-mix(in srgb, var(--coach-on-light) 15%, transparent) 62%, transparent 100%)`,
+            }} />
+            <SessionAudioPlayer
+              sessionId={session.id}
+              initialUrl={session.audio_url}
+              mime={session.audio_mime}
+            />
+            <p style={{
+              fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', margin: '10px 0 0', paddingTop: 9,
+              borderTop: `1px solid ${LINE}`,
+            }}>
+              Streams on demand — nothing downloads until you press play.
+            </p>
+          </section>
         )}
 
         {/* ── Summary: the reason to open the page ── */}
-        <Section icon="spark" label="Session summary">
+        <Section label="Session summary">
           {session.summary ? (
-            <div className="coach-summary" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 15, lineHeight: 1.72 }}>
-              {session.summary}
-            </div>
+            <SummaryFeature text={session.summary} />
           ) : (
-            <div className="card" style={{ padding: 15, fontSize: 13.5, color: 'var(--text-muted)' }}>
+            <div style={{ ...panel, padding: 15, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
               No summary was generated for this session.
             </div>
           )}
@@ -491,9 +713,9 @@ export default function SessionDetailPage() {
             a read-only badge, because a coach editing an athlete's answer
             would make the signal worthless. */}
         {!isCoach && (
-          <Section icon="check" label="Tell your coach" accent="var(--primary-dark)">
-            <div className="card" style={{ padding: 14 }}>
-              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+          <Section label="Tell your coach">
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {SESSION_RESPONSES.map((opt) => {
                   const on = response === opt.value
                   return (
@@ -503,9 +725,9 @@ export default function SessionDetailPage() {
                       aria-pressed={on}
                       onClick={() => void answer(opt.value)}
                       style={{
-                        padding: '9px 14px', minHeight: 44, borderRadius: 999,
-                        border: `1px solid ${on ? opt.color : 'var(--border)'}`,
-                        background: on ? opt.tint : 'var(--bg)',
+                        padding: '9px 15px', minHeight: 44, borderRadius: 999, maxWidth: '100%',
+                        border: `1px solid ${on ? opt.color : LINE_2}`,
+                        background: on ? opt.tint : PANEL,
                         color: on ? opt.color : 'var(--text-2)',
                         fontFamily: 'inherit',
                         fontSize: 'var(--fs-3)', fontWeight: on ? 800 : 600,
@@ -517,7 +739,7 @@ export default function SessionDetailPage() {
                   )
                 })}
               </div>
-              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 10, lineHeight: 1.5 }}>
                 {response
                   ? 'Your coach can see this. Tap again to undo.'
                   : 'One tap. Your coach sees which one you picked, and nothing else.'}
@@ -526,18 +748,18 @@ export default function SessionDetailPage() {
           </Section>
         )}
 
-        {isCoach && responseOption(data!.session.athlete_response) && (
-          <Section icon="check" label="What they said back" accent="var(--primary-dark)">
-            <div className="card" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 11, flexWrap: 'wrap' }}>
+        {reply && (
+          <Section label="What they said back">
+            <div style={{ ...panel, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px 12px', flexWrap: 'wrap' }}>
               <span style={{
-                padding: '7px 13px', borderRadius: 999,
-                background: responseOption(data!.session.athlete_response)!.tint,
-                color: responseOption(data!.session.athlete_response)!.color,
-                fontSize: 'var(--fs-3)', fontWeight: 800,
+                ...CAST, fontSize: 'var(--fs-3)', letterSpacing: '0.1em', textTransform: 'none',
+                padding: '6px 13px', borderRadius: 999,
+                background: reply.tint, color: reply.color,
+                border: `1px solid color-mix(in srgb, ${reply.color} 40%, transparent)`,
               }}>
-                {responseOption(data!.session.athlete_response)!.coachLabel}
+                {reply.coachLabel}
               </span>
-              <span style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', minWidth: 0 }}>
                 {athleteFirst || 'They'} answered
                 {data!.session.athlete_responded_at
                   ? ` ${new Date(data!.session.athlete_responded_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
@@ -561,8 +783,8 @@ export default function SessionDetailPage() {
             deliberate — a "did not check in" row would turn a coaching tool
             into a compliance report about a child. */}
         {isCoach && data!.checkin && (
-          <Section icon="pulse" label="How they came in" accent="var(--wellness-ok)">
-            <div className="card" style={{ padding: 14 }}>
+          <Section label="How they came in">
+            <div style={{ ...panel, padding: 12 }}>
               {/* A grid, not a `flex: 1` row.
                   Three `flex: 1` tiles have an automatic minimum of their
                   min-content, and at 13px furniture "SORENESS" plus the tile
@@ -578,15 +800,18 @@ export default function SessionDetailPage() {
                   const score = data!.checkin![key]
                   return (
                     <div key={key} style={{
-                      minWidth: 0, borderRadius: 'var(--radius-sm)', padding: '9px 10px',
+                      minWidth: 0, borderRadius: 11, padding: '9px 11px 10px',
                       background: metricTint(key, score),
                     }}>
-                      <div style={{
-                        fontSize: 'var(--fs-1)', fontWeight: 800, textTransform: 'uppercase',
-                        letterSpacing: '0.06em', color: 'var(--text-2)',
-                      }}>{label}</div>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 'var(--fs-4)', fontWeight: 800, color: metricColor(key, score) }}>
+                      {/* --text, not --text-2: on the good-state tint --text-2 measures
+                          3.76:1. The tint carries the state; the label only has
+                          to be read. */}
+                      <div style={{ ...CAST, letterSpacing: '0.14em', color: 'var(--text)' }}>{label}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                        <span style={{
+                          fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 500, lineHeight: 1,
+                          color: metricColor(key, score), fontVariantNumeric: 'tabular-nums',
+                        }}>
                           {score ?? '—'}
                         </span>
                         {/* A partially filled check-in leaves a metric null.
@@ -602,7 +827,7 @@ export default function SessionDetailPage() {
                   )
                 })}
               </div>
-              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 10, overflowWrap: 'anywhere' }}>
+              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 10, overflowWrap: 'anywhere' }}>
                 {athleteFirst ? `${athleteFirst}'s own check-in on ` : 'Their own check-in on '}
                 {parseISODate(data!.checkin.check_date)?.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) ?? data!.checkin.check_date}
                 . Only you can see this.
@@ -611,36 +836,44 @@ export default function SessionDetailPage() {
           </Section>
         )}
 
-        {/* ── Focus points ── */}
+        {/* ── Focus points ──
+            Hairline rows, numbered in amber: the one forward-looking line the
+            product makes, in the order the coach set it. */}
         {(isCoach || session.focus_points.length > 0) && (
-          <Section icon="target" label="Take into next session" accent="var(--energy)">
-            <div className="card" style={{ padding: session.focus_points.length ? '8px 8px 10px' : 14 }}>
+          <Section
+            label="Take into next session"
+            meta={session.focus_points.length > 0 ? session.focus_points.length : undefined}
+          >
+            <div>
               {session.focus_points.length === 0 && !isCoach && (
-                <div style={{ fontSize: 13.5, color: 'var(--text-muted)' }}>Nothing noted yet.</div>
+                <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>Nothing noted yet.</div>
               )}
 
               {session.focus_points.map((point, i) => (
                 <div key={`${point}-${i}`} style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 8px',
-                  borderBottom: i < session.focus_points.length - 1 ? '1px solid var(--border-soft)' : 'none',
+                  display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0',
+                  borderTop: `1px solid ${i === 0 ? LINE_2 : LINE}`,
+                  borderBottom: i === session.focus_points.length - 1 ? `1px solid ${LINE}` : 'none',
                 }}>
                   <span style={{
-                    width: 22, height: 22, borderRadius: '50%', background: 'var(--energy-light)',
-                    color: '#8B6621', fontSize: 'var(--t-furniture)', fontWeight: 800, flexShrink: 0, marginTop: 1,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 18, flexShrink: 0, fontFamily: 'var(--font-cast)', fontWeight: 800, fontSize: 16,
+                    lineHeight: 1.4, letterSpacing: '0.04em', color: AMBER,
                   }}>{i + 1}</span>
-                  <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontSize: 14, lineHeight: 1.55 }}>{point}</span>
+                  <span style={{
+                    flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontSize: 'var(--t-body)', fontWeight: 500,
+                    lineHeight: 1.5, color: 'var(--text)',
+                  }}>{point}</span>
                   {isCoach && (
                     <button
                       onClick={() => setFocusPoints(session.focus_points.filter((_, j) => j !== i))}
                       aria-label="Remove point"
                       style={{
-                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
-                        width: 44, height: 44, flexShrink: 0, margin: '-9px -8px -9px 0',
+                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-2)',
+                        width: 44, height: 44, flexShrink: 0, margin: '-10px 0',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
                     >
-                      <Icon name="x" size={13} />
+                      <Icon name="x" size={14} />
                     </button>
                   )}
                 </div>
@@ -653,26 +886,26 @@ export default function SessionDetailPage() {
                   take out of it. The image carries no name and no link — see
                   FocusCard. */}
               {!isCoach && session.focus_points.length > 0 && (
-                <div style={{ padding: '10px 8px 2px' }}>
+                <div style={{ padding: '12px 0 2px' }}>
                   <FocusCard point={session.focus_points[0]} dateLabel={dateLabel} />
                 </div>
               )}
 
               {isCoach && (
-                <div style={{ display: 'flex', gap: 7, padding: session.focus_points.length ? '10px 8px 0' : 0 }}>
+                <div style={{ display: 'flex', gap: 8, paddingTop: session.focus_points.length ? 12 : 0 }}>
                   <input
                     value={newFocus}
                     onChange={(e) => setNewFocus(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addFocus() } }}
                     placeholder="Something to work on next time…"
                     style={{
-                      flex: 1, minWidth: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                      padding: '8px 11px', font: 'inherit', fontSize: 13.5,
-                      background: 'var(--bg)', color: 'var(--text)',
+                      flex: 1, minWidth: 0, minHeight: 44, border: `1px solid ${LINE_2}`, borderRadius: 11,
+                      padding: '8px 12px', font: 'inherit', fontSize: 16,
+                      background: PANEL, color: 'var(--text)',
                     }}
                   />
-                  <button className="btn btn-ghost" onClick={() => void addFocus()} disabled={!newFocus.trim()}
-                    style={{ padding: '8px 12px', gap: 5, fontSize: 'var(--t-furniture)' }}>
+                  <button onClick={() => void addFocus()} disabled={!newFocus.trim()}
+                    style={{ ...toolButton, flexShrink: 0, opacity: newFocus.trim() ? 1 : 0.5, cursor: newFocus.trim() ? 'pointer' : 'not-allowed' }}>
                     <Icon name="plus" size={13} /> Add
                   </button>
                 </div>
@@ -684,10 +917,9 @@ export default function SessionDetailPage() {
         {/* ── Coach notes ── */}
         {(isCoach || session.coach_notes) && (
           <Section
-            icon="note"
             label={isCoach ? 'Your notes' : 'Notes from your coach'}
             action={isCoach && notesDirty ? (
-              <button className="btn btn-primary" onClick={saveNotes} style={{ padding: '5px 12px', fontSize: 'var(--t-furniture)' }}>
+              <button className="btn btn-primary" onClick={saveNotes} style={{ minHeight: 44, padding: '0 16px', fontSize: 'var(--t-furniture)' }}>
                 Save
               </button>
             ) : undefined}
@@ -700,13 +932,16 @@ export default function SessionDetailPage() {
                 placeholder="Anything worth remembering — context, what you tried, what to watch for."
                 rows={4}
                 style={{
-                  width: '100%', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-                  padding: '13px 15px', font: 'inherit', fontSize: 14, lineHeight: 1.65,
-                  background: 'var(--card)', color: 'var(--text)', resize: 'vertical', minHeight: 96,
+                  display: 'block', width: '100%', border: `1px solid ${LINE_2}`, borderRadius: 16,
+                  padding: '13px 15px', font: 'inherit', fontSize: 16, lineHeight: 1.6,
+                  background: PANEL, color: 'var(--text)', resize: 'vertical', minHeight: 104,
                 }}
               />
             ) : (
-              <div className="card" style={{ padding: '13px 15px', fontSize: 14, lineHeight: 1.68, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+              <div style={{
+                ...panel, padding: '13px 15px', fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.6,
+                whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: 'var(--text)',
+              }}>
                 {session.coach_notes}
               </div>
             )}
@@ -716,8 +951,8 @@ export default function SessionDetailPage() {
         {/* ── Images ── */}
         {(isCoach || (data?.attachments.length ?? 0) > 0) && (
           <Section
-            icon="image"
             label="Images"
+            meta={(data?.attachments.length ?? 0) > 0 ? data!.attachments.length : undefined}
             action={isCoach ? (
               <>
                 <input
@@ -727,16 +962,16 @@ export default function SessionDetailPage() {
                   style={{ display: 'none' }}
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f) }}
                 />
-                <button className="btn btn-ghost" disabled={uploading}
+                <button disabled={uploading}
                   onClick={() => fileRef.current?.click()}
-                  style={{ padding: '5px 11px', fontSize: 'var(--t-furniture)', gap: 5 }}>
+                  style={{ ...toolButton, cursor: uploading ? 'progress' : 'pointer' }}>
                   <Icon name="plus" size={12} /> {uploading ? 'Uploading…' : 'Add'}
                 </button>
               </>
             ) : undefined}
           >
             {(data?.attachments.length ?? 0) === 0 ? (
-              <div className="card" style={{ padding: 14, fontSize: 13, color: 'var(--text-muted)' }}>
+              <div style={{ ...panel, padding: 14, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
                 {isCoach
                   ? 'Add a whiteboard shot, a still from video, or a drill diagram.'
                   : 'No images for this session.'}
@@ -746,7 +981,7 @@ export default function SessionDetailPage() {
                 display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 10,
               }}>
                 {data!.attachments.map((a) => (
-                  <figure key={a.id} className="card" style={{ margin: 0, padding: 0, overflow: 'hidden', position: 'relative' }}>
+                  <figure key={a.id} style={{ ...panel, margin: 0, padding: 0, overflow: 'hidden', position: 'relative', minWidth: 0 }}>
                     {a.signedUrl && (
                       <a href={a.signedUrl} target="_blank" rel="noreferrer">
                         <img
@@ -758,21 +993,31 @@ export default function SessionDetailPage() {
                       </a>
                     )}
                     {a.caption && (
-                      <figcaption style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', padding: '7px 9px' }}>
+                      <figcaption style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', padding: '8px 10px', overflowWrap: 'anywhere' }}>
                         {a.caption}
                       </figcaption>
                     )}
                     {isCoach && (
+                      /* 44px target around a 28px disc. The disc is ink over
+                         whatever the photo is, so the cross reads on a white
+                         whiteboard shot and a dark gym alike. */
                       <button
                         onClick={() => deleteAttachment(a.id)}
                         aria-label="Remove image"
                         style={{
-                          position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: '50%',
-                          background: 'rgba(31,36,33,0.62)', color: '#fff', border: 'none', cursor: 'pointer',
+                          position: 'absolute', top: 0, right: 0, width: 44, height: 44, padding: 0,
+                          background: 'none', border: 'none', cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}
                       >
-                        <Icon name="x" size={12} />
+                        <span style={{
+                          width: 28, height: 28, borderRadius: '50%', color: 'var(--text)',
+                          background: 'color-mix(in srgb, var(--bg) 78%, transparent)',
+                          border: `1px solid ${LINE_2}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <Icon name="x" size={12} />
+                        </span>
                       </button>
                     )}
                   </figure>
@@ -784,17 +1029,27 @@ export default function SessionDetailPage() {
 
         {/* ── Videos ── */}
         {(data?.videos.length ?? 0) > 0 && (
-          <Section icon="video" label={`Video (${data!.videos.length})`}>
+          <Section label="Video" meta={data!.videos.length}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {data!.videos.map((v) => v.signedUrl && (
-                <div key={v.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                  <video controls preload="none" src={v.signedUrl} style={{ width: '100%', display: 'block', background: '#000' }} />
-                  <div style={{ padding: '9px 13px', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div key={v.id} style={{ ...panel, padding: 0, overflow: 'hidden' }}>
+                  <video
+                    controls
+                    preload="none"
+                    src={v.signedUrl}
+                    style={{ width: '100%', display: 'block', background: 'color-mix(in srgb, var(--bg), black 35%)' }}
+                  />
+                  <div style={{ padding: '6px 6px 6px 13px', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', display: 'flex', gap: 8, alignItems: 'center', minHeight: 44 }}>
                     <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
                       {v.file_name ?? 'Video'}
                     </span>
                     {isCoach && (
-                      <span className={v.shared_with_athlete ? 'badge badge-active' : 'badge badge-invited'} style={{ fontSize: 'var(--t-furniture)', flexShrink: 0 }}>
+                      <span style={{
+                        ...CAST, letterSpacing: '0.16em', padding: '4px 10px', borderRadius: 999, flexShrink: 0,
+                        color: v.shared_with_athlete ? SAGE : AMBER,
+                        border: `1px solid color-mix(in srgb, ${v.shared_with_athlete ? SAGE : AMBER} 42%, transparent)`,
+                        background: `color-mix(in srgb, ${v.shared_with_athlete ? SAGE : AMBER} 9%, transparent)`,
+                      }}>
                         {v.shared_with_athlete ? 'Shared' : 'Private'}
                       </span>
                     )}
@@ -805,29 +1060,29 @@ export default function SessionDetailPage() {
           </Section>
         )}
 
-        {/* ── Transcript, last: reference material, not the headline ── */}
+        {/* ── Transcript, last: reference material, not the headline ──
+            One hairline row, the way the mockup ends the page; it opens in place. */}
         {session.transcript && (
-          <Section icon="text" label="Full transcript">
-            <details className="card" style={{ padding: '12px 15px' }}>
-              <summary style={{
-                cursor: 'pointer', fontSize: 'var(--t-body)', fontWeight: 700, color: 'var(--text-2)',
-                listStyle: 'none', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap',
-                minHeight: 44,
-              }}>
-                Read what was recorded
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  {session.transcript.split(/\s+/).filter(Boolean).length} words
-                </span>
-              </summary>
-              <div style={{
-                marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-soft)',
-                fontSize: 13.5, lineHeight: 1.75, color: 'var(--text-2)', whiteSpace: 'pre-wrap',
-                overflowWrap: 'anywhere',
-              }}>
-                {session.transcript}
-              </div>
-            </details>
-          </Section>
+          <details style={{ marginTop: 26, borderTop: `1px solid ${LINE}`, borderBottom: `1px solid ${LINE}` }}>
+            <summary style={{
+              ...CAST, letterSpacing: '0.2em', color: 'var(--text-2)', cursor: 'pointer',
+              listStyle: 'none', display: 'flex', alignItems: 'center', gap: '4px 10px', flexWrap: 'wrap',
+              minHeight: 48, padding: '6px 0',
+            }}>
+              <span style={{ flex: '1 1 auto' }}>Full transcript</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.06em', fontWeight: 500, textTransform: 'uppercase' }}>
+                {wordCount} words
+              </span>
+              <span aria-hidden style={{ display: 'inline-flex', transform: 'rotate(180deg)' }}><Icon name="back" size={14} /></span>
+            </summary>
+            <div style={{
+              padding: '4px 0 16px',
+              fontSize: 'var(--t-body-tight)', lineHeight: 1.75, color: 'var(--text-2)', whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+            }}>
+              {session.transcript}
+            </div>
+          </details>
         )}
       </div>
     </div>

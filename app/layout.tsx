@@ -240,6 +240,18 @@ html[data-boot] #cv-boot { display: block }
   background-color: #1F2421;
   background-image: linear-gradient(160deg, #1F2421 0%, #3A4F38 100%);
   opacity: 1; transition: opacity ${OUT_MS}ms ease-out;
+  /* The shell's own type metrics, so nothing in it inherits from body.
+     globals.css gives body line-height 1.55 and var(--font-sans), and the
+     wordmark and tagline were picking both up: the wordmark sat 7px lower
+     than in the launch images (which render without globals.css), the
+     tagline was in a different face, and both shifted again depending on
+     whether the stylesheet had landed yet — a dependency on the CSS chunk,
+     which the rule at the top of this block forbids. The launch image and
+     this frame are meant to be the same pixels; tools/boot-smoke.mjs now
+     compares them for every device geometry. */
+  line-height: normal;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
 }
 /* The way out. Set by the inline script — on app-ready, on a tap, or by the
  * dead-man's switch — then the element is removed a beat later. */

@@ -72,22 +72,26 @@ function token(name: string, fallback: string): string {
 }
 
 /**
- * The family `--font-display` actually resolves to.
+ * The family a font token actually resolves to.
  *
  * `getPropertyValue('--font-display')` returns `var(--font-newsreader),
  * 'Georgia', serif` — a variable reference, which canvas cannot use. Rendering
  * a probe element and reading its *computed* fontFamily resolves the chain.
  */
-function displayFamily(): string {
-  if (typeof document === 'undefined') return 'Georgia, serif'
+function tokenFamily(name: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback
   const probe = document.createElement('span')
-  probe.style.fontFamily = 'var(--font-display)'
+  probe.style.fontFamily = `var(${name})`
   probe.style.position = 'absolute'
   probe.style.visibility = 'hidden'
   document.body.appendChild(probe)
   const resolved = getComputedStyle(probe).fontFamily
   probe.remove()
-  return resolved || 'Georgia, serif'
+  return resolved || fallback
+}
+
+function displayFamily(): string {
+  return tokenFamily('--font-display', 'Georgia, serif')
 }
 
 /**
@@ -185,6 +189,144 @@ function layout(
   return last
 }
 
+/* ── Stadium Night on the card ────────────────────────────────────────────
+ *
+ * The composition of the approved Focus Card: an ink ground under still stage
+ * lighting (a sage beam from the top right, a softer one from the left, the
+ * pitch marking scaled 2.77× so it still reads as ten columns), a sage opening
+ * rule, the sentence, and under a hairline the date and the wordmark. No
+ * floodlight — a saved image has no live or unread state — and no animation,
+ * because the output is a still file.
+ *
+ * Every layer below is decoration at low alpha. None of it sits behind the
+ * text at a strength that moves its contrast: the lightest the ground gets
+ * under the sentence is a few levels above the ink.
+ */
+const SAGE_LIFT = '#A8CBA0'   // the opening rule — 8.79:1 on the ink, a graphic
+const WORDMARK = 52           // Big Shoulders, tracked — 18.8px on the phone
+const HAIR_Y = H - 272        // the rule over the date
+const DATE_BASELINE = H - 202
+const WORDMARK_BASELINE = H - 115
+const TEXT_TOP = 530          // where a sentence of up to four lines starts
+const TEXT_TOP_MIN = 372      // how high a longer one may climb
+const OPENER_GAP = 78         // opener top to text top: 8px of rule, 70 of air
+
+/** An elliptical radial glow, as CSS `radial-gradient(rx ry at cx cy, …)` draws it. */
+function glow(ctx: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number, stops: [number, string][]) {
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.scale(1, ry / rx)
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx)
+  for (const [at, colour] of stops) g.addColorStop(at, colour)
+  ctx.fillStyle = g
+  ctx.fillRect(-4 * W, -4 * H * (rx / ry), 8 * W, 8 * H * (rx / ry))
+  ctx.restore()
+}
+
+/** A CSS `linear-gradient(<deg>, …)` across the whole card, as a canvas gradient. */
+function cssLinear(ctx: CanvasRenderingContext2D, deg: number, stops: [number, string][]): CanvasGradient {
+  const rad = ((deg - 90) * Math.PI) / 180
+  const len = Math.abs(W * Math.sin(rad)) + Math.abs(H * Math.cos(rad))
+  const g = ctx.createLinearGradient(
+    W / 2 - (Math.cos(rad) * len) / 2, H / 2 - (Math.sin(rad) * len) / 2,
+    W / 2 + (Math.cos(rad) * len) / 2, H / 2 + (Math.sin(rad) * len) / 2,
+  )
+  for (const [at, colour] of stops) g.addColorStop(at, colour)
+  return g
+}
+
+/** Draw a layer on its own canvas, cut it with a mask, and lay it on the card. */
+function masked(ctx: CanvasRenderingContext2D, paint: (l: CanvasRenderingContext2D) => void, mask: (l: CanvasRenderingContext2D) => CanvasGradient) {
+  const layer = document.createElement('canvas')
+  layer.width = W
+  layer.height = H
+  const l = layer.getContext('2d')
+  if (!l) return
+  paint(l)
+  l.globalCompositeOperation = 'destination-in'
+  l.fillStyle = mask(l)
+  l.fillRect(0, 0, W, H)
+  ctx.drawImage(layer, 0, 0)
+}
+
+/**
+ * Letter-spaced text, one glyph at a time.
+ *
+ * `ctx.letterSpacing` would do this, but it is missing from Safari before 17
+ * — which is exactly the phone this is saved on — and silently ignored there.
+ * Drawing each character and advancing by its width plus the tracking reads
+ * the same in every engine.
+ */
+function trackedWidth(ctx: CanvasRenderingContext2D, text: string, tracking: number): number {
+  let w = 0
+  for (const ch of text) w += ctx.measureText(ch).width + tracking
+  return w - tracking
+}
+function drawTracked(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, tracking: number) {
+  let at = x
+  for (const ch of text) {
+    ctx.fillText(ch, at, y)
+    at += ctx.measureText(ch).width + tracking
+  }
+}
+
+/** The still stage: ground, beams, rake, pitch marking, grain, vignette. */
+function paintStage(ctx: CanvasRenderingContext2D, inkToken: string, inkMidToken: string) {
+  // The beams add an alpha byte to these, so they must be plain #rrggbb.
+  const hex = /^#[0-9a-f]{6}$/i
+  const ink = hex.test(inkToken) ? inkToken : '#1F2421'
+  const inkMid = hex.test(inkMidToken) ? inkMidToken : '#3A4F38'
+  ctx.fillStyle = ink
+  ctx.fillRect(0, 0, W, H)
+
+  // The deep beam rising from below — the old --grad-ink's green, as light.
+  glow(ctx, W * 0.5, H * 1.16, 1400, 1100, [[0, `${inkMid}85`], [0.66, `${ink}00`]])
+  // The sage beams: a soft one from the left, the key light from the top right.
+  glow(ctx, W * -0.12, H * 0.26, 1100, 820, [[0, 'rgba(125,168,120,0.14)'], [0.6, 'rgba(125,168,120,0)']])
+  glow(ctx, W * 1.08, H * -0.08, 1500, 900, [[0, 'rgba(125,168,120,0.30)'], [0.62, 'rgba(125,168,120,0)']])
+
+  // The light rake, held still: a skewed band fading down and to the right.
+  masked(ctx, (l) => {
+    l.save()
+    l.translate(130, 730)
+    l.transform(1, 0, Math.tan((-17 * Math.PI) / 180), 1, 0, 0)
+    l.translate(-130, -730)
+    const g = l.createLinearGradient(0, -220, 0, 1680)
+    g.addColorStop(0, 'rgba(245,236,215,0.034)')
+    g.addColorStop(0.44, 'rgba(245,236,215,0.009)')
+    g.addColorStop(0.76, 'rgba(245,236,215,0)')
+    l.fillStyle = g
+    l.fillRect(-250, -220, 760, 1900)
+    l.restore()
+  }, (l) => {
+    const g = l.createLinearGradient(-250, 0, 510, 0)
+    g.addColorStop(0, '#000')
+    g.addColorStop(0.72, '#000')
+    g.addColorStop(1, 'rgba(0,0,0,0)')
+    return g
+  })
+
+  // The 39px pitch marking at 2.77×: a line every 108px, stronger at the top.
+  masked(ctx, (l) => {
+    l.fillStyle = 'rgba(245,236,215,0.045)'
+    for (let x = 0; x < W; x += 108) l.fillRect(x, 0, 2, H)
+    l.fillStyle = 'rgba(245,236,215,0.030)'
+    for (let y = 0; y < H; y += 108) l.fillRect(0, y, W, 2)
+  }, (l) => cssLinear(l, 196, [[0, '#000'], [0.5, 'rgba(0,0,0,0.22)'], [1, 'rgba(0,0,0,0.85)']]))
+
+  // Grain, at an effective 0.065 — well under the 0.13 ceiling.
+  ctx.fillStyle = 'rgba(245,236,215,0.065)'
+  for (let y = 18; y < H; y += 36) {
+    for (let x = 18; x < W; x += 36) {
+      ctx.beginPath()
+      ctx.arc(x, y, 1.4, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  glow(ctx, W * 0.5, H * 0.42, 1500, 1200, [[0.44, 'rgba(10,12,11,0)'], [1, 'rgba(10,12,11,0.36)']])
+}
+
 export default function FocusCard({ point, dateLabel }: { point: string; dateLabel: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [busy, setBusy] = useState(false)
@@ -201,69 +343,75 @@ export default function FocusCard({ point, dateLabel }: { point: string; dateLab
     try { await document.fonts.ready } catch { /* older browsers: draw anyway */ }
 
     const family = displayFamily()
+    const cast = tokenFamily('--font-cast', "'Arial Narrow', sans-serif")
+    const mono = tokenFamily('--font-mono', 'ui-monospace, monospace')
+    // `fonts.ready` only waits for faces something has already asked for. The
+    // wordmark's weight of Big Shoulders may never have been used on the page
+    // this button sits on, so ask for all three faces the card draws in.
+    try {
+      await Promise.all([
+        document.fonts.load(`500 ${SENTENCE_MAX}px ${family}`),
+        document.fonts.load(`800 ${WORDMARK}px ${cast}`),
+        document.fonts.load(`500 ${FURNITURE}px ${mono}`),
+      ])
+    } catch { /* draw in whatever has arrived */ }
+
     const inkBase = token('--ink-base', '#1F2421')
     const inkMid = token('--ink-mid', '#3A4F38')
-    const inkFigure = token('--ink-figure', '#445C42')
     const onInk = token('--on-ink', '#F5ECD7')
 
     canvas.width = W
     canvas.height = H
 
-    // The exact geometry of --grad-ink, which is 160deg.
-    const rad = ((160 - 90) * Math.PI) / 180
-    const cx = W / 2
-    const cy = H / 2
-    const len = Math.abs(W * Math.sin(rad)) + Math.abs(H * Math.cos(rad))
-    const g = ctx.createLinearGradient(
-      cx - (Math.cos(rad) * len) / 2, cy - (Math.sin(rad) * len) / 2,
-      cx + (Math.cos(rad) * len) / 2, cy + (Math.sin(rad) * len) / 2,
-    )
-    g.addColorStop(0, inkBase)
-    g.addColorStop(1, inkMid)
-    ctx.fillStyle = g
-    ctx.fillRect(0, 0, W, H)
+    paintStage(ctx, inkBase, inkMid)
 
     const margin = 110
     const maxWidth = W - margin * 2
 
-    // The entrance's opening mark, quoted once.
-    ctx.fillStyle = inkFigure
-    ctx.fillRect(margin, 300, 132, 3)
-
-    // The two lines at the foot of the card, as baselines rather than tops —
-    // at 36px the old `top` positions put 4px between them.
-    const textTop = 372
-    const dateBaseline = H - margin - 56
-    const wordmarkBaseline = H - margin
-    // How far the sentence may run before it crowds the date.
-    const maxTextHeight = dateBaseline - FURNITURE - 40 - textTop
+    // How far the sentence may run before it crowds the rule over the date.
+    const maxTextHeight = HAIR_Y - 40 - TEXT_TOP_MIN
 
     const { lines, size } = layout(ctx, point, family, maxWidth, 5, maxTextHeight)
+    const lineHeight = size * LINE_HEIGHT
+    // A short sentence sits where the design puts it; a long one climbs, never
+    // past TEXT_TOP_MIN, so its last line always clears the rule.
+    const textTop = Math.max(TEXT_TOP_MIN, Math.min(TEXT_TOP, HAIR_Y - 40 - lines.length * lineHeight))
+
+    // The entrance's opening mark, quoted once, in sage.
+    ctx.fillStyle = SAGE_LIFT
+    ctx.fillRect(margin, textTop - OPENER_GAP, 132, 8)
+
     // layout() leaves ctx.font on whichever size it settled on, but say it
     // here anyway: a future early return in there must not silently draw the
     // sentence at the wrong size.
     ctx.font = `500 ${size}px ${family}`
     ctx.fillStyle = onInk
     ctx.textBaseline = 'top'
-    const lineHeight = size * LINE_HEIGHT
-    let y = textTop
+    // The half-leading CSS puts above the first line, so the type sits in its
+    // line box the way the drawn card sets it.
+    let y = textTop + ((LINE_HEIGHT - 1) / 2) * size
     for (const line of lines) {
       ctx.fillText(line, margin, y)
       y += lineHeight
     }
 
-    // Date and wordmark. Nothing here names a person.
+    // The hairline, then the date and the wordmark. Nothing here names a person.
+    ctx.fillStyle = 'rgba(245,236,215,0.19)'
+    ctx.fillRect(margin, HAIR_Y, maxWidth, 2)
+
     ctx.textBaseline = 'alphabetic'
-    ctx.font = `600 ${FURNITURE}px ${token('--font-sans', 'system-ui')}`
     ctx.fillStyle = onInk
     ctx.globalAlpha = 0.72
-    ctx.fillText(dateLabel, margin, dateBaseline)
-    ctx.globalAlpha = 1
 
-    ctx.font = `500 ${FURNITURE}px ${family}`
-    ctx.fillStyle = onInk
-    ctx.globalAlpha = 0.55
-    ctx.fillText('CoachVoice', margin, wordmarkBaseline)
+    ctx.font = `500 ${FURNITURE}px ${mono}`
+    const date = dateLabel.toUpperCase()
+    // Tracked when it fits, set solid when a long locale's date would not —
+    // the date is never cut.
+    const dateTracking = trackedWidth(ctx, date, FURNITURE * 0.09) <= maxWidth ? FURNITURE * 0.09 : 0
+    drawTracked(ctx, date, margin, DATE_BASELINE, dateTracking)
+
+    ctx.font = `800 ${WORDMARK}px ${cast}`
+    drawTracked(ctx, 'COACHVOICE', margin, WORDMARK_BASELINE, WORDMARK * 0.22)
     ctx.globalAlpha = 1
 
     return new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'))

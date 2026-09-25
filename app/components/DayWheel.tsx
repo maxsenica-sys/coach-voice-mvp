@@ -119,12 +119,15 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
   const dayEvents = selectedDay ? events.filter((e) => e.event_date === selectedDay) : []
 
   return (
-    <div>
+    <div style={{ minWidth: 0 }}>
       {/* One flex row: label, then the Today pill, then whatever the page wants
           at the end. The pill used to be absolutely the same corner as the
           dashboard's Calendar link and covered it whenever it appeared. */}
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10, gap: 10 }}>
-        <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
+        <div style={{
+          fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
+          color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.24em',
+        }}>
           Your days
         </div>
 
@@ -134,9 +137,11 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
           <button
             onClick={() => centreOnToday()}
             style={{
-              fontSize: 'var(--t-furniture)', fontWeight: 700, color: '#FBF8F3', background: '#1F2421',
-              border: 'none', borderRadius: 999, padding: '7px 13px', cursor: 'pointer',
-              display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
+              fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
+              letterSpacing: '0.14em', textTransform: 'uppercase',
+              color: 'var(--text)', background: 'var(--surface-2)',
+              border: '1px solid var(--border)', borderRadius: 999, padding: '0 14px', minHeight: 44,
+              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
               whiteSpace: 'nowrap',
             }}
           >
@@ -147,6 +152,8 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
         {headerAction}
       </div>
 
+      {/* The strip is the one deliberate sideways scroller: it is its own
+          overflow box, so the page itself never moves sideways. */}
       <div
         ref={scrollerRef}
         onScroll={handleScroll}
@@ -160,18 +167,23 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
         {days.map((day) => {
           const { total: count, sessions: sessionCount } = byDay.get(day.dateStr) ?? { total: 0, sessions: 0 }
           const isSelected = selectedDay === day.dateStr
+          // Today is the one floodlit cell — it is "now" — and everything on it
+          // is drawn in ink. A past day steps its type down a tier instead of
+          // fading the whole cell: an opacity of 0.62 took the weekday letter
+          // to 3.3:1, under the 4.5 a 13px label needs.
+          const ink = day.isToday ? 'var(--on-primary)' : null
           return (
             <button
               key={day.dateStr}
               ref={day.isToday ? todayRef : undefined}
               onClick={() => onSelectDay(isSelected ? null : day.dateStr)}
               aria-current={day.isToday ? 'date' : undefined}
+              aria-pressed={isSelected}
               style={{
                 flex: '0 0 auto', width: 46, scrollSnapAlign: 'center',
-                background: day.isToday ? '#1F2421' : (isSelected ? '#E6ECDF' : '#FFFFFF'),
-                border: day.isToday ? 'none' : `1px solid ${isSelected ? '#CBD7C0' : '#E3DED2'}`,
+                background: day.isToday ? 'var(--flood)' : (isSelected ? 'var(--surface-2)' : 'transparent'),
+                border: day.isToday ? '1px solid var(--flood)' : `1px solid ${isSelected ? 'var(--text-muted)' : 'var(--border)'}`,
                 borderRadius: 10, padding: '8px 0 6px', textAlign: 'center',
-                opacity: day.isPast && !day.isToday ? 0.62 : 1,
                 cursor: 'pointer', position: 'relative',
               }}
             >
@@ -184,29 +196,30 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                   neighbours and nudged its numeral down. */}
               <div style={{
                 height: 16, lineHeight: '16px',
-                fontSize: 'var(--t-furniture)', fontWeight: 800, letterSpacing: 0.6,
-                textTransform: 'uppercase',
-                color: day.isToday ? 'rgba(255,255,255,0.6)' : '#B55C3E',
+                fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
+                letterSpacing: '0.08em', textTransform: 'uppercase',
+                color: ink ?? 'var(--text)',
               }}>
                 {day.isFirstOfMonth ? day.monthLabel : ''}
               </div>
               <div style={{
-                fontSize: 'var(--t-furniture)', fontWeight: 700, lineHeight: 1,
-                textTransform: 'uppercase', letterSpacing: 0.5,
-                color: day.isToday ? 'rgba(255,255,255,0.55)' : 'var(--text-muted)',
+                fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700, lineHeight: 1,
+                textTransform: 'uppercase', letterSpacing: '0.08em',
+                color: ink ?? (day.isPast ? 'var(--text-muted)' : 'var(--text-2)'),
               }}>
                 {day.letter}
               </div>
               <div style={{
-                fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 500, lineHeight: 1,
-                marginTop: 3, letterSpacing: -0.4,
-                color: day.isToday ? '#FBF8F3' : '#1F2421',
+                fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: day.isToday ? 600 : 500, lineHeight: 1,
+                marginTop: 3, letterSpacing: -0.4, fontVariantNumeric: 'tabular-nums',
+                color: ink ?? (day.isPast ? 'var(--text-2)' : 'var(--text)'),
               }}>
                 {day.num}
               </div>
-              {/* A solid green tab means "a session was recorded on this day" —
-                  the thing worth scanning for. Other events stay as small grey
-                  dots so they don't compete with it. */}
+              {/* A solid sage tab means "a session was recorded on this day" —
+                  the thing worth scanning for. Other events stay as a small
+                  hollow mark so they don't compete with it — the same filled /
+                  hollow code as the month calendar. */}
               <div style={{ marginTop: 6, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
                 {sessionCount > 0 ? (
                   // One pill per session, up to three. A numeral inside a 5px
@@ -214,18 +227,17 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                   Array.from({ length: Math.min(sessionCount, 3) }).map((_, j) => (
                     <span key={j} style={{
                       width: sessionCount === 1 ? 18 : 7, height: 5, borderRadius: 3,
-                      background: '#6F8E6B',
-                      boxShadow: day.isToday ? '0 0 0 1.5px #1F2421' : 'none',
+                      background: ink ?? 'var(--primary)',
                       display: 'inline-block',
                     }} />
                   ))
                 ) : count > 0 ? (
                   <span style={{
-                    width: 4, height: 4, borderRadius: '50%',
-                    background: day.isToday ? 'rgba(255,255,255,0.5)' : '#C4C9C2',
+                    width: 6, height: 6, borderRadius: '50%',
+                    boxShadow: `inset 0 0 0 1.5px ${ink ?? 'var(--text-muted)'}`,
                   }} />
                 ) : (
-                  <span style={{ width: 4, height: 1, background: day.isToday ? 'rgba(255,255,255,0.2)' : '#E3DED2', borderRadius: 1 }} />
+                  <span style={{ width: 4, height: 1, background: ink ?? 'var(--border)', opacity: day.isToday ? 0.35 : 1, borderRadius: 1 }} />
                 )}
               </div>
             </button>
@@ -234,15 +246,21 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
       </div>
 
       {selectedDay && (
-        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #EFEAE0' }}>
-          <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+        <div style={{ marginTop: 12 }}>
+          <div style={{
+            fontFamily: 'var(--font-cast)', fontSize: 15, fontWeight: 700, color: 'var(--text)',
+            marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.14em',
+          }}>
             {new Date(`${selectedDay}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
           {dayEvents.length === 0 ? (
-            <div style={{ fontSize: 'var(--t-body)', color: 'var(--text-muted)', textAlign: 'center', padding: '6px 0' }}>Nothing on this day</div>
+            <div style={{
+              fontSize: 'var(--t-body)', color: 'var(--text-2)', padding: '12px 0',
+              borderTop: '1px solid var(--text-muted)',
+            }}>Nothing on this day</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {dayEvents.map((ev) => {
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {dayEvents.map((ev, idx) => {
                 const isSession = Boolean(ev.session_id) || ev.event_type === 'session'
                 const who = ev.athletes
                   ? `${ev.athletes.first_name} ${ev.athletes.last_name}`.trim()
@@ -251,39 +269,47 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                   ? `${ev.athletes.first_name?.[0] ?? ''}${ev.athletes.last_name?.[0] ?? ''}`.toUpperCase()
                   : null
 
-                // Two lines at most: who it was with, then what it was. Enough
-                // to know whether to open it, without becoming a panel.
+                // Two parts: who it was with, then what it was. Enough to know
+                // whether to open it, without becoming a panel. Both WRAP —
+                // a name is never cut with an ellipsis.
                 const body = (
                   <>
                     {initials ? (
                       <span style={{
-                        width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-                        background: isSession ? '#6F8E6B' : '#C4C9C2', color: '#FBF8F3',
-                        fontSize: 'var(--t-furniture)', fontWeight: 800,
+                        width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                        background: isSession ? 'var(--primary)' : 'var(--surface-2)',
+                        color: isSession ? 'var(--on-primary)' : 'var(--text-2)',
+                        border: isSession ? 'none' : '1px solid var(--border)',
+                        fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 800,
+                        letterSpacing: '0.04em',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>{initials}</span>
                     ) : (
-                      <span style={{ width: 3, height: 26, borderRadius: 2, background: '#C4C9C2', flexShrink: 0 }} />
+                      <span style={{ width: 3, alignSelf: 'stretch', minHeight: 26, borderRadius: 2, background: isSession ? 'var(--primary)' : 'var(--text-muted)', flexShrink: 0 }} />
                     )}
 
                     <span style={{ flex: 1, minWidth: 0 }}>
                       {who && (
-                        <span style={{ display: 'block', fontWeight: 700, fontSize: 'var(--t-body-tight)', lineHeight: 1.3, color: '#1F2421', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{
+                          display: 'block', fontFamily: 'var(--font-cast)', fontWeight: 700, fontSize: 17,
+                          letterSpacing: '0.04em', textTransform: 'uppercase', lineHeight: 1.15,
+                          color: 'var(--text)', overflowWrap: 'anywhere',
+                        }}>
                           {who}
                         </span>
                       )}
                       <span style={{
-                        display: 'block', fontSize: who ? 'var(--t-furniture)' : 'var(--t-body-tight)',
-                        lineHeight: 1.3,
+                        display: 'block', fontSize: 'var(--t-body-tight)',
+                        lineHeight: 1.35, marginTop: who ? 2 : 0,
                         fontWeight: who ? 500 : 700,
-                        color: who ? '#5D6661' : '#1F2421',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        color: who ? 'var(--text-2)' : 'var(--text)',
+                        overflowWrap: 'anywhere',
                       }}>
                         {ev.title}
                       </span>
                     </span>
 
-                    {ev.event_time && <span style={{ fontSize: 'var(--t-data)', color: 'var(--text-muted)', flexShrink: 0 }}>{ev.event_time}</span>}
+                    {ev.event_time && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', flexShrink: 0 }}>{ev.event_time}</span>}
                     {/* The chevron promises a destination, so only draw it when
                         there is one. A planned session has no session_id yet —
                         it has not been recorded — and it was rendering the
@@ -291,18 +317,18 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                         through to an inert <div>. The affordance said "tap me"
                         and nothing happened. */}
                     {ev.session_id && (
-                      <span aria-hidden="true" style={{ fontSize: 'var(--t-body)', color: 'var(--primary-dark)', flexShrink: 0, lineHeight: 1 }}>›</span>
+                      <span aria-hidden="true" style={{ fontSize: 20, color: 'var(--primary)', flexShrink: 0, lineHeight: 1 }}>›</span>
                     )}
                   </>
                 )
 
+                // Hairline rows, not boxes: the first rule is a step brighter
+                // so the list reads as starting under its date.
                 const style: React.CSSProperties = {
-                  display: 'flex', alignItems: 'center', gap: 9, padding: '6px 10px',
-                  minHeight: 44,
-                  background: isSession ? '#E6ECDF' : '#FFFFFF',
-                  borderRadius: 8,
-                  border: `1px solid ${isSession ? '#CBD7C0' : '#E3DED2'}`,
-                  textDecoration: 'none',
+                  display: 'flex', alignItems: 'center', gap: 11, padding: '9px 2px',
+                  minHeight: 48,
+                  borderTop: `1px solid ${idx === 0 ? 'var(--text-muted)' : 'var(--border)'}`,
+                  textDecoration: 'none', color: 'inherit',
                 }
 
                 // Session events open the session; everything else is just a note.

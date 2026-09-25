@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { apiJson } from '@/lib/api-client'
 import { SUPPORTED_RECORDING_TYPES } from '@/lib/audio-mime'
-import { fmtTime, fmtDateDivider } from '@/lib/date-utils'
+import { fmtDateDivider } from '@/lib/date-utils'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Athlete {
@@ -395,24 +395,42 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   const showList = !isMobile || !selectedId
   const showChat = !isMobile || !!selectedId
 
+  /* Unread is the one floodlit thing on this surface. The total sits at the
+     head of the list; each thread carries its own count. */
+  const totalUnread = athletes.reduce((n, a) => n + (localUnread[a.id] ?? 0), 0)
+
   // ─── Render ────────────────────────────────────────────────────────────────
+  /* Stadium Night. Voice, not direction, picks the type: the coach's words are
+   * set in the reading face (Newsreader) and the athlete's in the UI face
+   * (Plus Jakarta), so a thread reads as two people rather than two sides. */
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100%', minHeight: 0, overflow: 'hidden', background: 'var(--bg)', color: 'var(--text)' }}>
       {/* ── Athlete list ── */}
       <div style={{
-        width: isMobile ? '100%' : 260,
+        width: isMobile ? '100%' : 280,
         flexShrink: 0,
-        borderRight: isMobile ? 'none' : '1px solid var(--border)',
+        borderRight: isMobile ? 'none' : '1px solid var(--border-soft)',
         display: showList ? 'flex' : 'none',
         flexDirection: 'column',
-        background: 'var(--card)',
+        minWidth: 0,
+        background: 'var(--bg)',
       }}>
-        <div style={{ padding: '14px 14px 10px', borderBottom: '1px solid var(--border-soft)' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Messages</div>
+        <div style={{ padding: '18px 20px 12px', borderBottom: '1px solid var(--border-soft)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ ...CAST, fontSize: 22, letterSpacing: '0.05em', lineHeight: 1, color: 'var(--text)' }}>Messages</div>
+            <span style={{ flex: 1 }} />
+            {totalUnread > 0 && (
+              <span style={{ ...CAST, display: 'flex', alignItems: 'center', gap: 7, fontSize: 'var(--t-furniture)', letterSpacing: '0.16em', color: 'var(--flood)' }}>
+                <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--flood)', flexShrink: 0 }} />
+                {totalUnread} unread
+              </span>
+            )}
+          </div>
           <input
             className="input"
-            style={{ fontSize: 13, padding: '8px 12px' }}
+            style={{ marginTop: 12, minHeight: 44, borderRadius: 14, fontSize: 16 }}
             placeholder="Search athletes…"
+            aria-label="Search athletes"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             type="search"
@@ -427,7 +445,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {filtered.length === 0 && (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--t-body-tight)' }}>
               No athletes found
             </div>
           )}
@@ -438,40 +456,40 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
               <button
                 key={a.id}
                 onClick={() => { setSelectedId(a.id) }}
+                aria-current={active ? 'true' : undefined}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  width: '100%', padding: '11px 14px', border: 'none',
-                  background: active ? 'var(--primary-light)' : 'transparent',
-                  borderLeft: active ? '3px solid var(--primary)' : '3px solid transparent',
-                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.1s',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  width: '100%', minHeight: 64, padding: '11px 20px', border: 'none',
+                  borderBottom: '1px solid var(--border-soft)',
+                  background: active ? 'var(--card)' : 'transparent',
+                  boxShadow: active ? 'inset 3px 0 0 var(--text)' : 'none',
+                  color: 'var(--text)', cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
                 }}
               >
                 <div style={{
-                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                  background: active ? 'var(--primary)' : 'var(--coach-color)',
-                  color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, fontWeight: 700,
+                  ...CAST, width: 36, height: 36, borderRadius: 11, flexShrink: 0,
+                  border: `1px solid ${active ? 'var(--text-2)' : 'var(--border)'}`,
+                  color: active ? 'var(--text)' : 'var(--text-2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 15, fontWeight: 800, letterSpacing: '0.06em',
                 }}>
                   {initials(a)}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 600, color: active ? 'var(--primary)' : 'var(--text)', overflowWrap: 'anywhere', lineHeight: 1.3 }}>
+                  {/* In full, wrapping. A name is never cut. */}
+                  <div style={{ ...CAST, fontSize: 18, letterSpacing: '0.05em', lineHeight: 1.1, color: active || unread > 0 ? 'var(--text)' : 'var(--text-2)', overflowWrap: 'anywhere' }}>
                     {a.first_name} {a.last_name}
                   </div>
-                  <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 1 }}>
-                    {a.status === 'ACTIVE' ? 'Active' : 'Invited'}
+                  {/* PENDING, as the roster says it — invited and not yet
+                      arrived, which is not a failure and is not coloured as one. */}
+                  <div style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.18em', color: 'var(--text-muted)', marginTop: 5 }}>
+                    {a.status === 'ACTIVE' ? 'Active' : 'Pending'}
                   </div>
                 </div>
                 {unread > 0 && (
-                  <div style={{
-                    background: 'var(--primary)', color: '#fff', borderRadius: 99,
-                    /* Grown from 18px so "10+" at the 13px floor still fits inside
-                       the pill instead of spilling out of it. */
-                    minWidth: 22, height: 22, fontSize: 'var(--t-furniture)', fontWeight: 700, lineHeight: 1,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px', flexShrink: 0,
-                  }}>
+                  <div style={{ ...CAST, flexShrink: 0, fontSize: 'var(--t-furniture)', fontWeight: 800, letterSpacing: '0.16em', color: 'var(--flood)', whiteSpace: 'nowrap' }}>
                     {/* FIX 4: cap badge at 10+ */}
-                    {unread > 10 ? '10+' : unread}
+                    {unread > 10 ? '10+' : unread} new
                   </div>
                 )}
               </button>
@@ -481,59 +499,57 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
       </div>
 
       {/* ── Chat panel ── */}
-      <div style={{ flex: 1, display: showChat ? 'flex' : 'none', flexDirection: 'column', minWidth: 0, background: '#f8fafc' }}>
+      <div style={{ flex: 1, display: showChat ? 'flex' : 'none', flexDirection: 'column', minWidth: 0, background: 'var(--bg)' }}>
         {!selectedAthlete ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: 'var(--text-muted)' }}>
-            <div style={{ fontSize: 40 }}>💬</div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>Select an athlete to start messaging</div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: 'var(--text-muted)', padding: 20, textAlign: 'center' }}>
+            <svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8 8 0 0 1-8 8H7.5L3.5 22l1.1-4.2A8 8 0 1 1 21 11.5Z" /></svg>
+            <div style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text-2)' }}>Select an athlete to start messaging</div>
           </div>
         ) : (
           <>
             {/* Chat header */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 12,
-              padding: '12px 16px', background: 'var(--card)',
-              borderBottom: '1px solid var(--border)', flexShrink: 0,
+              padding: '12px 16px 12px', background: 'var(--bg)',
+              borderBottom: '1px solid var(--border-soft)', flexShrink: 0,
             }}>
               {isMobile && (
                 <button
                   onClick={() => setSelectedId(null)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 22, padding: '0 4px 0 0', lineHeight: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}
+                  style={{ ...ICON_BTN, color: 'var(--text-2)' }}
                   aria-label="Back to athlete list"
                 >
-                  ‹
+                  <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5 8 12l7 7" /></svg>
                 </button>
               )}
-              <div style={{
-                width: 38, height: 38, borderRadius: '50%',
-                background: 'var(--coach-color)', color: '#fff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 14, fontWeight: 700, flexShrink: 0,
-              }}>
-                {initials(selectedAthlete)}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 'var(--t-body)', fontWeight: 700, overflowWrap: 'anywhere', lineHeight: 1.3 }}>{selectedAthlete.first_name} {selectedAthlete.last_name}</div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ ...CAST, fontSize: 22, letterSpacing: '0.05em', lineHeight: 1.05, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+                  {selectedAthlete.first_name} {selectedAthlete.last_name}
+                </div>
+                <div style={{ ...CAST, display: 'flex', alignItems: 'center', gap: 7, marginTop: 5, fontSize: 'var(--t-furniture)', letterSpacing: '0.22em', color: 'var(--text-2)' }}>
+                  <span aria-hidden="true" style={{ width: 5, height: 5, borderRadius: '50%', flexShrink: 0, background: selectedAthlete.status === 'ACTIVE' ? 'var(--primary)' : 'var(--text-muted)' }} />
+                  {selectedAthlete.status === 'ACTIVE' ? 'Active' : 'Pending'}
+                </div>
                 {/* Wraps rather than truncating: an address the coach cannot read
                     in full is a piece of missing data, and nothing here may
                     widen past the panel — html/body clip sideways overflow. */}
-                {!isMobile && <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{selectedAthlete.email}</div>}
+                {!isMobile && <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', overflowWrap: 'anywhere', marginTop: 4 }}>{selectedAthlete.email}</div>}
               </div>
             </div>
 
             {/* Messages area */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 20px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
               {loadingMsgs && (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 20 }}>Loading…</div>
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--t-body-tight)', padding: 20 }}>Loading…</div>
               )}
               {/* FIX 6: show error state instead of empty chat on fetch failure */}
               {!loadingMsgs && msgError && (
-                <div style={{ textAlign: 'center', color: 'var(--danger)', fontSize: 13, padding: 40 }}>
+                <div role="alert" style={{ textAlign: 'center', color: 'var(--danger)', fontSize: 'var(--t-body-tight)', padding: 40 }}>
                   {msgError}
                 </div>
               )}
               {!loadingMsgs && !msgError && messages.length === 0 && (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 40 }}>
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--t-body-tight)', padding: 40 }}>
                   No messages yet. Say hello!
                 </div>
               )}
@@ -542,12 +558,12 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                 if (item.type === 'divider') {
                   return (
                     <div key={item.key} style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      margin: '14px 0 10px', color: 'var(--text-muted)', fontSize: 'var(--t-furniture)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em',
+                      ...CAST, display: 'flex', alignItems: 'center', gap: 10,
+                      margin: '14px 0 10px', color: 'var(--text-2)', fontSize: 'var(--t-furniture)', letterSpacing: '0.26em', textAlign: 'center',
                     }}>
-                      <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                      <div style={{ flex: 1, minWidth: 16, height: 1, background: 'var(--border-soft)' }} />
                       {item.label}
-                      <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                      <div style={{ flex: 1, minWidth: 16, height: 1, background: 'var(--border-soft)' }} />
                     </div>
                   )
                 }
@@ -559,16 +575,25 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                   <div key={msg.id} style={{
                     display: 'flex', flexDirection: 'column',
                     alignItems: isCoach ? 'flex-end' : 'flex-start',
-                    marginBottom: 4,
+                    marginBottom: 6,
                   }}>
                     <div style={{
-                      maxWidth: '72%', padding: msg.msg_type === 'text' ? '9px 14px' : 6,
-                      borderRadius: isCoach ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                      background: isCoach ? 'var(--coach-color)' : 'var(--card)',
-                      color: isCoach ? '#fff' : 'var(--text)',
-                      border: isCoach ? 'none' : '1px solid var(--border)',
-                      boxShadow: 'var(--shadow-sm)',
-                      fontSize: 14, lineHeight: 1.5,
+                      maxWidth: '80%', minWidth: 0, padding: msg.msg_type === 'text' ? '10px 13px' : 6,
+                      color: 'var(--text)', overflowWrap: 'anywhere',
+                      ...(isCoach
+                        ? {
+                            borderRadius: '16px 4px 16px 16px',
+                            background: 'var(--coach-light)',
+                            border: '1px solid var(--coach-border)',
+                            fontFamily: 'var(--font-display)', fontSize: 16, lineHeight: 1.42,
+                          }
+                        : {
+                            borderRadius: '4px 16px 16px 16px',
+                            background: 'var(--card)',
+                            border: '1px solid var(--border-soft)',
+                            borderLeft: '2px solid var(--primary)',
+                            fontFamily: 'var(--font-sans)', fontSize: 'var(--t-body)', fontWeight: 500, lineHeight: 1.46,
+                          }),
                     }}>
                       {msg.msg_type === 'text' && <span>{msg.content}</span>}
 
@@ -576,7 +601,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                         <img
                           src={msg.media_url}
                           alt={msg.media_name ?? 'image'}
-                          style={{ maxWidth: 260, maxHeight: 220, borderRadius: 10, display: 'block', cursor: 'pointer' }}
+                          style={{ maxWidth: 'min(260px, 100%)', maxHeight: 220, borderRadius: 10, display: 'block', cursor: 'pointer' }}
                           onClick={() => window.open(msg.media_url!, '_blank')}
                         />
                       )}
@@ -585,23 +610,26 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                         <video
                           src={msg.media_url}
                           controls
-                          style={{ maxWidth: 300, maxHeight: 200, borderRadius: 10, display: 'block' }}
+                          style={{ maxWidth: 'min(300px, 100%)', maxHeight: 200, borderRadius: 10, display: 'block' }}
                         />
                       )}
 
                       {msg.msg_type === 'audio' && msg.media_url && (
                         <div style={{ padding: '6px 4px' }}>
-                          <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 600, marginBottom: 4, color: isCoach ? 'rgba(255,255,255,0.8)' : 'var(--text-2)' }}>
-                            🎤 Voice message
+                          <div style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.22em', marginBottom: 6, color: isCoach ? 'var(--coach-on-light)' : 'var(--text-2)' }}>
+                            Voice message
                           </div>
-                          <audio controls src={msg.media_url} style={{ height: 36, width: 220 }} />
+                          <audio controls src={msg.media_url} style={{ display: 'block', height: 36, width: 220, maxWidth: '100%' }} />
                         </div>
                       )}
                     </div>
 
-                    <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 2, paddingLeft: isCoach ? 0 : 4, paddingRight: isCoach ? 4 : 0 }}>
-                      {fmtTime(msg.created_at)}
-                      {isCoach && msg.read_at && ' · Read'}
+                    {/* The clock time only: the divider above already says the
+                        day, and fmtTime would print "Yesterday" under a
+                        YESTERDAY divider on every message in it. */}
+                    <div style={{ ...MONO, color: 'var(--text-2)', marginTop: 4, paddingLeft: isCoach ? 0 : 4, paddingRight: isCoach ? 4 : 0 }}>
+                      {clockTime(msg.created_at)}
+                      {isCoach && msg.read_at && <span style={{ ...CAST, letterSpacing: '0.2em' }}> · Read</span>}
                     </div>
                   </div>
                 )
@@ -612,24 +640,29 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
             {/* Audio preview bar */}
             {(audioUrl || recordingAudio) && (
               <div style={{
-                background: 'var(--coach-light)', borderTop: '1px solid var(--border)',
-                padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
+                background: 'var(--card)', borderTop: '1px solid var(--border-soft)',
+                padding: '10px 16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, flexShrink: 0,
               }}>
                 {recordingAudio ? (
                   <>
-                    <span style={{ color: 'var(--danger)', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {/* Live: the one other place this panel spends floodlight. */}
+                    <span style={{ ...CAST, color: 'var(--flood)', fontSize: 15, letterSpacing: '0.2em', display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                       <span className="recording-dot" /> Recording…
                     </span>
-                    <button className="btn btn-danger" style={{ padding: '6px 14px', fontSize: 13 }} onClick={stopAudio}>Stop</button>
-                    <button className="btn btn-ghost" style={{ padding: '6px 14px', fontSize: 13 }} onClick={discardAudio}>Cancel</button>
+                    <button style={{ ...BAR_BTN, border: '1.5px solid var(--text-2)', color: 'var(--text)' }} onClick={stopAudio}>Stop</button>
+                    <button style={{ ...BAR_BTN, border: '1.5px solid var(--border)', color: 'var(--text-2)' }} onClick={discardAudio}>Cancel</button>
                   </>
                 ) : (
                   <>
-                    <audio controls src={audioUrl!} style={{ height: 32, flex: 1 }} />
-                    <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} onClick={sendAudio} disabled={mediaUploading}>
+                    <audio controls src={audioUrl!} style={{ height: 36, flex: '1 1 160px', minWidth: 0 }} />
+                    <button
+                      style={{ ...BAR_BTN, border: 'none', background: 'var(--primary)', color: 'var(--on-primary)', opacity: mediaUploading ? 0.5 : 1 }}
+                      onClick={sendAudio}
+                      disabled={mediaUploading}
+                    >
                       {mediaUploading ? 'Sending…' : 'Send'}
                     </button>
-                    <button className="btn btn-ghost" style={{ padding: '6px 14px', fontSize: 13 }} onClick={discardAudio}>Discard</button>
+                    <button style={{ ...BAR_BTN, border: '1.5px solid var(--border)', color: 'var(--text-2)' }} onClick={discardAudio}>Discard</button>
                   </>
                 )}
               </div>
@@ -643,11 +676,11 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '10px 16px', background: 'var(--danger-light)',
                   borderTop: '1px solid var(--border)', flexShrink: 0,
-                  fontSize: 14, color: 'var(--text)', lineHeight: 1.4,
+                  fontSize: 'var(--t-body-tight)', color: 'var(--text)', lineHeight: 1.4,
                 }}
               >
                 <span aria-hidden="true" style={{ fontSize: 16, flexShrink: 0 }}>⚠</span>
-                <span style={{ flex: 1, overflowWrap: 'anywhere' }}>
+                <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
                   {sendError} <strong>Your message has not been sent.</strong>
                 </span>
                 <button
@@ -666,22 +699,21 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
             {/* Input bar */}
             <div style={{
               display: 'flex', alignItems: 'flex-end', gap: 8,
-              padding: '12px 16px', background: 'var(--card)',
-              borderTop: '1px solid var(--border)', flexShrink: 0,
+              padding: '10px 14px', background: 'var(--bg)',
+              borderTop: '1px solid var(--border-soft)', flexShrink: 0,
             }}>
               {/* Attach media */}
               <button
                 title="Send photo or video"
+                aria-label="Send photo or video"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={mediaUploading || recordingAudio}
                 style={{
-                  width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--border)',
-                  background: 'transparent', cursor: 'pointer', fontSize: 18, display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  ...ICON_BTN, color: 'var(--text-2)',
                   opacity: mediaUploading || recordingAudio ? 0.4 : 1,
                 }}
               >
-                📎
+                <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="m20.5 11.5-8.4 8.4a5 5 0 0 1-7.1-7.1l8.8-8.8a3.3 3.3 0 0 1 4.7 4.7l-8.8 8.8a1.7 1.7 0 0 1-2.4-2.4l8.1-8.1" /></svg>
               </button>
               <input
                 ref={fileInputRef}
@@ -691,29 +723,35 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                 onChange={handleFileChange}
               />
 
-              {/* Voice record */}
+              {/* Voice record. Floodlit only while it is live. */}
               <button
                 title={recordingAudio ? 'Stop recording' : 'Record voice message'}
+                aria-label={recordingAudio ? 'Stop recording' : 'Record voice message'}
                 onClick={recordingAudio ? stopAudio : startAudio}
                 disabled={mediaUploading || !!audioUrl}
                 style={{
-                  width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--border)',
-                  background: recordingAudio ? '#fef2f2' : 'transparent',
-                  cursor: 'pointer', fontSize: 18, display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  ...ICON_BTN,
+                  border: `1px solid ${recordingAudio ? 'var(--flood)' : 'var(--border)'}`,
+                  background: recordingAudio ? 'rgba(203,239,94,0.10)' : 'transparent',
+                  color: recordingAudio ? 'var(--flood)' : 'var(--text-2)',
                   opacity: mediaUploading || !!audioUrl ? 0.4 : 1,
                   transition: 'all 0.1s',
                 }}
               >
-                🎤
+                <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10.5v.5a7 7 0 0 0 14 0v-.5" /><path d="M12 18.5V21" /></svg>
               </button>
 
               {/* Text input */}
+              {/* .input for its placeholder and focus colours, which inline
+                  styles cannot reach; the browser's default placeholder grey
+                  is 2.9:1 on the card. */}
               <textarea
+                aria-label="Message"
+                className="input"
                 style={{
-                  flex: 1, resize: 'none', borderRadius: 18, border: '1px solid var(--border)',
-                  padding: '9px 14px', fontSize: 14, lineHeight: 1.4, minHeight: 38, maxHeight: 120,
-                  background: 'var(--bg)', outline: 'none', fontFamily: 'inherit',
+                  flex: 1, width: 'auto', minWidth: 0, resize: 'none', borderRadius: 18, border: '1px solid var(--border)',
+                  padding: '11px 14px', fontSize: 16, lineHeight: 1.4, minHeight: 44, maxHeight: 120,
+                  background: 'var(--card)', color: 'var(--text)', fontFamily: 'inherit',
                 }}
                 placeholder={mediaUploading ? 'Uploading…' : 'Type a message…'}
                 value={text}
@@ -744,16 +782,18 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
               {/* Send button */}
               <button
                 onClick={sendText}
+                aria-label="Send message"
                 disabled={!text.trim() || sending || mediaUploading || recordingAudio || !!audioUrl}
                 style={{
-                  width: 36, height: 36, borderRadius: '50%', border: 'none',
-                  background: text.trim() ? 'var(--primary)' : 'var(--border)',
-                  color: '#fff', cursor: text.trim() ? 'pointer' : 'not-allowed',
-                  fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0, transition: 'all 0.15s',
+                  ...ICON_BTN,
+                  border: text.trim() ? '1px solid var(--primary)' : '1px solid var(--border)',
+                  background: text.trim() ? 'var(--primary)' : 'transparent',
+                  color: text.trim() ? 'var(--on-primary)' : 'var(--text-muted)',
+                  cursor: text.trim() ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.15s',
                 }}
               >
-                ↑
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5" /><path d="M6 11l6-6 6 6" /></svg>
               </button>
             </div>
           </>
@@ -761,4 +801,38 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
       </div>
     </div>
   )
+}
+
+/* ── Stadium Night furniture ──────────────────────────────────────────────
+ * Uppercase furniture is Big Shoulders, tracked; data is JetBrains Mono.
+ * Nothing here is below the 13px floor, and every control is 44px. */
+const CAST: CSSProperties = {
+  fontFamily: 'var(--font-cast)',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+}
+
+const MONO: CSSProperties = {
+  fontFamily: 'var(--font-mono)',
+  fontSize: 'var(--t-data)',
+  fontWeight: 500,
+  letterSpacing: '0.06em',
+}
+
+const ICON_BTN: CSSProperties = {
+  width: 44, height: 44, borderRadius: 13, flexShrink: 0,
+  border: '1px solid var(--border)', background: 'transparent',
+  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+}
+
+const BAR_BTN: CSSProperties = {
+  ...CAST,
+  minHeight: 44, padding: '0 16px', borderRadius: 13, flexShrink: 0,
+  background: 'transparent', cursor: 'pointer',
+  fontSize: 15, letterSpacing: '0.12em',
+}
+
+/* Clock time for a message. The date lives in the divider above it. */
+function clockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }

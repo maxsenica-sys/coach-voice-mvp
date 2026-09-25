@@ -27,7 +27,7 @@
  * roster dot read new and old rows through one code path.
  */
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import BodyMap from '@/app/components/BodyMap'
 import { regionLabel } from '@/lib/body-map'
 import { READINESS_OPTIONS, type Readiness } from '@/lib/readiness'
@@ -72,6 +72,7 @@ export default function CheckIn({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const noteId = useId()
 
   const save = async () => {
     if (readiness === null) {
@@ -103,34 +104,64 @@ export default function CheckIn({
     }
   }
 
+  /* Who can see what the athlete writes, said before they write it.
+   *
+   * Max, 2026-09-25: tell the athlete when they write it. The coach reads the
+   * check-in before the session, and a coach can also choose to put what the
+   * athlete wrote into a report to their parents or guardians. "Can choose to",
+   * not "will": the automatic parent email carries no check-in text at all,
+   * and the monthly report leaves it out unless the coach ticks it in. A
+   * thirteen-year-old gets that in two plain sentences, next to the box, before
+   * typing — not after pressing Done. */
+  const coachSees = `Your coach will see this before ${sessionLabel ? `“${sessionLabel}”` : 'your next session'}.`
+  const parentsMay = 'Your coach can also choose to include it in a report to your parents or guardians.'
+  const wroteSomething = openInjuries.length > 0 && injuryUpdate.trim().length > 0
+
+  const EYEBROW: React.CSSProperties = {
+    fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
+    letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--text-2)',
+  }
+
   if (done) {
     return (
-      <div className="card" style={{ padding: 20, textAlign: 'center' }}>
-        <div style={{ fontSize: 28, lineHeight: 1 }} aria-hidden="true">✓</div>
-        <div style={{ fontWeight: 700, marginTop: 8, fontSize: 'var(--fs-4)' }}>Checked in.</div>
-        <div style={{ color: 'var(--text-2)', marginTop: 4, fontSize: 'var(--fs-3)', lineHeight: 1.5 }}>
-          Your coach will see this before {sessionLabel ? `“${sessionLabel}”` : 'your next session'}.
+      <div className="card" style={{ padding: 22, borderRadius: 'var(--radius-lg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span aria-hidden="true" style={{
+            width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+            background: 'var(--primary)', color: 'var(--on-primary)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, fontWeight: 800,
+          }}>✓</span>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, lineHeight: 1.1, color: 'var(--text)' }}>
+            Checked in.
+          </div>
+        </div>
+        <div style={{ color: 'var(--text-2)', marginTop: 10, fontSize: 'var(--fs-3)', lineHeight: 1.5 }}>
+          {coachSees}
+          {wroteSomething && <> {parentsMay}</>}
         </div>
       </div>
     )
   }
 
   return (
-    <div className="card" style={{ padding: 18 }}>
-      <h2 style={{ margin: 0, fontSize: 'var(--fs-5)', fontWeight: 800 }}>
-        {sessionLabel ? `Before ${sessionLabel}` : 'How are you today?'}
+    <div className="card" style={{ padding: 18, borderRadius: 'var(--radius-lg)' }}>
+      <h2 style={{
+        margin: 0, fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 400,
+        lineHeight: 1.1, letterSpacing: '-0.01em', color: 'var(--text)', overflowWrap: 'anywhere',
+      }}>
+        {sessionLabel ? `Before ${sessionLabel}` : <>How are you <em style={{ fontStyle: 'italic', fontWeight: 500 }}>today</em>?</>}
       </h2>
 
       {/* ── 1 · the body, where nothing is the normal answer ──────────────── */}
-      <div style={{ marginTop: 16 }}>
+      <div style={{ marginTop: 18 }}>
         <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.5 }}>
-          Anything sore or bothering you? <strong>Only mark it if something is wrong</strong> —
+          Anything sore or bothering you? <strong style={{ color: 'var(--text)' }}>Only mark it if something is wrong</strong> —
           leaving this blank tells your coach you are fine.
         </div>
         <div style={{ marginTop: 12 }}>
-          <BodyMap selected={soreAreas} onChange={setSoreAreas} />
+          <BodyMap selected={soreAreas} onChange={setSoreAreas} perspective="self" />
         </div>
-        <div aria-live="polite" style={{ marginTop: 8, fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>
+        <div aria-live="polite" style={{ marginTop: 8, fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5 }}>
           {soreAreas.length === 0
             ? 'Nothing marked — nothing hurts.'
             : `Marked: ${soreAreas.map(regionLabel).join(', ')}`}
@@ -138,9 +169,19 @@ export default function CheckIn({
       </div>
 
       {/* ── 2 · readiness ────────────────────────────────────────────────── */}
-      <div style={{ marginTop: 20 }}>
-        <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>How are you feeling?</div>
-        <div role="group" aria-label="How are you feeling" style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+      {/* One track, three stops. A low answer is drawn exactly like a high
+          one — same fill, same weight — because the control records where you
+          are and must not react to it. */}
+      <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+        <div style={EYEBROW}>How are you feeling?</div>
+        <div
+          role="group"
+          aria-label="How are you feeling"
+          style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 4, marginTop: 10,
+            padding: 4, borderRadius: 18, border: '1px solid var(--border)', background: 'var(--bg)',
+          }}
+        >
           {READINESS_OPTIONS.map((opt) => {
             const on = readiness === opt.value
             return (
@@ -155,11 +196,12 @@ export default function CheckIn({
                   // four lines and, with no padding, its last line sat 1px off
                   // the bottom edge of the button. The button grows instead —
                   // minHeight is a floor, so nothing is clipped either way.
-                  flex: 1, minHeight: 64, padding: '9px 4px',
-                  borderRadius: 12, cursor: 'pointer',
-                  border: '1.5px solid', borderColor: on ? 'var(--primary)' : 'var(--border)',
-                  background: on ? 'var(--primary)' : 'var(--card)',
-                  color: on ? '#fff' : 'var(--text)',
+                  minWidth: 0, minHeight: 64, padding: '9px 4px',
+                  borderRadius: 14, cursor: 'pointer',
+                  border: 'none',
+                  background: on ? 'var(--primary)' : 'transparent',
+                  // Ink on the lifted sage — white on it is 1.6:1.
+                  color: on ? 'var(--on-primary)' : 'var(--text)',
                   fontFamily: 'inherit', fontWeight: on ? 800 : 600,
                   fontSize: 'var(--fs-4)', display: 'flex',
                   flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
@@ -172,8 +214,10 @@ export default function CheckIn({
                     on a 320px phone. They wrap between whole words or not at
                     all. A hint that would not fit is a hint to rewrite, not to
                     hyphenate. lineHeight 1.3 rather than 1.2 because at 13px
-                    over four lines the tighter setting closed the lines up. */}
-                <span style={{ fontSize: 'var(--fs-1)', fontWeight: 500, opacity: 0.85, lineHeight: 1.3, textAlign: 'center' }}>
+                    over four lines the tighter setting closed the lines up.
+                    Colour, not opacity: an 0.85 fade took the unselected hint
+                    toward the floor on the dark track. */}
+                <span style={{ fontSize: 'var(--fs-1)', fontWeight: 500, lineHeight: 1.3, textAlign: 'center', color: on ? 'var(--on-primary)' : 'var(--text-2)' }}>
                   {opt.hint}
                 </span>
               </button>
@@ -184,15 +228,17 @@ export default function CheckIn({
 
       {/* ── 3 · only if something is already on file ──────────────────────── */}
       {openInjuries.length > 0 && (
-        <div style={{ marginTop: 20, padding: 14, borderRadius: 12, background: 'var(--surface-2)' }}>
-          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5 }}>
+        <div style={{ marginTop: 20, padding: 14, borderRadius: 14, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+          <label htmlFor={noteId} style={{ display: 'block', fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5 }}>
             How is your {openInjuries.map((i) => regionLabel(i.body_area)).join(' and ')} today?
             Anything changed?
-          </div>
+          </label>
           <textarea
+            id={noteId}
+            aria-describedby={`${noteId}-who`}
             className="input"
             rows={2}
-            style={{ resize: 'none', marginTop: 8 }}
+            style={{ resize: 'none', marginTop: 10, background: 'var(--bg)' }}
             placeholder="Still tight, but better than Monday…"
             value={injuryUpdate}
             onChange={(e) => setInjuryUpdate(e.target.value)}
@@ -201,23 +247,30 @@ export default function CheckIn({
             spellCheck
             maxLength={500}
           />
-          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 5 }}>
-            Optional — skip it if nothing has changed.
+          {/* Rendered with the box, not after Done, so it is read before
+              anything is typed. Same tier as the helper text around it: it is
+              a plain fact, not a warning. */}
+          <div id={`${noteId}-who`} style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 6, lineHeight: 1.5 }}>
+            Optional — skip it if nothing has changed. {coachSees} {parentsMay}
           </div>
         </div>
       )}
 
       {error && (
-        <div role="alert" style={{ marginTop: 14, padding: '10px 12px', borderRadius: 10, background: 'var(--danger-light)', fontSize: 'var(--fs-3)', lineHeight: 1.45 }}>
+        <div role="alert" style={{ marginTop: 14, padding: '10px 12px', borderRadius: 10, background: 'var(--danger-light)', color: 'var(--text)', fontSize: 'var(--fs-3)', lineHeight: 1.45, overflowWrap: 'anywhere' }}>
           {error}
         </div>
       )}
 
+      {/* Sage, not floodlight: submitting a form is an action, not a state. */}
       <button
         className="btn btn-primary"
         onClick={() => void save()}
         disabled={saving}
-        style={{ width: '100%', justifyContent: 'center', marginTop: 18, minHeight: 50, fontSize: 'var(--fs-4)' }}
+        style={{
+          width: '100%', justifyContent: 'center', marginTop: 18, minHeight: 52, borderRadius: 16,
+          fontFamily: 'var(--font-cast)', fontSize: 20, letterSpacing: '0.16em', textTransform: 'uppercase',
+        }}
       >
         {saving ? 'Saving…' : 'Done'}
       </button>

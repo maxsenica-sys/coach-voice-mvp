@@ -33,17 +33,64 @@
  * unreachable from `tools/clock-rig.mjs` — and the bucketing had a real DST bug
  * that only running it could find. This file draws; that file computes.
  *
- * Contrast: the --primary-dark fill on the --border-soft track measures 4.95:1.
- * WCAG 1.4.11 requires 3:1 for a graphical object whose distinction carries
- * meaning, and fill-versus-track is the entire message here.
+ * Stadium Night, 2026-09-25. The completed weeks are sage; the week that is
+ * running is the one floodlit object, because it is *now* — and it is drawn
+ * OPEN: a dashed outline with a dashed riser above it, not a filled bar. A
+ * part-finished week drawn solid is a short bar at the right-hand end, and to
+ * a fifteen-year-old opening this on a Tuesday that shape reads as "down"
+ * long before any caption is read. Open says "still being filled in". The
+ * caption says it too: THIS WEEK · N SO FAR.
+ *
+ * Contrast (WCAG 1.4.11 wants 3:1 for a graphic whose distinction carries
+ * meaning): --primary on --card is 8:1 at full strength and stays above 5:1
+ * at the 0.78 the bars are drawn at; an empty past week is a 3px --text-muted
+ * rule, 5.3:1, so a gap is a visible gap and not a hole; --flood is 12:1.
  */
 import {
   buildSpine,
   SPINE_GAP_DAYS,
   SPINE_MIN_SESSIONS,
   SPINE_WEEKS,
+  startOfWeek,
   type SessionDateFields,
 } from '@/lib/training-spine'
+
+const CAST: React.CSSProperties = {
+  fontFamily: 'var(--font-cast)', fontWeight: 700, fontSize: 'var(--t-furniture)',
+  letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-2)',
+}
+const MONO: React.CSSProperties = {
+  fontFamily: 'var(--font-mono)', fontWeight: 500, fontSize: 'var(--t-data)',
+  letterSpacing: '0.04em',
+}
+
+/** The chart area, in px. The bars get 62; the rest is the open week's riser headroom. */
+const CHART_H = 72
+const BAR_MAX = 62
+
+/**
+ * Where a month name goes under the chart: the first column, and every column
+ * whose week starts in a different month from the column before it. Week
+ * starts are stepped back with setDate, never by subtracting milliseconds, for
+ * the DST reason lib/training-spine.ts documents.
+ */
+function monthTicks(now: Date): { col: number; label: string }[] {
+  const current = startOfWeek(now)
+  const starts = Array.from({ length: SPINE_WEEKS }, (_, i) => {
+    const d = new Date(current)
+    d.setDate(d.getDate() - 7 * (SPINE_WEEKS - 1 - i))
+    return d
+  })
+  const ticks: { col: number; label: string }[] = []
+  starts.forEach((d, i) => {
+    if (i === 0 || d.getMonth() !== starts[i - 1].getMonth()) {
+      ticks.push({ col: i, label: d.toLocaleDateString(undefined, { month: 'short' }) })
+    }
+  })
+  // A first-column label two columns from the next one would collide with it.
+  if (ticks.length > 1 && ticks[1].col - ticks[0].col < 3) ticks.shift()
+  return ticks
+}
 
 export default function TrainingSpine({
   sessions,
@@ -60,6 +107,8 @@ export default function TrainingSpine({
   if (total < SPINE_MIN_SESSIONS) return null
 
   const peak = Math.max(...weeks, 1)
+  const ticks = monthTicks(new Date())
+  const last = weeks.length - 1
 
   const sentence =
     `${total} session${total === 1 ? '' : 's'} over ${SPINE_WEEKS} weeks` +
@@ -74,57 +123,93 @@ export default function TrainingSpine({
 
   return (
     <section aria-label={`${label}. ${sentence}.`}>
-      <div style={{
-        fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)',
-        textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 11,
-      }}>
-        {label}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={CAST}>{label}</div>
+        <div style={{ ...MONO, color: 'var(--text-2)', textTransform: 'uppercase' }}>{SPINE_WEEKS} weeks</div>
       </div>
 
-      {/* 56px, and 11px of air either side of it.
-          The chart was drawn to 48px when the label above it was 11px and the
-          sentence below it was 12px. Both of those are now 13px and 14px, and
-          the chart did not move: at a ~300px card width it had become the
-          smallest thing in its own section, pinched between two lines of type
-          that had grown around it. 48 × 13/11 = 56 keeps the picture the same
-          size *relative to its label* as it was drawn to be. Nothing here
-          overflowed — the columns are flex children with no content, so they
-          shrink rather than push — this is proportion, not repair. */}
       <div
         role="img"
         aria-label={sentence}
-        style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 56 }}
+        style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: CHART_H }}
       >
-        {weeks.map((n, i) => (
-          <div key={i} aria-hidden style={{
-            flex: 1, height: '100%', display: 'flex', flexDirection: 'column',
-            justifyContent: 'flex-end',
-          }}>
-            <div style={{
-              // Floor of 3px so an empty week is a visible flat line rather
-              // than a hole in the chart. 52 = the 56px row less the 4px the
-              // current-week footer below reserves.
-              height: `${Math.max(3, Math.round((n / peak) * 52))}px`,
-              background: n > 0 ? 'var(--primary-dark)' : 'var(--border-soft)',
-              borderRadius: 2,
-            }} />
-            {/* Every column reserves the same 4px footer so the marker on the
-                current week cannot push that one bar out of alignment with the
-                other eleven. Only the last one is painted. */}
-            <div style={{
-              height: 2, marginTop: 2, borderRadius: 1,
-              background: i === weeks.length - 1 ? 'var(--coach-color)' : 'transparent',
-            }} />
-          </div>
-        ))}
+        {weeks.map((n, i) => {
+          const isNow = i === last
+          const h = Math.max(3, Math.round((n / peak) * BAR_MAX))
+          if (isNow) {
+            // Open: a dashed outline the height of what is in it so far (never
+            // less than a readable 12px), and a dashed riser above it to the
+            // top of the chart — the week is not over.
+            const openH = Math.max(12, h)
+            return (
+              <div key={i} aria-hidden style={{
+                flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column',
+                alignItems: 'stretch',
+              }}>
+                <div style={{
+                  flex: 1, alignSelf: 'center', width: 0,
+                  borderLeft: '1.5px dashed var(--flood)', opacity: 0.55,
+                }} />
+                <div style={{
+                  height: openH, borderRadius: 3,
+                  border: '1.5px dashed var(--flood)', background: 'transparent',
+                }} />
+              </div>
+            )
+          }
+          return (
+            <div key={i} aria-hidden style={{
+              flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column',
+              justifyContent: 'flex-end',
+            }}>
+              <div style={{
+                height: n > 0 ? h : 3,
+                background: n > 0 ? 'var(--primary)' : 'var(--text-muted)',
+                opacity: n > 0 ? 0.78 : 1,
+                borderRadius: n > 0 ? 3 : 2,
+              }} />
+            </div>
+          )
+        })}
       </div>
 
-      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 11, lineHeight: 1.45 }}>
-        {sentence}
-        {gapNote && (
-          <span style={{ color: 'var(--coach-on-light)', fontWeight: 700 }}> · {gapNote}</span>
-        )}
+      {/* The month rule under the chart. Positioned by column, so a label is
+          under the week it names; the last two columns anchor right so a name
+          there cannot run past the chart's edge. */}
+      <div aria-hidden style={{ position: 'relative', height: 24, marginTop: 6, borderTop: '1px solid var(--border)' }}>
+        {ticks.map(({ col, label: m }) => {
+          const pct = (col / SPINE_WEEKS) * 100
+          const anchorRight = col >= SPINE_WEEKS - 2
+          return (
+            <span key={col} style={{
+              ...CAST, letterSpacing: '0.12em', position: 'absolute', top: 5,
+              ...(anchorRight ? { right: 0 } : { left: `${pct}%` }),
+              whiteSpace: 'nowrap',
+            }}>
+              {m}
+            </span>
+          )
+        })}
       </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+        <span style={{ ...CAST, letterSpacing: '0.14em' }}>
+          <span style={{ ...MONO, color: 'var(--text)' }}>{total}</span> session{total === 1 ? '' : 's'}
+        </span>
+        <span style={{ flex: 1 }} />
+        <span style={{ ...CAST, letterSpacing: '0.14em', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+          <span aria-hidden style={{
+            width: 9, height: 9, borderRadius: 2, border: '1.5px dashed var(--flood)', flexShrink: 0,
+          }} />
+          This week · <span style={{ ...MONO, color: 'var(--text)' }}>{thisWeek}</span> so far
+        </span>
+      </div>
+
+      {gapNote && (
+        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--coach-on-light)', fontWeight: 700, marginTop: 8, lineHeight: 1.45 }}>
+          {gapNote}
+        </div>
+      )}
     </section>
   )
 }
