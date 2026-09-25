@@ -19,6 +19,116 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-25 — DESIGN-014 — The floor under Stadium Night: readable, nothing sideways, the summary the coach's own
+Status: IMPLEMENTED (PR #29, merged 6590559)
+Verdict at proposal: BUILD — Max, 2026-09-25: *"summary at stop, yes takeaway
+becomes editable field, maximise human retention and viewage using the furniture
+floor. everything should be easily viewable, and make sure there's no ability to
+scroll sideways."* Then: *"DO NOT REMOVE ANY DATA"* and *"keep all athletes and all data."*
+Priority: not scored — decided by Max.
+Grounded in: app/globals.css, app/layout.tsx, lib/summary-prompt.ts,
+lib/quick-summary.ts, app/api/sessions/summary/route.ts, lib/body-map.ts,
+tools/type-floor-check.mjs, tools/bodymap-rig.mjs
+Evidence: every change measured in Chromium at 320-1440px against the app's
+real compiled stylesheet and self-hosted fonts; verify:boot 84 checks.
+
+This is not Stadium Night. It is the ground the direction stands on, and it was
+built first because every one of these would have had to be done anyway.
+
+### What was decided, and what it is now
+
+- **Type floor 13px**, prose 15px. The old `--fs-1/2/3` (11/12/13) are aliases of
+  `--t-furniture/-body-tight/-body` — one scale, where there had been two that
+  disagreed. 154 runs below the floor, now 0.
+- **Nothing scrolls sideways**: `html, body { overflow-x: clip }`, `body
+  { position: relative }`. `clip` not `hidden`, because hidden drags sticky
+  headers away (measured: top 0 → -900).
+- **Summary drafted at stop**, editable before it sends, via
+  `/api/sessions/summary`. The save route regenerates only when nothing was sent.
+- **No content removed** to make anything fit — now a standing rule in CLAUDE.md.
+
+### The lesson that matters more than any of the above
+
+**Clipping horizontal overflow converts a visible bug into an invisible one.**
+Before, an element too wide for the screen made the page wobble sideways and
+somebody noticed. After, it is simply cut, and a screenshot looks fine. So the
+clip rule had to be paired with a hunt, and the hunt found content that was
+already missing in production:
+
+- the coach's roster, sized to 461px in a 390px viewport by one unbreakable email;
+- an athlete's STRESS score off the edge of a 320px screen;
+- a focus point's delete button at x=383-400, unreachable at 320 and 390;
+- a signed URL with 497px of content in 170px;
+- and, silent even on a wide screen, a wellness grid whose bare `1fr` sized
+  SORENESS to its own word so that **identical scores drew bars of different
+  lengths**.
+
+Almost every one was a bare `1fr` or a flex item without `minWidth: 0`. That is
+the pattern to look for first.
+
+### Three checks were reporting coverage they did not have
+
+Recorded because this is now the third entry in this file about a green check
+that was wrong (after `--energy-dark` on a tint and `--cream-3` on the composited
+ground), and the pattern is worth naming: **a check reports what it can see, and
+nothing tells you what it cannot.**
+
+1. `verify:type` read 0 while ~150 call sites came through `var(--fs-1)` at 11px.
+   It resolves tokens transitively now.
+2. It could not see SVG `fontSize="9"`, which inside a scaled viewBox rendered at
+   **5.2px**. It reads attributes now — and then had to be taught to skip
+   comments, because it flagged the comment explaining that bug.
+3. A boot-harness check derived its expected value from the same source it was
+   testing, so a mutation moved both sides and it stayed green. Its author found
+   that by breaking it on purpose, and said so.
+
+### Defects found on the way, none of them about type
+
+- **The Focus Card dropped words off the image.** Its hand-rolled canvas wrapper
+  never broke an over-long token: a hyphenated compound drew a 1281px line on an
+  860px column; a 200-character token drew 12,590px off a 1080px canvas. On the
+  one artefact built to leave the app.
+- **A stopped recording looked identical to a running one** under reduced
+  motion. The recorder now has a clock that advances only while the recorder and
+  an audio track are both live.
+- **A failed tap on Record showed nothing**: four distinguished failures were
+  written to state the record step never rendered.
+- **The achilles was a 20.8px tap target** on the body map, the only one of 48
+  under 24px. Widened in the drawing, held by `verify:bodymap`.
+- **Email templates** set 10-12px text in a grey measuring 2.80:1 on white.
+
+### A correction to earlier entries
+
+DESIGN-012 and DESIGN-013 both say the key takeaway "is not a field — it is
+`focus_points[0]`, whichever bullet the summariser emitted first." **That was
+never true.** `lib/summary-prompt.ts` has always asked for it by name as the
+`NEXT:` line, told the model not to invent or restate one, parsed it separately
+and capped it, and `prompt-rig` has always tested it. Four design agents inferred
+otherwise from the read site and it was repeated without being followed back to
+the write site. What is true is that it is *stored* in a general-purpose array.
+
+### Known gaps, left open deliberately
+
+- **The boot harness's sideways check covers `/`, `/?splash=1`, `/signup` only.**
+  The dashboard, athlete home and profile need a session it cannot create; they
+  were proven by per-file harnesses, which are not in CI.
+- **A day cell is 42.3px wide** — seven columns in 308px — so under the 44px
+  target by arithmetic. It grew taller instead. The fix is the card's padding.
+- **Big Shoulders has no metric-override fallback** (`next build` warns "Failed to
+  find font override values"), so every uppercase label will reflow when the late
+  swap lands. It is currently *unused*; this becomes a CLS cost the day Stadium
+  Night applies it.
+- **iOS Safari before 16** takes the `overflow-x: hidden` fallback, where the four
+  sticky headers scroll away.
+- **A muted (not ended) audio track** — an iOS call interruption — still ticks the
+  recorder's clock. It wants a debounce.
+- **Volleyball is not in the sport picker's list**, though every mockup is set in it.
+
+Outcome: merged 2026-09-25 and live. Stadium Night itself is still unapplied and
+still gated on the daylight test.
+
+---
+
 ## 2026-09-24 — DESIGN-013 — Stadium Night drawn end to end: eighteen screens, and the nine decisions they surfaced
 Status: PROPOSED (concept complete, nothing built)
 Verdict at proposal: DECIDE — Max, 2026-09-24: *"i want you to fully design the
@@ -143,10 +253,10 @@ text/ground pair measured against its composited background rather than estimate
 shown: B Chalk & Field, C Kinetic, D Tape, E Clinic, F Progression, G Courtside,
 H Dossier, I Terrain, J Nocturne, L Monolith, M Honours, N Instrument, O Ember,
 P Highlight, Q Sodium, R One Light, S Constellation, T Thread, U Vault.
-V Margin and X Tide were rendered but never shown — the round was called before
-they landed — and W Contact Sheet was commissioned in the same batch. None of the
-three reached the canvas and none was seen by Max, so none of them is rejected on
-its merits; they are simply not in play.
+V Margin, W Contact Sheet and X Tide were all rendered after the round was
+called and shown to Max only on 2026-09-24, on request. None of them was on the
+canvas when he closed the round, so none is rejected on its merits here; he did
+not take any of them further.
 
 **What the rejections actually say**, which is the useful part:
 

@@ -99,6 +99,56 @@ An idea is either built into the product properly or it is written down in
 the codebase. If something genuinely needs trying against real users, it ships
 behind a real decision, to real users, not as a parallel page nobody maintains.
 
+## ⚠️ Never remove data to make a layout fit
+
+Max, 2026-09-25, twice in a row: *"DO NOT REMOVE ANY DATA, very important"* and
+*"keep all athletes and all data."* Standing instruction, not a one-off.
+
+It was said because a correction pass deleted two sessions from the coach's
+home to stop them sitting under the bottom nav. That is the tempting fix every
+time a layout does not fit, and it is always wrong here: the people reading this
+app are coaches and 13–18 year olds, and a missing row is information they never
+learn they did not get.
+
+What this rules out:
+
+- Deleting a row, a label, a marker or an athlete because it does not fit.
+- `text-overflow: ellipsis` on a name or on anything a person needs to read in
+  full. An ellipsis on a child's name is removal by CSS — "Sophie Grabo…" leaves
+  a coach unable to tell two athletes apart.
+- Dropping a chart's data points, series or weeks to make the shape nicer.
+  Thinning *printed axis labels* is a labelling decision and is allowed if it is
+  said out loud; removing data is not.
+- A PDF or report that shows "3 of 9" because the page ran out.
+
+When something does not fit, it wraps, the container grows, or the view scrolls
+**vertically**. A scrolling feed is honest; a clipped one is not.
+
+## ⚠️ Type floor and no sideways scrolling
+
+Max, 2026-09-25: *"maximise human retention and viewage using the furniture
+floor. everything should be easily viewable, and make sure there's no ability to
+scroll sideways."*
+
+- **Nothing renders below 13px.** Use the tokens in `app/globals.css`:
+  `--t-furniture` / `--t-data` 13px, `--t-body-tight` 14px, `--t-body` 15px.
+  `npm run verify:type` fails on anything smaller — including sizes that arrive
+  through a `var(--token)` and SVG `fontSize="N"` attributes, both of which it
+  was blind to until they were found shipping.
+- **`html, body` clip horizontal overflow**, and `body` is `position: relative`
+  so an absolutely-positioned child cannot escape it. This means **an element
+  wider than the viewport is invisibly cut, not scrollable** — a broken layout
+  looks fine in a screenshot and is missing content on a phone. Every layout
+  change must be checked at 320 and 390px for exactly that.
+- The usual cause is a bare `1fr`, which has an `auto` minimum and lets one
+  unbreakable word widen a whole grid. Write `minmax(0, 1fr)` and give the cell
+  `minWidth: 0`. The same goes for `<input>` and `<select>` in a flex row.
+- **An SVG `viewBox` scales everything inside it.** A `fontSize="9"` or a
+  `rect(…, 13, …)` inside one renders at whatever the scale makes it, not the
+  number written. Check the rendered size. `npm run verify:bodymap` holds the
+  body map's tap targets at 24px for this reason.
+- Tap targets are 44px.
+
 ## General rules
 
 - Never modify `app/api/` files when working on UI features
@@ -243,6 +293,8 @@ March in London, and every string type-checks.
 | `npm run verify:prompt` | The summariser prompt, its name gate and its response parser | A silent edit to the most consequential text in the product; a personalised summary written for a child the coach never named |
 | `npm run verify:roster` | The one definition of an "active" athlete, and every route that puts someone on a roster | An athlete who is holding the app reads PENDING on their coach's roster for ever, because the route that created their row never recorded that they had arrived |
 | `npm run verify:sprite` | The cold-start montage against the artwork it is generated from | The opening animation quietly showing something other than what the app ships, or the silhouette colour drifting off the flash-safe value |
+| `npm run verify:type` | Every font size in `app/` and `lib/`, including through tokens and SVG attributes | Type below 13px — which tsc, eslint and next build all see as just a number |
+| `npm run verify:bodymap` | Every body-map region's rendered size, from the real geometry and the real rendered width | A region too small to tap, which marks the wrong body part rather than failing |
 
 ### The rules that keep them honest
 
