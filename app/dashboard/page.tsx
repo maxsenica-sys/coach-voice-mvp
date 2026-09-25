@@ -1664,7 +1664,7 @@ function DashboardPageInner() {
                 <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Squads</h2>
                 <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 2 }}>Record one session for a whole squad at once</div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 320px', gap: 18, alignItems: 'start' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) 320px', gap: 18, alignItems: 'start' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {loadingGroups || groupsError || groups.length === 0 ? (
                     <ListState
@@ -1839,7 +1839,7 @@ function DashboardPageInner() {
           {tab === 'calendar' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <h2 style={{ margin: 0, fontWeight: 900, fontSize: 22 }}>Calendar</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '200px 1fr', gap: 16, alignItems: 'start' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '200px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
                 <div className="card" style={{ padding: 14 }}>
                   <button onClick={() => showCalendarFor('personal', '')} style={sideItem(calMode === 'personal', 'var(--primary)')}>
                     <Icon name="calendar" size={15} /> My Calendar
