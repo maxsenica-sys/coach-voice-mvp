@@ -623,6 +623,39 @@ for (const r of fixtures.replies) {
 check(MAX_NEXT_LENGTH <= 200, 'the NEXT ceiling stays short enough to act on', String(MAX_NEXT_LENGTH))
 check(TARGET_BULLETS === 5, 'the bullet target is five', String(TARGET_BULLETS))
 
+/* ── The coach's edit survives the save ───────────────────────────────────
+ *
+ * From 2026-09-25 the summary is drafted at stop-and-transcribe and shown to
+ * the coach, who may rewrite it before anything sends. The save route must
+ * therefore use what it is given and regenerate ONLY when nothing was sent.
+ *
+ * Delete that branch and nothing breaks loudly: the save still succeeds, the
+ * athlete still receives a summary, and tsc, eslint and next build are all
+ * happy. What changes is that a coach who corrected something the model got
+ * wrong about a named child has their correction quietly replaced by a second
+ * call to the model. That is the shape this rig exists for — a join between
+ * two files where both files are individually fine. */
+const saveRoute = readFileSync(new URL('../app/api/sessions/route.ts', import.meta.url), 'utf8')
+check(
+  /body\?\.summary/.test(saveRoute) && /body\?\.next/.test(saveRoute),
+  'the save route reads the summary and takeaway the coach was shown',
+)
+check(
+  /coachSupplied\s*$|coachSupplied\s*\n?\s*\?/m.test(saveRoute) ||
+    /\bcoachSupplied\b[\s\S]{0,120}makeQuickSummary/.test(saveRoute),
+  'the save route regenerates only when the coach sent nothing',
+)
+check(
+  /MAX_NEXT_LENGTH/.test(saveRoute),
+  'a coach-typed takeaway is held to the same ceiling as the model\'s',
+)
+
+const draftRoute = readFileSync(new URL('../app/api/sessions/summary/route.ts', import.meta.url), 'utf8')
+check(
+  /coach_id/.test(draftRoute) && /who\.userId/.test(draftRoute),
+  'the draft route scopes the athlete to the caller\'s own roster',
+)
+
 // ── 5 · live mode ─────────────────────────────────────────────────────────
 
 if (process.argv.includes('--live')) {

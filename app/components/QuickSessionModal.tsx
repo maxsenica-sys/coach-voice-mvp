@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { apiJson, apiMutate } from '@/lib/api-client'
+import { MAX_NEXT_LENGTH } from '@/lib/summary-prompt'
 import { formatSessionDate, todayISODate, yesterdayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import { responseOption } from '@/lib/session-response'
@@ -65,6 +66,16 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   /* What Whisper thought of its own output. Shown above the transcript in the
      review step, where the coach can still act on it. */
   const [transcriptWarning, setTranscriptWarning] = useState('')
+
+  /* The draft the coach reads before anything sends.
+   *
+   * Max, 2026-09-25: the summary is drafted at stop-and-transcribe now, not at
+   * save. Until this, the first person to read what the model wrote about a
+   * named child was the child. */
+  const [summaryDraft, setSummaryDraft] = useState('')
+  const [nextDraft, setNextDraft] = useState('')
+  const [summarising, setSummarising] = useState(false)
+  const [summaryError, setSummaryError] = useState('')
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -198,6 +209,38 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
               ? 'Another app is using the microphone. Close it and try again.'
               : 'Could not start recording. Reload the page and try again.',
       )
+    }
+  }
+
+  /* Ask the server for a draft summary and takeaway.
+   *
+   * Uses apiJson rather than raw fetch so a non-2xx throws with the server's
+   * own message — a fetch whose only job is a side effect and which never
+   * checks res.ok is the bug the pre-commit checklist exists for. Failure here
+   * is surfaced quietly and never blocks the save: the coach can write it.
+   */
+  const draftSummary = async (text: string, forAthleteId: string) => {
+    setSummarising(true)
+    setSummaryError('')
+    try {
+      const out = await apiJson<{ summary: string | null; next: string | null }>(
+        '/api/sessions/summary',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transcript: text,
+            athlete_id: forAthleteId,
+            sport: coachSport || null,
+          }),
+        },
+      )
+      setSummaryDraft(out.summary ?? '')
+      setNextDraft(out.next ?? '')
+    } catch (e: unknown) {
+      setSummaryError(errorMessage(e, 'Could not draft a summary. You can write one below.'))
+    } finally {
+      setSummarising(false)
     }
   }
 
@@ -336,6 +379,18 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       }
       if (json.text) setTranscript(json.text)
 
+      /* Draft the summary now, so the review step has something to show and
+       * change. Athlete mode only: a group save posts the same transcript once
+       * per member and the server writes a different summary for each, gated by
+       * mayPersonalise — one shared draft would be wrong for all of them.
+       *
+       * Deliberately not awaited into the transcription failure path: a draft
+       * that does not arrive is a missing convenience, not a lost recording,
+       * and the coach can still write the summary themselves. */
+      if (json.text && mode === 'athlete' && athleteId) {
+        void draftSummary(json.text, athleteId)
+      }
+
       // The recording is already in storage — keep the path on the session so a
       // mis-heard transcript can be replayed later.
       if (uploadedPath) {
@@ -394,6 +449,11 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
             athlete_id: athleteId,
             session_name: sessionName.trim() || null,
             transcript: transcript.trim(),
+            /* What the coach actually read and, if they changed it, wrote.
+             * The server regenerates only when neither is sent, so an edit
+             * here is never overwritten by a second call to the model. */
+            summary: summaryDraft.trim() || null,
+            next: nextDraft.trim() || null,
             shared_with_athlete: shareWithAthlete,
             session_date: sessionDate,
             sport_context: coachSport || null,
@@ -818,21 +878,84 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
               />
             </div>
 
-            {/* AI summary note */}
-            <div style={{
-              background: 'var(--bg)',
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              padding: '10px 14px',
-              fontSize: 13,
-              color: 'var(--text-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}>
-              <span>✨</span>
-              <span>AI summary will be generated automatically when you save.</span>
-            </div>
+            {/* ── The draft, before it sends ──
+                Until 2026-09-25 this was a line of text promising a summary
+                would be written "when you save", which meant the first person
+                to read what a model wrote about a named child was the child.
+                It is drafted at stop now, and everything here is editable.
+                Group mode still generates per member on the server, gated by
+                mayPersonalise, so there is nothing single to show. */}
+            {mode === 'athlete' && (
+              <div style={{
+                background: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: '12px 14px',
+              }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  fontSize: 'var(--t-furniture)', fontWeight: 700,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                  color: 'var(--text-2)',
+                }}>
+                  <span>Summary</span>
+                  {summarising && <span style={{ fontWeight: 600, letterSpacing: 0, textTransform: 'none' }}>drafting…</span>}
+                  {!summarising && (summaryDraft || nextDraft) && (
+                    <span style={{
+                      fontWeight: 700, letterSpacing: '0.08em',
+                      color: 'var(--coach-on-light)',
+                      background: 'var(--coach-light)',
+                      border: '1px solid var(--coach-border)',
+                      borderRadius: 999, padding: '1px 8px', fontSize: 'var(--t-furniture)',
+                    }}>Draft</span>
+                  )}
+                </div>
+
+                <textarea
+                  className="input"
+                  value={summaryDraft}
+                  onChange={(e) => setSummaryDraft(e.target.value)}
+                  rows={4}
+                  placeholder={summarising ? 'Reading your recording…' : 'What happened in this session.'}
+                  style={{ marginTop: 8, width: '100%', fontSize: 'var(--t-body)', lineHeight: 1.5, resize: 'vertical' }}
+                />
+
+                <div style={{
+                  marginTop: 12,
+                  fontSize: 'var(--t-furniture)', fontWeight: 700,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                  color: 'var(--coach-on-light)',
+                }}>
+                  Take into next session
+                </div>
+                <input
+                  className="input"
+                  value={nextDraft}
+                  maxLength={MAX_NEXT_LENGTH}
+                  onChange={(e) => setNextDraft(e.target.value)}
+                  placeholder="The one thing to work on."
+                  style={{ marginTop: 6, width: '100%', fontSize: 'var(--t-body)' }}
+                />
+                <div style={{
+                  marginTop: 4, display: 'flex', gap: 8, alignItems: 'baseline',
+                  fontSize: 'var(--t-furniture)', color: 'var(--text-2)',
+                }}>
+                  <span>This is the line your athlete reads first.</span>
+                  <span style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>
+                    {nextDraft.length}/{MAX_NEXT_LENGTH}
+                  </span>
+                </div>
+
+                {summaryError && (
+                  <div style={{ marginTop: 8, fontSize: 'var(--t-body-tight)', color: 'var(--coach-on-light)' }}>
+                    {summaryError}
+                  </div>
+                )}
+                <div style={{ marginTop: 8, fontSize: 'var(--t-furniture)', color: 'var(--text-2)' }}>
+                  Written from your words. Change anything — nothing sends until you save.
+                </div>
+              </div>
+            )}
 
             {/* Session date — the save happens on this step, so it stays
                 editable here for anyone who skipped straight to typing. */}
