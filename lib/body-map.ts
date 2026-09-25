@@ -105,7 +105,15 @@ const PAIRED: Omit<BodyRegion, 'side'>[] = [
   { id: 'glute', label: 'Glute', view: 'back', shape: rect(74, 176, 24, 34, 10) },
   { id: 'hamstring', label: 'Hamstring', view: 'back', shape: rect(72, 214, 25, 58, 11) },
   { id: 'calf', label: 'Calf', view: 'back', shape: rect(74, 286, 21, 58, 10) },
-  { id: 'achilles', label: 'Achilles', view: 'back', shape: rect(78, 346, 13, 26, 6) },
+  /* 15 units wide, not 13. At the 320px the figure renders at, 13 units is a
+   * 20.8px tap target — under the 24px WCAG 2.5.8 minimum, and the only region
+   * of twenty-three that failed. Scale could not fix it: reaching 24px by
+   * scale alone needs a 369px-wide figure, which at this aspect ratio is 812px
+   * tall — taller than the phones in question. So the drawing changes instead.
+   * Centred on 84.5 like the calf above it (74-95) and the heel below it
+   * (72-96), so a wider achilles still sits inside both. tools/bodymap-rig.mjs
+   * holds the floor. */
+  { id: 'achilles', label: 'Achilles', view: 'back', shape: rect(77, 346, 15, 26, 6) },
   { id: 'heel', label: 'Heel', view: 'back', shape: ellipse(84, 380, 12, 12) },
 ]
 

@@ -93,6 +93,14 @@ jobs:
       - name: Type floor
         run: npm run verify:type
 
+      # The body map is how an athlete says where it hurts, one-handed and
+      # sore. Its numbers are viewBox units, not pixels, so the authored size
+      # understates the real tap target by the scale factor — the achilles read
+      # 13 and rendered 20.8px, under the WCAG 2.5.8 floor. A target too small
+      # does not fail loudly; it marks the wrong body part.
+      - name: Body map tap targets
+        run: npm run verify:bodymap
+
       # The cold-start montage is generated from the app's own artwork. A stale
       # sprite is an opening animation quietly showing something other than what
       # the app ships, and a drifted colour is a flash-safety regression in front

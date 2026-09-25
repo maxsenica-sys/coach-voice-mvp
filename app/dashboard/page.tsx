@@ -173,8 +173,8 @@ function SimpleToast({ data, onDismiss }: { data: SimpleToastData; onDismiss: ()
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
         <span style={{ fontSize: 'var(--fs-4)' }}>{isSuccess ? '✓' : '✕'}</span>
-        <span style={{ flex: 1, fontSize: 'var(--fs-3)', fontWeight: 700 }}>{data.message}</span>
-        <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+        <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontSize: 'var(--fs-3)', fontWeight: 700 }}>{data.message}</span>
+        <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
       </div>
       <div style={{ height: 3, background: 'rgba(255,255,255,0.2)' }}>
         <div style={{ height: '100%', background: 'rgba(255,255,255,0.6)', animation: 'toastProgress 4s linear forwards' }} />
@@ -230,7 +230,7 @@ function ReceiptToast({ data, onDismiss }: { data: ReceiptToastData; onDismiss: 
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
         <span style={{ fontSize: 'var(--fs-4)' }}>✓</span>
-        <span style={{ flex: 1, fontSize: 'var(--fs-3)', fontWeight: 700 }}>{data.message}</span>
+        <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontSize: 'var(--fs-3)', fontWeight: 700 }}>{data.message}</span>
         {data.href && (
           <Link href={data.href} style={{ color: '#fff', fontSize: 'var(--fs-2)', fontWeight: 800, textDecoration: 'underline', whiteSpace: 'nowrap' }}>
             View
@@ -277,7 +277,7 @@ function JoinToast({ data, onDismiss }: { data: JoinToastData; onDismiss: () => 
         </div>
         {/* Text */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>{data.athlete.first_name} {data.athlete.last_name}</div>
+          <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2, overflowWrap: 'anywhere' }}>{data.athlete.first_name} {data.athlete.last_name}</div>
           <div style={{ fontSize: 'var(--fs-2)', opacity: 0.65, marginTop: 2 }}>accepted your invite</div>
         </div>
         {/* Actions */}
@@ -340,14 +340,14 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
         <div className="section-title" style={{ marginBottom: 4 }}>Your Profile</div>
         <div className="section-sub" style={{ marginBottom: 18 }}>How you appear to athletes and in session reports.</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
+            <div style={{ minWidth: 0 }}>
               <label className="label">First name</label>
-              <input className="input" value={profileForm.first_name} onChange={e => setProfileForm(f => ({ ...f, first_name: e.target.value }))} />
+              <input className="input" value={profileForm.first_name} onChange={e => setProfileForm(f => ({ ...f, first_name: e.target.value }))} style={{ minWidth: 0 }} />
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <label className="label">Last name</label>
-              <input className="input" value={profileForm.last_name} onChange={e => setProfileForm(f => ({ ...f, last_name: e.target.value }))} />
+              <input className="input" value={profileForm.last_name} onChange={e => setProfileForm(f => ({ ...f, last_name: e.target.value }))} style={{ minWidth: 0 }} />
             </div>
           </div>
           <div>
@@ -377,16 +377,16 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
         <div className="section-title" style={{ marginBottom: 6 }}>Athlete Invite Code</div>
         <div className="section-sub" style={{ marginBottom: 18 }}>Share this so athletes can join your roster during sign-up.</div>
         {inviteCode && !codeEditing ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <div style={{ flex: 1, padding: '12px 16px', background: 'var(--coach-light)', border: '2px solid var(--coach-color)', borderRadius: 10, fontFamily: 'monospace', fontSize: 18, fontWeight: 900, color: 'var(--coach-color)', letterSpacing: 1 }}>{inviteCode}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 160px', minWidth: 0, overflowWrap: 'anywhere', padding: '12px 16px', background: 'var(--coach-light)', border: '2px solid var(--coach-color)', borderRadius: 10, fontFamily: 'monospace', fontSize: 18, fontWeight: 900, color: 'var(--coach-color)', letterSpacing: 1 }}>{inviteCode}</div>
             <button onClick={() => { setCodeDraft(inviteCode); setCodeEditing(true); setCodeMsg('') }} className="btn btn-ghost" title="Edit"><Icon name="edit" size={14} /></button>
             <button onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!') }} className="btn btn-ghost" title="Copy"><Icon name="copy" size={14} /></button>
           </div>
         ) : (
           <div style={{ marginBottom: 14 }}>
             <label className="label">Invite code</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input className="input" value={codeDraft} onChange={e => setCodeDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} placeholder="coachsmith4821" style={{ fontFamily: 'monospace', fontWeight: 700 }} />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input className="input" value={codeDraft} onChange={e => setCodeDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} placeholder="coachsmith4821" style={{ fontFamily: 'monospace', fontWeight: 700, flex: '1 1 160px', minWidth: 0 }} />
               <button className="btn btn-primary" onClick={saveCode} disabled={codeSaving}>{codeSaving ? '…' : 'Save'}</button>
               {codeEditing && <button className="btn btn-ghost" onClick={() => { setCodeEditing(false); setCodeMsg('') }}>Cancel</button>}
             </div>
@@ -399,7 +399,7 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>
           {[['Invite via email', 'Use "Add Athlete" on the Athletes tab.'], ['Share your code', 'Athletes enter it at sign-up to auto-join your roster.']].map(([t, d], i) => (
             <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <span style={{ background: 'var(--primary)', color: '#fff', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--fs-1)', fontWeight: 800, flexShrink: 0 }}>{i + 1}</span>
+              <span style={{ background: 'var(--primary)', color: '#fff', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--fs-1)', fontWeight: 800, lineHeight: 1, flexShrink: 0 }}>{i + 1}</span>
               <span><strong>{t}</strong> — {d}</span>
             </div>
           ))}
@@ -1118,7 +1118,7 @@ function DashboardPageInner() {
                   <Icon name={item.icon} size={17} />
                   <span style={{ flex: 1 }}>{item.label}</span>
                   {unread > 0 && (
-                    <span style={{ background: 'var(--primary)', color: '#fff', borderRadius: 99, minWidth: 18, height: 18, fontSize: 'var(--fs-1)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                    <span style={{ background: 'var(--primary)', color: '#fff', borderRadius: 99, minWidth: 18, minHeight: 18, lineHeight: 1, fontSize: 'var(--fs-1)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
                       {unread}
                     </span>
                   )}
@@ -1132,7 +1132,7 @@ function DashboardPageInner() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <Avatar initials={coachInitials} size={34} bg="linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)" />
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 'var(--fs-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#fff' }}>{coachName}</div>
+                <div style={{ fontWeight: 700, fontSize: 'var(--fs-3)', overflowWrap: 'anywhere', color: '#fff' }}>{coachName}</div>
                 {coachSport && <div style={{ fontSize: 'var(--fs-1)', color: 'rgba(255,255,255,0.45)' }}>{coachSport}</div>}
               </div>
             </div>
@@ -1210,7 +1210,7 @@ function DashboardPageInner() {
                 </div>
 
                 {/* Stats — 3 cards with delta sub-text */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
                   {([
                     // "active" counts athletes who have actually opened their
                     // portal, matching the ACTIVE/PENDING badges on the roster.
@@ -1279,7 +1279,7 @@ function DashboardPageInner() {
                               {(ev.title[0] ?? '?').toUpperCase()}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: 'var(--fs-2)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</div>
+                              <div style={{ fontWeight: 700, fontSize: 'var(--fs-2)', color: 'var(--text)', overflowWrap: 'anywhere' }}>{ev.title}</div>
                               {ev.event_type && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-2)', marginTop: 1 }}>{ev.event_type}</div>}
                             </div>
                             <Icon name="arrow" size={13} strokeWidth={1.8} />
@@ -1359,11 +1359,11 @@ function DashboardPageInner() {
                               </div>
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                                <span style={{ fontWeight: 700, fontSize: 'var(--fs-2)', color: 'var(--text)' }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</span>
-                                <span style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)' }}>· {ago}</span>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 700, fontSize: 'var(--fs-2)', color: 'var(--text)', minWidth: 0, overflowWrap: 'anywhere' }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</span>
+                                <span style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>· {ago}</span>
                               </div>
-                              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.session_name ?? 'Session'}</div>
+                              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 2, overflowWrap: 'anywhere' }}>{s.session_name ?? 'Session'}</div>
                             </div>
                             <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, padding: '3px 7px', borderRadius: 99, letterSpacing: 0.3, flexShrink: 0, ...(s.shared_with_athlete ? { color: 'var(--primary-dark)', background: 'var(--primary-light)', border: '1px solid var(--success-border)' } : { color: 'var(--text-2)', background: 'var(--border-soft)', border: '1px solid var(--border)' }) }}>
                               {s.shared_with_athlete ? 'SHARED' : 'DRAFT'}
@@ -1410,7 +1410,7 @@ function DashboardPageInner() {
                             onClick={() => router.push(`/athletes/${a.id}`)}
                             aria-label={`Open ${a.first_name} ${a.last_name ?? ''}`.trim() + (unread > 0 ? `, ${unread} unread` : '')}
                             style={{ minWidth: 78, background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '12px 8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', flexShrink: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center' }}>
-                            {unread > 0 && <div style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 99, background: 'var(--coach-color)', color: '#fff', fontSize: 'var(--fs-1)', fontWeight: 800, padding: '0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</div>}
+                            {unread > 0 && <div style={{ position: 'absolute', top: 6, right: 6, minWidth: 16, minHeight: 16, lineHeight: 1, borderRadius: 99, background: 'var(--coach-color)', color: '#fff', fontSize: 'var(--fs-1)', fontWeight: 800, padding: '0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</div>}
                             <div style={{ width: 42, height: 42, borderRadius: '50%', background: tone, color: '#fff', fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               {(a.first_name?.[0] ?? '?').toUpperCase()}
                             </div>
@@ -1463,15 +1463,15 @@ function DashboardPageInner() {
                           <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 3 }}>Set your invite code</div>
                           <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>Athletes enter this code when signing up to join your roster automatically.</div>
                           {onboardStep.code ? (
-                            <div style={{ fontFamily: 'monospace', fontSize: 'var(--fs-4)', fontWeight: 900, color: 'var(--primary-dark)', background: 'var(--primary-light)', borderRadius: 8, padding: '6px 12px', display: 'inline-block', letterSpacing: 1 }}>{inviteCode}</div>
+                            <div style={{ fontFamily: 'monospace', fontSize: 'var(--fs-4)', fontWeight: 900, color: 'var(--primary-dark)', background: 'var(--primary-light)', borderRadius: 8, padding: '6px 12px', display: 'inline-block', maxWidth: '100%', overflowWrap: 'anywhere', letterSpacing: 1 }}>{inviteCode}</div>
                           ) : (
-                            <div style={{ display: 'flex', gap: 8 }}>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               <input
                                 className="input"
                                 value={codeDraft}
                                 onChange={e => setCodeDraft(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
                                 placeholder="coachsmith4821"
-                                style={{ fontFamily: 'monospace', fontWeight: 700, maxWidth: 200 }}
+                                style={{ fontFamily: 'monospace', fontWeight: 700, flex: '1 1 140px', minWidth: 0, maxWidth: 200 }}
                               />
                               <button className="btn btn-primary" onClick={saveCode} disabled={codeSaving || !codeDraft.trim()}>
                                 {codeSaving ? '…' : 'Save'}
@@ -1510,8 +1510,8 @@ function DashboardPageInner() {
                       {inviteCode && (
                         <div style={{ background: 'var(--text)', color: 'var(--bg)', borderRadius: 14, padding: '16px 20px' }}>
                           <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Share this with your athletes</div>
-                          <div style={{ fontFamily: 'monospace', fontSize: 24, fontWeight: 900, letterSpacing: 2, marginBottom: 14, color: 'var(--bg)' }}>{inviteCode}</div>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <div style={{ fontFamily: 'monospace', fontSize: 24, fontWeight: 900, letterSpacing: 2, marginBottom: 14, color: 'var(--bg)', overflowWrap: 'anywhere' }}>{inviteCode}</div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                             <button
                               className="btn"
                               onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!'); setTimeout(() => setCodeMsg(''), 2000) }}
@@ -1546,8 +1546,8 @@ function DashboardPageInner() {
               </div>
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <input className="input" placeholder="Search…" value={athleteSearch} onChange={e => setAthleteSearch(e.target.value)} style={{ maxWidth: 260 }} />
-                <div style={{ display: 'flex', gap: 4 }}>
+                <input className="input" placeholder="Search…" value={athleteSearch} onChange={e => setAthleteSearch(e.target.value)} style={{ flex: '1 1 180px', minWidth: 0, maxWidth: 260 }} />
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {(['all','ACTIVE','INVITED','INACTIVE'] as const).map(f => (
                     <button key={f} onClick={() => setAthleteFilter(f)} style={{ padding: '7px 12px', borderRadius: 7, border: '1.5px solid', borderColor: athleteFilter === f ? 'var(--primary)' : 'var(--border)', background: athleteFilter === f ? 'var(--primary)' : 'transparent', color: athleteFilter === f ? '#fff' : 'var(--text-2)', fontSize: 'var(--fs-2)', fontWeight: athleteFilter === f ? 700 : 400, cursor: 'pointer' }}>
                       {f === 'all' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
@@ -1594,7 +1594,7 @@ function DashboardPageInner() {
                         : 'No athletes match your search.'}
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
                   {filteredAthletes.map(a => {
                     const status = (a.status ?? 'INVITED').toUpperCase()
                     // Uncapped counts. Falls back to the truncated client list
@@ -1613,10 +1613,10 @@ function DashboardPageInner() {
                           <Avatar initials={(a.first_name?.[0] ?? '?').toUpperCase()} size={44} bg="var(--coach-color)" />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              <Link href={`/athletes/${a.id}`} style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', textDecoration: 'none' }}>{a.first_name} {a.last_name}</Link>
+                              <Link href={`/athletes/${a.id}`} style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', textDecoration: 'none', overflowWrap: 'anywhere' }}>{a.first_name} {a.last_name}</Link>
                               <span className={`badge ${status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 'var(--fs-1)' }}>{status}</span>
                             </div>
-                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>{a.email}</div>
+                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{a.email}</div>
                             <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 3 }}>
                               {lastDate ? `Last session ${formatSessionDate({ session_date: lastDate }, {})}` : 'No sessions yet'}
                               {count > 0 && ` · ${count} total`}
@@ -1632,7 +1632,7 @@ function DashboardPageInner() {
                             )}
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
                           <Link href={`/athletes/${a.id}`} className="btn btn-ghost" style={{ flex: 1, textAlign: 'center', fontSize: 'var(--fs-2)', padding: 7 }}>View</Link>
                           <button onClick={() => { setQuickSessionAthleteId(a.id); setQuickSessionGroupId(undefined); setQuickSessionOpen(true) }} className="btn btn-primary" style={{ fontSize: 'var(--fs-2)', padding: '7px 12px' }} title="Record session">
                             <Icon name="mic" size={14} />
@@ -1681,13 +1681,17 @@ function DashboardPageInner() {
                     const nonMembers = athletes.filter(a => !g.member_ids.includes(a.id))
                     return (
                       <div key={g.id} className="card" style={{ overflow: 'hidden', padding: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', flexWrap: 'wrap' }}>
                           <div style={{ width: 12, height: 12, borderRadius: '50%', background: g.color, flexShrink: 0 }} />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 800, fontSize: 15 }}>{g.name}</div>
-                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>{g.member_count} athlete{g.member_count !== 1 ? 's' : ''}{g.description ? ` · ${g.description}` : ''}</div>
+                          {/* A 160px basis, not `flex: 1`: it is what decides whether the
+                              controls below fit on this line or wrap to their own. With a
+                              bare `flex: 1` they always fit, and the squad name is left
+                              wrapping one letter per line on a phone. */}
+                          <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+                            <div style={{ fontWeight: 800, fontSize: 15, overflowWrap: 'anywhere' }}>{g.name}</div>
+                            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{g.member_count} athlete{g.member_count !== 1 ? 's' : ''}{g.description ? ` · ${g.description}` : ''}</div>
                           </div>
-                          <div style={{ display: 'flex', gap: 6 }}>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 'auto' }}>
                             <button onClick={() => { setQuickSessionAthleteId(undefined); setQuickSessionGroupId(g.id); setQuickSessionOpen(true) }} className="btn btn-primary" style={{ fontSize: 'var(--fs-2)', padding: '6px 10px', gap: 5 }}>
                               <Icon name="mic" size={13} /> Record
                             </button>
@@ -1710,9 +1714,9 @@ function DashboardPageInner() {
                               : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
                                   {members.map(a => (
-                                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                                      <span style={{ fontSize: 'var(--fs-3)' }}>{a.first_name} {a.last_name}</span>
-                                      <button onClick={() => removeMemberFromGroup(g.id, a.id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+                                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 10px', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                                      <span style={{ fontSize: 'var(--fs-3)', minWidth: 0, overflowWrap: 'anywhere' }}>{a.first_name} {a.last_name}</span>
+                                      <button onClick={() => removeMemberFromGroup(g.id, a.id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
                                     </div>
                                   ))}
                                 </div>
@@ -1720,7 +1724,7 @@ function DashboardPageInner() {
                             }
                             {nonMembers.length > 0 && (
                               <div style={{ display: 'flex', gap: 8 }}>
-                                <select className="input" value={addMemberMap[g.id] ?? ''} onChange={e => setAddMemberMap(prev => ({ ...prev, [g.id]: e.target.value }))} style={{ flex: 1, fontSize: 'var(--fs-3)' }}>
+                                <select className="input" value={addMemberMap[g.id] ?? ''} onChange={e => setAddMemberMap(prev => ({ ...prev, [g.id]: e.target.value }))} style={{ flex: 1, minWidth: 0, maxWidth: '100%', fontSize: 'var(--fs-3)' }}>
                                   <option value="">Add athlete…</option>
                                   {nonMembers.map(a => <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>)}
                                 </select>
@@ -1777,8 +1781,8 @@ function DashboardPageInner() {
                 </button>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <input className="input" placeholder="Search sessions…" value={sessionsSearch} onChange={e => setSessionsSearch(e.target.value)} style={{ maxWidth: 260 }} onKeyDown={e => e.key === 'Enter' && fetchAllSessions(sessionsSearch, sessionsAthleteFilter)} />
-                <select className="input" value={sessionsAthleteFilter} onChange={e => setSessionsAthleteFilter(e.target.value)} style={{ maxWidth: 180 }}>
+                <input className="input" placeholder="Search sessions…" value={sessionsSearch} onChange={e => setSessionsSearch(e.target.value)} style={{ flex: '1 1 180px', minWidth: 0, maxWidth: 260 }} onKeyDown={e => e.key === 'Enter' && fetchAllSessions(sessionsSearch, sessionsAthleteFilter)} />
+                <select className="input" value={sessionsAthleteFilter} onChange={e => setSessionsAthleteFilter(e.target.value)} style={{ flex: '0 1 180px', minWidth: 0, maxWidth: 180 }}>
                   <option value="">All athletes</option>
                   {athletes.map(a => <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>)}
                 </select>
@@ -1811,8 +1815,8 @@ function DashboardPageInner() {
                               <Avatar initials={a ? `${a.first_name[0]}${a.last_name[0]}`.toUpperCase() : '?'} size={38} bg="var(--coach-color)" />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                  <span style={{ fontWeight: 800, fontSize: 14 }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</span>
-                                  {s.session_name && <span style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)' }}>— {s.session_name}</span>}
+                                  <span style={{ fontWeight: 800, fontSize: 14, overflowWrap: 'anywhere' }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</span>
+                                  {s.session_name && <span style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>— {s.session_name}</span>}
                                   {s.shared_with_athlete && <span className="badge badge-active" style={{ fontSize: 'var(--fs-1)' }}>Shared</span>}
                                 </div>
                                 <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 2 }}>{formatSessionDate(s, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</div>
@@ -1938,7 +1942,7 @@ function DashboardPageInner() {
           backdropFilter: 'blur(14px)',
           WebkitBackdropFilter: 'blur(14px)',
           borderTop: '1px solid var(--border)',
-          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 2,
+          display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 2,
           alignItems: 'center',
           padding: '8px 6px',
           paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
@@ -1982,7 +1986,7 @@ function DashboardPageInner() {
             const unread = item.key === 'messages' ? totalUnreadAll : 0
             return (
               <button key={item.key} onClick={() => setTab(item.key)} style={{
-                background: 'none', border: 'none', padding: 4, position: 'relative',
+                background: 'none', border: 'none', padding: 4, position: 'relative', minWidth: 0,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
                 color: active ? 'var(--text)' : 'var(--text-muted)',
                 cursor: 'pointer',
@@ -1991,7 +1995,7 @@ function DashboardPageInner() {
                 <div style={{ position: 'relative' }}>
                   <Icon name={item.icon} size={18} strokeWidth={active ? 2.2 : 1.8} />
                   {unread > 0 && (
-                    <span style={{ position: 'absolute', top: -3, right: -7, minWidth: 13, height: 13, borderRadius: 99, background: 'var(--coach-color)', color: '#fff', fontSize: 'var(--fs-1)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>{unread > 9 ? '9+' : unread}</span>
+                    <span style={{ position: 'absolute', top: -6, right: -9, minWidth: 16, minHeight: 16, lineHeight: 1, borderRadius: 99, background: 'var(--coach-color)', color: '#fff', fontSize: 'var(--fs-1)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{unread > 9 ? '9+' : unread}</span>
                   )}
                 </div>
                 <span style={{ fontSize: 'var(--fs-1)', fontWeight: active ? 800 : 600, letterSpacing: 0.2 }}>{item.label}</span>
@@ -2023,9 +2027,9 @@ function DashboardPageInner() {
                 <input className="input" type="email" placeholder="alex@example.com" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} />
               </div>
               {addMsg && <p style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: addMsg.includes('invited') ? 'var(--success)' : 'var(--danger)', margin: 0 }}>{addMsg}</p>}
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button className="btn btn-ghost" onClick={() => { setShowAddAthlete(false); setAddMsg('') }} style={{ flex: 1 }}>Cancel</button>
-                <button className="btn btn-primary btn-lg" onClick={createAthlete} disabled={addLoading} style={{ flex: 2 }}>{addLoading ? 'Inviting…' : 'Send Invite'}</button>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
+                <button className="btn btn-ghost" onClick={() => { setShowAddAthlete(false); setAddMsg('') }} style={{ flex: '1 1 120px' }}>Cancel</button>
+                <button className="btn btn-primary btn-lg" onClick={createAthlete} disabled={addLoading} style={{ flex: '2 1 180px' }}>{addLoading ? 'Inviting…' : 'Send Invite'}</button>
               </div>
             </div>
           </div>
@@ -2036,13 +2040,13 @@ function DashboardPageInner() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
           <div className="card-lg" style={{ width: '100%', maxWidth: 440, padding: 26 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-              <div>
-                <div style={{ fontWeight: 900, fontSize: 17 }}>Add Event — {calTitle}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 900, fontSize: 17, overflowWrap: 'anywhere' }}>Add Event — {calTitle}</div>
                 <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 2 }}>
                   {new Date(addEventModal.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
                 </div>
               </div>
-              <button onClick={() => setAddEventModal(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-muted)' }}>×</button>
+              <button onClick={() => setAddEventModal(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0 }}>×</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
               <div>
@@ -2073,16 +2077,16 @@ function DashboardPageInner() {
                 </div>
               )}
               {(calMode === 'athlete' || calMode === 'group') && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 'var(--fs-3)', padding: '10px 12px', background: alsoAddToCoach ? 'var(--primary-light)' : 'var(--bg)', border: `1.5px solid ${alsoAddToCoach ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', cursor: 'pointer', fontSize: 'var(--fs-3)', padding: '10px 12px', background: alsoAddToCoach ? 'var(--primary-light)' : 'var(--bg)', border: `1.5px solid ${alsoAddToCoach ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 8 }}>
                   <input type="checkbox" checked={alsoAddToCoach} onChange={e => setAlsoAddToCoach(e.target.checked)} style={{ width: 15, height: 15, accentColor: 'var(--primary)' }} />
                   <span style={{ fontWeight: alsoAddToCoach ? 700 : 400 }}>Also add to my personal calendar</span>
                   <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--text-muted)' }}>prevents double-booking</span>
                 </label>
               )}
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-              <button className="btn btn-ghost" onClick={() => { setAddEventModal(null); setAlsoAddToCoach(false) }} style={{ flex: 1 }}>Cancel</button>
-              <button className="btn btn-primary btn-lg" onClick={saveEvent} disabled={eventSaving || !eventForm.title.trim()} style={{ flex: 2 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
+              <button className="btn btn-ghost" onClick={() => { setAddEventModal(null); setAlsoAddToCoach(false) }} style={{ flex: '1 1 120px' }}>Cancel</button>
+              <button className="btn btn-primary btn-lg" onClick={saveEvent} disabled={eventSaving || !eventForm.title.trim()} style={{ flex: '2 1 180px' }}>
                 {eventSaving ? 'Saving…' : calMode === 'group' ? 'Add for Group' : 'Add to Calendar'}
               </button>
             </div>
@@ -2102,11 +2106,11 @@ function DashboardPageInner() {
             <p style={{ fontSize: 14, color: 'var(--text-2)', margin: '0 0 20px', lineHeight: 1.6 }}>
               This will permanently delete <strong>{deleteConfirmAthlete.first_name} {deleteConfirmAthlete.last_name}</strong> and all their sessions, notes, and data. This cannot be undone.
             </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn btn-ghost" onClick={() => setDeleteConfirmAthlete(null)} disabled={deleteLoading} style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn btn-ghost" onClick={() => setDeleteConfirmAthlete(null)} disabled={deleteLoading} style={{ flex: '1 1 120px' }}>
                 Cancel
               </button>
-              <button className="btn btn-danger btn-lg" onClick={confirmDelete} disabled={deleteLoading} style={{ flex: 1, fontWeight: 800 }}>
+              <button className="btn btn-danger btn-lg" onClick={confirmDelete} disabled={deleteLoading} style={{ flex: '1 1 150px', fontWeight: 800 }}>
                 {deleteLoading ? 'Deleting…' : 'Yes, delete'}
               </button>
             </div>

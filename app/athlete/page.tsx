@@ -103,6 +103,15 @@ function AthleteIcon({ name, size = 20, strokeWidth = 2 }: { name: string; size?
   }
 }
 
+/**
+ * A text link that has to sit on a type baseline but still be tappable.
+ *
+ * The padding takes the box to the 44px touch minimum and the matching negative
+ * margin gives it back to the layout, so the row keeps the height and the
+ * baseline it had while the finger target stops being a 20px-tall word.
+ */
+const TAP_INLINE: React.CSSProperties = { padding: '12px 4px', margin: '-12px -4px', minHeight: 44, whiteSpace: 'nowrap', flexShrink: 0 }
+
 /** Local date key (YYYY-MM-DD), matching what the API stores in check_date. */
 function dateKey(d: Date): string {
   return new Intl.DateTimeFormat('en-CA').format(d)
@@ -1187,20 +1196,37 @@ export default function AthletePage() {
                         {sessionToday ? 'Checked in for today’s session' : 'Checked in today'}
                       </span>
                       <span style={{ flex: 1 }} />
-                      <button onClick={() => setTab('wellness')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 'var(--fs-1)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                      <button onClick={() => setTab('wellness')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 'var(--fs-1)', fontWeight: 600, cursor: 'pointer', ...TAP_INLINE }}>
                         Trends →
                       </button>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                    {/* Three across on a phone, five on a wider screen.
+                        Five across stopped fitting when the furniture floor went
+                        to 13px: SORENESS measures 74px and a fifth of a 320px
+                        card is 44px, so the row ran 15px past the right edge of
+                        the viewport — and because html/body clip horizontally,
+                        it was cut rather than scrollable. A child reading her own
+                        soreness score simply could not see it.
+
+                        `minmax(0, 1fr)` rather than `1fr`, because a bare `1fr`
+                        has an `auto` minimum: the SORENESS column was sizing
+                        itself to its longest word and stealing 20px from every
+                        other column, so identical scores drew bars of different
+                        lengths. The columns are now equal at every width.
+
+                        The label no longer truncates. It said `nowrap` +
+                        `ellipsis`, which at 13px rendered "SORENES…" — an
+                        abbreviation of a fact about her body. It wraps instead. */}
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, minmax(0, 1fr))' : 'repeat(5, minmax(0, 1fr))', gap: 8 }}>
                       {WELLNESS_METRICS.map(({ key, label }) => {
                         const score = todayWellness[key] as number | null
                         const pct = score ? (score / 5) * 100 : 0
                         return (
-                          <div key={key}>
+                          <div key={key} style={{ minWidth: 0 }}>
                             <div style={{ height: 4, background: 'var(--border-soft)', borderRadius: 2, overflow: 'hidden' }}>
                               <div style={{ width: `${pct}%`, height: '100%', background: metricColor(key, score), borderRadius: 2 }} />
                             </div>
-                            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)', marginTop: 5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.25, overflowWrap: 'anywhere' }}>
                               {label}
                             </div>
                             <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text)', marginTop: 1 }}>{score ?? '—'}</div>
@@ -1319,7 +1345,7 @@ export default function AthletePage() {
                     From your coach
                   </div>
                   {sessions.length > 3 && (
-                    <button onClick={() => setTab('sessions')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 'var(--fs-1)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                    <button onClick={() => setTab('sessions')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 'var(--fs-1)', fontWeight: 600, cursor: 'pointer', ...TAP_INLINE }}>
                       All {sessions.length} →
                     </button>
                   )}
@@ -1334,17 +1360,28 @@ export default function AthletePage() {
                       style={{ padding: '13px 15px', textDecoration: 'none', color: 'inherit', display: 'block', position: 'relative' }}
                     >
                       {/* The newest one is the only thing marked — an unread-ish
-                          cue that doesn't need its own panel. */}
-                      {i === 0 && (
-                        <span style={{ position: 'absolute', top: 13, right: 15, display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--coach-color)' }} />
-                          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--coach-color)', letterSpacing: '0.1em' }}>NEWEST</span>
-                        </span>
-                      )}
-                      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                        {formatSessionDate(s)}
+                          cue that doesn't need its own panel.
+
+                          In flow, not absolutely positioned over the card with
+                          the date and the title each reserving a hard 62px for
+                          it. 62 was the badge's width when this furniture was
+                          11px; at 13px the badge measures 72, so the number it
+                          had been sized against no longer existed and the date
+                          line — which reserved nothing at all — was free to run
+                          underneath it. A flex row reserves exactly what the
+                          badge takes, at whatever size the type happens to be. */}
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                        <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', minWidth: 0 }}>
+                          {formatSessionDate(s)}
+                        </div>
+                        {i === 0 && (
+                          <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--coach-color)' }} />
+                            <span style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--coach-color)', letterSpacing: '0.1em' }}>NEWEST</span>
+                          </span>
+                        )}
                       </div>
-                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-4)', fontWeight: 500, color: 'var(--text)', lineHeight: 1.3, marginTop: 3, paddingRight: i === 0 ? 62 : 0 }}>
+                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-4)', fontWeight: 500, color: 'var(--text)', lineHeight: 1.3, marginTop: 3 }}>
                         {s.session_name ?? s.title ?? 'Coaching session'}
                       </div>
                       {s.summary && (
@@ -1404,7 +1441,10 @@ export default function AthletePage() {
                                   aria-pressed={on}
                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); void respondToSession(s.id, opt.value) }}
                                   style={{
-                                    padding: '7px 12px', minHeight: 34, borderRadius: 999,
+                                    // 44, not the 34 this was written with. 34 was
+                                    // already under the 44px touch minimum and the
+                                    // taller label ate what slack was left.
+                                    padding: '7px 12px', minHeight: 44, borderRadius: 999,
                                     border: `1px solid ${on ? opt.color : 'var(--border)'}`,
                                     background: on ? opt.tint : 'var(--card)',
                                     color: on ? opt.color : 'var(--text-2)',
@@ -1510,15 +1550,20 @@ export default function AthletePage() {
                           textAlign: 'left',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        {/* minWidth: 0 on both, so a long session name wraps
+                            inside this group instead of setting a floor under
+                            it. The card clips (overflow: hidden), so anything
+                            this group pushes past the card's edge — the chevron
+                            included — is cut rather than scrolled to. */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
                           {/* Was an emoji microphone in a gradient tile. The
                               coach side uses drawn icons throughout; matching
                               that keeps one visual language across both. */}
                           <div style={{ width: 40, height: 40, borderRadius: 11, background: isOpen ? 'var(--primary)' : 'var(--athlete-light)', color: isOpen ? 'var(--bg)' : 'var(--primary-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s ease' }}>
                             <AthleteIcon name="mic" size={17} strokeWidth={2} />
                           </div>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{s.session_name ?? s.title ?? 'Session'}</div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)', overflowWrap: 'anywhere' }}>{s.session_name ?? s.title ?? 'Session'}</div>
                             <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                               <span>{formatSessionDate(s)}</span>
                               {s.sport_context && <span>· {s.sport_context}</span>}
@@ -1549,7 +1594,7 @@ export default function AthletePage() {
                             href={`/sessions/${s.id}`}
                             style={{
                               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                              gap: 8, marginTop: 14, padding: '10px 13px', borderRadius: 10,
+                              gap: 8, marginTop: 14, padding: '11px 13px', minHeight: 44, borderRadius: 10,
                               background: 'var(--primary-light)', color: 'var(--primary-dark)',
                               textDecoration: 'none', fontSize: 'var(--fs-3)', fontWeight: 700,
                             }}
@@ -1650,7 +1695,10 @@ export default function AthletePage() {
 
                           {/* My private notes for this session */}
                           <div style={{ marginTop: 20 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            {/* Wraps rather than squeezing: at 13/14px the two
+                                together measure more than a 320px card, and
+                                neither of them is droppable. */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
                               <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                 My Private Notes
                               </div>
@@ -1864,8 +1912,8 @@ export default function AthletePage() {
             <p className="quote-strip">&quot;{getDailyQuote('athlete')}&quot;</p>
 
           <div className="card" style={{ padding: 24 }}>
-            <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
+            <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0 }}>
                 <div className="section-title">My Calendar</div>
                 <div className="section-sub">
                   Coach-scheduled events (in blue/coloured) plus your own personal entries. Coaches only see what they&apos;ve added.
@@ -1914,18 +1962,27 @@ export default function AthletePage() {
                   {rsvpEvents.map((evt) => {
                     const status = rsvpMap[evt.id]
                     return (
-                      <div key={evt.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700 }}>{evt.title}</div>
+                      // The three answers drop onto their own line rather than
+                      // being crushed against the event title. On a 320px
+                      // screen the row measured 357px wide — 37px of it, most
+                      // of the "✗ No" button, sat past the right edge of the
+                      // viewport where the horizontal clip makes it invisible
+                      // rather than reachable. The buttons had also been
+                      // squeezed narrower than their own labels, so "✗ No" was
+                      // stacking its tick above its word.
+                      <div key={evt.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
+                        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, overflowWrap: 'anywhere' }}>{evt.title}</div>
                           <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-muted)' }}>{new Date(evt.event_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}{evt.event_time ? ` at ${evt.event_time}` : ''}</div>
                         </div>
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                           {(['yes', 'maybe', 'no'] as const).map((s) => (
                             <button
                               key={s}
                               onClick={() => sendRsvp(evt.id, s)}
                               style={{
-                                padding: '5px 10px', borderRadius: 6, border: '1.5px solid',
+                                padding: '5px 12px', minHeight: 44, flexShrink: 0, whiteSpace: 'nowrap',
+                                borderRadius: 6, border: '1.5px solid',
                                 borderColor: status === s ? (s === 'yes' ? 'var(--success)' : s === 'no' ? 'var(--danger)' : 'var(--warning)') : 'var(--border)',
                                 background: status === s ? (s === 'yes' ? 'var(--success-light)' : s === 'no' ? 'var(--danger-light)' : 'var(--warning-light)') : 'transparent',
                                 color: status === s ? (s === 'yes' ? 'var(--success)' : s === 'no' ? 'var(--danger)' : 'var(--warning)') : 'var(--text-2)',
@@ -1959,7 +2016,9 @@ export default function AthletePage() {
                   style={{
                     display: isMobile ? 'inline-block' : 'block',
                     width: isMobile ? 'auto' : '100%',
-                    padding: isMobile ? '6px 12px' : '9px 12px',
+                    // 11px, not 6: at 15px a 6px pad gave a 37px control,
+                    // under the 44px touch minimum.
+                    padding: isMobile ? '11px 12px' : '9px 12px',
                     borderRadius: 8,
                     border: `1.5px solid ${!noteFilter ? 'var(--athlete-color)' : 'var(--border)'}`,
                     background: !noteFilter ? 'var(--athlete-light)' : 'transparent',
@@ -1983,7 +2042,7 @@ export default function AthletePage() {
                       style={{
                         display: isMobile ? 'inline-block' : 'block',
                         width: isMobile ? 'auto' : '100%',
-                        padding: isMobile ? '6px 12px' : '9px 12px',
+                        padding: isMobile ? '11px 12px' : '9px 12px',
                         borderRadius: 8,
                         border: `1.5px solid ${noteFilter === s.id ? 'var(--athlete-color)' : 'var(--border)'}`,
                         background: noteFilter === s.id ? 'var(--athlete-light)' : 'transparent',
@@ -2148,9 +2207,19 @@ export default function AthletePage() {
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           borderTop: '1px solid var(--border)',
-          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 2,
+          // minmax(0, 1fr), not 1fr: at 13px "Messages" is 64px wide and a bare
+          // 1fr takes its longest word as a minimum, so that one track grew to
+          // 63.6 while the other four sat at 59.1 — the whole nav shunted right
+          // and ate its own padding on a 320px screen. The tracks are equal
+          // again, and every label still renders in full.
+          display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 0,
           alignItems: 'center',
-          padding: '8px 6px',
+          // 4px of side padding and no gap, because five labels at 13px need
+          // every pixel of a 320px screen: at 6px and gap 2 the widest two,
+          // CALENDAR and MESSAGES, met with nothing between them. Now the
+          // tightest pair has 2px and the last label ends 3px clear of the
+          // edge. Invisible at 360 and above, where the tracks are 70px.
+          padding: '8px 4px',
           paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
         }}>
           {([
@@ -2162,7 +2231,7 @@ export default function AthletePage() {
           ] as ({ key: Tab; icon: string; label: string } | null)[]).map((item) => {
             if (item === null) {
               return (
-                <div key="fab" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                <div key="fab" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: 0 }}>
                   <button
                     onClick={() => setTab('wellness')}
                     style={{
@@ -2186,7 +2255,7 @@ export default function AthletePage() {
             return (
               <button key={item.key} onClick={() => setTab(item.key)} style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-                padding: '6px 0',
+                padding: '6px 0', minWidth: 0,
                 border: 'none', background: 'none', cursor: 'pointer',
                 position: 'relative',
                 color: active ? 'var(--text)' : 'var(--text-muted)',

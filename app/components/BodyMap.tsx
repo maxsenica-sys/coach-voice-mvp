@@ -145,9 +145,10 @@ export default function BodyMap({
          * at 1.3x and left 60px of the card unused, which put the neck at
          * 28.6x20.8 — under the 24px WCAG 2.5.8 minimum on its short side —
          * and the achilles at 16.9 wide. 320 spends that slack: 1.6x, and
-         * every region but the achilles clears 24. The achilles is 13 units
-         * wide in the geometry and cannot be fixed from here; see the note in
-         * lib/body-map.ts before widening it. */
+         * every region but the achilles clears 24 at 390px. The achilles is
+         * 13 units wide and would need 15 to clear it; that is geometry, it
+         * lives in lib/body-map.ts, and it is a decision about the drawing
+         * rather than something this file can fix. */
         style={{ width: '100%', maxWidth: 320, display: 'block', margin: '0 auto', touchAction: 'manipulation' }}
       >
         {regionsFor(view).map((r) => (
