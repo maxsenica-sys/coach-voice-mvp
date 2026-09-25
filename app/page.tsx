@@ -77,7 +77,7 @@ const SN_CSS = `
   background: transparent; border: 0; outline: 0; border-radius: 0;
   color: var(--text); font-family: var(--font-sans); font-size: 16px; font-weight: 500;
 }
-.sn-box input::placeholder { color: var(--text-muted); font-weight: 400; }
+.sn-box input::placeholder { color: var(--text-2); font-weight: 400; }
 .sn-eye {
   flex: none; width: 44px; height: 44px; border-radius: 12px; border: 0; padding: 0;
   display: flex; align-items: center; justify-content: center;
@@ -165,7 +165,7 @@ function Stage() {
   return (
     <div className="sn-stage" aria-hidden="true">
       <div style={{ background: 'radial-gradient(660px 540px at 50% 118%, color-mix(in srgb, var(--ink-mid) 55%, transparent) 0%, transparent 66%)' }} />
-      <div style={{ background: 'radial-gradient(780px 470px at 108% -14%, color-mix(in srgb, var(--primary) 22%, transparent) 0%, transparent 62%), radial-gradient(560px 420px at -16% 12%, color-mix(in srgb, var(--flood) 8%, transparent) 0%, transparent 60%)' }} />
+      <div style={{ background: 'radial-gradient(780px 470px at 108% -14%, color-mix(in srgb, var(--primary) 14%, transparent) 0%, transparent 62%), radial-gradient(560px 420px at -16% 12%, color-mix(in srgb, var(--flood) 8%, transparent) 0%, transparent 60%)' }} />
       <div className="sn-rake" />
       <div style={{
         backgroundImage: 'repeating-linear-gradient(to right, color-mix(in srgb, var(--text) 4.5%, transparent) 0 1px, transparent 1px 39px), repeating-linear-gradient(to bottom, color-mix(in srgb, var(--text) 3%, transparent) 0 1px, transparent 1px 39px)',

@@ -116,7 +116,7 @@ export const viewport: Viewport = {
   // task-switcher header, and it has to read as the same surface as the app
   // underneath it. Equal to globals.css --bg and to theme_color in
   // app/manifest.ts; tools/boot-smoke.mjs asserts all three agree.
-  themeColor: '#1F2421',
+  themeColor: '#FBF8F3',
   // Before the inline <style> below has been parsed the browser paints with
   // its own defaults, and those follow the page's declared colour scheme. The
   // meta tag is the only way to declare it that early. It says the same thing
@@ -225,7 +225,7 @@ const BOOT_CSS = `/* ── The boot shell ────────────�
  * computed --bg and fails if this, the manifest or the launch images drift
  * from it. color-scheme rides with it so the UA's own defaults are dark from
  * the same instant. */
-html { background: #1F2421; color-scheme: dark }
+html { background: #1F2421 }
 
 #cv-boot { display: none }
 html[data-boot] #cv-boot { display: block }
@@ -249,7 +249,6 @@ html[data-boot] #cv-boot { display: block }
      which the rule at the top of this block forbids. The launch image and
      this frame are meant to be the same pixels; tools/boot-smoke.mjs now
      compares them for every device geometry. */
-  line-height: normal;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
 }

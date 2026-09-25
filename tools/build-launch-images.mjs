@@ -68,8 +68,19 @@ const name = (d) => `launch-${d.w * d.dpr}x${d.h * d.dpr}.png`
 /* The resting frame, written out in literals rather than read from
  * globals.css, for the same reason the boot shell inlines them: this picture
  * is painted by an operating system that has never heard of a CSS variable.
- * They must match #cv-boot in app/layout.tsx; tools/boot-smoke.mjs compares
- * the two so a drift is a failed build rather than a visible jump. */
+ * They must match #cv-boot in app/layout.tsx.
+ *
+ * INK_FROM is also the app's own ground — globals.css --bg, the manifest's
+ * background_color and the inline html background in app/layout.tsx. Since
+ * Stadium Night (2026-09-25) the app itself is ink, so this picture, the
+ * Android launch colour, the shell and the app are one ground end to end.
+ *
+ * tools/boot-smoke.mjs holds all of that: it renders the shell's resting
+ * frame at every geometry below, at the device's own pixel ratio, and fails if
+ * a launch image differs from it; and it fails if a launch image's corner is
+ * not the ground the browser computes for --bg. (This comment claimed that
+ * comparison for a week before it existed. In that week the shell's wordmark
+ * sat 7px lower than it does here, because it inherited body's line-height.) */
 const INK_FROM = '#1F2421'
 const INK_TO = '#3A4F38'
 const MARK_FROM = '#6F8E6B'
@@ -81,6 +92,9 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   body {
     background: linear-gradient(160deg, ${INK_FROM} 0%, ${INK_TO} 100%);
     position: relative; overflow: hidden;
+    /* Explicit, and equal to #cv-boot's: the shell pins its own metrics so
+       that neither side inherits them from anywhere. */
+    line-height: normal;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
       "Helvetica Neue", Arial, sans-serif;
   }

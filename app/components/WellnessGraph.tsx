@@ -60,11 +60,15 @@ function LineChart({ checkins, activeMetrics }: { checkins: Checkin[], activeMet
    *
    * Every check-in is still plotted — it keeps its point on every active line.
    * What is rationed is how many of them get a date printed underneath, because
-   * "Sep 21" at 13px wants about 58px of room and the old every-sixth rule put
+   * "Sep 21" at 13px mono wants about 50px of room and the old every-sixth rule put
    * seven of them across a phone. The first and last check-in are always
    * labelled, so the window the chart covers is still stated outright rather
    * than inferred from a gap. */
-  const TICK_W = 58
+  // 80, not 58: the dates are set in mono now, and the check below compares
+  // a centred label against an END-anchored last one, so the room needed is
+  // half of one date plus all of the other plus a gap — "Sep 19" and
+  // "Sep 25" collided at 58.
+  const TICK_W = 80
   const ticks: number[] = []
   if (lastIdx > 0 && chartW > 0) {
     const maxTicks = Math.max(2, Math.floor(chartW / TICK_W))

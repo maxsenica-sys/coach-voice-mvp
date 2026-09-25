@@ -1503,7 +1503,7 @@ function DashboardPageInner() {
               {/* The scoreboard. One enormous number: sessions this week. */}
               <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0, 1.32fr) minmax(0, 1fr)', gap: 9 }}>
                 <div aria-hidden style={{
-                  position: 'absolute', inset: '-10px -12px -10px -14px', zIndex: 0, pointerEvents: 'none',
+                  position: 'absolute', inset: '-10px 30px -10px -14px', zIndex: 0, pointerEvents: 'none',
                   background: `linear-gradient(100deg, ${tint('var(--text)', 5)}, transparent 58%)`,
                   transform: 'skewX(-11deg)', borderLeft: `1px solid ${tint('var(--primary)', 32)}`,
                 }} />
@@ -1920,7 +1920,7 @@ function DashboardPageInner() {
                     </button>
                   </div>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 12, rowGap: 6, marginTop: 10, paddingBottom: 9 }}>
-                    <div aria-hidden style={{ position: 'absolute', inset: '-9px -12px 0 -14px', zIndex: 0, pointerEvents: 'none', background: `linear-gradient(100deg, ${tint('var(--text)', 5)}, transparent 58%)`, transform: 'skewX(-11deg)', borderLeft: `1px solid ${tint('var(--primary)', 32)}` }} />
+                    <div aria-hidden style={{ position: 'absolute', inset: '-9px 30px 0 -14px', zIndex: 0, pointerEvents: 'none', background: `linear-gradient(100deg, ${tint('var(--text)', 5)}, transparent 58%)`, transform: 'skewX(-11deg)', borderLeft: `1px solid ${tint('var(--primary)', 32)}` }} />
                     {([[activeN, 'Active', 'var(--text)'], [pendingN, 'Pending', 'var(--text)'], [athletes.length, 'Total', 'var(--text-2)']] as const).map(([n, label, color], i) => (
                       <div key={label} style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'baseline', gap: 7, marginLeft: i === 2 ? 'auto' : 0, paddingLeft: i === 1 ? 12 : 0, borderLeft: i === 1 ? HAIR_2 : 'none' }}>
                         <span style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 31, lineHeight: 1, letterSpacing: -1.4, color, fontVariantNumeric: 'tabular-nums' }}>{n}</span>

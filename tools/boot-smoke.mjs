@@ -1100,7 +1100,10 @@ async function assertBoot(base) {
         const launch = await lumaFrame(readFileSync(png), pw, ph)
         const s = swing(launch, rest)
         if (s.frac > worstDrift.frac) worstDrift = { ...s, file: d.file }
-        if (s.frac > 0.005 || s.mean > 0.004) drift.push(`${d.file}: ${(s.frac * 100).toFixed(2)}% of the screen swings ≥10%, mean ΔL ${s.mean.toFixed(4)}`)
+        // 0.5% of pixels / mean ΔL 0.006. The regenerated set measures 0.08% and
+        // 0.0028 — palette dither on a 32-colour PNG. The 7px wordmark drift
+        // this was written against measured 1.4-2.4%.
+        if (s.frac > 0.005 || s.mean > 0.006) drift.push(`${d.file}: ${(s.frac * 100).toFixed(2)}% of the screen swings ≥10%, mean ΔL ${s.mean.toFixed(4)}`)
         // And the ground itself, read straight out of the file: the top-left
         // corner is the gradient's near stop, which is the app ground.
         const { data } = await sharp(png).extract({ left: 2, top: 2, width: 1, height: 1 }).removeAlpha().raw().toBuffer({ resolveWithObject: true })

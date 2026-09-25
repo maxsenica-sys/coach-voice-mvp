@@ -118,6 +118,7 @@ const NAV_BTN: React.CSSProperties = {
   background: 'var(--surface-2)', color: 'var(--text-2)', cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   fontFamily: 'var(--font-cast)', fontSize: 20, fontWeight: 700, lineHeight: 1,
+  textTransform: 'uppercase',
 }
 
 function formatMonthYear({ year, month }: { year: number; month: number }) {
@@ -283,7 +284,7 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
                 fontWeight: isToday ? 600 : hasEvents ? 500 : 400,
                 color: isToday ? 'var(--on-primary)' : hasEvents || isSelected ? 'var(--text)' : 'var(--text-2)',
                 background: isToday ? 'var(--flood)' : 'transparent',
-                padding: isToday ? '3px 6px 4px' : '3px 0 4px',
+                padding: isToday ? '3px 4px 4px' : '3px 0 4px',
                 transform: isToday ? 'skewX(-10deg)' : undefined,
               }}>
                 {dayNum}

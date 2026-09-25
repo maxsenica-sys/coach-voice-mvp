@@ -59,7 +59,7 @@ import { PEAKS } from '@/lib/montage-schedule'
  * presentation attribute does not take var(). tools/boot-smoke.mjs measures
  * the glyph against both gradient stops. */
 const MicMark = () => (
-  <svg viewBox="0 0 24 24" width="33" height="33" fill="none" style={{ stroke: 'var(--on-primary)' }} strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+  <svg viewBox="0 0 24 24" width="33" height="33" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
     <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />
     <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" />
   </svg>

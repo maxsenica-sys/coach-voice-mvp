@@ -126,15 +126,17 @@ body { box-shadow: none !important; }
 
 /* ═══ The nameplate — the only ink on the document ═══ */
 .pdf .plate {
-  position: relative; height: 140px; overflow: hidden;
-  background: var(--n-ink); color: var(--n-cream);
+  position: relative; min-height: 140px; padding-bottom: 40px; overflow: hidden;
+  color: var(--n-cream);
+  /* The skewed beam and its sage hairline, drawn as fixed-size backgrounds so
+     nothing inside the plate is wider than the plate. */
+  background:
+    linear-gradient(106deg, transparent 472px, rgba(168,203,160,0.34) 472px, rgba(168,203,160,0.34) 473.5px, transparent 473.5px) 0 0 / 794px 140px no-repeat,
+    linear-gradient(100deg, rgba(245,236,215,0.085), rgba(245,236,215,0) 62%) 0 0 / 520px 100% no-repeat,
+    var(--n-ink);
+  /* The diagonal clip. Content sits above 82% of the height at any width. */
   clip-path: polygon(0 0, 100% 0, 100% 100%, 0 82%);
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
-}
-.pdf .plate .beam {
-  position: absolute; top: -40px; left: -60px; width: 500px; height: 420px;
-  background: linear-gradient(100deg, rgba(245,236,215,0.085), rgba(245,236,215,0) 62%);
-  transform: skewX(-17deg); border-right: 1.5px solid rgba(168,203,160,0.34);
 }
 .pdf .plate .gridlines {
   position: absolute; inset: 0;
@@ -158,7 +160,7 @@ body { box-shadow: none !important; }
 .pdf .plate .stamp .k { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .24em; color: var(--n-cream-2); }
 .pdf .plate .stamp .v { font-family: var(--font-mono); font-weight: 500; font-size: 14px; letter-spacing: .04em; color: var(--n-cream); margin-top: 5px; }
 /* The 39px pitch marking, quoted as one row of ticks under the plate. */
-.pdf .ticks { height: 9px; margin: 0 var(--gut); background-image: repeating-linear-gradient(to right, var(--p-tick) 0 1px, transparent 1px 39px); }
+.pdf .ticks { height: 9px; margin: 0 var(--gut); background-image: linear-gradient(to right, var(--p-tick) 0 1px, transparent 1px); background-size: 39px 9px; background-repeat: repeat-x; }
 
 .pdf .doc { padding: 0 var(--gut) 40px; }
 
@@ -182,15 +184,16 @@ body { box-shadow: none !important; }
 .pdf .meta .v { font-family: var(--font-cast); font-weight: 700; font-size: 20px; letter-spacing: .035em; line-height: 1.05; color: var(--p-ink); margin-top: 7px; text-transform: uppercase; overflow-wrap: anywhere; }
 .pdf .meta .s { font-family: var(--font-mono); font-weight: 400; font-size: 13px; letter-spacing: .02em; color: var(--p-ink-2); margin-top: 6px; overflow-wrap: anywhere; }
 
-/* A section is a table-shaped box so its head is a header group: when the
-   section runs onto another sheet the engine repeats the head there itself. */
-.pdf .section { display: table; width: 100%; table-layout: fixed; border-collapse: collapse; }
-.pdf .section > .sechead { display: table-header-group; break-after: avoid; page-break-after: avoid; }
-.pdf .section > .rows { display: table-row-group; }
+/* A section is a real table so its head is a <thead>: when the section runs
+   onto another sheet, the print engine repeats the head there itself. Only a
+   real <thead> does this in Chromium — a div with display: table-header-group
+   was measured and does not repeat. */
+.pdf .section { width: 100%; table-layout: fixed; border-collapse: collapse; border-spacing: 0; }
+.pdf .section > thead > tr > th { padding: 0; text-align: left; font-weight: inherit; }
+.pdf .section > tbody > tr > td { padding: 0; vertical-align: top; }
 .pdf .sechead .in { display: flex; align-items: baseline; gap: 10px; padding: 22px 0 7px; border-bottom: 1px solid var(--p-rule-2); }
 .pdf .sechead h2 { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .26em; color: var(--p-sage); margin: 0; }
 .pdf .sechead .of { margin-left: auto; font-family: var(--font-mono); font-weight: 500; font-size: 13px; letter-spacing: .05em; color: var(--p-ink-2); white-space: nowrap; }
-.pdf .row { display: block; }
 
 .pdf .pt { display: grid; grid-template-columns: 26px minmax(0, 1fr); align-items: start; padding-top: 10px; break-inside: avoid; page-break-inside: avoid; }
 .pdf .pt .n { font-family: var(--font-mono); font-weight: 500; font-size: 14px; color: var(--p-sage); padding-top: 3px; }
@@ -240,20 +243,19 @@ function pageCss(runRight: string, footLeft: string, footRight: string): string 
   @top-left {
     content: ${CHIP_URL} "  COACHVOICE  ·  SESSION REPORT";
     font-family: var(--font-cast); font-weight: 800; font-size: 15px; letter-spacing: .2em; color: #1F2421;
-    vertical-align: bottom; margin-left: 56px; width: 429px; padding-bottom: 32px; ${ticks}
+    vertical-align: bottom; margin-left: 56px; width: 351px; padding-bottom: 32px; ${ticks}
   }
   @top-right {
     content: ${cssString(runRight)};
-    ${box} text-align: right; vertical-align: bottom; margin-right: 56px; width: 253px; padding-bottom: 36px; ${ticks}
+    ${box} text-align: right; vertical-align: bottom; margin-right: 56px; width: 331px; padding-bottom: 34px; ${ticks}
   }
   @bottom-left {
     content: ${cssString(footLeft)};
-    ${box} vertical-align: top; margin-left: 56px; padding-top: 12px; border-top: 1px solid rgba(31,36,33,0.16);
+    ${box} vertical-align: top; margin-left: 56px; width: 320px; padding-top: 12px; border-top: 1px solid rgba(31,36,33,0.16);
   }
-  @bottom-center { content: ""; border-top: 1px solid rgba(31,36,33,0.16); }
   @bottom-right {
     content: ${cssString(footRight)} " · PAGE " counter(page) " OF " counter(pages);
-    ${box} text-align: right; vertical-align: top; margin-right: 56px; padding-top: 12px; border-top: 1px solid rgba(31,36,33,0.16);
+    ${box} text-align: right; vertical-align: top; margin-right: 56px; width: 362px; padding-top: 12px; border-top: 1px solid rgba(31,36,33,0.16);
   }
 }
 /* Page 1 opens on the nameplate, flush to the top edge, with no running head. */
@@ -359,7 +361,6 @@ export default function SessionPDFPage() {
       <div className="sheet">
         {/* Nameplate */}
         <div className="plate">
-          <div className="beam" />
           <div className="gridlines" />
           <div className="inner">
             <div className="mark" aria-hidden>
@@ -405,22 +406,24 @@ export default function SessionPDFPage() {
               </div>
             )}
             <div>
-              <div className="k">SHARED WITH ATHLETE</div>
-              <div className="v">{session.shared_with_athlete ? 'Yes' : 'No'}</div>
+              <div className="k">SHARED</div>
+              <div className="v">{session.shared_with_athlete ? `Yes — with ${session.athletes?.first_name || 'the athlete'}` : 'No'}</div>
             </div>
           </div>
 
           {/* Summary */}
           {session.summary && (
-            <div className="section">
-              <div className="sechead">
-                <div className="in">
-                  <h2>AI SESSION SUMMARY</h2>
-                  {points && <span className="of">{points.length} {points.length === 1 ? 'POINT' : 'POINTS'}</span>}
-                </div>
-              </div>
-              <div className="rows">
-                <div className="row">
+            <table className="section" role="presentation">
+              <thead className="sechead">
+                <tr><th>
+                  <div className="in">
+                    <h2>AI SESSION SUMMARY</h2>
+                    {points && <span className="of">{points.length} {points.length === 1 ? 'POINT' : 'POINTS'}</span>}
+                  </div>
+                </th></tr>
+              </thead>
+              <tbody>
+                <tr><td>
                   {points
                     ? points.map((p, i) => (
                         <div key={i} className="pt">
@@ -429,9 +432,9 @@ export default function SessionPDFPage() {
                         </div>
                       ))
                     : <p className="prose">{session.summary}</p>}
-                </div>
-              </div>
-            </div>
+                </td></tr>
+              </tbody>
+            </table>
           )}
 
           {/* The focus point — the coach's own forward-looking line */}
@@ -446,16 +449,16 @@ export default function SessionPDFPage() {
 
           {/* Transcript */}
           {paragraphs.length > 0 && (
-            <div className="section">
-              <div className="sechead">
-                <div className="in"><h2>FULL TRANSCRIPT</h2></div>
-              </div>
-              <div className="rows">
-                <div className="row">
+            <table className="section" role="presentation">
+              <thead className="sechead">
+                <tr><th><div className="in"><h2>FULL TRANSCRIPT</h2></div></th></tr>
+              </thead>
+              <tbody>
+                <tr><td>
                   {paragraphs.map((p, i) => <p key={i} className="tp">{p}</p>)}
-                </div>
-              </div>
-            </div>
+                </td></tr>
+              </tbody>
+            </table>
           )}
 
           <div className="endmark"><i /><span>END OF REPORT</span><i /></div>

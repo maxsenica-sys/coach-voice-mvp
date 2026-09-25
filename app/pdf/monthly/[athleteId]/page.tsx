@@ -143,15 +143,17 @@ body { box-shadow: none !important; }
 }
 
 .pdf .plate {
-  position: relative; height: 140px; overflow: hidden;
-  background: var(--n-ink); color: var(--n-cream);
+  position: relative; min-height: 140px; padding-bottom: 40px; overflow: hidden;
+  color: var(--n-cream);
+  /* The skewed beam and its sage hairline, drawn as fixed-size backgrounds so
+     nothing inside the plate is wider than the plate. */
+  background:
+    linear-gradient(106deg, transparent 472px, rgba(168,203,160,0.34) 472px, rgba(168,203,160,0.34) 473.5px, transparent 473.5px) 0 0 / 794px 140px no-repeat,
+    linear-gradient(100deg, rgba(245,236,215,0.085), rgba(245,236,215,0) 62%) 0 0 / 520px 100% no-repeat,
+    var(--n-ink);
+  /* The diagonal clip. Content sits above 82% of the height at any width. */
   clip-path: polygon(0 0, 100% 0, 100% 100%, 0 82%);
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
-}
-.pdf .plate .beam {
-  position: absolute; top: -40px; left: -60px; width: 500px; height: 420px;
-  background: linear-gradient(100deg, rgba(245,236,215,0.085), rgba(245,236,215,0) 62%);
-  transform: skewX(-17deg); border-right: 1.5px solid rgba(168,203,160,0.34);
 }
 .pdf .plate .gridlines {
   position: absolute; inset: 0;
@@ -171,7 +173,7 @@ body { box-shadow: none !important; }
 .pdf .plate .stamp { text-align: right; padding-top: 3px; }
 .pdf .plate .stamp .k { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .24em; color: var(--n-cream-2); }
 .pdf .plate .stamp .v { font-family: var(--font-mono); font-weight: 500; font-size: 14px; letter-spacing: .04em; color: var(--n-cream); margin-top: 5px; }
-.pdf .ticks { height: 9px; margin: 0 var(--gut); background-image: repeating-linear-gradient(to right, var(--p-tick) 0 1px, transparent 1px 39px); }
+.pdf .ticks { height: 9px; margin: 0 var(--gut); background-image: linear-gradient(to right, var(--p-tick) 0 1px, transparent 1px); background-size: 39px 9px; background-repeat: repeat-x; }
 
 .pdf .doc { padding: 0 var(--gut) 40px; }
 
@@ -204,20 +206,22 @@ body { box-shadow: none !important; }
 .pdf .strip .cap { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .16em; color: var(--p-sage); }
 .pdf .strip .cap b { margin-left: auto; font-weight: 700; color: var(--p-ink-2); }
 
-/* A section is table-shaped so its head is a header group: when it runs onto
-   another sheet, the print engine repeats the head there itself. */
-.pdf .section { display: table; width: 100%; table-layout: fixed; border-collapse: collapse; }
-.pdf .section > .sechead { display: table-header-group; break-after: avoid; page-break-after: avoid; }
-.pdf .section > .rows { display: table-row-group; }
+/* A section is a real table so its head is a <thead>: when the section runs
+   onto another sheet, the print engine repeats the head there itself. Only a
+   real <thead> does this in Chromium — a div with display: table-header-group
+   was measured and does not repeat. */
+.pdf .section { width: 100%; table-layout: fixed; border-collapse: collapse; border-spacing: 0; }
+.pdf .section > thead > tr > th { padding: 0; text-align: left; font-weight: inherit; }
+.pdf .section > tbody > tr > td { padding: 0; vertical-align: top; }
 .pdf .sechead .in { display: flex; align-items: baseline; gap: 10px; padding: 22px 0 7px; border-bottom: 1px solid var(--p-rule-2); }
 .pdf .sechead h2 { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .26em; color: var(--p-sage); margin: 0; }
 .pdf .sechead .of { margin-left: auto; font-family: var(--font-mono); font-weight: 500; font-size: 13px; letter-spacing: .05em; color: var(--p-ink-2); text-align: right; }
 
-/* Every session row and every note is atomic: nothing splits mid-entry. */
-.pdf .srow, .pdf .nrow { display: table-row; break-inside: avoid; page-break-inside: avoid; }
-.pdf .srow > .cell, .pdf .nrow > .cell { display: table-cell; border-bottom: 1px solid var(--p-rule); vertical-align: top; }
-.pdf .srow > .cell { padding: 10px 0 11px; }
-.pdf .nrow > .cell { padding: 8px 0 9px; }
+/* Every session row, every note and the wellness table is atomic. */
+.pdf .srow, .pdf .nrow, .pdf .atomic { break-inside: avoid; page-break-inside: avoid; }
+.pdf .section > tbody > tr.srow > td, .pdf .section > tbody > tr.nrow > td { border-bottom: 1px solid var(--p-rule); }
+.pdf .section > tbody > tr.srow > td { padding: 10px 0 11px; }
+.pdf .section > tbody > tr.nrow > td { padding: 8px 0 9px; }
 .pdf .entry { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 16px; align-items: start; }
 .pdf .when { font-family: var(--font-mono); font-weight: 500; font-size: 13px; letter-spacing: .02em; color: var(--p-ink-2); padding-top: 3px; text-transform: uppercase; }
 .pdf .sname { font-family: var(--font-cast); font-weight: 700; font-size: 17px; letter-spacing: .04em; line-height: 1.1; color: var(--p-ink); text-transform: uppercase; overflow-wrap: anywhere; }
@@ -227,14 +231,14 @@ body { box-shadow: none !important; }
 .pdf .bul li p, .pdf .sprose { font-family: var(--font-display); font-weight: 400; font-size: 15px; line-height: 1.4; color: var(--p-ink-2); margin: 0; overflow-wrap: anywhere; }
 .pdf .sprose { margin-top: 6px; white-space: pre-wrap; }
 
-.pdf .tablewrap { padding-top: 6px; break-inside: avoid; page-break-inside: avoid; }
-.pdf table { width: 100%; border-collapse: collapse; }
-.pdf th { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .18em; color: var(--p-sage); text-align: right; padding: 7px 10px 6px 0; border-bottom: 1px solid var(--p-rule-2); white-space: nowrap; }
-.pdf th:first-child { text-align: left; }
-.pdf th:last-child { padding-right: 0; }
-.pdf td { font-family: var(--font-mono); font-weight: 500; font-size: 14px; color: var(--p-ink); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--p-rule); text-align: right; }
-.pdf td.m { font-family: var(--font-sans); font-weight: 700; text-align: left; }
-.pdf td.t { width: 30%; padding-right: 0; }
+.pdf .tablewrap { padding-top: 6px; }
+.pdf .wtable { width: 100%; border-collapse: collapse; }
+.pdf .wtable th { font-family: var(--font-cast); font-weight: 700; font-size: 13px; letter-spacing: .18em; color: var(--p-sage); text-align: right; padding: 7px 10px 6px 0; border-bottom: 1px solid var(--p-rule-2); white-space: nowrap; }
+.pdf .wtable th:first-child { text-align: left; }
+.pdf .wtable th:last-child { padding-right: 0; }
+.pdf .wtable td { font-family: var(--font-mono); font-weight: 500; font-size: 14px; color: var(--p-ink); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--p-rule); text-align: right; }
+.pdf .wtable td.m { font-family: var(--font-sans); font-weight: 700; text-align: left; }
+.pdf .wtable td.t { width: 30%; padding-right: 0; }
 .pdf .track { height: 6px; background: var(--p-wash); border: 1px solid var(--p-rule); border-radius: 3px; overflow: hidden; }
 .pdf .track i { display: block; height: 100%; background: var(--p-sage); }
 .pdf .scale { font-family: var(--font-mono); font-weight: 400; font-size: 13px; letter-spacing: .03em; color: var(--p-ink-2); margin: 9px 0 0; text-transform: uppercase; }
@@ -272,12 +276,13 @@ body { box-shadow: none !important; }
 }
 .pdf .screen-foot b { font-weight: 500; color: var(--p-ink); letter-spacing: .07em; }
 
-.print-only { display: none; }
+.print-only, .print-only-row { display: none; }
 @media print {
   html, body { overflow: visible !important; max-width: none !important; padding: 0 !important; margin: 0 !important; }
   .pdf { --gut: 56px; min-height: 0; }
   .no-print, .not-in-report { display: none !important; }
   .print-only { display: block; }
+  .print-only-row { display: table-row; }
   .pdf .doc { padding-bottom: 0; }
 }
 `
@@ -290,22 +295,21 @@ function pageCss(runRight: string, footLeft: string, footRight: string): string 
   size: A4;
   margin: 105px 0 89px;
   @top-left {
-    content: ${CHIP_URL} "  COACHVOICE  ·  MONTHLY PROGRESS REPORT";
+    content: ${CHIP_URL} "  COACHVOICE  ·  MONTHLY REPORT";
     font-family: var(--font-cast); font-weight: 800; font-size: 15px; letter-spacing: .2em; color: #1F2421;
-    vertical-align: bottom; margin-left: 56px; width: 429px; padding-bottom: 32px; ${ticks}
+    vertical-align: bottom; margin-left: 56px; width: 351px; padding-bottom: 32px; ${ticks}
   }
   @top-right {
     content: ${cssString(runRight)};
-    ${box} text-align: right; vertical-align: bottom; margin-right: 56px; width: 253px; padding-bottom: 36px; ${ticks}
+    ${box} text-align: right; vertical-align: bottom; margin-right: 56px; width: 331px; padding-bottom: 34px; ${ticks}
   }
   @bottom-left {
     content: ${cssString(footLeft)};
-    ${box} vertical-align: top; margin-left: 56px; padding-top: 12px; border-top: 1px solid rgba(31,36,33,0.16);
+    ${box} vertical-align: top; margin-left: 56px; width: 320px; padding-top: 12px; border-top: 1px solid rgba(31,36,33,0.16);
   }
-  @bottom-center { content: ""; border-top: 1px solid rgba(31,36,33,0.16); }
   @bottom-right {
     content: ${cssString(footRight)} " · PAGE " counter(page) " OF " counter(pages);
-    ${box} text-align: right; vertical-align: top; margin-right: 56px; padding-top: 12px; border-top: 1px solid rgba(31,36,33,0.16);
+    ${box} text-align: right; vertical-align: top; margin-right: 56px; width: 362px; padding-top: 12px; border-top: 1px solid rgba(31,36,33,0.16);
   }
 }
 @page :first {
@@ -459,7 +463,6 @@ export default function MonthlyReportPage() {
 
       <div className="sheet">
         <div className="plate">
-          <div className="beam" />
           <div className="gridlines" />
           <div className="inner">
             <div className="mark" aria-hidden>
@@ -535,19 +538,21 @@ export default function MonthlyReportPage() {
 
           {/* Session summaries */}
           {sessions.length > 0 && (
-            <div className="section">
-              <div className="sechead">
-                <div className="in">
-                  <h2>SESSIONS THIS PERIOD</h2>
-                  <span className="of">{sessions.length} RECORDED</span>
-                </div>
-              </div>
-              <div className="rows">
+            <table className="section" role="presentation">
+              <thead className="sechead">
+                <tr><th>
+                  <div className="in">
+                    <h2>SESSIONS THIS PERIOD</h2>
+                    <span className="of">{sessions.length} RECORDED</span>
+                  </div>
+                </th></tr>
+              </thead>
+              <tbody>
                 {sessions.map((s) => {
                   const pts = s.summary ? summaryPoints(s.summary) : null
                   return (
-                    <div key={s.id} className="srow">
-                      <div className="cell">
+                    <tr key={s.id} className="srow">
+                      <td>
                         <div className="entry">
                           <div className="when">
                             {formatSessionDate(s, { weekday: 'short' })}<br />
@@ -560,91 +565,95 @@ export default function MonthlyReportPage() {
                               : s.summary && <p className="sprose">{s.summary}</p>}
                           </div>
                         </div>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   )
                 })}
-              </div>
-            </div>
+              </tbody>
+            </table>
           )}
 
           {/* Wellness summary table */}
           {checkins.length > 0 && (
-            <div className="section">
-              <div className="sechead">
-                <div className="in">
-                  <h2>WELLNESS OVERVIEW</h2>
-                  <span className="of">{checkins.length} {checkins.length === 1 ? 'CHECK-IN' : 'CHECK-INS'}</span>
-                </div>
-              </div>
-              <div className="rows">
-                <div className="tablewrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Metric</th>
-                        <th>Average</th>
-                        <th>Best</th>
-                        <th>Lowest</th>
-                        <th>Of 5</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {WELLNESS_METRICS.map(({ label, key }) => {
-                        const normVals = checkins.map((c) => normalised(c, key)).filter((v): v is number => v !== null)
-                        const mean = avg(normVals)
-                        return (
-                          <tr key={key}>
-                            <td className="m">{label}</td>
-                            <td>{mean}</td>
-                            <td>{normVals.length ? Math.max(...normVals) : '—'}</td>
-                            <td>{normVals.length ? Math.min(...normVals) : '—'}</td>
-                            <td className="t">
-                              <div className="track" aria-hidden>
-                                <i style={{ width: mean === '—' ? 0 : `${(parseFloat(mean) / 5) * 100}%` }} />
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                  <p className="scale">Self-scored 1–5 by {firstName}. Five is good in every row.</p>
-                </div>
-              </div>
-            </div>
+            <table className="section" role="presentation">
+              <thead className="sechead">
+                <tr><th>
+                  <div className="in">
+                    <h2>WELLNESS OVERVIEW</h2>
+                    <span className="of">{checkins.length} {checkins.length === 1 ? 'CHECK-IN' : 'CHECK-INS'}</span>
+                  </div>
+                </th></tr>
+              </thead>
+              <tbody>
+                <tr className="atomic"><td>
+                  <div className="tablewrap">
+                    <table className="wtable">
+                      <thead>
+                        <tr>
+                          <th>Metric</th>
+                          <th>Average</th>
+                          <th>Best</th>
+                          <th>Lowest</th>
+                          <th>Of 5</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {WELLNESS_METRICS.map(({ label, key }) => {
+                          const normVals = checkins.map((c) => normalised(c, key)).filter((v): v is number => v !== null)
+                          const mean = avg(normVals)
+                          return (
+                            <tr key={key}>
+                              <td className="m">{label}</td>
+                              <td>{mean}</td>
+                              <td>{normVals.length ? Math.max(...normVals) : '—'}</td>
+                              <td>{normVals.length ? Math.min(...normVals) : '—'}</td>
+                              <td className="t">
+                                <div className="track" aria-hidden>
+                                  <i style={{ width: mean === '—' ? 0 : `${(parseFloat(mean) / 5) * 100}%` }} />
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    <p className="scale">Self-scored 1–5 by {firstName}. Five is good in every row.</p>
+                  </div>
+                </td></tr>
+              </tbody>
+            </table>
           )}
 
           {/* Notes from athlete.
               On screen the coach sees every note and chooses, one at a time,
-              which to print. In print, only the chosen ones appear; if none
-              are chosen the section does not print at all, and a single line
-              says the notes were left out so the report does not imply there
-              were none. */}
+              which to print. In print only the chosen ones appear; if none are
+              chosen the section does not print at all, and one line says the
+              notes were left out, so the report does not imply there were
+              none. */}
           {notes.length > 0 && (
-            <div className={`section${includedNotes.length === 0 ? ' not-in-report' : ''}`}>
-              <div className="sechead">
-                <div className="in">
-                  <h2>ATHLETE NOTES</h2>
-                  <span className="of no-print">{includedNotes.length} OF {notes.length} INCLUDED</span>
-                  <span className="of print-only">
-                    {includedNotes.length} INCLUDED BY {coachName.toUpperCase()}
-                  </span>
-                </div>
-              </div>
-              <div className="rows">
-                <div className="no-print" style={{ display: 'table-row' }}>
-                  <div style={{ display: 'table-cell' }}>
-                    <p className="pick-intro">
-                      {firstName} wrote these to you, not for a report. None of them prints unless you include it.
-                    </p>
+            <table className={`section${includedNotes.length === 0 ? ' not-in-report' : ''}`} role="presentation">
+              <thead className="sechead">
+                <tr><th>
+                  <div className="in">
+                    <h2>ATHLETE NOTES</h2>
+                    <span className="of no-print">{includedNotes.length} OF {notes.length} INCLUDED</span>
+                    <span className="of print-only">
+                      {includedNotes.length} INCLUDED BY {coachName.toUpperCase()}
+                    </span>
                   </div>
-                </div>
+                </th></tr>
+              </thead>
+              <tbody>
+                <tr className="no-print"><td>
+                  <p className="pick-intro">
+                    {firstName} wrote these to you, not for a report. None of them prints unless you include it.
+                  </p>
+                </td></tr>
                 {notes.map((c, i) => {
                   const on = included.has(i)
                   return (
-                    <div key={i} className={`nrow${on ? '' : ' not-in-report'}`}>
-                      <div className="cell">
+                    <tr key={i} className={`nrow${on ? '' : ' not-in-report'}`}>
+                      <td>
                         <div className="entry">
                           <div className="when">{shortDay(c.check_date)}</div>
                           <div style={{ minWidth: 0 }}>
@@ -656,17 +665,17 @@ export default function MonthlyReportPage() {
                             </label>
                           </div>
                         </div>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   )
                 })}
                 {includedNotes.length > 0 && includedNotes.length < notes.length && (
-                  <div className="print-only">
+                  <tr className="print-only-row"><td>
                     <p className="notes-left">{firstName}’s other check-in notes are not included in this report.</p>
-                  </div>
+                  </td></tr>
                 )}
-              </div>
-            </div>
+              </tbody>
+            </table>
           )}
           {notes.length > 0 && includedNotes.length === 0 && (
             <div className="withheld print-only">

@@ -173,10 +173,9 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
         {open.map((i, idx) => {
           const opt = injuryStatusOption(i.status)
           return (
-          <div key={i.id} style={{
-            paddingBottom: 14, marginBottom: 14, borderBottom: '1px solid var(--border)',
-            ...(idx > 0 ? { paddingTop: 2 } : null),
-          }}>
+          <div key={i.id} style={
+            idx > 0 ? { paddingTop: 14, marginTop: 14, borderTop: '1px solid var(--border)' } : undefined
+          }>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ ...CAST, fontSize: 24, letterSpacing: '0.03em', lineHeight: 1.05, color: 'var(--text)', overflowWrap: 'anywhere', minWidth: 0 }}>
                 {regionLabel(i.body_area)}
@@ -190,8 +189,10 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
               </div>
             )}
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-2)', marginTop: 6, lineHeight: 1.5 }}>
-              Since {i.started_on}
-              {i.expected_return ? ` · back around ${i.expected_return}` : ''}
+              {/* Each date is kept whole: a wrapped line breaks between
+                  phrases, never inside 2026-09-30. */}
+              <span style={{ whiteSpace: 'nowrap' }}>Since {i.started_on}</span>
+              {i.expected_return && <> · <span style={{ whiteSpace: 'nowrap' }}>back around {i.expected_return}</span></>}
             </div>
             {i.note && (
               // The coach's words, in the reading face.
@@ -269,7 +270,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
         })}
 
         {adding && (
-          <div>
+          <div style={open.length > 0 ? { marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' } : undefined}>
             <div style={{ ...EYEBROW, marginBottom: 10 }}>Where is it?</div>
             <BodyMap
               perspective="other"
@@ -353,7 +354,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
         )}
 
         {cleared.length > 0 && (
-          <div style={{ marginTop: 14, borderTop: '1px solid var(--border-soft)', paddingTop: 12 }}>
+          <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <button
               onClick={() => setShowCleared((v) => !v)}
               aria-expanded={showCleared}
@@ -364,7 +365,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
               }}
             >
               <span aria-hidden="true" style={{ display: 'inline-block', transform: showCleared ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>›</span>
-              Cleared ({cleared.length})
+              Cleared <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: 0 }}>({cleared.length})</span>
             </button>
 
             {showCleared && (

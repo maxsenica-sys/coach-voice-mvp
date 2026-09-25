@@ -86,7 +86,7 @@ const SN_CSS = `
   background: transparent; border: 0; outline: 0; border-radius: 0;
   color: var(--text); font-family: var(--font-sans); font-size: 16px; font-weight: 500;
 }
-.sn-box input::placeholder { color: var(--text-muted); font-weight: 400; }
+.sn-box input::placeholder { color: var(--text-2); font-weight: 400; }
 .sn-box input.sn-code { font-family: var(--font-mono); font-size: 20px; letter-spacing: .14em; }
 .sn-box input.sn-code::placeholder { font-family: var(--font-sans); font-size: 15px; letter-spacing: 0; }
 .sn-hint { font-size: 14px; line-height: 1.45; color: var(--text-muted); margin: 8px 0 0; }
@@ -175,7 +175,7 @@ function Stage() {
   return (
     <div className="sn-stage" aria-hidden="true">
       <div style={{ background: 'radial-gradient(660px 540px at 50% 118%, color-mix(in srgb, var(--ink-mid) 55%, transparent) 0%, transparent 66%)' }} />
-      <div style={{ background: 'radial-gradient(780px 470px at 108% -14%, color-mix(in srgb, var(--primary) 22%, transparent) 0%, transparent 62%), radial-gradient(560px 420px at -16% 12%, color-mix(in srgb, var(--flood) 8%, transparent) 0%, transparent 60%)' }} />
+      <div style={{ background: 'radial-gradient(780px 470px at 108% -14%, color-mix(in srgb, var(--primary) 14%, transparent) 0%, transparent 62%), radial-gradient(560px 420px at -16% 12%, color-mix(in srgb, var(--flood) 8%, transparent) 0%, transparent 60%)' }} />
       <div className="sn-rake" />
       <div style={{
         backgroundImage: 'repeating-linear-gradient(to right, color-mix(in srgb, var(--text) 4.5%, transparent) 0 1px, transparent 1px 39px), repeating-linear-gradient(to bottom, color-mix(in srgb, var(--text) 3%, transparent) 0 1px, transparent 1px 39px)',
@@ -484,15 +484,19 @@ export default function SignupPage() {
 
         {/* Lockup */}
         <header className="sn-head">
-          <Link href="/" aria-label="CoachVoice — back to sign in" className="sn-mark" style={{ textDecoration: 'none' }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10.5v.5a7 7 0 0 0 14 0v-.5" /><path d="M12 18.5V21" />
-            </svg>
+          {/* The whole lockup is the way back to sign in, so the target is
+              the lockup's height, not the 30px mark's. */}
+          <Link href="/" aria-label="CoachVoice — back to sign in" style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, textDecoration: 'none' }}>
+            <span className="sn-mark" aria-hidden="true">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10.5v.5a7 7 0 0 0 14 0v-.5" /><path d="M12 18.5V21" />
+              </svg>
+            </span>
+            <span aria-hidden="true">
+              <span className="sn-wordmark" style={{ display: 'block' }}>COACHVOICE</span>
+              <span className="sn-rolecap" style={{ display: 'block' }}>New account</span>
+            </span>
           </Link>
-          <div>
-            <div className="sn-wordmark">COACHVOICE</div>
-            <div className="sn-rolecap">New account</div>
-          </div>
         </header>
 
         {/* Ticker + progress */}

@@ -31,6 +31,7 @@
   --line-2:       rgba(245, 236, 215, 0.19);  /* stronger rule, heads of lists */
   --panel:        rgba(245, 236, 215, 0.045); /* a surface lifted off the ground without a box */
   --ember:        #E39A7A;                    /* rust lifted for ink — 6.83:1 as text */
+  --ink-deep:     #151916;                    /* one step under the ground — a sheet, a stage floor */
   /* Surfaces — ivory / parchment */
   /* Declared, at last.
    *
@@ -765,6 +766,26 @@ input, textarea, select, button {
   appearance: none;
   touch-action: manipulation;
   font-family: inherit;
+}
+/* ...except the two controls whose appearance IS the control.
+ *
+ * `appearance: none` on a checkbox or radio removes the box and the dot and
+ * leaves nothing drawn at all — an invisible tap target the user has no reason
+ * to believe exists. It was taking all nine of this app's checkboxes and radios
+ * with it, including the coach's "share with athlete" choice in the recorder
+ * and a parent's notification settings, unless a call site happened to put the
+ * appearance back. Found during the Stadium Night build, but it predates it.
+ *
+ * accent-color draws the checked state in the lifted sage, so it reads on ink,
+ * and color-scheme: dark (set in :root) gives the unchecked box a dark fill. */
+input[type='checkbox'],
+input[type='radio'] {
+  -webkit-appearance: auto;
+  appearance: auto;
+  accent-color: var(--primary);
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 /* No tap flash */
