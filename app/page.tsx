@@ -229,7 +229,7 @@ export default function Home() {
           )}
         </div>
 
-        <p style={{ textAlign: 'center', color: 'var(--on-ink-2)', fontSize: 12, marginTop: 20 }}>
+        <p style={{ textAlign: 'center', color: 'var(--on-ink-2)', fontSize: 'var(--t-furniture)', marginTop: 20 }}>
           © 2026 CoachVoice. All rights reserved.
         </p>
       </div>

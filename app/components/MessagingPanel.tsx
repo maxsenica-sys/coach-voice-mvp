@@ -455,18 +455,20 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                   {initials(a)}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: active ? 'var(--primary)' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 600, color: active ? 'var(--primary)' : 'var(--text)', overflowWrap: 'anywhere', lineHeight: 1.3 }}>
                     {a.first_name} {a.last_name}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+                  <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 1 }}>
                     {a.status === 'ACTIVE' ? 'Active' : 'Invited'}
                   </div>
                 </div>
                 {unread > 0 && (
                   <div style={{
                     background: 'var(--primary)', color: '#fff', borderRadius: 99,
-                    minWidth: 18, height: 18, fontSize: 11, fontWeight: 700,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px',
+                    /* Grown from 18px so "10+" at the 13px floor still fits inside
+                       the pill instead of spilling out of it. */
+                    minWidth: 22, height: 22, fontSize: 'var(--t-furniture)', fontWeight: 700, lineHeight: 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px', flexShrink: 0,
                   }}>
                     {/* FIX 4: cap badge at 10+ */}
                     {unread > 10 ? '10+' : unread}
@@ -511,8 +513,11 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                 {initials(selectedAthlete)}
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedAthlete.first_name} {selectedAthlete.last_name}</div>
-                {!isMobile && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{selectedAthlete.email}</div>}
+                <div style={{ fontSize: 'var(--t-body)', fontWeight: 700, overflowWrap: 'anywhere', lineHeight: 1.3 }}>{selectedAthlete.first_name} {selectedAthlete.last_name}</div>
+                {/* Wraps rather than truncating: an address the coach cannot read
+                    in full is a piece of missing data, and nothing here may
+                    widen past the panel — html/body clip sideways overflow. */}
+                {!isMobile && <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{selectedAthlete.email}</div>}
               </div>
             </div>
 
@@ -538,7 +543,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                   return (
                     <div key={item.key} style={{
                       display: 'flex', alignItems: 'center', gap: 10,
-                      margin: '14px 0 10px', color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em',
+                      margin: '14px 0 10px', color: 'var(--text-muted)', fontSize: 'var(--t-furniture)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em',
                     }}>
                       <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
                       {item.label}
@@ -586,7 +591,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
 
                       {msg.msg_type === 'audio' && msg.media_url && (
                         <div style={{ padding: '6px 4px' }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: isCoach ? 'rgba(255,255,255,0.8)' : 'var(--text-2)' }}>
+                          <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 600, marginBottom: 4, color: isCoach ? 'rgba(255,255,255,0.8)' : 'var(--text-2)' }}>
                             🎤 Voice message
                           </div>
                           <audio controls src={msg.media_url} style={{ height: 36, width: 220 }} />
@@ -594,7 +599,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                       )}
                     </div>
 
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, paddingLeft: isCoach ? 0 : 4, paddingRight: isCoach ? 4 : 0 }}>
+                    <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 2, paddingLeft: isCoach ? 0 : 4, paddingRight: isCoach ? 4 : 0 }}>
                       {fmtTime(msg.created_at)}
                       {isCoach && msg.read_at && ' · Read'}
                     </div>

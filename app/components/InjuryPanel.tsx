@@ -141,7 +141,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
           <button
             className="btn btn-ghost"
             onClick={() => setAdding(true)}
-            style={{ padding: '5px 11px', fontSize: 'var(--fs-2)' }}
+            style={{ padding: '5px 11px', fontSize: 'var(--fs-2)', minHeight: 44 }}
           >
             Log an injury
           </button>
@@ -172,7 +172,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
               {i.expected_return ? ` · back around ${i.expected_return}` : ''}
             </div>
             {i.note && (
-              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 5, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 5, lineHeight: 1.5, overflowWrap: 'anywhere' }}>
                 {i.note}
               </div>
             )}
@@ -193,7 +193,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
                   }}
                   title={opt.meaning}
                   style={{
-                    padding: '6px 11px', minHeight: 34, borderRadius: 999,
+                    padding: '6px 11px', minHeight: 44, borderRadius: 999,
                     border: `1px solid ${i.status === opt.value ? opt.color : 'var(--border)'}`,
                     background: i.status === opt.value ? opt.tint : 'var(--card)',
                     color: i.status === opt.value ? opt.color : 'var(--text-2)',
@@ -220,7 +220,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
                   Mark this as cleared? It comes off the availability list. You can
                   reopen it from <strong>Cleared</strong> below.
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                   <button
                     className="btn btn-primary"
                     style={{ minHeight: 44, paddingInline: 16, fontSize: 'var(--fs-3)' }}
@@ -262,7 +262,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
                   aria-pressed={status === opt.value}
                   onClick={() => setStatus(opt.value)}
                   style={{
-                    flex: 1, minHeight: 44, borderRadius: 8, padding: '6px 10px',
+                    flex: 1, minWidth: 0, minHeight: 44, borderRadius: 8, padding: '6px 10px',
                     border: `1.5px solid ${status === opt.value ? opt.color : 'var(--border)'}`,
                     background: status === opt.value ? opt.tint : 'var(--card)',
                     color: status === opt.value ? opt.color : 'var(--text-2)',
@@ -306,8 +306,8 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button className="btn btn-primary" onClick={() => void save()} disabled={saving} style={{ flex: 1, justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={() => void save()} disabled={saving} style={{ flex: '1 1 auto', minWidth: 0, justifyContent: 'center' }}>
                 {saving ? 'Saving…' : 'Log it'}
               </button>
               <button className="btn btn-ghost" onClick={reset} disabled={saving}>Cancel</button>

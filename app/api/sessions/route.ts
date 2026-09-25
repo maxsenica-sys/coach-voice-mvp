@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
-import {
-  buildSummaryPrompt,
-  mayPersonalise,
-  parseSummaryResponse,
-  EMPTY_SUMMARY,
-  type QuickSummary,
-} from '@/lib/summary-prompt'
+import { MAX_NEXT_LENGTH } from '@/lib/summary-prompt'
+import { makeQuickSummary } from '@/lib/quick-summary'
 import { notifySessionShared } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
 
@@ -32,60 +27,6 @@ function createSupabase(req: NextRequest) {
   )
 
   return { supabase, cookiesToSet }
-}
-
-// The summariser's prompt, its name gate and its response parser now live in
-// `lib/summary-prompt.ts`. They moved because this file imports `next/server`,
-// which meant the most consequential text in the product could not be executed
-// — let alone checked — outside a running server. What stays here is the part
-// that genuinely needs one: the API key and the fetch.
-//
-// See tools/prompt-rig.mjs for what is asserted about that prompt on every commit.
-async function makeQuickSummary(
-  transcript: string,
-  sport?: string | null,
-  athleteName?: string | null,
-  /** Every first name this recording is saved against — see mayPersonalise. */
-  rosterFirstNames: readonly string[] = [],
-): Promise<QuickSummary> {
-  const key = process.env.OPENAI_API_KEY
-  if (!key) return EMPTY_SUMMARY
-
-  /* The name reaches the prompt only if it can safely identify one child.
-   *
-   * On a squad save the same transcript is posted once per member, so "Jack,
-   * you're dropping your elbow" used to be delivered to BOTH Jacks as their
-   * coach speaking to them by name. buildSummaryPrompt gates on the name being
-   * present; mayPersonalise additionally refuses when the roster makes that
-   * name ambiguous, and falls back to the generic summary. */
-  const safeName = mayPersonalise(transcript, athleteName, rosterFirstNames)
-    ? athleteName
-    : null
-
-  const prompt = buildSummaryPrompt(transcript, sport, safeName)
-
-  try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0.2,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    })
-
-    if (!res.ok) return EMPTY_SUMMARY
-
-    const json = await res.json()
-    const content: string = json?.choices?.[0]?.message?.content?.trim() || ''
-    return parseSummaryResponse(content)
-  } catch {
-    return EMPTY_SUMMARY
-  }
 }
 
 function attachCookies(res: NextResponse, cookiesToSet: CookieToSet[]) {
@@ -150,6 +91,24 @@ export async function POST(req: NextRequest) {
   const session_name = (body?.session_name as string | undefined) ?? null
   const transcript = (body?.transcript as string | undefined) ?? ''
   const shared_with_athlete = Boolean(body?.shared_with_athlete)
+
+  /* The coach's own summary and takeaway, when they have already seen them.
+   *
+   * Max, 2026-09-25: the summary is generated at stop-and-transcribe now, shown
+   * in the review step, and editable before it sends. So a save can arrive with
+   * the text already settled — possibly rewritten by the coach — and
+   * regenerating here would silently overwrite their edit with a fresh call to
+   * the model. When either field is present it is used as sent.
+   *
+   * A save that arrives WITHOUT them still generates, so nothing that posts to
+   * this route today changes behaviour. */
+  const suppliedSummary = typeof body?.summary === 'string' ? body.summary.trim() : ''
+  const suppliedNextRaw = typeof body?.next === 'string' ? body.next.trim() : ''
+  /* Same ceiling the parser applies to the model. A coach typing past it is
+   * writing prose rather than one instruction a fifteen-year-old can act on,
+   * and the athlete's card has no room for it either. */
+  const suppliedNext = suppliedNextRaw.slice(0, MAX_NEXT_LENGTH)
+  const coachSupplied = suppliedSummary.length > 0 || suppliedNext.length > 0
   const session_date = typeof body?.session_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.session_date)
     ? body.session_date
     : null
@@ -261,12 +220,14 @@ export async function POST(req: NextRequest) {
     .map((a) => (a?.first_name ?? '').trim())
     .filter(Boolean)
 
-  const { summary, next: nextFocus } = await makeQuickSummary(
-    transcript.trim(),
-    resolvedSport,
-    athleteRow?.first_name ?? null,
-    rosterFirstNames,
-  )
+  const { summary, next: nextFocus } = coachSupplied
+    ? { summary: suppliedSummary || null, next: suppliedNext || null }
+    : await makeQuickSummary(
+        transcript.trim(),
+        resolvedSport,
+        athleteRow?.first_name ?? null,
+        rosterFirstNames,
+      )
 
   const { data, error } = await supabase
     .from('sessions')

@@ -150,17 +150,30 @@ export default function CheckIn({
                 aria-pressed={on}
                 onClick={() => { setReadiness(opt.value); setError(null) }}
                 style={{
-                  flex: 1, minHeight: 64, borderRadius: 12, cursor: 'pointer',
+                  // The padding is what stops the hint touching the border.
+                  // Measured on a 320px phone: the tallest hint now runs to
+                  // four lines and, with no padding, its last line sat 1px off
+                  // the bottom edge of the button. The button grows instead —
+                  // minHeight is a floor, so nothing is clipped either way.
+                  flex: 1, minHeight: 64, padding: '9px 4px',
+                  borderRadius: 12, cursor: 'pointer',
                   border: '1.5px solid', borderColor: on ? 'var(--primary)' : 'var(--border)',
                   background: on ? 'var(--primary)' : 'var(--card)',
                   color: on ? '#fff' : 'var(--text)',
                   fontFamily: 'inherit', fontWeight: on ? 800 : 600,
                   fontSize: 'var(--fs-4)', display: 'flex',
-                  flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                  flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                 }}
               >
                 {opt.label}
-                <span style={{ fontSize: 'var(--fs-1)', fontWeight: 500, opacity: 0.85, lineHeight: 1.2, textAlign: 'center', paddingInline: 4 }}>
+                {/* No break-word and no ellipsis here on purpose: these hints
+                    are a fixed, known list, and the longest word in them
+                    ("Normal") measures 45px against the 68px column this gets
+                    on a 320px phone. They wrap between whole words or not at
+                    all. A hint that would not fit is a hint to rewrite, not to
+                    hyphenate. lineHeight 1.3 rather than 1.2 because at 13px
+                    over four lines the tighter setting closed the lines up. */}
+                <span style={{ fontSize: 'var(--fs-1)', fontWeight: 500, opacity: 0.85, lineHeight: 1.3, textAlign: 'center' }}>
                   {opt.hint}
                 </span>
               </button>

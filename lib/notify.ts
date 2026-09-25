@@ -102,9 +102,9 @@ ${bodyHtml}
 ${ctaText && ctaHref ? `<div style="text-align:center;margin:32px 0">
   <a href="${ctaHref}" style="display:inline-block;background:#6F8E6B;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:8px;text-decoration:none;letter-spacing:0.01em">${ctaText}</a>
 </div>` : ''}
-${footerNote ? `<p style="color:#8b9bb4;font-size:12px;line-height:1.6;margin:24px 0 0">${footerNote}</p>` : ''}
+${footerNote ? `<p style="color:#5A6B87;font-size:13px;line-height:1.6;margin:24px 0 0">${footerNote}</p>` : ''}
 <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
-<p style="color:#8b9bb4;font-size:11px;margin:0;text-align:center">Sent via CoachVoice · AI-powered coaching platform</p>
+<p style="color:#5A6B87;font-size:13px;margin:0;text-align:center">Sent via CoachVoice · AI-powered coaching platform</p>
 </body></html>`
 }
 
@@ -402,7 +402,7 @@ export function buildWellnessAlertHtml({
     const score = checkin[key]
     return `<tr>
   <td style="padding:4px 8px 4px 0;font-size:13px">${icon} ${label}</td>
-  <td style="padding:4px 0;font-size:13px;font-weight:700;color:${metricColor(key, score)}">${score ?? '—'} <span style="font-weight:400;color:#8b9bb4">(${scoreLabel(key, score)})</span></td>
+  <td style="padding:4px 0;font-size:13px;font-weight:700;color:${metricColor(key, score)}">${score ?? '—'} <span style="font-weight:400;color:#5A6B87">(${scoreLabel(key, score)})</span></td>
 </tr>`
   }).join('')
 
@@ -413,8 +413,8 @@ export function buildWellnessAlertHtml({
   <strong>${athleteName}</strong>'s wellness has dropped based on ${ALERT_REASON_TEXT[reason]}.
 </p>
 <div style="display:flex;gap:16px;margin:0 0 16px">
-  ${todayScore !== null ? `<div style="background:#fef2f2;border-radius:8px;padding:8px 14px"><div style="font-size:20px;font-weight:800;color:#ef4444">${todayScore}/5</div><div style="font-size:10px;color:#8b9bb4;text-transform:uppercase;font-weight:700">Today</div></div>` : ''}
-  ${avgScore !== null ? `<div style="background:#fef2f2;border-radius:8px;padding:8px 14px"><div style="font-size:20px;font-weight:800;color:#ef4444">${avgScore}/5</div><div style="font-size:10px;color:#8b9bb4;text-transform:uppercase;font-weight:700">7-day avg</div></div>` : ''}
+  ${todayScore !== null ? `<div style="background:#fef2f2;border-radius:8px;padding:8px 14px"><div style="font-size:20px;font-weight:800;color:#ef4444">${todayScore}/5</div><div style="font-size:13px;color:#5A6B87;text-transform:uppercase;font-weight:700">Today</div></div>` : ''}
+  ${avgScore !== null ? `<div style="background:#fef2f2;border-radius:8px;padding:8px 14px"><div style="font-size:20px;font-weight:800;color:#ef4444">${avgScore}/5</div><div style="font-size:13px;color:#5A6B87;text-transform:uppercase;font-weight:700">7-day avg</div></div>` : ''}
 </div>
 <table style="width:100%;border-collapse:collapse;margin:0 0 12px">${metricRows}</table>
 ${checkin.notes ? `<p style="color:#4a5568;font-size:13px;line-height:1.6;margin:0 0 12px"><strong>Note from check-in:</strong> ${checkin.notes}</p>` : ''}`,

@@ -118,19 +118,33 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
           <div
             key={rec.id}
             style={{
-              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              // flex-start, not centre: an error long enough to run to three
+              // lines used to leave Discard floating in the middle of it.
+              display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap',
               paddingTop: 10, borderTop: '1px solid var(--border-soft)',
             }}
           >
-            <div style={{ flex: '1 1 160px', minWidth: 0 }}>
-              <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)' }}>
+            {/* 200px, not 160. The basis decides when the row wraps, and 160
+                was measured against 12px meta type and a smaller Discard: at
+                13px/14px it leaves a 170px column on a 320px phone, which the
+                error string then has to be read down. At 200 the button drops
+                to its own line there and the text gets the full width. */}
+            <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+              <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)', overflowWrap: 'anywhere' }}>
                 {rec.targetLabel}
               </div>
               <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 2 }}>
                 {describe(rec)} · {ago(rec.createdAt)}
               </div>
               {rec.lastError && (
-                <div style={{ fontSize: 'var(--fs-2)', color: 'var(--wellness-low)', marginTop: 3, lineHeight: 1.45 }}>
+                // `overflowWrap: anywhere` only ever acts on a token that
+                // cannot fit the column on its own — a signed storage URL, a
+                // Postgres error code, an athlete id. Those are exactly what a
+                // server error carries, and without this the token runs under
+                // the Discard button and off the side of the card, where the
+                // page's horizontal clip eats the rest of it silently.
+                // Everything still renders; nothing is shortened.
+                <div style={{ fontSize: 'var(--fs-2)', color: 'var(--wellness-low)', marginTop: 3, lineHeight: 1.45, overflowWrap: 'anywhere' }}>
                   {rec.lastError}
                 </div>
               )}
@@ -144,7 +158,7 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
                 await deleteRecording(rec.id)
                 await refresh()
               }}
-              style={{ padding: '5px 11px', fontSize: 'var(--fs-2)' }}
+              style={{ padding: '5px 11px', fontSize: 'var(--fs-2)', marginLeft: 'auto', flexShrink: 0 }}
             >
               Discard
             </button>

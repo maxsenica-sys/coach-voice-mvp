@@ -139,6 +139,53 @@ function assertBuildOutput() {
     check(`${f.replace(ROOT + '/', '')} has no third-party @import`, bad.length === 0, bad.join(', '))
   }
 
+  /* ── Every :root font alias points at a variable next/font actually defines ──
+   *
+   * globals.css turns each next/font variable into a design token:
+   *
+   *     --font-display: var(--font-newsreader), 'Georgia', serif;
+   *
+   * and the whole declaration is only as good as that variable name. A var()
+   * that resolves to nothing where a custom property is declared makes the
+   * property guaranteed-invalid, so `font-family: var(--font-display)` is
+   * invalid at computed-value time and the literal fallbacks — Georgia, serif —
+   * go down with it. The screen does not fall back; it inherits, which on this
+   * app means the body font everywhere and the browser default serif anywhere
+   * body has not reached. That is the failure that once dropped every heading
+   * in the product, and it is two correct-looking lines in two different files.
+   *
+   * Adding Big Shoulders reproduced it exactly: `variable: '--font-cast'` in
+   * layout.tsx and `--font-cast: var(--font-cast), …` in globals.css, so the
+   * alias referenced itself and nothing defined the name it wanted. It built,
+   * typechecked and linted.
+   *
+   * Source, not build, and not the browser either: the browser check further
+   * down can only ask about a page it loaded, whereas the mismatch is a fact
+   * about two files and is worth failing on before anything is compiled. The
+   * two checks are deliberately redundant — this one names the mechanism, that
+   * one proves the outcome.
+   */
+  {
+    const layout = readFileSync(join(ROOT, 'app', 'layout.tsx'), 'utf8')
+    const defined = new Set([...layout.matchAll(/variable:\s*'(--font-[a-z0-9-]+)'/g)].map((m) => m[1]))
+    const cssSrc = readFileSync(join(ROOT, 'app', 'globals.css'), 'utf8')
+    const root = (cssSrc.match(/:root\s*\{[\s\S]*?\n\}/) || [''])[0]
+    const aliases = [...root.matchAll(/(--font-[a-z0-9-]+)\s*:\s*([^;]+);/g)]
+      .map(([, name, value]) => ({ name, value, refs: [...value.matchAll(/var\(\s*(--font-[a-z0-9-]+)/g)].map((m) => m[1]) }))
+      .filter((a) => a.refs.length > 0)
+
+    check(
+      'every :root font token aliases a next/font variable',
+      aliases.length > 0 && aliases.every((a) => a.refs.every((r) => defined.has(r) && r !== a.name)),
+      aliases.length === 0
+        ? 'no :root --font-* alias found at all — the tokens moved, so this rule stopped looking'
+        : aliases.map((a) => {
+          const broken = a.refs.filter((r) => !defined.has(r) || r === a.name)
+          return `${a.name} -> ${a.refs.join(', ')}${broken.length ? `  ✗ ${broken.map((r) => r === a.name ? `${r} references itself` : `${r} is not a next/font variable`).join('; ')}` : ''}`
+        }).join('\n         ') + `\n         next/font defines: ${[...defined].join(', ')}`,
+    )
+  }
+
   heading('Build output')
 
   const cssFiles = walk(join(NEXT_DIR, 'static')).filter((f) => f.endsWith('.css'))
@@ -147,7 +194,12 @@ function assertBuildOutput() {
 
   // Every family the design tokens name must be in the build as a real
   // @font-face. Naming one in globals.css is not evidence that it loads.
-  for (const fam of ['Plus Jakarta Sans', 'Newsreader', 'JetBrains Mono']) {
+  // Big Shoulders is the fourth. Google renamed the family from "Big Shoulders
+  // Display", and next/font follows the new name — the export is
+  // `Big_Shoulders` and the @font-face it emits says `font-family:Big
+  // Shoulders`. The old name survives in globals.css only as a literal fallback
+  // for a machine that happens to have it installed locally.
+  for (const fam of ['Plus Jakarta Sans', 'Newsreader', 'JetBrains Mono', 'Big Shoulders']) {
     check(`${fam} is self-hosted in the build`, css.includes(`font-family:${fam}`))
   }
 
@@ -256,6 +308,46 @@ function assertBuildOutput() {
       'preloaded fonts stay inside the critical-path budget',
       fontBytes <= FONT_PRELOAD_BUDGET,
       `${fontPreloads.length} file(s), ${fontBytes}B (budget ${FONT_PRELOAD_BUDGET}B) — ${fontPreloads.join(', ') || 'none'}`,
+    )
+
+    /* ── which family, not just how many bytes ────────────────────────────
+     *
+     * The budget above is a number standing in for a decision, and the decision
+     * is narrower than the number: exactly one family is preloaded, the one that
+     * carries body copy on every screen, because the first painted frame is the
+     * boot shell and the boot shell hardcodes the system stack. Three families
+     * say `preload: false` for that reason and a fourth family is a fourth
+     * chance to forget.
+     *
+     * A byte budget can only catch a family that is big enough. This one is
+     * pinned by name instead, so it catches a small one too. Changing the pin
+     * is the deliberate act of changing the decision — and it is one line, with
+     * the reason next to it.
+     *
+     * Families are matched back through the built CSS rather than guessed from
+     * the hashed filename, because the hash says nothing and next/font emits
+     * several files per family. (Which one gets preloaded is not predictable
+     * either: Big Shoulders ships a 9,840B latin file and a 36,480B one, and it
+     * is the 36,480B one that is preloaded. That is exactly why this asserts a
+     * name and leaves the arithmetic to the budget.)
+     *
+     * NOTE — the first version of this check read `preload: false` out of
+     * layout.tsx and compared it with the document. It passed the mutation it
+     * was written for, because deleting `preload: false` moves both sides of
+     * that comparison together: it could only ever prove next/font obeyed the
+     * source, never that the source was right. A check that cannot fail on the
+     * regression it names is worse than no check, because it reads like cover.
+     */
+    const PRELOADED_FAMILIES = ['Plus Jakarta Sans']
+    const preloadedFamilies = [...new Set(fontPreloads.map((href) => {
+      const face = (css.match(new RegExp(`@font-face\\{[^}]*${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^}]*\\}`)) || [''])[0]
+      return (face.match(/font-family:([^;}]+)/) || [, `unknown (${href})`])[1].trim()
+    }))].sort()
+    check(
+      `only ${PRELOADED_FAMILIES.join(' + ')} is on the critical path`,
+      preloadedFamilies.join(', ') === PRELOADED_FAMILIES.join(', '),
+      `preloaded: ${preloadedFamilies.join(', ') || 'nothing'} — expected exactly ${PRELOADED_FAMILIES.join(', ')}.` +
+      ' Every other family must carry `preload: false`: the first painted frame is the boot shell, which reads none of them.',
     )
   }
 }
@@ -507,10 +599,46 @@ async function assertBoot(base) {
         const d = document.createElement('div'); d.style.fontFamily = v
         document.body.appendChild(d); const c = getComputedStyle(d).fontFamily; d.remove(); return c
       }
+      const token = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
+
+      /* Nothing on the page consumes --font-cast yet, so its face is registered
+       * but never activated and `document.fonts.ready` says nothing about it.
+       * Force the load, then ask whether a real face answered. */
+      const castToken = token('--font-cast')
+      const castFirst = (castToken.split(',')[0] || '').trim().replace(/^["']|["']$/g, '')
+      let castFaceStatus = 'no family named'
+      if (castFirst) {
+        try { await document.fonts.load(`700 100px "${castFirst}"`) } catch { /* reported below */ }
+        const faces = [...document.fonts].filter((f) => f.family.replace(/^["']|["']$/g, '') === castFirst)
+        castFaceStatus = faces.length ? (faces.some((f) => f.status === 'loaded') ? 'loaded' : faces.map((f) => f.status).join('/')) : 'no @font-face in the document'
+      }
+
+      /* Width of one string set in several families. A family that is not
+       * present renders in the browser's default font, so two families that
+       * measure the same are the same used font — which is how "it resolves"
+       * is told apart from "it fell through to the end of the list". */
+      const widthIn = (fam) => {
+        const s = document.createElement('span')
+        s.textContent = 'HAMBURGEFONSTIV'
+        s.style.cssText = 'position:absolute;left:-9999px;top:0;font-size:100px;font-weight:700;white-space:nowrap'
+        s.style.fontFamily = fam
+        document.body.appendChild(s)
+        const w = Math.round(s.getBoundingClientRect().width)
+        s.remove()
+        return w
+      }
+
       return {
         display: probe('var(--font-display)'),
         sans: probe('var(--font-sans)'),
         mono: probe('var(--font-mono)'),
+        cast: probe('var(--font-cast)'),
+        castToken,
+        castFirst,
+        castFaceStatus,
+        widths: castFirst
+          ? { cast: widthIn('var(--font-cast)'), named: widthIn(`"${castFirst}"`), genericTail: widthIn('sans-serif'), body: widthIn('var(--font-sans)') }
+          : null,
         loaded: [...new Set([...document.fonts].map((f) => f.family))],
       }
     })
@@ -521,6 +649,55 @@ async function assertBoot(base) {
     check('--font-sans resolves to Plus Jakarta Sans', fonts.sans.includes('Plus Jakarta Sans'), fonts.sans)
     check('--font-mono resolves to JetBrains Mono', fonts.mono.includes('JetBrains Mono'), fonts.mono)
     check('no token collapsed to the default serif', !/^(serif|Times)/.test(fonts.display.trim()))
+
+    /* ── The fourth family, asked four different ways ──────────────────────
+     *
+     * --font-cast is the scoreboard voice, and it arrived with the same bug the
+     * three above are checked for: the next/font `variable` and the :root alias
+     * were both called --font-cast, so the alias referenced a name nothing
+     * defined. A custom property whose value contains an unresolvable var() is
+     * guaranteed-invalid, which makes every `font-family: var(--font-cast)`
+     * invalid at computed-value time. Crucially that does NOT fall back to the
+     * literals written right next to it — it inherits, so the text lands on
+     * whatever the parent was using and looks merely wrong rather than broken.
+     *
+     * So a substring check on the computed font-family, on its own, is weak: it
+     * passes whenever the token happens to inherit something whose name
+     * contains the word. Four legs instead:
+     *
+     *   1. the custom property itself computes to something. Guaranteed-invalid
+     *      reads back as the empty string, which is the bug's own fingerprint.
+     *   2. no literal `var(` survives in the computed value — a substitution
+     *      that never happened.
+     *   3. the family the token actually names has a real @font-face in the
+     *      document and that face loads. This is the leg that catches the build
+     *      dropping the font, and it reads the name out of the browser rather
+     *      than hardcoding it, so Google renaming the family again cannot make
+     *      it lie.
+     *   4. the used font is the named family and not the tail of the list. Two
+     *      families that measure identically are the same used font; a fallback
+     *      chain that ran to `sans-serif` measures as `sans-serif`.
+     */
+    check(
+      '--font-cast computes to a real value (not guaranteed-invalid)',
+      fonts.castToken.length > 0 && !fonts.castToken.includes('var('),
+      fonts.castToken
+        ? `--font-cast = ${fonts.castToken}`
+        : '--font-cast computed to the empty string — its var() resolved to nothing, so every font-family using it is invalid at computed value time and silently inherits',
+    )
+    check('--font-cast resolves to Big Shoulders', fonts.cast.includes('Big Shoulders'), fonts.cast)
+    check(
+      `the family --font-cast names ("${fonts.castFirst}") is a loaded @font-face`,
+      fonts.castFaceStatus === 'loaded',
+      `status: ${fonts.castFaceStatus}`,
+    )
+    check(
+      '--font-cast renders in that family, not in the fallback tail',
+      Boolean(fonts.widths) && fonts.widths.cast === fonts.widths.named && fonts.widths.cast !== fonts.widths.genericTail,
+      fonts.widths
+        ? `HAMBURGEFONSTIV @100px/700: var(--font-cast)=${fonts.widths.cast}px, "${fonts.castFirst}"=${fonts.widths.named}px, sans-serif=${fonts.widths.genericTail}px, body=${fonts.widths.body}px`
+        : 'no family to measure',
+    )
     console.log(`         faces loaded: ${fonts.loaded.filter((f) => !f.includes('Fallback')).join(', ')}`)
     await fp.close()
 
@@ -762,6 +939,152 @@ async function assertBoot(base) {
       JSON.stringify(rmState),
     )
     await rmCtx.close()
+
+    /* ── nothing scrolls sideways ────────────────────────────────────────────
+     *
+     * Max, 2026-09-25: "make sure there's no ability to scroll sideways so we
+     * can maximise usage."
+     *
+     * globals.css answers that with `html, body { max-width: 100%; overflow-x:
+     * hidden; overflow-x: clip }`. That is containment, not a fix: an element
+     * wider than the viewport is still a bug, the clip rule only stops the page
+     * lurching while nobody notices. So this measures the cause, not the
+     * symptom, and it has to, because the clip rule destroys every convenient
+     * symptom there was — `document.documentElement.scrollWidth` reads back
+     * clamped to the viewport with clip in force (measured: a 900px div in a
+     * 390px viewport leaves documentElement.scrollWidth at 390), so the usual
+     * one-line scrollWidth assertion is guaranteed to pass here and prove
+     * nothing. Element geometry is unaffected by clipping, which is why this
+     * walks the box tree instead.
+     *
+     * Deliberate horizontal scrollers are exempt: a row inside `overflow-x:
+     * auto` is a UI pattern, not a layout escape. Only overflow that reaches
+     * the page counts.
+     *
+     * The narrow viewport is the iPhone SE 1st gen, 320px — the smallest
+     * geometry in the launch-image list, so it is a device this app claims to
+     * support, not a hypothetical.
+     */
+    heading('Nothing scrolls sideways')
+
+    const OVERFLOW_PROBE = `(() => {
+      const vw = document.documentElement.clientWidth
+      const TOL = 1                      /* subpixel layout, not overflow */
+      const bad = []
+      for (const el of document.querySelectorAll('body *')) {
+        const r = el.getBoundingClientRect()
+        if (r.width === 0 && r.height === 0) continue
+        const over = Math.max(r.right - vw, -r.left)
+        if (over <= TOL) continue
+        /* Inside something that is meant to scroll horizontally? Not a bug. */
+        let exempt = false
+        for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+          const ox = getComputedStyle(a).overflowX
+          if (ox === 'auto' || ox === 'scroll') { exempt = true; break }
+          if (ox === 'hidden' || ox === 'clip') break
+        }
+        if (exempt) continue
+        const id = el.tagName.toLowerCase() +
+          (el.id ? '#' + el.id : '') +
+          (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).slice(0, 2).join('.') : '')
+        bad.push({ id, left: Math.round(r.left), right: Math.round(r.right), w: Math.round(r.width), over: Math.round(over) })
+      }
+      bad.sort((a, b) => b.over - a.over)
+      /* Does the page actually move? scroll-behavior is smooth in globals.css,
+       * so this must be an instant scroll or it measures an animation. */
+      const before = window.scrollX
+      window.scrollTo({ left: 99999, top: window.scrollY, behavior: 'instant' })
+      const shifted = Math.round(window.scrollX)
+      window.scrollTo({ left: before, top: window.scrollY, behavior: 'instant' })
+      return {
+        vw, shifted,
+        bodyScrollW: document.body.scrollWidth,
+        htmlOx: getComputedStyle(document.documentElement).overflowX,
+        bodyOx: getComputedStyle(document.body).overflowX,
+        count: bad.length, worst: bad.slice(0, 6),
+      }
+    })()`
+
+    const SIDEWAYS_ROUTES = [
+      { url: '/', settle: 3600, what: 'the intro resolved' },
+      { url: '/?splash=1', settle: 700, what: 'the boot shell mid-montage' },
+      { url: '/signup', settle: 500, what: 'the longest form in the app' },
+    ]
+    const SIDEWAYS_VIEWPORTS = [
+      { width: 320, height: 568, label: 'iPhone SE 1st gen' },
+      { width: 390, height: 844, label: 'iPhone 14' },
+    ]
+    for (const vp of SIDEWAYS_VIEWPORTS) {
+      for (const route of SIDEWAYS_ROUTES) {
+        const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } })
+        const pg = await ctx.newPage()
+        await pg.goto(base + route.url, { waitUntil: 'load' })
+        await pg.waitForTimeout(route.settle)
+        const m = await pg.evaluate(OVERFLOW_PROBE)
+        check(
+          `${vp.width}px (${vp.label}) — nothing on ${route.url} is wider than the viewport`,
+          m.count === 0 && m.shifted === 0 && m.bodyScrollW <= m.vw + 1,
+          m.count === 0 && m.shifted === 0 && m.bodyScrollW <= m.vw + 1
+            ? `${route.what}; body content ${m.bodyScrollW}px in ${m.vw}px`
+            : `${m.count} element(s) overflow, body content ${m.bodyScrollW}px in ${m.vw}px, scrollX after a sideways scroll ${m.shifted}` +
+              m.worst.map((b) => `\n           ${b.over}px out: ${b.id}  [${b.left} → ${b.right}, width ${b.w}]`).join(''),
+        )
+        await ctx.close()
+      }
+    }
+
+    /* ── and the clip must stay `clip` ──
+     *
+     * `overflow-x: hidden` is listed first only as the fallback for iOS Safari
+     * before 16; `clip` immediately after it is what every current browser
+     * uses. The difference is not cosmetic. `hidden` makes the element a scroll
+     * container, and a scroll container that never scrolls is the scrollport
+     * its `position: sticky` descendants stick to — so every sticky header in
+     * the app stops sticking. Measured in this harness's own Chromium against
+     * /signup with a sticky element at top:0 and the page scrolled 900px:
+     * with `clip` it stays at top 0; with `hidden` forced on html and body it
+     * is dragged to top -900. Four headers depend on this (app/dashboard two,
+     * app/athlete, app/athletes/[id]).
+     *
+     * So: assert the browser resolved `clip`, and prove the consequence rather
+     * than trusting the string. The sticky element is injected, because the
+     * four real ones are behind a session this harness has no way to create —
+     * this checks the CSS mechanism they all rely on, not those four headers.
+     */
+    {
+      const ctx = await browser.newContext({ viewport: { width: 390, height: 600 } })
+      const pg = await ctx.newPage()
+      await pg.goto(base + '/signup', { waitUntil: 'load' })
+      const st = await pg.evaluate(async () => {
+        const wrap = document.createElement('div')
+        wrap.innerHTML = '<div id="cv-sticky-probe" style="position:sticky;top:0;height:40px"></div><div style="height:3000px"></div>'
+        document.body.prepend(wrap)
+        await new Promise((r) => requestAnimationFrame(r))
+        const el = document.getElementById('cv-sticky-probe')
+        const top0 = Math.round(el.getBoundingClientRect().top)
+        window.scrollTo({ top: 900, behavior: 'instant' })
+        await new Promise((r) => setTimeout(r, 150))
+        const out = {
+          htmlOx: getComputedStyle(document.documentElement).overflowX,
+          bodyOx: getComputedStyle(document.body).overflowX,
+          top0, top1: Math.round(el.getBoundingClientRect().top), scrollY: Math.round(window.scrollY),
+        }
+        wrap.remove()
+        window.scrollTo({ top: 0, behavior: 'instant' })
+        return out
+      })
+      check(
+        'the sideways clamp resolved to `clip`, not `hidden`',
+        st.htmlOx === 'clip' && st.bodyOx === 'clip',
+        `html overflow-x=${st.htmlOx}, body overflow-x=${st.bodyOx} — \`hidden\` makes both a scroll container and unsticks every sticky header`,
+      )
+      check(
+        'a position: sticky header still sticks under the clamp',
+        st.top0 === 0 && st.scrollY === 900 && st.top1 === 0,
+        `sticky top ${st.top0} → ${st.top1} after scrolling to ${st.scrollY}; it must not move`,
+      )
+      await ctx.close()
+    }
 
     /* ── the service worker ──
      *

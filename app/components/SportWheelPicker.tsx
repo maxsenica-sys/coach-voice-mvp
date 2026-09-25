@@ -42,7 +42,7 @@ export default function SportWheelPicker({
         <span style={{ color: value ? 'var(--text)' : 'var(--text-muted)' }}>
           {value || 'Select sport…'}
         </span>
-        <span style={{ fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+        <span style={{ fontSize: 'var(--t-furniture)' }}>{open ? '▲' : '▼'}</span>
       </button>
       {open && (
         <div
@@ -68,7 +68,7 @@ export default function SportWheelPicker({
           >
             <input
               className="input"
-              style={{ fontSize: 12, padding: '6px 10px' }}
+              style={{ fontSize: 'var(--t-body-tight)', padding: '8px 10px' }}
               placeholder="Search sports…"
               value={search}
               onChange={e => setSearch(e.target.value)}

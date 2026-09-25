@@ -139,7 +139,7 @@ function Section({
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
         <span style={{ color: tone, display: 'flex' }}><Icon name={icon} size={14} /></span>
         <h2 style={{
-          margin: 0, fontSize: 11, fontWeight: 800, letterSpacing: '0.09em',
+          margin: 0, fontSize: 'var(--t-furniture)', fontWeight: 800, letterSpacing: '0.09em',
           textTransform: 'uppercase', color: 'var(--text-2, #5D6661)', flex: 1,
         }}>{label}</h2>
         {action}
@@ -371,7 +371,7 @@ export default function SessionDetailPage() {
           pointerEvents: 'none',
         }}>
           <span style={{
-            background: 'var(--text)', color: 'var(--bg)', fontSize: 12, fontWeight: 600,
+            background: 'var(--text)', color: 'var(--bg)', fontSize: 'var(--t-furniture)', fontWeight: 600,
             padding: '7px 14px', borderRadius: 999, boxShadow: 'var(--shadow)',
             display: 'inline-flex', alignItems: 'center', gap: 6,
           }}>
@@ -384,7 +384,7 @@ export default function SessionDetailPage() {
 
         <Link href={backHref} style={{
           display: 'inline-flex', alignItems: 'center', gap: 7, textDecoration: 'none',
-          color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600, marginBottom: 18,
+          color: 'var(--text-2)', fontSize: 'var(--t-furniture)', fontWeight: 600, marginBottom: 18,
         }}>
           <Icon name="back" size={14} /> {isCoach ? athleteName : 'My portal'}
         </Link>
@@ -392,7 +392,7 @@ export default function SessionDetailPage() {
         {/* ── Masthead ── */}
         <header style={{ marginBottom: 4 }}>
           <div style={{
-            fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.12em',
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.12em',
             textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 9,
           }}>
             {dateLabel}
@@ -405,6 +405,9 @@ export default function SessionDetailPage() {
             // know about yet. Widening the property is honest; `as any` on the
             // value silenced the whole style object.
             textWrap: 'balance' as React.CSSProperties['textWrap'],
+            // `balance` chooses where to break between words; it will not break
+            // inside one, and a session name is free text.
+            overflowWrap: 'anywhere',
           }}>
             {heading}
           </h1>
@@ -413,12 +416,12 @@ export default function SessionDetailPage() {
             {isCoach && athlete && (
               <Link href={`/athletes/${athlete.id}`} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 7, textDecoration: 'none',
-                color: 'var(--text)', fontSize: 13, fontWeight: 700,
+                color: 'var(--text)', fontSize: 'var(--t-body-tight)', fontWeight: 700,
               }}>
                 <span style={{
-                  width: 26, height: 26, borderRadius: '50%', background: 'var(--coach-light)',
+                  width: 30, height: 30, borderRadius: '50%', background: 'var(--coach-light)',
                   color: 'var(--coach-color)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 10.5, fontWeight: 800, overflow: 'hidden',
+                  fontSize: 'var(--t-furniture)', fontWeight: 800, overflow: 'hidden',
                 }}>
                   {athlete.photo_url
                     ? <img src={athlete.photo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -429,20 +432,20 @@ export default function SessionDetailPage() {
             )}
 
             {session.sport_context && (
-              <span className="badge badge-session" style={{ fontSize: 10 }}>{session.sport_context}</span>
+              <span className="badge badge-session" style={{ fontSize: 'var(--t-furniture)' }}>{session.sport_context}</span>
             )}
 
             {isCoach ? (
               <button
                 onClick={toggleShare}
                 className={session.shared_with_athlete ? 'badge badge-active' : 'badge badge-invited'}
-                style={{ fontSize: 10, cursor: 'pointer', border: 'none', font: 'inherit', fontWeight: 700, padding: '4px 9px' }}
+                style={{ fontSize: 'var(--t-furniture)', cursor: 'pointer', border: 'none', font: 'inherit', fontWeight: 700, padding: '4px 9px' }}
                 title={session.shared_with_athlete ? 'Visible to the athlete — tap to make private' : 'Private — tap to share with the athlete'}
               >
                 {session.shared_with_athlete ? 'Shared' : 'Private'}
               </button>
             ) : (
-              <span className="badge badge-active" style={{ fontSize: 10 }}>From your coach</span>
+              <span className="badge badge-active" style={{ fontSize: 'var(--t-furniture)' }}>From your coach</span>
             )}
           </div>
         </header>
@@ -458,7 +461,7 @@ export default function SessionDetailPage() {
                 initialUrl={session.audio_url}
                 mime={session.audio_mime}
               />
-              <p style={{ fontSize: 11.5, color: 'var(--text-muted)', margin: '9px 0 0' }}>
+              <p style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', margin: '9px 0 0' }}>
                 Streams on demand — nothing downloads until you press play.
               </p>
             </div>
@@ -468,7 +471,7 @@ export default function SessionDetailPage() {
         {/* ── Summary: the reason to open the page ── */}
         <Section icon="spark" label="Session summary">
           {session.summary ? (
-            <div className="coach-summary" style={{ whiteSpace: 'pre-wrap', fontSize: 15, lineHeight: 1.72 }}>
+            <div className="coach-summary" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 15, lineHeight: 1.72 }}>
               {session.summary}
             </div>
           ) : (
@@ -500,7 +503,7 @@ export default function SessionDetailPage() {
                       aria-pressed={on}
                       onClick={() => void answer(opt.value)}
                       style={{
-                        padding: '9px 14px', minHeight: 40, borderRadius: 999,
+                        padding: '9px 14px', minHeight: 44, borderRadius: 999,
                         border: `1px solid ${on ? opt.color : 'var(--border)'}`,
                         background: on ? opt.tint : 'var(--bg)',
                         color: on ? opt.color : 'var(--text-2)',
@@ -560,19 +563,29 @@ export default function SessionDetailPage() {
         {isCoach && data!.checkin && (
           <Section icon="pulse" label="How they came in" accent="var(--wellness-ok)">
             <div className="card" style={{ padding: 14 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
+              {/* A grid, not a `flex: 1` row.
+                  Three `flex: 1` tiles have an automatic minimum of their
+                  min-content, and at 13px furniture "SORENESS" plus the tile
+                  padding is 85px — three of those plus the gaps is 2px wider
+                  than a 320px screen allows, so the third tile was pushed into
+                  the card's right padding and the row could not give. auto-fit
+                  drops to two tiles on the narrowest phones and keeps three
+                  from 375 up; every metric stays on screen either way. */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8,
+              }}>
                 {CHECKIN_METRICS.map(({ key, label }) => {
                   const score = data!.checkin![key]
                   return (
                     <div key={key} style={{
-                      flex: 1, borderRadius: 'var(--radius-sm)', padding: '9px 10px',
+                      minWidth: 0, borderRadius: 'var(--radius-sm)', padding: '9px 10px',
                       background: metricTint(key, score),
                     }}>
                       <div style={{
                         fontSize: 'var(--fs-1)', fontWeight: 800, textTransform: 'uppercase',
                         letterSpacing: '0.06em', color: 'var(--text-2)',
                       }}>{label}</div>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginTop: 3 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 'var(--fs-4)', fontWeight: 800, color: metricColor(key, score) }}>
                           {score ?? '—'}
                         </span>
@@ -589,7 +602,7 @@ export default function SessionDetailPage() {
                   )
                 })}
               </div>
-              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 10 }}>
+              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 10, overflowWrap: 'anywhere' }}>
                 {athleteFirst ? `${athleteFirst}'s own check-in on ` : 'Their own check-in on '}
                 {parseISODate(data!.checkin.check_date)?.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) ?? data!.checkin.check_date}
                 . Only you can see this.
@@ -612,16 +625,20 @@ export default function SessionDetailPage() {
                   borderBottom: i < session.focus_points.length - 1 ? '1px solid var(--border-soft)' : 'none',
                 }}>
                   <span style={{
-                    width: 19, height: 19, borderRadius: '50%', background: 'var(--energy-light)',
-                    color: '#8B6621', fontSize: 10.5, fontWeight: 800, flexShrink: 0, marginTop: 1,
+                    width: 22, height: 22, borderRadius: '50%', background: 'var(--energy-light)',
+                    color: '#8B6621', fontSize: 'var(--t-furniture)', fontWeight: 800, flexShrink: 0, marginTop: 1,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>{i + 1}</span>
-                  <span style={{ flex: 1, fontSize: 14, lineHeight: 1.55 }}>{point}</span>
+                  <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontSize: 14, lineHeight: 1.55 }}>{point}</span>
                   {isCoach && (
                     <button
                       onClick={() => setFocusPoints(session.focus_points.filter((_, j) => j !== i))}
                       aria-label="Remove point"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2 }}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
+                        width: 44, height: 44, flexShrink: 0, margin: '-9px -8px -9px 0',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
                     >
                       <Icon name="x" size={13} />
                     </button>
@@ -649,13 +666,13 @@ export default function SessionDetailPage() {
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addFocus() } }}
                     placeholder="Something to work on next time…"
                     style={{
-                      flex: 1, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                      flex: 1, minWidth: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
                       padding: '8px 11px', font: 'inherit', fontSize: 13.5,
                       background: 'var(--bg)', color: 'var(--text)',
                     }}
                   />
                   <button className="btn btn-ghost" onClick={() => void addFocus()} disabled={!newFocus.trim()}
-                    style={{ padding: '8px 12px', gap: 5, fontSize: 12.5 }}>
+                    style={{ padding: '8px 12px', gap: 5, fontSize: 'var(--t-furniture)' }}>
                     <Icon name="plus" size={13} /> Add
                   </button>
                 </div>
@@ -670,7 +687,7 @@ export default function SessionDetailPage() {
             icon="note"
             label={isCoach ? 'Your notes' : 'Notes from your coach'}
             action={isCoach && notesDirty ? (
-              <button className="btn btn-primary" onClick={saveNotes} style={{ padding: '5px 12px', fontSize: 12 }}>
+              <button className="btn btn-primary" onClick={saveNotes} style={{ padding: '5px 12px', fontSize: 'var(--t-furniture)' }}>
                 Save
               </button>
             ) : undefined}
@@ -689,7 +706,7 @@ export default function SessionDetailPage() {
                 }}
               />
             ) : (
-              <div className="card" style={{ padding: '13px 15px', fontSize: 14, lineHeight: 1.68, whiteSpace: 'pre-wrap' }}>
+              <div className="card" style={{ padding: '13px 15px', fontSize: 14, lineHeight: 1.68, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                 {session.coach_notes}
               </div>
             )}
@@ -712,7 +729,7 @@ export default function SessionDetailPage() {
                 />
                 <button className="btn btn-ghost" disabled={uploading}
                   onClick={() => fileRef.current?.click()}
-                  style={{ padding: '5px 11px', fontSize: 12, gap: 5 }}>
+                  style={{ padding: '5px 11px', fontSize: 'var(--t-furniture)', gap: 5 }}>
                   <Icon name="plus" size={12} /> {uploading ? 'Uploading…' : 'Add'}
                 </button>
               </>
@@ -741,7 +758,7 @@ export default function SessionDetailPage() {
                       </a>
                     )}
                     {a.caption && (
-                      <figcaption style={{ fontSize: 11.5, color: 'var(--text-2)', padding: '7px 9px' }}>
+                      <figcaption style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', padding: '7px 9px' }}>
                         {a.caption}
                       </figcaption>
                     )}
@@ -772,12 +789,12 @@ export default function SessionDetailPage() {
               {data!.videos.map((v) => v.signedUrl && (
                 <div key={v.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
                   <video controls preload="none" src={v.signedUrl} style={{ width: '100%', display: 'block', background: '#000' }} />
-                  <div style={{ padding: '9px 13px', fontSize: 12.5, color: 'var(--text-2)', display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ padding: '9px 13px', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
                       {v.file_name ?? 'Video'}
                     </span>
                     {isCoach && (
-                      <span className={v.shared_with_athlete ? 'badge badge-active' : 'badge badge-invited'} style={{ fontSize: 9.5 }}>
+                      <span className={v.shared_with_athlete ? 'badge badge-active' : 'badge badge-invited'} style={{ fontSize: 'var(--t-furniture)', flexShrink: 0 }}>
                         {v.shared_with_athlete ? 'Shared' : 'Private'}
                       </span>
                     )}
@@ -793,17 +810,19 @@ export default function SessionDetailPage() {
           <Section icon="text" label="Full transcript">
             <details className="card" style={{ padding: '12px 15px' }}>
               <summary style={{
-                cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--text-2)',
-                listStyle: 'none', display: 'flex', alignItems: 'center', gap: 7,
+                cursor: 'pointer', fontSize: 'var(--t-body)', fontWeight: 700, color: 'var(--text-2)',
+                listStyle: 'none', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap',
+                minHeight: 44,
               }}>
                 Read what was recorded
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 500 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-muted)', fontWeight: 500 }}>
                   {session.transcript.split(/\s+/).filter(Boolean).length} words
                 </span>
               </summary>
               <div style={{
                 marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-soft)',
                 fontSize: 13.5, lineHeight: 1.75, color: 'var(--text-2)', whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
               }}>
                 {session.transcript}
               </div>

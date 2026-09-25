@@ -70,7 +70,7 @@ export default function SessionAudioPlayer({ sessionId, initialUrl = null, mime 
     return (
       <div style={{ marginTop: 8 }}>
         <div style={{
-          fontSize: 12.5, lineHeight: 1.55, color: 'var(--text-2, #5D6661)',
+          fontSize: 'var(--t-body-tight)', lineHeight: 1.55, color: 'var(--text-2, #5D6661)',
           background: 'var(--warning-light, #F6E9CC)', border: '1px solid #E4CE9A',
           borderRadius: 10, padding: '10px 12px',
         }}>
@@ -78,7 +78,7 @@ export default function SessionAudioPlayer({ sessionId, initialUrl = null, mime 
           {url
             ? <> <a href={url} download style={{ color: 'inherit', fontWeight: 700 }}>Download the recording</a> to play it in another app.</>
             : <> <button onClick={() => void openUrl()} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 700, color: 'inherit', textDecoration: 'underline', cursor: 'pointer' }}>Get a download link</button>.</>}
-          <div style={{ marginTop: 5, fontSize: 11.5, opacity: 0.85 }}>
+          <div style={{ marginTop: 6, fontSize: 'var(--t-min)', lineHeight: 1.45, opacity: 0.85 }}>
             Recordings made from now on play everywhere — this affects older ones only.
           </div>
         </div>
@@ -98,15 +98,15 @@ export default function SessionAudioPlayer({ sessionId, initialUrl = null, mime 
           onPlaying={() => setBuffering(false)}
           onCanPlay={() => setBuffering(false)}
           onError={() => setError('The recording could not be played. It may still be uploading.')}
-          style={{ width: '100%', height: 34 }}
+          style={{ width: '100%', height: 44 }}
         />
         {buffering && (
-          <div style={{ fontSize: 11.5, color: 'var(--text-muted, var(--text-muted))', marginTop: 4 }}>
+          <div style={{ fontSize: 'var(--t-min)', lineHeight: 1.45, color: 'var(--text-muted, var(--text-muted))', marginTop: 5 }}>
             Buffering — it will start as soon as enough has arrived.
           </div>
         )}
         {error && (
-          <div style={{ fontSize: 11.5, color: 'var(--danger, #B0473A)', marginTop: 4 }}>{error}</div>
+          <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--danger, #B0473A)', marginTop: 5 }}>{error}</div>
         )}
       </div>
     )
@@ -123,15 +123,15 @@ export default function SessionAudioPlayer({ sessionId, initialUrl = null, mime 
         }}
         disabled={loading}
         className="btn btn-ghost"
-        style={{ padding: '5px 10px', fontSize: 11.5, gap: 6, display: 'inline-flex', alignItems: 'center' }}
+        style={{ minHeight: 44, padding: '0 14px', fontSize: 'var(--t-furniture)', gap: 7, display: 'inline-flex', alignItems: 'center' }}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, display: 'block' }}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14, display: 'block' }}>
           <polygon points="5 3 19 12 5 21 5 3" />
         </svg>
         {loading ? 'Opening…' : 'Play recording'}
       </button>
       {error && (
-        <div style={{ fontSize: 11.5, color: 'var(--danger, #B0473A)', marginTop: 5 }}>{error}</div>
+        <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--danger, #B0473A)', marginTop: 6 }}>{error}</div>
       )}
     </div>
   )

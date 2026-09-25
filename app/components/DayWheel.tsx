@@ -124,7 +124,7 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
           at the end. The pill used to be absolutely the same corner as the
           dashboard's Calendar link and covered it whenever it appeared. */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10, gap: 10 }}>
-        <div style={{ fontSize: 10, fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>
+        <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: '#5D6661', textTransform: 'uppercase', letterSpacing: 1.2 }}>
           Your days
         </div>
 
@@ -134,8 +134,8 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
           <button
             onClick={() => centreOnToday()}
             style={{
-              fontSize: 10, fontWeight: 700, color: '#FBF8F3', background: '#1F2421',
-              border: 'none', borderRadius: 999, padding: '4px 10px', cursor: 'pointer',
+              fontSize: 'var(--t-furniture)', fontWeight: 700, color: '#FBF8F3', background: '#1F2421',
+              border: 'none', borderRadius: 999, padding: '7px 13px', cursor: 'pointer',
               display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
               whiteSpace: 'nowrap',
             }}
@@ -175,20 +175,25 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                 cursor: 'pointer', position: 'relative',
               }}
             >
-              {day.isFirstOfMonth && (
-                <span style={{
-                  position: 'absolute', top: -1, left: 0, right: 0,
-                  fontSize: 7.5, fontWeight: 800, letterSpacing: 0.6,
-                  textTransform: 'uppercase',
-                  color: day.isToday ? 'rgba(255,255,255,0.6)' : '#B55C3E',
-                }}>
-                  {day.monthLabel}
-                </span>
-              )}
+              {/* The month name was 7.5px absolutely positioned over the cell's
+                  top edge. At --t-furniture it needs real room, so every cell
+                  reserves the band whether or not it is the 1st. Reserving it
+                  on every cell is also what keeps the numerals on one line
+                  across a month boundary: the old `marginTop: isFirstOfMonth ?
+                  6 : 0` made the 1st of the month 6px taller than its
+                  neighbours and nudged its numeral down. */}
               <div style={{
-                fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
+                height: 16, lineHeight: '16px',
+                fontSize: 'var(--t-furniture)', fontWeight: 800, letterSpacing: 0.6,
+                textTransform: 'uppercase',
+                color: day.isToday ? 'rgba(255,255,255,0.6)' : '#B55C3E',
+              }}>
+                {day.isFirstOfMonth ? day.monthLabel : ''}
+              </div>
+              <div style={{
+                fontSize: 'var(--t-furniture)', fontWeight: 700, lineHeight: 1,
+                textTransform: 'uppercase', letterSpacing: 0.5,
                 color: day.isToday ? 'rgba(255,255,255,0.55)' : 'var(--text-muted)',
-                marginTop: day.isFirstOfMonth ? 6 : 0,
               }}>
                 {day.letter}
               </div>
@@ -202,7 +207,7 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
               {/* A solid green tab means "a session was recorded on this day" —
                   the thing worth scanning for. Other events stay as small grey
                   dots so they don't compete with it. */}
-              <div style={{ marginTop: 6, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+              <div style={{ marginTop: 6, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
                 {sessionCount > 0 ? (
                   // One pill per session, up to three. A numeral inside a 5px
                   // bar was unreadable and just looked like a gap in the bar.
@@ -230,11 +235,11 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
 
       {selectedDay && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #EFEAE0' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>
             {new Date(`${selectedDay}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
           {dayEvents.length === 0 ? (
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '6px 0' }}>Nothing on this day</div>
+            <div style={{ fontSize: 'var(--t-body)', color: 'var(--text-muted)', textAlign: 'center', padding: '6px 0' }}>Nothing on this day</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {dayEvents.map((ev) => {
@@ -252,23 +257,24 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                   <>
                     {initials ? (
                       <span style={{
-                        width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                        width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
                         background: isSession ? '#6F8E6B' : '#C4C9C2', color: '#FBF8F3',
-                        fontSize: 9, fontWeight: 800,
+                        fontSize: 'var(--t-furniture)', fontWeight: 800,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>{initials}</span>
                     ) : (
-                      <span style={{ width: 3, height: 22, borderRadius: 2, background: '#C4C9C2', flexShrink: 0 }} />
+                      <span style={{ width: 3, height: 26, borderRadius: 2, background: '#C4C9C2', flexShrink: 0 }} />
                     )}
 
                     <span style={{ flex: 1, minWidth: 0 }}>
                       {who && (
-                        <span style={{ display: 'block', fontWeight: 700, fontSize: 11.5, color: '#1F2421', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'block', fontWeight: 700, fontSize: 'var(--t-body-tight)', lineHeight: 1.3, color: '#1F2421', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {who}
                         </span>
                       )}
                       <span style={{
-                        display: 'block', fontSize: who ? 11 : 12,
+                        display: 'block', fontSize: who ? 'var(--t-furniture)' : 'var(--t-body-tight)',
+                        lineHeight: 1.3,
                         fontWeight: who ? 500 : 700,
                         color: who ? '#5D6661' : '#1F2421',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -277,7 +283,7 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                       </span>
                     </span>
 
-                    {ev.event_time && <span style={{ fontSize: 10.5, color: 'var(--text-muted)', flexShrink: 0 }}>{ev.event_time}</span>}
+                    {ev.event_time && <span style={{ fontSize: 'var(--t-data)', color: 'var(--text-muted)', flexShrink: 0 }}>{ev.event_time}</span>}
                     {/* The chevron promises a destination, so only draw it when
                         there is one. A planned session has no session_id yet —
                         it has not been recorded — and it was rendering the
@@ -285,13 +291,14 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
                         through to an inert <div>. The affordance said "tap me"
                         and nothing happened. */}
                     {ev.session_id && (
-                      <span aria-hidden="true" style={{ fontSize: 12, color: 'var(--primary-dark)', flexShrink: 0, lineHeight: 1 }}>›</span>
+                      <span aria-hidden="true" style={{ fontSize: 'var(--t-body)', color: 'var(--primary-dark)', flexShrink: 0, lineHeight: 1 }}>›</span>
                     )}
                   </>
                 )
 
                 const style: React.CSSProperties = {
                   display: 'flex', alignItems: 'center', gap: 9, padding: '6px 10px',
+                  minHeight: 44,
                   background: isSession ? '#E6ECDF' : '#FFFFFF',
                   borderRadius: 8,
                   border: `1px solid ${isSession ? '#CBD7C0' : '#E3DED2'}`,

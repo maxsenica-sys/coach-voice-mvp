@@ -46,6 +46,24 @@ import { useRef, useState } from 'react'
 const W = 1080
 const H = 1350
 
+/* ── Type on the canvas, in the same scale as the type in the app ──────────
+ *
+ * CSS tokens do not reach a canvas: every size below is a number in a 1080px
+ * coordinate space, and nothing about the type-scale change touched them. They
+ * still have to answer to it, because this file is read at a scale. A
+ * 1080-wide image fills a 390px phone at 2.77×, so a canvas size divided by
+ * 2.77 is roughly what the athlete's thumb-width reading of it measures.
+ *
+ * The app's floors are --t-furniture 13px and --t-body 15px. At 2.77× those
+ * are 36 and 42 here. The date and the wordmark were 30px — 10.8px on the
+ * phone this is saved to, which is below the floor every other label in the
+ * product was just raised to, on the one artefact designed to leave it.
+ */
+const LINE_HEIGHT = 1.24
+const FURNITURE = 36      // 13px × 2.77 — the date and the wordmark
+const SENTENCE_MAX = 86   // ≈ the 30px display step at the same scale
+const SENTENCE_MIN = 46   // 15px × 2.77 is 42; 46 is the step at or above it
+
 /** Read a CSS custom property off the document root. */
 function token(name: string, fallback: string): string {
   if (typeof window === 'undefined') return fallback
@@ -72,33 +90,99 @@ function displayFamily(): string {
   return resolved || 'Georgia, serif'
 }
 
-/** Greedy wrap to at most `maxLines`, shrinking the size until it fits. */
+/**
+ * Split one token that is wider than the whole column.
+ *
+ * "counter-rotation-through-the-hips" measures 1281px at 86px against an 860px
+ * column, and a greedy wrapper has nowhere to put it: it goes on a line of its
+ * own and runs 200px off the side of the image, taking the last two words of
+ * the compound with it. Breaking after the hyphens is where a reader expects
+ * the break anyway; a token with no hyphens is broken by character, which is
+ * ugly and is still better than deleting the end of a coach's sentence.
+ *
+ * No lookbehind in the regex on purpose — Safari only learned it in 16.4, and
+ * a SyntaxError here takes the whole chunk down on the phones this is for.
+ */
+function splitToken(ctx: CanvasRenderingContext2D, word: string, maxWidth: number): string[] {
+  const chunks = word.split('-').map((part, i, all) => (i < all.length - 1 ? `${part}-` : part)).filter(Boolean)
+  const pieces: string[] = []
+  let piece = ''
+  const push = (fragment: string) => {
+    if (!piece) { piece = fragment; return }
+    if (ctx.measureText(piece + fragment).width <= maxWidth) piece += fragment
+    else { pieces.push(piece); piece = fragment }
+  }
+  for (const chunk of chunks) {
+    if (ctx.measureText(chunk).width <= maxWidth) { push(chunk); continue }
+    // Still too wide with the hyphens used up: character by character.
+    for (const ch of chunk) {
+      if (piece && ctx.measureText(piece + ch).width > maxWidth) { pieces.push(piece); piece = ch }
+      else piece += ch
+    }
+  }
+  if (piece) pieces.push(piece)
+  return pieces
+}
+
+/** Greedy wrap at the current font, breaking only tokens that cannot fit. */
+function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const word of text.split(/\s+/)) {
+    if (!word) continue
+    const candidate = line ? `${line} ${word}` : word
+    if (ctx.measureText(candidate).width <= maxWidth) { line = candidate; continue }
+    if (line) { lines.push(line); line = '' }
+    if (ctx.measureText(word).width <= maxWidth) { line = word; continue }
+    const pieces = splitToken(ctx, word, maxWidth)
+    lines.push(...pieces.slice(0, -1))
+    line = pieces[pieces.length - 1] ?? ''
+  }
+  if (line) lines.push(line)
+  return lines
+}
+
+/**
+ * The biggest size at which the sentence fits `maxLines`.
+ *
+ * Three stages, in the order of what is worth giving up. The shape of the card
+ * goes first, then the size floor; the words never go. The old version of this
+ * gave up the words: when nothing fit in five lines it returned `[text]` — the
+ * entire sentence as a single unbroken line at 40px, which draws off both
+ * sides of the image. A focus point is capped at 200 characters and the model
+ * is asked for 90, so that path took a coach typing two sentences to reach,
+ * and it lost most of both.
+ */
 function layout(
   ctx: CanvasRenderingContext2D,
   text: string,
   family: string,
   maxWidth: number,
   maxLines: number,
+  maxHeight: number,
 ): { lines: string[]; size: number } {
-  for (let size = 86; size >= 40; size -= 4) {
+  const fits = (lines: string[], size: number) => lines.length * size * LINE_HEIGHT <= maxHeight
+  let last = { lines: [text], size: SENTENCE_MIN }
+
+  // 1 · the drawn shape: as large as possible within maxLines.
+  for (let size = SENTENCE_MAX; size >= SENTENCE_MIN; size -= 4) {
     ctx.font = `500 ${size}px ${family}`
-    const lines: string[] = []
-    let line = ''
-    for (const word of text.split(/\s+/)) {
-      const candidate = line ? `${line} ${word}` : word
-      if (ctx.measureText(candidate).width <= maxWidth) {
-        line = candidate
-      } else {
-        if (line) lines.push(line)
-        line = word
-      }
-    }
-    if (line) lines.push(line)
-    if (lines.length <= maxLines) return { lines, size }
+    last = { lines: wrap(ctx, text, maxWidth), size }
+    if (last.lines.length <= maxLines) return last
   }
-  // Nothing fits: draw what we have at the floor rather than nothing at all.
-  ctx.font = `500 40px ${family}`
-  return { lines: [text], size: 40 }
+
+  // 2 · a long one: hold the floor and let the block run to more lines, so
+  //     long as it still clears the date.
+  if (fits(last.lines, last.size)) return last
+
+  // 3 · only now does the type go under the floor, because a sentence the
+  //     athlete can read half of is worse than one set small.
+  for (let size = SENTENCE_MIN - 4; size >= 20; size -= 4) {
+    ctx.font = `500 ${size}px ${family}`
+    last = { lines: wrap(ctx, text, maxWidth), size }
+    if (fits(last.lines, last.size)) return last
+  }
+  return last
 }
 
 export default function FocusCard({ point, dateLabel }: { point: string; dateLabel: string }) {
@@ -146,27 +230,40 @@ export default function FocusCard({ point, dateLabel }: { point: string; dateLab
     ctx.fillStyle = inkFigure
     ctx.fillRect(margin, 300, 132, 3)
 
-    const { lines, size } = layout(ctx, point, family, maxWidth, 5)
+    // The two lines at the foot of the card, as baselines rather than tops —
+    // at 36px the old `top` positions put 4px between them.
+    const textTop = 372
+    const dateBaseline = H - margin - 56
+    const wordmarkBaseline = H - margin
+    // How far the sentence may run before it crowds the date.
+    const maxTextHeight = dateBaseline - FURNITURE - 40 - textTop
+
+    const { lines, size } = layout(ctx, point, family, maxWidth, 5, maxTextHeight)
+    // layout() leaves ctx.font on whichever size it settled on, but say it
+    // here anyway: a future early return in there must not silently draw the
+    // sentence at the wrong size.
+    ctx.font = `500 ${size}px ${family}`
     ctx.fillStyle = onInk
     ctx.textBaseline = 'top'
-    const lineHeight = size * 1.24
-    let y = 372
+    const lineHeight = size * LINE_HEIGHT
+    let y = textTop
     for (const line of lines) {
       ctx.fillText(line, margin, y)
       y += lineHeight
     }
 
     // Date and wordmark. Nothing here names a person.
-    ctx.font = `600 30px ${token('--font-sans', 'system-ui')}`
+    ctx.textBaseline = 'alphabetic'
+    ctx.font = `600 ${FURNITURE}px ${token('--font-sans', 'system-ui')}`
     ctx.fillStyle = onInk
     ctx.globalAlpha = 0.72
-    ctx.fillText(dateLabel, margin, H - margin - 40)
+    ctx.fillText(dateLabel, margin, dateBaseline)
     ctx.globalAlpha = 1
 
-    ctx.font = `500 30px ${family}`
+    ctx.font = `500 ${FURNITURE}px ${family}`
     ctx.fillStyle = onInk
     ctx.globalAlpha = 0.55
-    ctx.fillText('CoachVoice', margin, H - margin)
+    ctx.fillText('CoachVoice', margin, wordmarkBaseline)
     ctx.globalAlpha = 1
 
     return new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'))

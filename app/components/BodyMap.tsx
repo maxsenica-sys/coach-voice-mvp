@@ -120,7 +120,7 @@ export default function BodyMap({
               aria-pressed={on}
               onClick={() => setView(v)}
               style={{
-                flex: 1, minHeight: 40, borderRadius: 'var(--radius-sm)',
+                flex: 1, minHeight: 44, borderRadius: 'var(--radius-sm)',
                 border: `1px solid ${on ? 'var(--primary-dark)' : 'var(--border)'}`,
                 background: on ? 'var(--primary-light)' : 'var(--card)',
                 color: on ? 'var(--primary-dark)' : 'var(--text-2)',
@@ -138,7 +138,18 @@ export default function BodyMap({
         viewBox={`0 0 ${BODY_VIEWBOX.w} ${BODY_VIEWBOX.h}`}
         role="group"
         aria-label={`Body map, ${view} view. Tap where you are sore.`}
-        style={{ width: '100%', maxWidth: 260, display: 'block', margin: '0 auto', touchAction: 'manipulation' }}
+        /* maxWidth is the scale control for every tap target in here: the
+         * viewBox is 200 wide, so a region's real size is its authored size
+         * times (rendered width / 200) and the number in lib/body-map.ts is
+         * not what a thumb gets. At 260 on a 390px phone the figure rendered
+         * at 1.3x and left 60px of the card unused, which put the neck at
+         * 28.6x20.8 — under the 24px WCAG 2.5.8 minimum on its short side —
+         * and the achilles at 16.9 wide. 320 spends that slack: 1.6x, and
+         * every region but the achilles clears 24 at 390px. The achilles is
+         * 13 units wide and would need 15 to clear it; that is geometry, it
+         * lives in lib/body-map.ts, and it is a decision about the drawing
+         * rather than something this file can fix. */
+        style={{ width: '100%', maxWidth: 320, display: 'block', margin: '0 auto', touchAction: 'manipulation' }}
       >
         {regionsFor(view).map((r) => (
           <RegionShape
@@ -152,7 +163,7 @@ export default function BodyMap({
 
       {/* The accessible source of truth, and the fastest way for anyone to
           check what they picked. */}
-      <div style={{ marginTop: 10, fontSize: 'var(--fs-2)', color: 'var(--text-2)', lineHeight: 1.5 }}>
+      <div style={{ marginTop: 10, fontSize: 'var(--fs-2)', color: 'var(--text-2)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
         {selected.length === 0
           ? 'Nothing selected yet — tap the areas that are sore.'
           : (

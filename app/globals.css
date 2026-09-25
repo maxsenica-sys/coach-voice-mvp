@@ -138,6 +138,33 @@
   --font-display: var(--font-newsreader), 'Georgia', serif;
   --font-sans:    var(--font-jakarta), system-ui, -apple-system, sans-serif;
   --font-mono:    var(--font-jetbrains), 'IBM Plex Mono', ui-monospace, monospace;
+  /* The scoreboard voice. Resolved here in :root alongside the other three,
+     because a var() that is unresolved at computed-value time is invalid and
+     takes the literal fallbacks down with it — which is how this app dropped
+     into the default serif once already. The next/font class that defines
+     --font-bigshoulders goes on <html>, never <body>, for the same reason.
+     Note the alias and the next/font variable must NOT share a name: point one
+     at the other, or the alias resolves to nothing. */
+  --font-cast:    var(--font-bigshoulders), 'Big Shoulders Display', 'Oswald', 'Arial Narrow', sans-serif;
+
+  /* ── Type scale ───────────────────────────────────────────────
+   * Max, 2026-09-25: "maximise human retention and viewage using the furniture
+   * floor. everything should be easily viewable."
+   *
+   * This app shipped uppercase furniture and mono data at 9-12px — 154 runs of
+   * it. Legible at a desk, not on a touchline in the sun, not to a fifteen-
+   * year-old on a cracked screen, not to a parent reading over a shoulder.
+   * Nothing is below 13px any more, and prose sits at 15px: density traded for
+   * being read, deliberately.
+   *
+   * These are floors, not suggestions. tools/type-floor-check.mjs holds them,
+   * because every type regression this project has had passed tsc, eslint and
+   * next build — a number is a number to all three. */
+  --t-furniture:  13px;   /* uppercase tracked labels, eyebrows, nav, chips */
+  --t-data:       13px;   /* mono — dates, timecodes, durations, codes */
+  --t-body:       15px;   /* running prose: the coach's words, the summaries */
+  --t-body-tight: 14px;   /* a secondary line under a heading */
+  --t-min:        13px;   /* absolute floor. Nothing renders below this. */
 
   /* Type scale — the first size tokens this app has had.
      Before these, styling was 361 inline fontSize declarations across 26
@@ -154,9 +181,16 @@
 
      If a label does not fit at --fs-1, the label is too long. Do not add a
      smaller step. */
-  --fs-1:         11px;  /* eyebrows, badges, micro-labels, nav */
-  --fs-2:         12px;  /* secondary/meta */
-  --fs-3:         13px;  /* body */
+  /* RAISED 2026-09-25. These were 11 / 12 / 13px — the same floor judgement as
+     above, made when the floor was 11. Max raised it to 13, so the bottom three
+     steps are now aliases of the one scale rather than a second scale that
+     quietly disagrees with it. That matters beyond tidiness: ~150 call sites
+     use these tokens, and while they held 11 and 12 the type-floor rig reported
+     the app clean while a fifth of its type rendered under the floor. A check
+     that reads 0 while the product ships 11px is worse than no check. */
+  --fs-1:         var(--t-furniture);  /* 13px — eyebrows, badges, nav */
+  --fs-2:         var(--t-body-tight); /* 14px — secondary/meta */
+  --fs-3:         var(--t-body);       /* 15px — body */
   --fs-4:         16px;  /* card titles, lead */
   --fs-5:         19px;  /* section headings */
   --fs-6:         30px;  /* display */
@@ -198,6 +232,35 @@
 
 /* ─── Base ───────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
+
+/* ── Nothing scrolls sideways ─────────────────────────────────────
+ * Max, 2026-09-25: "make sure there's no ability to scroll sideways so we can
+ * maximise usage."
+ *
+ * `clip` rather than `hidden`: hidden makes the element a scroll container,
+ * which silently breaks every `position: sticky` descendant — a real cost for
+ * a header meant to stay put. `hidden` is kept first only as the fallback for
+ * iOS Safari before 16.
+ *
+ * This is containment, not a fix. An element wider than the viewport is still
+ * a bug; clipping it only stops the page lurching sideways while it is found.
+ * tools/boot-smoke.mjs fails on any element that exceeds the viewport width,
+ * so the cause cannot hide behind this rule. */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+/* `clip` alone is near-absolute, not absolute: it does not contain a
+ * `position: absolute` descendant, because a static body is not that element's
+ * containing block, so its overflow feeds the viewport instead. Measured — a
+ * 900px absolutely-positioned div in a 390px viewport drove window.scrollX to
+ * 510 with clip on both html and body. Making body the containing block closes
+ * it. Static, fixed, float and margin overflow were already contained.
+ *
+ * Both halves of the selector above are load-bearing too: with clip on html
+ * only, the same probe scrolled 510px. Do not simplify it to one. */
+body { position: relative; }
 
 body {
   background: var(--bg);
@@ -397,7 +460,7 @@ textarea.input { resize: vertical; min-height: 80px; }
 
 .label {
   display: block;
-  font-size: 12px;
+  font-size: var(--t-furniture);
   font-weight: 700;
   color: var(--text-2);
   margin-bottom: 5px;
@@ -410,9 +473,9 @@ textarea.input { resize: vertical; min-height: 80px; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--t-furniture);
   font-weight: 800;
-  padding: 3px 10px;
+  padding: 4px 10px;
   border-radius: 999px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -444,7 +507,7 @@ textarea.input { resize: vertical; min-height: 80px; }
 
 /* ─── Quote strip ────────────────────────────────────────────── */
 .quote-strip {
-  font-size: 11px;
+  font-size: var(--t-furniture);
   font-style: italic;
   color: var(--text-muted);
   text-align: center;
@@ -495,7 +558,7 @@ textarea.input { resize: vertical; min-height: 80px; }
   color: var(--text);
 }
 .stat-label {
-  font-size: 11px;
+  font-size: var(--t-furniture);
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;

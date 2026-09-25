@@ -76,15 +76,24 @@ export default function TrainingSpine({
     <section aria-label={`${label}. ${sentence}.`}>
       <div style={{
         fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)',
-        textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 9,
+        textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 11,
       }}>
         {label}
       </div>
 
+      {/* 56px, and 11px of air either side of it.
+          The chart was drawn to 48px when the label above it was 11px and the
+          sentence below it was 12px. Both of those are now 13px and 14px, and
+          the chart did not move: at a ~300px card width it had become the
+          smallest thing in its own section, pinched between two lines of type
+          that had grown around it. 48 × 13/11 = 56 keeps the picture the same
+          size *relative to its label* as it was drawn to be. Nothing here
+          overflowed — the columns are flex children with no content, so they
+          shrink rather than push — this is proportion, not repair. */}
       <div
         role="img"
         aria-label={sentence}
-        style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 48 }}
+        style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 56 }}
       >
         {weeks.map((n, i) => (
           <div key={i} aria-hidden style={{
@@ -93,8 +102,9 @@ export default function TrainingSpine({
           }}>
             <div style={{
               // Floor of 3px so an empty week is a visible flat line rather
-              // than a hole in the chart.
-              height: `${Math.max(3, Math.round((n / peak) * 44))}px`,
+              // than a hole in the chart. 52 = the 56px row less the 4px the
+              // current-week footer below reserves.
+              height: `${Math.max(3, Math.round((n / peak) * 52))}px`,
               background: n > 0 ? 'var(--primary-dark)' : 'var(--border-soft)',
               borderRadius: 2,
             }} />
@@ -109,7 +119,7 @@ export default function TrainingSpine({
         ))}
       </div>
 
-      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 9 }}>
+      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 11, lineHeight: 1.45 }}>
         {sentence}
         {gapNote && (
           <span style={{ color: 'var(--coach-on-light)', fontWeight: 700 }}> · {gapNote}</span>
