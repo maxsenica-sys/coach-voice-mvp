@@ -986,16 +986,18 @@ export default function AthletePage() {
     if (!noteText.trim()) return
     setNoteSaving(true)
     try {
-      const res = await fetch('/api/athlete-notes', {
+      // apiJson, not raw fetch: this used to check res.ok and do nothing
+      // otherwise, so a failed save left the text in the box with no word that
+      // it had not been kept.
+      const json = await apiJson<{ note: AthleteNote }>('/api/athlete-notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: noteText.trim(), session_id: sessionId, note_type: 'typed' }),
       })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok) {
-        setNotes((prev) => [...prev, json.note])
-        setNoteText('')
-      }
+      setNotes((prev) => [...prev, json.note])
+      setNoteText('')
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not save your note. It is still in the box.'))
     } finally {
       setNoteSaving(false)
     }
@@ -1003,15 +1005,16 @@ export default function AthletePage() {
 
   const updateNote = async (id: string) => {
     if (!noteEditText.trim()) return
-    const res = await fetch('/api/athlete-notes', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, content: noteEditText.trim() }),
-    })
-    const json = await res.json().catch(() => ({}))
-    if (res.ok) {
+    try {
+      const json = await apiJson<{ note: AthleteNote }>('/api/athlete-notes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, content: noteEditText.trim() }),
+      })
       setNotes((prev) => prev.map((n) => n.id === id ? { ...n, content: json.note.content } : n))
       setNoteEditId(null)
+    } catch (e: unknown) {
+      setActionError(errorMessage(e, 'Could not save that change. Your edit is still open.'))
     }
   }
 
@@ -1211,6 +1214,10 @@ export default function AthletePage() {
       } else {
         setJoinMsg(json?.error ?? 'Failed to join')
       }
+    } catch (e: unknown) {
+      // A dropped connection rejects rather than returning a status, and this
+      // had no catch, so the button stopped spinning and nothing was said.
+      setJoinMsg(errorMessage(e, 'Could not reach CoachVoice. Check your connection and try again.'))
     } finally {
       setJoinLoading(false)
     }
@@ -1261,7 +1268,7 @@ export default function AthletePage() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 28 }}>
             {[
-              { icon: 'pulse', title: 'Check in daily', desc: 'Your coach tracks your energy, mood, sleep, soreness and stress. Takes 10 seconds.' },
+              { icon: 'pulse', title: 'Check in daily', desc: 'Mark anywhere that hurts, then say how ready you feel. Two taps on a normal day.' },
               { icon: 'book', title: 'View your sessions', desc: 'After each session, your coach will share notes and feedback here.' },
               { icon: 'messages', title: 'Message your coach', desc: "Ask questions, share how you're feeling, stay connected." },
             ].map((step, i) => (
