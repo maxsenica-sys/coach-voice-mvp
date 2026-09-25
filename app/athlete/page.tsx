@@ -1357,7 +1357,7 @@ export default function AthletePage() {
                       key={s.id}
                       href={`/sessions/${s.id}`}
                       className="card"
-                      style={{ padding: '13px 15px', textDecoration: 'none', color: 'inherit', display: 'block', position: 'relative' }}
+                      style={{ padding: '13px 15px', textDecoration: 'none', color: 'inherit', display: 'block' }}
                     >
                       {/* The newest one is the only thing marked — an unread-ish
                           cue that doesn't need its own panel.
@@ -2052,6 +2052,13 @@ export default function AthletePage() {
                         cursor: 'pointer',
                         textAlign: 'left',
                         marginBottom: isMobile ? 0 : 4,
+                        // A session name the coach typed without spaces has no
+                        // wrap opportunity, and this button is sized by its
+                        // content — so it ran off the side of the screen, where
+                        // the horizontal clip hides it rather than letting the
+                        // athlete scroll to it. Break it instead of losing it.
+                        maxWidth: '100%',
+                        overflowWrap: 'anywhere',
                       }}
                     >
                       {s.session_name ?? 'Session'} ({count})
@@ -2169,7 +2176,7 @@ export default function AthletePage() {
                 <label className="label">Type</label>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {['reminder', 'goal', 'other'].map((t) => (
-                    <button key={t} onClick={() => setEventForm({ ...eventForm, event_type: t })} className={`badge badge-${t}`} style={{ cursor: 'pointer', border: `1.5px solid ${eventForm.event_type === t ? 'currentColor' : 'transparent'}`, padding: '5px 12px', fontSize: 'var(--fs-2)' }}>
+                    <button key={t} onClick={() => setEventForm({ ...eventForm, event_type: t })} className={`badge badge-${t}`} style={{ cursor: 'pointer', border: `1.5px solid ${eventForm.event_type === t ? 'currentColor' : 'transparent'}`, padding: '5px 12px', minHeight: 44, fontSize: 'var(--fs-2)' }}>
                       {t.charAt(0).toUpperCase() + t.slice(1)}
                     </button>
                   ))}
@@ -2299,7 +2306,9 @@ function NoteCard({
             {new Date(note.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </span>
           {note.note_type === 'voice' && <span className="badge badge-session" style={{ fontSize: 'var(--fs-1)' }}>🎙️ Voice</span>}
-          {sessionName && <span className="badge badge-athlete" style={{ fontSize: 'var(--fs-1)' }}>{sessionName}</span>}
+          {/* Same reason as the filter button above: the badge is content-sized
+              and a spaceless session name took it past the edge of the screen. */}
+          {sessionName && <span className="badge badge-athlete" style={{ fontSize: 'var(--fs-1)', maxWidth: '100%', overflowWrap: 'anywhere' }}>{sessionName}</span>}
         </div>
         {!isEditing && (
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>

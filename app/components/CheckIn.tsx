@@ -168,7 +168,7 @@ export default function CheckIn({
                 {opt.label}
                 {/* No break-word and no ellipsis here on purpose: these hints
                     are a fixed, known list, and the longest word in them
-                    ("feeling") measures 46px against the 67px column this gets
+                    ("Normal") measures 45px against the 68px column this gets
                     on a 320px phone. They wrap between whole words or not at
                     all. A hint that would not fit is a hint to rewrite, not to
                     hyphenate. lineHeight 1.3 rather than 1.2 because at 13px
