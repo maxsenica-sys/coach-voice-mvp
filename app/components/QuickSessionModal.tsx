@@ -941,6 +941,25 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   </button>
                 </>
               )}
+
+              {/* startRecording writes four carefully distinguished failures
+                  into `error` — denied, no mic, mic in use, unknown — and this
+                  step rendered none of them: only the review step did. So a tap
+                  on Start Recording that failed did visibly nothing at all, and
+                  the one message that would have told the coach which thing to
+                  fix was thrown away. Same family of harm as the frozen meter
+                  above: the recorder looking fine while not recording. */}
+              {error && !recording && (
+                <div
+                  role="alert"
+                  style={{
+                    fontSize: 'var(--t-body-tight)', fontWeight: 600, color: 'var(--danger)',
+                    textAlign: 'center', maxWidth: 340, lineHeight: 1.4,
+                  }}
+                >
+                  {error}
+                </div>
+              )}
             </div>
           </div>
         )}

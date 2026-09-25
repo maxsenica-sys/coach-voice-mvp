@@ -455,7 +455,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                   {initials(a)}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: active ? 'var(--primary)' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 600, color: active ? 'var(--primary)' : 'var(--text)', overflowWrap: 'anywhere', lineHeight: 1.3 }}>
                     {a.first_name} {a.last_name}
                   </div>
                   <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 1 }}>
@@ -513,7 +513,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
                 {initials(selectedAthlete)}
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedAthlete.first_name} {selectedAthlete.last_name}</div>
+                <div style={{ fontSize: 'var(--t-body)', fontWeight: 700, overflowWrap: 'anywhere', lineHeight: 1.3 }}>{selectedAthlete.first_name} {selectedAthlete.last_name}</div>
                 {/* Wraps rather than truncating: an address the coach cannot read
                     in full is a piece of missing data, and nothing here may
                     widen past the panel — html/body clip sideways overflow. */}
