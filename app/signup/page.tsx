@@ -72,12 +72,13 @@ const SN_CSS = `
 .sn-box {
   display: flex; align-items: center; gap: 11px; min-height: 56px; padding: 0 15px;
   border-radius: 16px; border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--text) 4.5%, transparent);
-  transition: border-color .15s, box-shadow .15s, background-color .15s;
+  /* A field is cut INTO the stage, not lit on top of it: darkening its ground
+     keeps the placeholder and typed text above 4.5:1 wherever the beam falls. */
+  background: color-mix(in srgb, var(--ink-base) 45%, transparent);
+  transition: border-color .15s, box-shadow .15s;
 }
 .sn-box:focus-within {
   border-color: var(--primary);
-  background: color-mix(in srgb, var(--text) 7.5%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
 }
 .sn-box > svg { flex: none; color: var(--text-2); }
@@ -756,7 +757,7 @@ export default function SignupPage() {
                       <input
                         id="sn-position"
                         type="text"
-                        placeholder={`e.g. Centre midfielder, 100m sprinter, Goalkeeper…`}
+                        placeholder="e.g. Goalkeeper, 100m sprint"
                         value={form.positionOrEvent}
                         autoCapitalize="sentences"
                         enterKeyHint="next"
@@ -819,7 +820,7 @@ export default function SignupPage() {
                         id="sn-code"
                         className="sn-code"
                         type="text"
-                        placeholder="e.g. johndoe4821 — your coach provides this"
+                        placeholder="e.g. johndoe4821"
                         value={form.coachCode}
                         /* The value is lowercased on change, but iOS still opened
                            a shifted keyboard and the first character looked wrong
