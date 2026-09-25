@@ -56,7 +56,10 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime')
+    // athlete_response is the athlete's one-tap reply to the takeaway. The
+    // coach already sees it on the session page; the athlete profile's session
+    // list shows it too, and could not while this select left it out.
+    .select('id, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime, athlete_response')
     .eq('coach_id', user.id)
     .eq('athlete_id', athlete_id)
     // Newest session first by the date it happened, not the date it was typed

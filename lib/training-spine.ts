@@ -2,7 +2,8 @@
 //
 // The arithmetic behind the twelve-week training chart, with no React in it.
 //
-// This logic used to live inside `app/components/TrainingSpine.tsx`. It moved
+// This logic used to live inside `app/components/TrainingSpine.tsx` (since
+// deleted: the athlete home and profile draw the spine inline). It moved
 // here for one reason: **Node can strip TypeScript but it cannot parse JSX**, so
 // anything exported from a `.tsx` file is unreachable from a test rig. Pure
 // logic sitting in a component file is logic nothing can check.

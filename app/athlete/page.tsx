@@ -1232,7 +1232,7 @@ export default function AthletePage() {
   // ── Derived data ──────────────────────────────────────────
   const filteredNotes = noteFilter ? notes.filter((n) => n.session_id === noteFilter) : notes
   // Twelve weeks for the check-in card's spine. The same lib/training-spine.ts
-  // arithmetic the TrainingSpine component draws, so the clock rig covers it.
+  // arithmetic the clock rig runs under nine timezones.
   const spine = useMemo(() => buildSpine(sessions), [sessions])
 
   // ── Loading ───────────────────────────────────────────────
@@ -1536,7 +1536,7 @@ export default function AthletePage() {
                 {/* ── Training rhythm ──
                     Twelve weeks of work, so the athlete can see it
                     accumulating. The arithmetic is lib/training-spine.ts — the
-                    same buildSpine the TrainingSpine component draws — and the
+                    same buildSpine the coach's profile draws — and the
                     same rules: nothing under three sessions, no streak, no
                     average, and the athlete is never told the gap since the
                     last session. The only lit bar is this week, because it is
