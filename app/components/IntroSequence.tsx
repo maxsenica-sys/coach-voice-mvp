@@ -51,8 +51,15 @@ const WORD_AT = 1500
 export { PEAKS } from '@/lib/montage-schedule'
 import { PEAKS } from '@/lib/montage-schedule'
 
+/* The glyph is --on-primary, not white. The mark's ground is --primary to
+ * --primary-dark, and since Stadium Night lifted those to be read on ink they
+ * are light: white on them measured 1.79:1 and 1.47:1, under the 3:1 a
+ * graphic needs (WCAG 1.4.11), so the microphone all but vanished from the
+ * mark. Set through style rather than the stroke attribute because a
+ * presentation attribute does not take var(). tools/boot-smoke.mjs measures
+ * the glyph against both gradient stops. */
 const MicMark = () => (
-  <svg viewBox="0 0 24 24" width="33" height="33" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+  <svg viewBox="0 0 24 24" width="33" height="33" fill="none" style={{ stroke: 'var(--on-primary)' }} strokeWidth="2" strokeLinecap="round" aria-hidden="true">
     <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />
     <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" />
   </svg>

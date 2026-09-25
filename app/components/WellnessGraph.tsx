@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import {
-  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint,
+  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor,
   type MetricKey, type WellnessCheckin as Checkin,
 } from '@/lib/wellness-config'
 import { fmtShortDate as fmtDate } from '@/lib/date-utils'
@@ -60,11 +60,15 @@ function LineChart({ checkins, activeMetrics }: { checkins: Checkin[], activeMet
    *
    * Every check-in is still plotted — it keeps its point on every active line.
    * What is rationed is how many of them get a date printed underneath, because
-   * "Sep 21" at 13px wants about 58px of room and the old every-sixth rule put
+   * "Sep 21" at 13px mono wants about 50px of room and the old every-sixth rule put
    * seven of them across a phone. The first and last check-in are always
    * labelled, so the window the chart covers is still stated outright rather
    * than inferred from a gap. */
-  const TICK_W = 58
+  // 80, not 58: the dates are set in mono now, and the check below compares
+  // a centred label against an END-anchored last one, so the room needed is
+  // half of one date plus all of the other plus a gap — "Sep 19" and
+  // "Sep 25" collided at 58.
+  const TICK_W = 80
   const ticks: number[] = []
   if (lastIdx > 0 && chartW > 0) {
     const maxTicks = Math.max(2, Math.floor(chartW / TICK_W))
@@ -85,7 +89,7 @@ function LineChart({ checkins, activeMetrics }: { checkins: Checkin[], activeMet
           {gridLines.map((v) => (
             <g key={v}>
               <line x1={PL} y1={yScale(v)} x2={W - PR} y2={yScale(v)} stroke="var(--border-soft)" strokeWidth="1" />
-              <text x={PL - 7} y={yScale(v) + 4.5} textAnchor="end" fill="var(--text-2)" style={{ fontSize: 'var(--t-data)' }}>{v}</text>
+              <text x={PL - 7} y={yScale(v) + 4.5} textAnchor="end" fill="var(--text-2)" style={{ fontSize: 'var(--t-data)', fontFamily: 'var(--font-mono)' }}>{v}</text>
             </g>
           ))}
 
@@ -98,7 +102,7 @@ function LineChart({ checkins, activeMetrics }: { checkins: Checkin[], activeMet
               y={H - 10}
               textAnchor={i === 0 ? 'start' : i === lastIdx ? 'end' : 'middle'}
               fill="var(--text-2)"
-              style={{ fontSize: 'var(--t-data)' }}
+              style={{ fontSize: 'var(--t-data)', fontFamily: 'var(--font-mono)' }}
             >
               {fmtDate(checkins[i].check_date)}
             </text>
@@ -135,24 +139,31 @@ function LineChart({ checkins, activeMetrics }: { checkins: Checkin[], activeMet
 }
 
 // ─── Score Bar (horizontal) ───────────────────────────────────────────────────
-function ScoreBar({ metricKey, label, icon, color, score, inverted }: { metricKey: MetricKey; label: string; icon: string; color: string; score: number | null; inverted?: boolean }) {
+/* One hairline-free row per metric: the name in the cast face, a track, the
+ * score in mono. The fill takes the good / ok / low bucket colour from
+ * metricColor — the same rule as the number beside it and the dot on the
+ * coach's roster — rather than the series hue, which identifies a LINE on the
+ * trend chart and means nothing about how the score is doing. */
+function ScoreBar({ metricKey, label, score, inverted }: { metricKey: MetricKey; label: string; score: number | null; inverted?: boolean }) {
   const fillScore = score === null ? 0 : (inverted ? 6 - score : score)
   const fillPct = (fillScore / 5) * 100
-  const dotColor = metricColor(metricKey, score)
+  const bucket = metricColor(metricKey, score)
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ fontSize: 14, width: 18, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
-      <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 600, color: 'var(--text-2)', width: 66, flexShrink: 0 }}>{label}</span>
-      <div style={{ flex: 1, height: 7, background: 'var(--border-soft)', borderRadius: 99, overflow: 'hidden' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '92px minmax(0, 1fr) 22px', alignItems: 'center', gap: 10 }}>
+      <span style={{
+        fontFamily: 'var(--font-cast)', fontSize: 15, fontWeight: 700, letterSpacing: '0.1em',
+        textTransform: 'uppercase', color: 'var(--text-2)', overflowWrap: 'anywhere',
+      }}>{label}</span>
+      <div style={{ height: 6, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
         <div style={{
           height: '100%', width: `${fillPct}%`,
-          background: `linear-gradient(90deg, ${color}aa, ${color})`,
+          background: bucket,
           borderRadius: 99,
           transition: 'width 0.5s ease',
         }} />
       </div>
-      <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: dotColor, width: 18, textAlign: 'right', flexShrink: 0 }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 500, color: 'var(--text)', textAlign: 'right' }}>
         {score ?? '—'}
       </span>
     </div>
@@ -192,6 +203,16 @@ export default function WellnessGraph({ athleteId }: Props) {
 
   const latest = checkins[checkins.length - 1] ?? null
 
+  /* The athlete's most recent injury update, from whichever day they wrote it.
+   *
+   * While an injury is open the check-in asks the athlete how it is going and
+   * tells them "Only your coach sees this". The API stored the answer and sent
+   * it back to this page, and no screen ever rendered it, so the athlete was
+   * writing to nobody. The box only appears while an injury is open, so the
+   * newest update is not always on the latest check-in; take the newest one
+   * that has text. */
+  const lastInjuryUpdate = [...checkins].reverse().find((c) => c.injury_update?.trim()) ?? null
+
   const toggleMetric = (key: MetricKey) => {
     setActiveMetrics((prev) => {
       const next = new Set(prev)
@@ -206,57 +227,71 @@ export default function WellnessGraph({ athleteId }: Props) {
   const overallColor = overallScoreColor(overallScore)
 
   return (
-    <div className="card" style={{ padding: 18 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div className="card" style={{ padding: 18, borderRadius: 'var(--radius-lg)' }}>
+      {/* Header: the section in the cast face, when it was last answered in
+          mono, and the overall score as the reading-face numeral. The numeral
+          keeps its good / ok / low colour — on the coach's side that colour is
+          the information. */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div style={{ minWidth: 0 }}>
           <div style={{
-            width: 38, height: 38, borderRadius: 10,
-            background: overallScore !== null ? overallScoreTint(overallScore) : 'var(--border-soft)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 20,
+            fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
+            letterSpacing: '0.24em', textTransform: 'uppercase', color: 'var(--text-2)',
           }}>
-            💚
+            Wellness
           </div>
-          <div>
-            <div style={{ fontSize: 'var(--fs-4)', fontWeight: 700, color: 'var(--text)' }}>Wellness</div>
-            {latest && (
-              <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)' }}>
-                Last check-in: {fmtDate(latest.check_date)}
-              </div>
-            )}
-          </div>
+          {latest && (
+            <div style={{
+              fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)',
+              letterSpacing: '0.04em', textTransform: 'uppercase', marginTop: 6,
+            }}>
+              Last check-in · {fmtDate(latest.check_date)}
+            </div>
+          )}
         </div>
 
         {overallScore !== null && (
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            background: overallScoreTint(overallScore), borderRadius: 10, padding: '6px 12px',
-          }}>
-            <span style={{ fontSize: 20, fontWeight: 800, color: overallColor, lineHeight: 1 }}>{overallScore}</span>
-            <span style={{ fontSize: 'var(--t-furniture)', color: overallColor, fontWeight: 600, marginTop: 2 }}>/ 5</span>
+          <div aria-label={`Overall ${overallScore} out of 5`} style={{ display: 'flex', alignItems: 'baseline', gap: 2, lineHeight: 0.8 }}>
+            <span style={{
+              fontFamily: 'var(--font-display)', fontSize: 48, fontWeight: 500, letterSpacing: '-0.04em',
+              color: overallColor, fontVariantNumeric: 'tabular-nums',
+            }}>{overallScore}</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 19, color: 'var(--text-2)' }}>/5</span>
           </div>
         )}
       </div>
 
       {loading && (
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>Loading…</div>
+        <div style={{
+          color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)',
+          letterSpacing: '0.06em', textTransform: 'uppercase', padding: '12px 0',
+        }}>Loading…</div>
       )}
 
       {!loading && loadError && (
-        <div style={{ textAlign: 'center', fontSize: 13, padding: '12px 0', color: '#B55C3E' }}>
-          {loadError}{' '}
+        <div role="alert" style={{
+          padding: '12px 14px', borderRadius: 12, background: 'var(--coach-light)',
+          border: '1px solid var(--coach-border)', boxShadow: 'inset 0 2px 0 var(--coach-on-light)',
+        }}>
+          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+            {loadError}
+          </div>
           <button
+            className="btn btn-ghost"
             onClick={() => void load()}
-            style={{ background: 'none', border: 'none', color: 'inherit', textDecoration: 'underline', cursor: 'pointer', font: 'inherit', padding: 0 }}
+            style={{
+              marginTop: 10, minHeight: 44, paddingInline: 16, borderRadius: 999, fontSize: 'var(--fs-2)',
+              color: 'var(--text)', background: 'var(--bg)', borderColor: 'var(--coach-border)',
+            }}
           >
+            <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>↻</span>
             Try again
           </button>
         </div>
       )}
 
       {!loading && !loadError && checkins.length === 0 && (
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>
+        <div style={{ color: 'var(--text-2)', fontSize: 'var(--fs-3)', lineHeight: 1.5, padding: '4px 0' }}>
           No check-ins yet. The athlete can submit from their portal.
         </div>
       )}
@@ -264,14 +299,12 @@ export default function WellnessGraph({ athleteId }: Props) {
       {!loading && latest && (
         <>
           {/* Score bars */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {METRICS.map(({ key, label, icon, color, inverted }) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {METRICS.map(({ key, label, inverted }) => (
               <ScoreBar
                 key={key}
                 metricKey={key}
                 label={label}
-                icon={icon}
-                color={color}
                 score={((latest as unknown as Record<string, number | null>)[key]) ?? null}
                 inverted={inverted}
               />
@@ -279,8 +312,29 @@ export default function WellnessGraph({ athleteId }: Props) {
           </div>
 
           {latest.notes && (
-            <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg)', borderRadius: 8, fontSize: 'var(--t-body)', lineHeight: 1.5, color: 'var(--text-2)' }}>
-              <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Note: </span>{latest.notes}
+            <div style={{ marginTop: 14, padding: '11px 13px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border-soft)', fontSize: 'var(--t-body)', lineHeight: 1.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+              <span style={{
+                display: 'block', marginBottom: 3,
+                fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
+                letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-2)',
+              }}>Note</span>
+              {latest.notes}
+            </div>
+          )}
+
+          {lastInjuryUpdate && (
+            <div style={{ marginTop: 14, padding: '11px 13px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border-soft)', borderLeft: '3px solid var(--ember)', fontSize: 'var(--t-body)', lineHeight: 1.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+              <span style={{
+                display: 'flex', flexWrap: 'wrap', gap: '4px 10px', alignItems: 'baseline', marginBottom: 3,
+                fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
+                letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-2)',
+              }}>
+                <span>Injury update</span>
+                <span style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', textTransform: 'none', fontWeight: 500 }}>
+                  {lastInjuryUpdate.check_date}
+                </span>
+              </span>
+              {lastInjuryUpdate.injury_update}
             </div>
           )}
 
@@ -289,11 +343,13 @@ export default function WellnessGraph({ athleteId }: Props) {
             <>
               <button
                 onClick={() => setShowChart((v) => !v)}
+                aria-expanded={showChart}
                 style={{
                   marginTop: 8, background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 'var(--t-furniture)', color: 'var(--primary-dark)', fontWeight: 600,
+                  fontFamily: 'var(--font-cast)', fontSize: 15, letterSpacing: '0.14em',
+                  textTransform: 'uppercase', color: 'var(--primary)', fontWeight: 700,
                   minHeight: 44, padding: '0 2px',
-                  display: 'flex', alignItems: 'center', gap: 5,
+                  display: 'flex', alignItems: 'center', gap: 6,
                 }}
               >
                 {showChart ? '▲ Hide' : '▼ Show'} 30-day trend
@@ -330,7 +386,7 @@ export default function WellnessGraph({ athleteId }: Props) {
                     })}
                   </div>
 
-                  <div style={{ borderRadius: 10, overflow: 'hidden', background: 'var(--bg)', padding: '10px 4px 4px' }}>
+                  <div style={{ borderRadius: 12, overflow: 'hidden', background: 'var(--bg)', border: '1px solid var(--border-soft)', padding: '10px 4px 4px' }}>
                     <LineChart checkins={checkins} activeMetrics={activeMetrics} />
                   </div>
                 </div>

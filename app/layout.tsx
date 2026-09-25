@@ -112,7 +112,16 @@ export const viewport: Viewport = {
   // either. That left dozens of sites of sub-11px text with no mechanism of
   // any kind by which a user could enlarge them. WCAG 2.2 SC 1.4.4 requires
   // 200%. Do not put these back without solving 1.4.4 another way.
-  themeColor: '#1F2421',   // matches manifest + globals.css --text
+  // The ink ground, not a contrast colour: this is the status bar and the
+  // task-switcher header, and it has to read as the same surface as the app
+  // underneath it. Equal to globals.css --bg and to theme_color in
+  // app/manifest.ts; tools/boot-smoke.mjs asserts all three agree.
+  themeColor: '#1F2421',
+  // Before the inline <style> below has been parsed the browser paints with
+  // its own defaults, and those follow the page's declared colour scheme. The
+  // meta tag is the only way to declare it that early. It says the same thing
+  // as color-scheme: dark in globals.css and in BOOT_CSS.
+  colorScheme: 'dark',
 }
 
 export const metadata: Metadata = {
@@ -195,8 +204,28 @@ const BOOT_CSS = `/* ── The boot shell ────────────�
  * flight — paints nothing over nothing. On a phone in dark mode that is a
  * black screen, produced by two things that are each individually correct.
  *
- * Inline, unconditional, and it cannot be late. */
-html { background: #FBF8F3 }
+ * Inline, unconditional, and it cannot be late.
+ *
+ * ── It is the app's own ground, and must stay equal to --bg ──────────────
+ *
+ * This was #FBF8F3, the ivory the app used to be, and after the switch to the
+ * Stadium Night ink it was the last light pixel in the cold start. Not only
+ * for a frame: globals.css paints --bg on body, and body's background only
+ * propagates to the canvas when html has none of its own. Giving html a
+ * colour here therefore pinned the canvas to ivory for the life of the page —
+ * everything outside the body box (the rubber-band overscroll on iOS, a page
+ * shorter than the screen, the empty Suspense bail-out /dashboard is between
+ * the shell leaving and hydration) was a cream slab in an ink app. Measured
+ * in Chromium: body rgb(31, 36, 33), html rgb(251, 248, 243), and the pixel
+ * under a shortened body #FBF8F3.
+ *
+ * So the literal is the value of --bg, the same value as background_color in
+ * app/manifest.ts and the ground of the launch images. A literal, because this
+ * paints before any stylesheet; tools/boot-smoke.mjs reads the browser's
+ * computed --bg and fails if this, the manifest or the launch images drift
+ * from it. color-scheme rides with it so the UA's own defaults are dark from
+ * the same instant. */
+html { background: #1F2421; color-scheme: dark }
 
 #cv-boot { display: none }
 html[data-boot] #cv-boot { display: block }
@@ -211,6 +240,18 @@ html[data-boot] #cv-boot { display: block }
   background-color: #1F2421;
   background-image: linear-gradient(160deg, #1F2421 0%, #3A4F38 100%);
   opacity: 1; transition: opacity ${OUT_MS}ms ease-out;
+  /* The shell's own type metrics, so nothing in it inherits from body.
+     globals.css gives body line-height 1.55 and var(--font-sans), and the
+     wordmark and tagline were picking both up: the wordmark sat 7px lower
+     than in the launch images (which render without globals.css), the
+     tagline was in a different face, and both shifted again depending on
+     whether the stylesheet had landed yet — a dependency on the CSS chunk,
+     which the rule at the top of this block forbids. The launch image and
+     this frame are meant to be the same pixels; tools/boot-smoke.mjs now
+     compares them for every device geometry. */
+  line-height: normal;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
 }
 /* The way out. Set by the inline script — on app-ready, on a tap, or by the
  * dead-man's switch — then the element is removed a beat later. */

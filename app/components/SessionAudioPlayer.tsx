@@ -70,15 +70,17 @@ export default function SessionAudioPlayer({ sessionId, initialUrl = null, mime 
     return (
       <div style={{ marginTop: 8 }}>
         <div style={{
-          fontSize: 'var(--t-body-tight)', lineHeight: 1.55, color: 'var(--text-2, #5D6661)',
-          background: 'var(--warning-light, #F6E9CC)', border: '1px solid #E4CE9A',
-          borderRadius: 10, padding: '10px 12px',
+          fontSize: 'var(--t-body-tight)', lineHeight: 1.55, color: 'var(--text-2)',
+          background: 'var(--warning-light)', border: '1px solid var(--warning-border)',
+          borderRadius: 12, padding: '10px 12px', overflowWrap: 'anywhere',
         }}>
           This device can’t play the format this session was recorded in.
           {url
-            ? <> <a href={url} download style={{ color: 'inherit', fontWeight: 700 }}>Download the recording</a> to play it in another app.</>
-            : <> <button onClick={() => void openUrl()} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 700, color: 'inherit', textDecoration: 'underline', cursor: 'pointer' }}>Get a download link</button>.</>}
-          <div style={{ marginTop: 6, fontSize: 'var(--t-min)', lineHeight: 1.45, opacity: 0.85 }}>
+            ? <> <a href={url} download style={{ color: 'var(--text)', fontWeight: 700 }}>Download the recording</a> to play it in another app.</>
+            : <> <button onClick={() => void openUrl()} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 700, color: 'var(--text)', textDecoration: 'underline', cursor: 'pointer', minHeight: 44 }}>Get a download link</button>.</>}
+          {/* Was the same colour at 0.85 opacity. On the ink ground that
+              composites under 4.5:1, so the step down is carried by size. */}
+          <div style={{ marginTop: 6, fontSize: 'var(--t-min)', lineHeight: 1.45, color: 'var(--text-2)' }}>
             Recordings made from now on play everywhere — this affects older ones only.
           </div>
         </div>
@@ -101,17 +103,22 @@ export default function SessionAudioPlayer({ sessionId, initialUrl = null, mime 
           style={{ width: '100%', height: 44 }}
         />
         {buffering && (
-          <div style={{ fontSize: 'var(--t-min)', lineHeight: 1.45, color: 'var(--text-muted, var(--text-muted))', marginTop: 5 }}>
+          <div style={{ fontSize: 'var(--t-min)', lineHeight: 1.45, color: 'var(--text-muted)', marginTop: 5 }}>
             Buffering — it will start as soon as enough has arrived.
           </div>
         )}
         {error && (
-          <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--danger, #B0473A)', marginTop: 5 }}>{error}</div>
+          <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--danger)', marginTop: 5 }}>{error}</div>
         )}
       </div>
     )
   }
 
+  /* The resting state: one round transport button and its label, as the
+   * Stadium Night recording band draws it. Deliberately not floodlight — that
+   * is spent on RECORD and live state, and pressing play on something already
+   * saved is neither. The whole row is the button, so the tap target is the
+   * 44px circle plus its label rather than the circle alone. */
   return (
     <div style={{ marginTop: 8 }}>
       <button
@@ -122,16 +129,31 @@ export default function SessionAudioPlayer({ sessionId, initialUrl = null, mime 
           if (got) window.setTimeout(() => void audioRef.current?.play().catch(() => {}), 0)
         }}
         disabled={loading}
-        className="btn btn-ghost"
-        style={{ minHeight: 44, padding: '0 14px', fontSize: 'var(--t-furniture)', gap: 7, display: 'inline-flex', alignItems: 'center' }}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 12, minHeight: 44, maxWidth: '100%',
+          padding: 0, background: 'none', border: 'none', color: 'var(--text)',
+          cursor: loading ? 'progress' : 'pointer', textAlign: 'left',
+        }}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14, display: 'block' }}>
-          <polygon points="5 3 19 12 5 21 5 3" />
-        </svg>
-        {loading ? 'Opening…' : 'Play recording'}
+        <span aria-hidden style={{
+          width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+          border: '1.5px solid var(--text-2)', color: 'var(--text)',
+          background: 'color-mix(in srgb, var(--text) 6%, transparent)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ width: 15, height: 15, display: 'block', marginLeft: 2 }}>
+            <polygon points="6 3.5 20 12 6 20.5" />
+          </svg>
+        </span>
+        <span style={{
+          fontFamily: 'var(--font-cast)', fontWeight: 700, fontSize: 'var(--t-furniture)',
+          letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--text-2)', minWidth: 0,
+        }}>
+          {loading ? 'Opening…' : 'Play recording'}
+        </span>
       </button>
       {error && (
-        <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--danger, #B0473A)', marginTop: 6 }}>{error}</div>
+        <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--danger)', marginTop: 6 }}>{error}</div>
       )}
     </div>
   )

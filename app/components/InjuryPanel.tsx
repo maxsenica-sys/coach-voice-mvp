@@ -31,13 +31,24 @@ import {
   type InjuryStatus,
 } from '@/lib/injury'
 
+const CAST: React.CSSProperties = {
+  fontFamily: 'var(--font-cast)', fontWeight: 700, textTransform: 'uppercase',
+}
+const EYEBROW: React.CSSProperties = {
+  ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.24em', color: 'var(--text-2)',
+}
+
+/* Calm and factual. The three statuses keep the system's own warm three-step
+ * from lib/injury.ts — no red, no pulse, no floodlight: a child being hurt is
+ * not a live moment, it is a fact about what they can do today. */
 function StatusChip({ status }: { status: InjuryStatus }) {
   const opt = injuryStatusOption(status)
   if (!opt) return null
   return (
     <span style={{
-      padding: '3px 9px', borderRadius: 999, background: opt.tint, color: opt.color,
-      fontSize: 'var(--fs-1)', fontWeight: 800, letterSpacing: '0.04em', whiteSpace: 'nowrap',
+      ...CAST, padding: '4px 11px', borderRadius: 999, background: opt.tint, color: opt.color,
+      border: `1px solid ${opt.color}`,
+      fontSize: 'var(--fs-1)', letterSpacing: '0.14em', whiteSpace: 'nowrap', lineHeight: 1.2,
     }}>
       {opt.label}
     </span>
@@ -133,77 +144,93 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
-        <div style={{ fontSize: 'var(--fs-1)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 9 }}>
+        <div style={EYEBROW}>
           Availability
         </div>
         {!adding && (
           <button
             className="btn btn-ghost"
             onClick={() => setAdding(true)}
-            style={{ padding: '5px 11px', fontSize: 'var(--fs-2)', minHeight: 44 }}
+            style={{ padding: '0 16px', fontSize: 'var(--fs-3)', minHeight: 44, borderRadius: 999, color: 'var(--text)' }}
           >
             Log an injury
           </button>
         )}
       </div>
 
-      <div className="card" style={{ padding: 15 }}>
+      <div className="card" style={{ padding: 16, borderRadius: 'var(--radius-lg)' }}>
         {loading ? (
-          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-muted)' }}>Loading…</div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Loading…</div>
         ) : open.length === 0 && !adding ? (
           // No injuries is the normal state and gets one quiet line, not a
           // celebration and not an empty panel asking to be filled in.
-          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>
+          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.5 }}>
             {athleteName} is available. Nothing logged.
           </div>
         ) : null}
 
-        {open.map((i) => (
-          <div key={i.id} style={{ paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--border-soft)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)' }}>
+        {open.map((i, idx) => {
+          const opt = injuryStatusOption(i.status)
+          return (
+          <div key={i.id} style={
+            idx > 0 ? { paddingTop: 14, marginTop: 14, borderTop: '1px solid var(--border)' } : undefined
+          }>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ ...CAST, fontSize: 24, letterSpacing: '0.03em', lineHeight: 1.05, color: 'var(--text)', overflowWrap: 'anywhere', minWidth: 0 }}>
                 {regionLabel(i.body_area)}
               </span>
               <StatusChip status={i.status} />
             </div>
-            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)', marginTop: 4 }}>
-              Since {i.started_on}
-              {i.expected_return ? ` · back around ${i.expected_return}` : ''}
+            {/* What the status means, verbatim from lib/injury.ts. */}
+            {opt && (
+              <div style={{ fontSize: 'var(--fs-4)', fontWeight: 600, color: 'var(--text)', marginTop: 5 }}>
+                {opt.meaning}
+              </div>
+            )}
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-2)', marginTop: 6, lineHeight: 1.5 }}>
+              {/* Each date is kept whole: a wrapped line breaks between
+                  phrases, never inside 2026-09-30. */}
+              <span style={{ whiteSpace: 'nowrap' }}>Since {i.started_on}</span>
+              {i.expected_return && <> · <span style={{ whiteSpace: 'nowrap' }}>back around {i.expected_return}</span></>}
             </div>
             {i.note && (
-              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 5, lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+              // The coach's words, in the reading face.
+              <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 'var(--fs-4)', color: 'var(--text-2)', marginTop: 7, lineHeight: 1.45, overflowWrap: 'anywhere' }}>
                 {i.note}
               </div>
             )}
-            <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
-              {INJURY_STATUSES.map((opt) => (
+            <div role="group" aria-label={`Availability for ${regionLabel(i.body_area)}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
+              {INJURY_STATUSES.map((o) => {
+                const on = i.status === o.value
+                return (
                 <button
-                  key={opt.value}
+                  key={o.value}
                   type="button"
-                  aria-pressed={i.status === opt.value}
+                  aria-pressed={on}
                   onClick={() => {
                     // Out and Modified are both visible and reversible on this
                     // screen. Cleared is the one that removes the record.
-                    if (opt.value === 'cleared' && i.status !== 'cleared') {
+                    if (o.value === 'cleared' && i.status !== 'cleared') {
                       setConfirmClear(i.id)
                       return
                     }
-                    void setInjuryStatus(i.id, opt.value)
+                    void setInjuryStatus(i.id, o.value)
                   }}
-                  title={opt.meaning}
+                  title={o.meaning}
                   style={{
-                    padding: '6px 11px', minHeight: 44, borderRadius: 999,
-                    border: `1px solid ${i.status === opt.value ? opt.color : 'var(--border)'}`,
-                    background: i.status === opt.value ? opt.tint : 'var(--card)',
-                    color: i.status === opt.value ? opt.color : 'var(--text-2)',
-                    fontFamily: 'inherit', fontSize: 'var(--fs-2)',
-                    fontWeight: i.status === opt.value ? 800 : 600, cursor: 'pointer',
+                    ...CAST, minWidth: 0, padding: '6px 4px', minHeight: 44, borderRadius: 14,
+                    border: `1px solid ${on ? o.color : 'var(--border)'}`,
+                    background: on ? o.tint : 'transparent',
+                    color: on ? o.color : 'var(--text-2)',
+                    fontSize: 17, letterSpacing: '0.1em', cursor: 'pointer',
+                    overflowWrap: 'anywhere',
                   }}
                 >
-                  {opt.label}
+                  {o.label}
                 </button>
-              ))}
+                )
+              })}
             </div>
 
             {confirmClear === i.id && (
@@ -211,9 +238,9 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
                 role="alertdialog"
                 aria-label="Confirm clearing this injury"
                 style={{
-                  marginTop: 10, padding: 11, borderRadius: 10,
+                  marginTop: 10, padding: 12, borderRadius: 12,
                   background: 'var(--wellness-good-tint)',
-                  border: '1px solid var(--border)',
+                  border: '1px solid var(--success-border)',
                 }}
               >
                 <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text)', lineHeight: 1.5 }}>
@@ -223,14 +250,14 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                   <button
                     className="btn btn-primary"
-                    style={{ minHeight: 44, paddingInline: 16, fontSize: 'var(--fs-3)' }}
+                    style={{ minHeight: 44, paddingInline: 16, fontSize: 'var(--fs-3)', borderRadius: 999 }}
                     onClick={() => { setConfirmClear(null); void setInjuryStatus(i.id, 'cleared') }}
                   >
                     Yes, cleared
                   </button>
                   <button
                     className="btn btn-ghost"
-                    style={{ minHeight: 44, paddingInline: 16, fontSize: 'var(--fs-3)' }}
+                    style={{ minHeight: 44, paddingInline: 16, fontSize: 'var(--fs-3)', borderRadius: 999, color: 'var(--text)', background: 'var(--bg)' }}
                     onClick={() => setConfirmClear(null)}
                   >
                     Cancel
@@ -239,43 +266,54 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
 
         {adding && (
-          <div>
-            <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, marginBottom: 8 }}>Where is it?</div>
+          <div style={open.length > 0 ? { marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' } : undefined}>
+            <div style={{ ...EYEBROW, marginBottom: 10 }}>Where is it?</div>
             <BodyMap
+              perspective="other"
               // One area per injury, so the map is used single-select here:
               // the last tap wins rather than accumulating.
               selected={area ? [area] : []}
               onChange={(next) => setArea(next.length ? next[next.length - 1] : null)}
             />
 
-            <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, marginTop: 14, marginBottom: 7 }}>
+            <div style={{ ...EYEBROW, marginTop: 18, marginBottom: 9 }}>
               What can they do?
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {INJURY_STATUSES.filter((o) => o.value !== 'cleared').map((opt) => (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {INJURY_STATUSES.filter((o) => o.value !== 'cleared').map((opt) => {
+                const on = status === opt.value
+                return (
                 <button
                   key={opt.value}
                   type="button"
-                  aria-pressed={status === opt.value}
+                  aria-pressed={on}
                   onClick={() => setStatus(opt.value)}
                   style={{
-                    flex: 1, minWidth: 0, minHeight: 44, borderRadius: 8, padding: '6px 10px',
-                    border: `1.5px solid ${status === opt.value ? opt.color : 'var(--border)'}`,
-                    background: status === opt.value ? opt.tint : 'var(--card)',
-                    color: status === opt.value ? opt.color : 'var(--text-2)',
-                    fontFamily: 'inherit', fontSize: 'var(--fs-3)',
-                    fontWeight: status === opt.value ? 800 : 600, cursor: 'pointer',
+                    flex: 1, minWidth: 0, minHeight: 56, borderRadius: 14, padding: '8px 10px',
+                    border: `1px solid ${on ? opt.color : 'var(--border)'}`,
+                    background: on ? opt.tint : 'transparent',
+                    color: on ? opt.color : 'var(--text-2)',
+                    fontFamily: 'var(--font-cast)', fontSize: 17, fontWeight: 700,
+                    letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer',
                   }}
                 >
                   {opt.label}
-                  <div style={{ fontSize: 'var(--fs-1)', fontWeight: 600, marginTop: 2, opacity: 0.85 }}>
+                  {/* Colour, not opacity: an 0.85 fade is the step that took
+                      small text under 4.5:1 elsewhere on the ink ground. */}
+                  <div style={{
+                    fontFamily: 'var(--font-sans)', fontSize: 'var(--fs-1)', fontWeight: 600,
+                    letterSpacing: 0, textTransform: 'none', marginTop: 3,
+                    color: on ? 'var(--text)' : 'var(--text-2)',
+                  }}>
                     {opt.meaning}
                   </div>
                 </button>
-              ))}
+                )
+              })}
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
@@ -307,28 +345,27 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" onClick={() => void save()} disabled={saving} style={{ flex: '1 1 auto', minWidth: 0, justifyContent: 'center' }}>
+              <button className="btn btn-primary" onClick={() => void save()} disabled={saving} style={{ flex: '1 1 auto', minWidth: 0, minHeight: 44, justifyContent: 'center', borderRadius: 999 }}>
                 {saving ? 'Saving…' : 'Log it'}
               </button>
-              <button className="btn btn-ghost" onClick={reset} disabled={saving}>Cancel</button>
+              <button className="btn btn-ghost" onClick={reset} disabled={saving} style={{ minHeight: 44, borderRadius: 999, color: 'var(--text)' }}>Cancel</button>
             </div>
           </div>
         )}
 
         {cleared.length > 0 && (
-          <div style={{ marginTop: 14, borderTop: '1px solid var(--border-soft)', paddingTop: 12 }}>
+          <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <button
               onClick={() => setShowCleared((v) => !v)}
               aria-expanded={showCleared}
               style={{
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 6, minHeight: 44,
-                fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text-2)',
-                fontFamily: 'inherit',
+                ...CAST, background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 8, minHeight: 44,
+                fontSize: 15, letterSpacing: '0.14em', color: 'var(--text-2)',
               }}
             >
               <span aria-hidden="true" style={{ display: 'inline-block', transform: showCleared ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>›</span>
-              Cleared ({cleared.length})
+              Cleared <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: 0 }}>({cleared.length})</span>
             </button>
 
             {showCleared && (
@@ -341,7 +378,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
                     <button
                       className="btn btn-ghost"
                       onClick={() => void setInjuryStatus(i.id, 'recovering')}
-                      style={{ minHeight: 44, paddingInline: 14, fontSize: 'var(--fs-2)', flexShrink: 0 }}
+                      style={{ minHeight: 44, paddingInline: 14, fontSize: 'var(--fs-2)', flexShrink: 0, borderRadius: 999, color: 'var(--text)' }}
                     >
                       Reopen
                     </button>
@@ -353,7 +390,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
         )}
 
         {error && (
-          <div style={{ color: 'var(--danger)', fontSize: 'var(--fs-2)', marginTop: 10 }}>{error}</div>
+          <div role="alert" style={{ color: 'var(--danger)', fontSize: 'var(--fs-2)', marginTop: 10, lineHeight: 1.5, overflowWrap: 'anywhere' }}>{error}</div>
         )}
       </div>
     </div>

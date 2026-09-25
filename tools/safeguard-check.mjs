@@ -451,6 +451,42 @@ const RULES = [
       return found
     },
   },
+  {
+    id: 'SG9',
+    title: 'A child\'s check-in words reach the coach, not a parent, unless the coach chooses',
+    why: 'An athlete writing a note on their daily check-in is told "Your coach will see this". The automatic wellness-drop email to PARENTS — sent when a score crosses a threshold, with nobody choosing to send it — was carrying that note verbatim. A thirteen-year-old writing "slept badly, stuff at home" to their coach had it arrive in a parent\'s inbox because a number moved. Max decided on 2026-09-25 that notes stay out of anything a parent receives unless the coach includes them. The scores still go; the words do not.',
+    cite: 'lib/notify.ts — the wellness alert builder; product-review/REGISTER.md 2026-09-25',
+    check(files) {
+      const found = []
+      for (const f of files) {
+        const src = code(f)
+        // Any email body that interpolates a check-in note must be gated on
+        // the coach being the audience. The gate has to be IN the expression
+        // that emits the note, not merely somewhere in the file: an email
+        // builder takes `audience` as a parameter for other reasons too (the
+        // CTA), and its mere presence proves nothing about the note.
+        //
+        // A note is usually interpolated twice — once in the condition and once
+        // in the template that condition protects — so a pattern that only
+        // looks inside the nearest `${` sees the inner one as ungated. The first
+        // version of this rule did exactly that and failed the FIXED code. So
+        // each occurrence is judged against the text leading up to it: the gate
+        // must appear within the same few lines, which is where it lives when
+        // it governs that expression.
+        for (const m of src.matchAll(/\bcheckin\.notes\b/g)) {
+          const lead = src.slice(Math.max(0, m.index - 240), m.index)
+          if (!/audience\s*===\s*['"]coach['"]/.test(lead)) {
+            found.push({
+              file: f.rel,
+              line: lineOf(f, /checkin\.notes/),
+              msg: 'interpolates a check-in note into an email without gating it on audience === "coach"',
+            })
+          }
+        }
+      }
+      return found
+    },
+  },
 ]
 
 /**

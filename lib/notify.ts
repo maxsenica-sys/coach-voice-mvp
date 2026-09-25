@@ -417,7 +417,22 @@ export function buildWellnessAlertHtml({
   ${avgScore !== null ? `<div style="background:#fef2f2;border-radius:8px;padding:8px 14px"><div style="font-size:20px;font-weight:800;color:#ef4444">${avgScore}/5</div><div style="font-size:13px;color:#5A6B87;text-transform:uppercase;font-weight:700">7-day avg</div></div>` : ''}
 </div>
 <table style="width:100%;border-collapse:collapse;margin:0 0 12px">${metricRows}</table>
-${checkin.notes ? `<p style="color:#4a5568;font-size:13px;line-height:1.6;margin:0 0 12px"><strong>Note from check-in:</strong> ${checkin.notes}</p>` : ''}`,
+${
+  /* The athlete's own words go to the coach and to nobody else by default.
+   *
+   * Max, 2026-09-25, choosing between three options: leave check-in notes out
+   * of anything a parent receives unless the coach puts them there, and tell
+   * the athlete when they write one. This email is sent to parents
+   * AUTOMATICALLY when a score drops — nobody chooses to send it — and it was
+   * carrying the note verbatim, while the check-in screen told the athlete
+   * "Your coach will see this". A thirteen-year-old writing "slept badly,
+   * stuff at home" to their coach should not have it arrive in a parent's
+   * inbox because a number crossed a threshold. The scores still go: they are
+   * what the alert is for. The words do not. */
+  audience === 'coach' && checkin.notes
+    ? `<p style="color:#4a5568;font-size:13px;line-height:1.6;margin:0 0 12px"><strong>Note from check-in:</strong> ${checkin.notes}</p>`
+    : ''
+}`,
     ctaText: audience === 'coach' ? 'View athlete' : undefined,
     ctaHref: audience === 'coach' ? ctaHref : undefined,
     footerNote: audience === 'parent'

@@ -83,7 +83,13 @@ export function calendarDaysBetween(from: Date, to: Date): number {
   return Math.round((b.getTime() - a.getTime()) / 86400000)
 }
 
-/** Yesterday in the viewer's own timezone, as `YYYY-MM-DD`. */
-export function yesterdayISODate(): string {
-  return new Intl.DateTimeFormat('en-CA').format(new Date(Date.now() - 86400000))
+/** Yesterday in the viewer's own timezone, as `YYYY-MM-DD`.
+ *
+ * Built by stepping the day of the month back one, not by subtracting
+ * 86,400,000ms. The day after a clock change is not 24 hours from the one
+ * before it, so at 00:30 after a 23-hour day, 24 hours back is two dates ago
+ * and the recorder's "Yesterday" chip named the wrong day. `now` is a
+ * parameter so the clock rig can stand at that minute. */
+export function yesterdayISODate(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA').format(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))
 }
