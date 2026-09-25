@@ -1,19 +1,16 @@
-import { calendarDaysBetween } from '@/lib/session-date'
+import { calendarDaysBetween, parseISODate } from '@/lib/session-date'
 // lib/date-utils.ts
 // Shared date formatting utilities used across components.
 
-export function fmtDate(v: string | null): string {
-  if (!v) return '—'
-  return new Date(v).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })
-}
-
-export function fmtDateTime(v: string | null): string {
-  if (!v) return '—'
-  return new Date(v).toLocaleString(undefined, { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-
+/* "Sep 25" for a date or a timestamp.
+ *
+ * A date-only string goes through parseISODate. `new Date('2026-09-25')` is
+ * specified as UTC midnight, so west of UTC it is still the 24th locally and a
+ * check-in made on the 25th printed as the 24th. A full timestamp names its
+ * own instant and is shown in the viewer's timezone as before. */
 export function fmtShortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' })
+  const d = parseISODate(iso) ?? new Date(iso)
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
 /* Calendar days apart, not milliseconds divided by a day.

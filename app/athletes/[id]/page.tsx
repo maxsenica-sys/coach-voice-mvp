@@ -24,6 +24,7 @@ import { buildSpine, SPINE_GAP_DAYS, SPINE_MIN_SESSIONS, SPINE_WEEKS } from '@/l
 import { responseOption } from '@/lib/session-response'
 import { currentMonth, parseMonth, sameMonth, shiftMonth, toMonthStr } from '@/lib/calendar-month'
 import { todayISODate } from '@/lib/session-date'
+import { fmtShortDate } from '@/lib/date-utils'
 import { errorMessage } from '@/lib/errors'
 import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 
@@ -1367,7 +1368,7 @@ export default function AthleteDetailPage() {
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, marginLeft: 'auto' }}>
                   {wellnessLatest && (
                     <span style={{ whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: wellnessAlert?.active ? 'var(--danger)' : 'var(--text-2)', fontWeight: wellnessAlert?.active ? 700 : 500 }}>
-                      {wellnessAlert?.active ? 'Needs attention' : `Checked in ${new Date(wellnessLatest.check_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+                      {wellnessAlert?.active ? 'Needs attention' : `Checked in ${fmtShortDate(wellnessLatest.check_date)}`}
                     </span>
                   )}
                   <button onClick={() => setActiveTab('wellness')} style={SEC_LINK}>Details →</button>

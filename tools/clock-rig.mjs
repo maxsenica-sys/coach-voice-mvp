@@ -87,7 +87,7 @@ const OFF = '\x1b[0m'
 // ── child mode: run every property in one zone ────────────────────────────
 
 async function runZone(zone, year) {
-  const { calendarDaysBetween, parseISODate, todayISODate, sessionISODate, sessionDate } =
+  const { calendarDaysBetween, parseISODate, todayISODate, sessionISODate, sessionDate, yesterdayISODate } =
     await import(pathToFileURL(path.join(ROOT, 'lib/session-date.ts')).href)
   const { buildSpine, startOfWeek, completeSpineWeeks, SPINE_WEEKS } =
     await import(pathToFileURL(path.join(ROOT, 'lib/training-spine.ts')).href)
@@ -95,7 +95,7 @@ async function runZone(zone, year) {
   // exists for: two `Math.floor(diffMs / 86400000)` calls deciding whether a
   // message says "Today" or "Yesterday". A rig that does not import a module
   // cannot hold an opinion about it.
-  const { fmtDateDivider, fmtTime } =
+  const { fmtDateDivider, fmtTime, fmtShortDate } =
     await import(pathToFileURL(path.join(ROOT, 'lib/date-utils.ts')).href)
 
   const failures = []
@@ -201,6 +201,26 @@ async function runZone(zone, year) {
       }
       check(completeSpineWeeks([], false, today) === SPINE_WEEKS, 'P7b an unfilled list is complete', label)
       check(completeSpineWeeks([], true, today) === 0, 'P7b a full list of no dates covers nothing', label)
+    }
+
+    // ── P8b · a date-only string is shown as that date ───────────────────
+    // new Date('YYYY-MM-DD') is UTC midnight, the previous evening west of
+    // UTC. A check-in dated today must print as today in every zone.
+    {
+      const want = today.toLocaleDateString([], { month: 'short', day: 'numeric' })
+      const got = fmtShortDate(label)
+      check(got === want, 'P8b fmtShortDate keeps a date-only day', `${label} printed ${got}, want ${want}`)
+    }
+
+    // ── P8c · yesterday is the previous calendar date, just after midnight ─
+    // At 00:30 the day after a 23-hour day, subtracting 24 hours lands two
+    // dates back. Every day of the year is stood on at 00:30 and at 23:30.
+    if (i > 0) {
+      for (const [h, m] of [[0, 30], [23, 30]]) {
+        const at = new Date(today.getFullYear(), today.getMonth(), today.getDate(), h, m)
+        const got = yesterdayISODate(at)
+        check(got === iso(days[i - 1]), 'P8c yesterday is the previous date', `${label} ${h}:${m} gave ${got}, want ${iso(days[i - 1])}`)
+      }
     }
 
     // ── P8 · sessionISODate preserves the coach's chosen date verbatim ─────

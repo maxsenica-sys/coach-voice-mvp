@@ -15,14 +15,14 @@ import {
   overallWellnessScore, overallScoreColor,
   type WellnessCheckin,
 } from '@/lib/wellness-config'
-import { fmtDate, fmtDateTime, fmtDateDivider } from '@/lib/date-utils'
+import { fmtDateDivider } from '@/lib/date-utils'
 import ListState from '@/app/components/ListState'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { buildSpine, SPINE_MIN_SESSIONS, SPINE_WEEKS } from '@/lib/training-spine'
 import { READINESS_OPTIONS } from '@/lib/readiness'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
-import { formatSessionDate, todayISODate } from '@/lib/session-date'
+import { formatSessionDate, parseISODate, todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import type { MessageRow, RsvpEvent } from '@/lib/api-types'
 import { SESSION_RESPONSES, type SessionResponse } from '@/lib/session-response'
@@ -2281,7 +2281,7 @@ export default function AthletePage() {
                       <div key={evt.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
                         <div style={{ flex: '1 1 180px', minWidth: 0 }}>
                           <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, overflowWrap: 'anywhere' }}>{evt.title}</div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-1)', color: 'var(--text-2)' }}>{new Date(evt.event_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}{evt.event_time ? ` at ${evt.event_time}` : ''}</div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-1)', color: 'var(--text-2)' }}>{(parseISODate(evt.event_date) ?? new Date(evt.event_date)).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}{evt.event_time ? ` at ${evt.event_time}` : ''}</div>
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                           {(['yes', 'maybe', 'no'] as const).map((s) => (
