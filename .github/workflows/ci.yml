@@ -86,6 +86,13 @@ jobs:
       - name: Roster rig
         run: npm run verify:roster
 
+      # Max asked for the type floor so the app is readable on a touchline and
+      # by a parent over a shoulder, not only at a desk. A size is just a number
+      # to tsc, eslint and next build, so nothing else would catch a new 11px
+      # label. The rig is a ratchet: the count may only go down.
+      - name: Type floor
+        run: npm run verify:type
+
       # The cold-start montage is generated from the app's own artwork. A stale
       # sprite is an opening animation quietly showing something other than what
       # the app ships, and a drifted colour is a flash-safety regression in front

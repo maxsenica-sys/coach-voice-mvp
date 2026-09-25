@@ -3,7 +3,7 @@ import {
   SPORT_COUNT, DRAW_MS, COLLAPSE_AT, MARK_AT, WORD_AT, SEQUENCE_MS,
   montageKeyframesCss, at, PEAKS,
 } from '@/lib/montage-schedule'
-import { Plus_Jakarta_Sans, Newsreader, JetBrains_Mono } from 'next/font/google'
+import { Plus_Jakarta_Sans, Newsreader, JetBrains_Mono, Big_Shoulders } from 'next/font/google'
 import './globals.css'
 
 /* ── Type ──────────────────────────────────────────────────────────────────
@@ -69,6 +69,26 @@ const newsreader = Newsreader({
   // invisible text. Blocking these on a slow-3G profile moved first paint
   // 1252ms -> 840ms. Plus Jakarta Sans, which carries the body copy, stays
   // preloaded at 27KB. tools/boot-smoke.mjs enforces the 40KB budget.
+  preload: false,
+})
+
+const bigShoulders = Big_Shoulders({
+  variable: '--font-bigshoulders',
+  subsets: ['latin'],
+  weight: ['600', '700', '800'],
+  display: 'swap',
+  // The scoreboard voice: every uppercase eyebrow, ticker, surname and nav
+  // label. Not preloaded, for the same reason Newsreader is not — the first
+  // painted frame is the boot shell, which hardcodes the system stack on
+  // purpose, so preloading this would compete with the document's own CSS for
+  // a frame that never renders it. `display: swap` makes the cost a late swap
+  // on furniture rather than invisible text.
+  //
+  // It goes through next/font, never an @import, so it is self-hosted on our
+  // own origin — an @import url(https://fonts.googleapis.com/...) in a CSS
+  // file is the specific mistake that dropped this app into the default serif
+  // once already, because the Tailwind build strips the import before any
+  // check of the built output can see it.
   preload: false,
 })
 
@@ -554,7 +574,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // computed value time — taking the literal fallbacks down with it and
     // dropping every screen into the browser's default serif. Same trap the
     // boot shell's wordmark hit; see BOOT_CSS above.
-    <html lang="en" className={`${jakartaSans.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" className={`${jakartaSans.variable} ${newsreader.variable} ${jetbrainsMono.variable} ${bigShoulders.variable}`}>
       <head>
         {/* PWA / Apple home screen */}
         <meta name="mobile-web-app-capable" content="yes" />

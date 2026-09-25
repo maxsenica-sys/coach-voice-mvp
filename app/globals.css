@@ -138,6 +138,33 @@
   --font-display: var(--font-newsreader), 'Georgia', serif;
   --font-sans:    var(--font-jakarta), system-ui, -apple-system, sans-serif;
   --font-mono:    var(--font-jetbrains), 'IBM Plex Mono', ui-monospace, monospace;
+  /* The scoreboard voice. Resolved here in :root alongside the other three,
+     because a var() that is unresolved at computed-value time is invalid and
+     takes the literal fallbacks down with it — which is how this app dropped
+     into the default serif once already. The next/font class that defines
+     --font-bigshoulders goes on <html>, never <body>, for the same reason.
+     Note the alias and the next/font variable must NOT share a name: point one
+     at the other, or the alias resolves to nothing. */
+  --font-cast:    var(--font-bigshoulders), 'Big Shoulders Display', 'Oswald', 'Arial Narrow', sans-serif;
+
+  /* ── Type scale ───────────────────────────────────────────────
+   * Max, 2026-09-25: "maximise human retention and viewage using the furniture
+   * floor. everything should be easily viewable."
+   *
+   * This app shipped uppercase furniture and mono data at 9-12px — 154 runs of
+   * it. Legible at a desk, not on a touchline in the sun, not to a fifteen-
+   * year-old on a cracked screen, not to a parent reading over a shoulder.
+   * Nothing is below 13px any more, and prose sits at 15px: density traded for
+   * being read, deliberately.
+   *
+   * These are floors, not suggestions. tools/type-floor-check.mjs holds them,
+   * because every type regression this project has had passed tsc, eslint and
+   * next build — a number is a number to all three. */
+  --t-furniture:  13px;   /* uppercase tracked labels, eyebrows, nav, chips */
+  --t-data:       13px;   /* mono — dates, timecodes, durations, codes */
+  --t-body:       15px;   /* running prose: the coach's words, the summaries */
+  --t-body-tight: 14px;   /* a secondary line under a heading */
+  --t-min:        13px;   /* absolute floor. Nothing renders below this. */
 
   /* Type scale — the first size tokens this app has had.
      Before these, styling was 361 inline fontSize declarations across 26
@@ -198,6 +225,25 @@
 
 /* ─── Base ───────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
+
+/* ── Nothing scrolls sideways ─────────────────────────────────────
+ * Max, 2026-09-25: "make sure there's no ability to scroll sideways so we can
+ * maximise usage."
+ *
+ * `clip` rather than `hidden`: hidden makes the element a scroll container,
+ * which silently breaks every `position: sticky` descendant — a real cost for
+ * a header meant to stay put. `hidden` is kept first only as the fallback for
+ * iOS Safari before 16.
+ *
+ * This is containment, not a fix. An element wider than the viewport is still
+ * a bug; clipping it only stops the page lurching sideways while it is found.
+ * tools/boot-smoke.mjs fails on any element that exceeds the viewport width,
+ * so the cause cannot hide behind this rule. */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
+}
 
 body {
   background: var(--bg);
