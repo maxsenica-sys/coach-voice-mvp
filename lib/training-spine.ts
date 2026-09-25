@@ -57,6 +57,32 @@ export interface SpineData {
   daysSinceLast: number | null
 }
 
+/**
+ * How many of the chart's most recent weeks a capped list of sessions fully covers.
+ *
+ * A dashboard loads only the newest N sessions. Once that list is full, the week
+ * holding its oldest session is only partly inside it, and every week before
+ * that is missing entirely. Drawing those weeks would show a busy coach's
+ * record tapering away when it did not. So only the weeks after the oldest
+ * session's week are complete: the current week and the ones between.
+ *
+ * `windowFull` false means the list is everything there is, so all
+ * SPINE_WEEKS are true. 0 means the whole list falls inside this week.
+ */
+export function completeSpineWeeks(sessions: SessionDateFields[], windowFull: boolean, now = new Date()): number {
+  if (!windowFull) return SPINE_WEEKS
+  let oldest: Date | null = null
+  for (const s of sessions) {
+    const d = sessionDate(s)
+    if (d && (!oldest || d.getTime() < oldest.getTime())) oldest = d
+  }
+  if (!oldest) return 0
+  // Both ends are Mondays at local midnight, so the day count is a whole
+  // number of weeks. Round rather than divide exactly, as a safeguard.
+  const weeks = Math.round(calendarDaysBetween(startOfWeek(oldest), startOfWeek(now)) / 7)
+  return Math.max(0, Math.min(SPINE_WEEKS, weeks))
+}
+
 /** Bucket sessions into the last twelve weeks, oldest bucket first. */
 export function buildSpine(sessions: SessionDateFields[], now = new Date()): SpineData {
   const currentWeekStart = startOfWeek(now)

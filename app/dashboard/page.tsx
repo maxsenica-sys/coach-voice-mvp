@@ -17,8 +17,8 @@ import { gapLabel, isQuiet, QUIET_AFTER_DAYS, type CoverageRow } from '@/lib/att
 import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
 import { activeCount } from '@/lib/athlete-status'
-import { calendarDaysBetween, formatSessionDate, sessionDate, sessionISODate, todayISODate } from '@/lib/session-date'
-import { buildSpine, startOfWeek, SPINE_WEEKS, SPINE_MIN_SESSIONS } from '@/lib/training-spine'
+import { formatSessionDate, sessionDate, sessionISODate, todayISODate } from '@/lib/session-date'
+import { buildSpine, completeSpineWeeks, SPINE_WEEKS, SPINE_MIN_SESSIONS } from '@/lib/training-spine'
 import { GROUP_COLORS, DEFAULT_GROUP_COLOR } from '@/lib/group-colors'
 import { errorMessage } from '@/lib/errors'
 
@@ -819,7 +819,11 @@ function DashboardPageInner() {
     setAthletesError(null)
     try {
       const json = await apiJson<{ athletes?: Athlete[] }>('/api/athletes', { cache: 'no-store' })
-      setAthletes((json.athletes ?? json) as Athlete[])
+      // The route always answers { athletes: [...] }. Anything else is an error,
+      // not an empty roster: a coach shown no athletes would reasonably believe
+      // their athletes had been deleted.
+      if (!Array.isArray(json.athletes)) throw new Error('Could not load your athletes.')
+      setAthletes(json.athletes)
     } catch (e) {
       setAthletesError(e instanceof Error ? e.message : 'Could not load your athletes.')
     } finally { setLoadingAthletes(false); markAppReady() }
@@ -1233,13 +1237,7 @@ function DashboardPageInner() {
    * when it did not. So only the weeks the window wholly contains are drawn:
    * the ones after the week of its oldest session. */
   const windowFull = allSessions.length >= SESSIONS_WINDOW
-  const completeWeeks = (() => {
-    if (!windowFull) return SPINE_WEEKS
-    const dates = allSessions.map((s) => sessionDate(s)).filter((d): d is Date => d !== null)
-    if (dates.length === 0) return 0
-    const oldest = dates.reduce((a, b) => (a < b ? a : b))
-    return Math.min(SPINE_WEEKS, Math.round(calendarDaysBetween(startOfWeek(oldest), startOfWeek(new Date())) / 7))
-  })()
+  const completeWeeks = completeSpineWeeks(allSessions, windowFull)
   const sparkWeeks = completeWeeks > 0 ? spine.weeks.slice(SPINE_WEEKS - completeWeeks) : []
   const sparkTotal = sparkWeeks.reduce((a, b) => a + b, 0)
   const sparkMax = Math.max(1, ...sparkWeeks)

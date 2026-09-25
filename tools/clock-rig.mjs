@@ -89,7 +89,7 @@ const OFF = '\x1b[0m'
 async function runZone(zone, year) {
   const { calendarDaysBetween, parseISODate, todayISODate, sessionISODate, sessionDate } =
     await import(pathToFileURL(path.join(ROOT, 'lib/session-date.ts')).href)
-  const { buildSpine, startOfWeek, SPINE_WEEKS } =
+  const { buildSpine, startOfWeek, completeSpineWeeks, SPINE_WEEKS } =
     await import(pathToFileURL(path.join(ROOT, 'lib/training-spine.ts')).href)
   // date-utils was outside this rig while carrying the exact bug the rig
   // exists for: two `Math.floor(diffMs / 86400000)` calls deciding whether a
@@ -182,6 +182,25 @@ async function runZone(zone, year) {
         'P7 84 consecutive days fill 12 buckets of 7',
         `${label} -> ${JSON.stringify(spine.weeks)}`,
       )
+    }
+
+    // ── P7b · a capped session list covers only the weeks after its oldest ─
+    // The dashboard's spark loads the newest N sessions. If the oldest is in
+    // the week n weeks back, only the n weeks after it are complete, whichever
+    // day of that week it fell on. Getting this wrong by one draws a
+    // half-empty week as a quiet one.
+    if (i % 7 === 0) {
+      const monday = startOfWeek(today)
+      for (let n = 0; n <= SPINE_WEEKS + 2; n++) {
+        const want = Math.min(SPINE_WEEKS, n)
+        for (const offset of [0, 6]) {
+          const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7 * n + offset)
+          const got = completeSpineWeeks([{ session_date: iso(d) }, { session_date: label }], true, today)
+          check(got === want, 'P7b complete weeks after the oldest session', `${label}, oldest ${iso(d)} gave ${got}, want ${want}`)
+        }
+      }
+      check(completeSpineWeeks([], false, today) === SPINE_WEEKS, 'P7b an unfilled list is complete', label)
+      check(completeSpineWeeks([], true, today) === 0, 'P7b a full list of no dates covers nothing', label)
     }
 
     // ── P8 · sessionISODate preserves the coach's chosen date verbatim ─────
