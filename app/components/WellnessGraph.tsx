@@ -203,6 +203,16 @@ export default function WellnessGraph({ athleteId }: Props) {
 
   const latest = checkins[checkins.length - 1] ?? null
 
+  /* The athlete's most recent injury update, from whichever day they wrote it.
+   *
+   * While an injury is open the check-in asks the athlete how it is going and
+   * tells them "Only your coach sees this". The API stored the answer and sent
+   * it back to this page, and no screen ever rendered it, so the athlete was
+   * writing to nobody. The box only appears while an injury is open, so the
+   * newest update is not always on the latest check-in; take the newest one
+   * that has text. */
+  const lastInjuryUpdate = [...checkins].reverse().find((c) => c.injury_update?.trim()) ?? null
+
   const toggleMetric = (key: MetricKey) => {
     setActiveMetrics((prev) => {
       const next = new Set(prev)
@@ -309,6 +319,22 @@ export default function WellnessGraph({ athleteId }: Props) {
                 letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-2)',
               }}>Note</span>
               {latest.notes}
+            </div>
+          )}
+
+          {lastInjuryUpdate && (
+            <div style={{ marginTop: 14, padding: '11px 13px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border-soft)', borderLeft: '3px solid var(--ember)', fontSize: 'var(--t-body)', lineHeight: 1.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+              <span style={{
+                display: 'flex', flexWrap: 'wrap', gap: '4px 10px', alignItems: 'baseline', marginBottom: 3,
+                fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
+                letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-2)',
+              }}>
+                <span>Injury update</span>
+                <span style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', textTransform: 'none', fontWeight: 500 }}>
+                  {lastInjuryUpdate.check_date}
+                </span>
+              </span>
+              {lastInjuryUpdate.injury_update}
             </div>
           )}
 

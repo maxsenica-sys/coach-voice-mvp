@@ -1462,7 +1462,7 @@ function DashboardPageInner() {
 
           {/* ════ HOME TAB ════ */}
           {tab === 'home' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: isMobile ? undefined : 760 }}>
 
               {/* Recordings still on this device. Renders nothing when the
                   queue is empty, which is almost always — and sits above
@@ -2285,7 +2285,7 @@ function DashboardPageInner() {
             background: `linear-gradient(180deg, transparent 0%, ${tint(INK_DEEP, 80)} 48%, ${INK_DEEP} 100%)`,
           }} />
           <nav aria-label="Coach" style={{
-            position: 'fixed', left: 10, right: 10, bottom: NAV_BOTTOM, height: NAV_H, zIndex: 200,
+            position: 'fixed', left: 8, right: 8, bottom: NAV_BOTTOM, height: NAV_H, zIndex: 200,
             borderRadius: 21, border: HAIR_2,
             background: tint(INK_DEEP, 88),
             backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
@@ -2295,7 +2295,7 @@ function DashboardPageInner() {
                Shoulders now, which is ~30% narrower than the face they
                replaced — measured at 320px in the build harness. */
             display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
-            alignItems: 'stretch', padding: '0 2px',
+            alignItems: 'stretch', padding: 0,
           }}>
             {BOTTOM_NAV_ITEMS.map((item) => {
               if ('fab' in item) {

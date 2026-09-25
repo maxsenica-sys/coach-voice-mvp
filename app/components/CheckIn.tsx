@@ -106,16 +106,19 @@ export default function CheckIn({
 
   /* Who can see what the athlete writes, said before they write it.
    *
-   * Max, 2026-09-25: tell the athlete when they write it. The coach reads the
-   * check-in before the session, and a coach can also choose to put what the
-   * athlete wrote into a report to their parents or guardians. "Can choose to",
-   * not "will": the automatic parent email carries no check-in text at all,
-   * and the monthly report leaves it out unless the coach ticks it in. A
-   * thirteen-year-old gets that in two plain sentences, next to the box, before
-   * typing — not after pressing Done. */
-  const coachSees = `Your coach will see this before ${sessionLabel ? `“${sessionLabel}”` : 'your next session'}.`
-  const parentsMay = 'Your coach can also choose to include it in a report to your parents or guardians.'
-  const wroteSomething = openInjuries.length > 0 && injuryUpdate.trim().length > 0
+   * Max, 2026-09-25: tell the athlete who sees it. The free text this screen
+   * collects is the INJURY UPDATE, and it goes to the coach and to nobody else:
+   * it is not in the monthly report, not in the automatic parent email, not in
+   * any email. So the true sentence is the reassuring one, and it is said
+   * plainly next to the box, before typing.
+   *
+   * The parents sentence that was here was written for `notes`, the free-text
+   * field of the retired five-metric form — which DOES reach reports, and which
+   * no current screen collects. Telling a child their words may go to their
+   * parents when they cannot would put them off writing the one thing their
+   * coach needs to read. If this screen ever collects text that can reach a
+   * report, this line must change in the same commit. */
+  const coachSees = `Only your coach sees this — they will read it before ${sessionLabel ? `“${sessionLabel}”` : 'your next session'}.`
 
   const EYEBROW: React.CSSProperties = {
     fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
@@ -137,7 +140,6 @@ export default function CheckIn({
         </div>
         <div style={{ color: 'var(--text-2)', marginTop: 10, fontSize: 'var(--fs-3)', lineHeight: 1.5 }}>
           {coachSees}
-          {wroteSomething && <> {parentsMay}</>}
         </div>
       </div>
     )
@@ -251,7 +253,7 @@ export default function CheckIn({
               anything is typed. Same tier as the helper text around it: it is
               a plain fact, not a warning. */}
           <div id={`${noteId}-who`} style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 6, lineHeight: 1.5 }}>
-            Optional — skip it if nothing has changed. {coachSees} {parentsMay}
+            Optional — skip it if nothing has changed. {coachSees}
           </div>
         </div>
       )}
