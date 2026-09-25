@@ -19,6 +19,21 @@ Outcome: <filled in when Max decides — and why, which is the part that matters
 
 ---
 
+## 2026-09-25 — DESIGN-015 — Stadium Night built into every page
+Status: IMPLEMENTED (PR #31, merge commit `12cfad3`)
+Verdict at proposal: BUILD (Max: "Happy for you to start developing every single page")
+Priority: not scored
+Grounded in: `app/globals.css` token layer; every page and shared component; `app/layout.tsx` boot shell; `app/manifest.ts`
+Evidence: rendered from the real components in Chromium at 320/390px; `verify:boot --build` 100/100; `npm run verify` green
+Outcome: Shipped. What the next reviewer should know before proposing anything on top of it:
+
+- **The token layer carries the direction.** ~1,000 call sites converted by flipping tokens; page builds then restructured to the spec. Ink `--bg #1F2421`, cream `--text #F5ECD7`, `--on-primary` for text on sage, `--flood #CBEF5E` for state only. A new light surface is a regression, not a variant.
+- **Floodlight discipline held on every built screen:** the record action, the active tab, this week's bar, a just-sent invite. Unread counts are ember, not flood. Adding a fourth use is the change to push back on.
+- **Measured, not declared.** Contrast was taken from composited pixels (beam + grid + grain), because the palette's declared hex over-reported by up to 1.6:1 three separate times. `tools/palette-rig.mjs` is now ground-relative.
+- **Deliberate departures from the concept boards:** the real nav labels and centre Record button kept; rows wrap rather than truncate; "Wellness" not "Readiness" on the athlete record (readiness already names the two-tap answer); the attention headline is back on the coach home despite its 2026-09-10 removal — the one judgement most worth revisiting with a real coach.
+- **Cold start is ink end to end.** The Android `background_color` and the inline `html` background were still ivory; both fixed and held by 16 new boot checks, including WCAG 2.3.1 on every launch→app handoff.
+- **Open, not built:** the pen palette for the annotator (stock nine vs five system colours) awaits Max; Big Shoulders has no metric-override fallback, so uppercase labels reflow on font swap; `components/sn/` shared primitives would remove ~100 duplicated lines per sign-in page.
+
 ## 2026-09-25 — DESIGN-014 — The floor under Stadium Night: readable, nothing sideways, the summary the coach's own
 Status: IMPLEMENTED (PR #29, merged 6590559)
 Verdict at proposal: BUILD — Max, 2026-09-25: *"summary at stop, yes takeaway
