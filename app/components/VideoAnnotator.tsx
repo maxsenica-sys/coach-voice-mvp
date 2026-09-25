@@ -29,7 +29,26 @@ type Props = {
   startTime?: number
 }
 
-const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#ffffff', '#000000']
+/* The pen colours — Stadium Night's five, replacing nine stock Tailwind hues
+ * (#ef4444, #3b82f6 …) that belonged to no system.
+ *
+ * Literal hex, not tokens, and on purpose: a stroke's colour is SAVED into the
+ * annotation and replayed on other people's screens later, and a canvas cannot
+ * resolve `var(--x)` anyway. These are the exact values of the system colours
+ * they name. Strokes drawn in the old colours keep their own saved colour and
+ * still render exactly as drawn.
+ *
+ * Floodlight (#CBEF5E) is deliberately NOT offered. It is spent on state only —
+ * record, live, unread, now — and a pen that could paint it on anything would
+ * end that discipline the first week. Ember comes first because it is the
+ * coach's mark everywhere else in the product. */
+const COLORS = [
+  { value: '#E39A7A', name: 'Ember' },
+  { value: '#E4BC6B', name: 'Amber' },
+  { value: '#A8CBA0', name: 'Sage' },
+  { value: '#F5ECD7', name: 'Cream' },
+  { value: '#151916', name: 'Ink' },
+]
 const WIDTHS = [2, 4, 7, 12]
 const DURATIONS = [
   { label: 'Permanent', value: -1 },
@@ -40,6 +59,50 @@ const DURATIONS = [
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+
+/* Stadium Night surfaces, expressed against the tokens so a token change moves
+ * them: the spec's --line, --line-2, --panel and ember are not globals yet. */
+const LINE = 'color-mix(in srgb, var(--text) 11%, transparent)'
+const LINE_2 = 'color-mix(in srgb, var(--text) 19%, transparent)'
+const PANEL = 'color-mix(in srgb, var(--text) 4.5%, transparent)'
+const PANEL_2 = 'color-mix(in srgb, var(--text) 10%, transparent)'
+const EMBER = 'var(--coach-on-light)'
+/* The frame's letterbox: one step under the ink ground, as the mockup's stage floor. */
+const STAGE_FLOOR = 'color-mix(in srgb, var(--bg), black 35%)'
+
+/** A toolbar control: Big Shoulders furniture on a hairline, 44px tall. */
+function toolStyle(on = false, disabled = false): React.CSSProperties {
+  return {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+    minHeight: 44, padding: '0 14px', borderRadius: 11,
+    border: `1px solid ${on ? EMBER : LINE_2}`,
+    background: on ? EMBER : PANEL,
+    color: on ? 'var(--on-primary)' : 'var(--text-2)',
+    fontFamily: 'var(--font-cast)', fontWeight: on ? 800 : 700,
+    fontSize: 'var(--t-furniture)', letterSpacing: '0.14em', textTransform: 'uppercase',
+    lineHeight: 1.1, whiteSpace: 'nowrap',
+    cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+  }
+}
+
+const labelStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-cast)', fontWeight: 700, fontSize: 'var(--t-furniture)',
+  letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--text-2)',
+}
+
+function ToolIcon({ name }: { name: 'pen' | 'undo' | 'trash' | 'link' }) {
+  const p = {
+    viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2,
+    strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true,
+    style: { width: 14, height: 14, display: 'block', flexShrink: 0 },
+  }
+  switch (name) {
+    case 'pen':   return <svg {...p}><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4.5 1.5L5 15Z" /></svg>
+    case 'undo':  return <svg {...p}><polyline points="9 14 4 9 9 4" /><path d="M20 20v-7a4 4 0 0 0-4-4H4" /></svg>
+    case 'trash': return <svg {...p}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
+    case 'link':  return <svg {...p}><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg>
+  }
 }
 
 /**
@@ -80,7 +143,7 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
 
   const [strokes, setStrokes] = useState<AnnotationStroke[]>(initialAnnotations)
   const [drawMode, setDrawMode] = useState(false)
-  const [color, setColor] = useState('#ef4444')
+  const [color, setColor] = useState(COLORS[0].value)
   const [strokeWidth, setStrokeWidth] = useState(4)
   const [duration, setDuration] = useState(-1)
   const [videoDimensions, setVideoDimensions] = useState({ w: 0, h: 0 })
@@ -254,9 +317,12 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
   }
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
       {/* Video + canvas overlay */}
-      <div style={{ position: 'relative', background: '#000', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{
+        position: 'relative', background: STAGE_FLOOR, borderRadius: 12, overflow: 'hidden',
+        borderTop: `1px solid ${LINE}`, borderBottom: `1px solid ${LINE}`,
+      }}>
         <video
           ref={videoRef}
           src={videoUrl}
@@ -294,28 +360,38 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
           }}
         />
 
-        {/* Draw mode indicator */}
+        {/* Draw mode indicator — the one floodlight on this screen, because it
+            is a live state: the frame is taking the coach's finger right now.
+            Top-right, clear of the native controls along the bottom edge. The
+            "pause first" instruction lives in the toolbar hint below, which
+            renders whenever this does. */}
         {drawMode && (
           <div style={{
             position: 'absolute',
             top: 10,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'rgba(0,0,0,0.7)',
-            color: '#fff',
+            right: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            background: 'var(--flood)',
+            color: 'var(--on-primary)',
+            fontFamily: 'var(--font-cast)',
             fontSize: 'var(--t-furniture)',
-            fontWeight: 700,
-            lineHeight: 1.35,
-            padding: '5px 12px',
-            borderRadius: 14,
-            /* Wraps to two lines on a narrow frame instead of being cut off by
-               the video wrapper's overflow: hidden. */
+            fontWeight: 800,
+            letterSpacing: '0.2em',
+            lineHeight: 1.2,
+            padding: '5px 11px',
+            borderRadius: 999,
             maxWidth: 'calc(100% - 20px)',
-            textAlign: 'center',
-            backdropFilter: 'blur(4px)',
             pointerEvents: 'none',
           }}>
-            ✏️ Draw mode — pause video to annotate
+            {/* A 2.4s breath on a 6px dot — small-area motion only. The
+                global reduced-motion rule stills it. */}
+            <span aria-hidden style={{
+              width: 6, height: 6, borderRadius: '50%', background: 'var(--on-primary)', flexShrink: 0,
+              animation: 'cv-skeleton-breathe 2.4s ease-in-out infinite',
+            }} />
+            DRAWING
           </div>
         )}
       </div>
@@ -323,40 +399,47 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
       {/* Toolbar */}
       {!readOnly && (
         <div style={{
-          background: 'var(--card)',
-          border: '1px solid var(--border)',
-          borderRadius: 10,
-          padding: 14,
+          background: PANEL,
+          border: `1px solid ${LINE}`,
+          borderRadius: 18,
+          padding: '12px 12px 13px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 12,
+          gap: 11,
+          minWidth: 0,
         }}>
           {/* Row 1: Draw toggle + undo/clear */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <button
-              className={`btn ${drawMode ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setDrawMode((v) => !v)}
-              style={{ gap: 6 }}
+              aria-pressed={drawMode}
+              style={toolStyle(drawMode)}
             >
-              ✏️ {drawMode ? 'Drawing ON' : 'Draw mode'}
+              <ToolIcon name="pen" /> {drawMode ? 'Drawing on' : 'Draw mode'}
             </button>
-            <button className="btn btn-ghost" onClick={undoLast} disabled={strokes.length === 0}>
-              ↩ Undo
+            <button onClick={undoLast} disabled={strokes.length === 0} style={toolStyle(false, strokes.length === 0)}>
+              <ToolIcon name="undo" /> Undo
             </button>
-            <button className="btn btn-danger" onClick={clearAll} disabled={strokes.length === 0}>
-              🗑 Clear all
+            <button
+              onClick={clearAll}
+              disabled={strokes.length === 0}
+              style={{ ...toolStyle(false, strokes.length === 0), color: 'var(--danger)' }}
+            >
+              <ToolIcon name="trash" /> Clear all
             </button>
-            <span style={{ marginLeft: 'auto', fontSize: 'var(--t-furniture)', color: 'var(--text-muted)' }}>
+            <span style={{
+              marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)',
+              letterSpacing: '0.06em', color: 'var(--text-2)', textTransform: 'uppercase',
+            }}>
               {strokes.length} annotation{strokes.length !== 1 ? 's' : ''}
             </span>
             {sessionId && videoId && (
               <button
-                className="btn btn-ghost"
                 onClick={copyShareLink}
-                style={{ gap: 6, fontSize: 'var(--t-furniture)', color: shareCopied ? 'var(--success)' : undefined }}
+                style={{ ...toolStyle(), color: shareCopied ? 'var(--success)' : 'var(--text-2)' }}
                 title="Copy link to current clip timestamp"
               >
-                🔗 {shareCopied ? 'Copied!' : 'Share clip'}
+                <ToolIcon name="link" /> {shareCopied ? 'Copied!' : 'Share clip'}
               </button>
             )}
           </div>
@@ -364,19 +447,19 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
           {drawMode && (
             <>
               {/* Row 2: Colors */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', minWidth: 58 }}>Colour</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 10, borderTop: `1px solid ${LINE}` }}>
+                <span style={{ ...labelStyle, minWidth: 72 }}>Colour</span>
                 <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                  {/* The swatch is the same circle it always was, with the same
-                      ring for the selected one. What grew is the button around
-                      it: 24px was a target for a mouse, and this toolbar is
-                      used on a phone at the side of a court. Nothing about the
-                      colour values or the selection logic changes. */}
+                  {/* 44px buttons around a 28px swatch — this toolbar is used
+                      on a phone at the side of a court. Selection is an outline
+                      with a gap, so the true ground shows between swatch and
+                      ring on whatever card hosts the annotator. */}
                   {COLORS.map((c) => (
                     <button
-                      key={c}
-                      onClick={() => setColor(c)}
-                      aria-label={`Pen colour ${c}`}
+                      key={c.value}
+                      onClick={() => setColor(c.value)}
+                      aria-label={`Pen colour ${c.name}`}
+                      aria-pressed={color === c.value}
                       style={{
                         width: 44,
                         height: 44,
@@ -395,11 +478,10 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
                           width: 28,
                           height: 28,
                           borderRadius: '50%',
-                          background: c,
-                          border: color === c ? '3px solid var(--primary)' : '2px solid var(--border)',
-                          outline: color === c ? '2px solid rgba(37,99,235,0.3)' : 'none',
-                          outlineOffset: 1,
-                          boxShadow: c === '#ffffff' ? 'inset 0 0 0 1px #ccc' : 'none',
+                          background: c.value,
+                          border: '1px solid var(--text-muted)',
+                          outline: color === c.value ? '2px solid var(--text)' : 'none',
+                          outlineOffset: 2,
                         }}
                       />
                     </button>
@@ -408,20 +490,22 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
               </div>
 
               {/* Row 3: Width + Duration */}
-              <div style={{ display: 'flex', gap: '12px 20px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '12px 20px', flexWrap: 'wrap', paddingTop: 10, borderTop: `1px solid ${LINE}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
-                  <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', minWidth: 58 }}>Width</span>
+                  <span style={{ ...labelStyle, minWidth: 72 }}>Width</span>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {WIDTHS.map((w) => (
                       <button
                         key={w}
                         onClick={() => setStrokeWidth(w)}
+                        aria-label={`Pen width ${w}`}
+                        aria-pressed={strokeWidth === w}
                         style={{
                           width: 44,
                           height: 44,
-                          borderRadius: 8,
-                          border: `1.5px solid ${strokeWidth === w ? 'var(--primary)' : 'var(--border)'}`,
-                          background: strokeWidth === w ? 'var(--primary-light)' : 'var(--card)',
+                          borderRadius: 10,
+                          border: `1px solid ${strokeWidth === w ? 'var(--text-2)' : LINE_2}`,
+                          background: strokeWidth === w ? PANEL_2 : PANEL,
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
@@ -435,22 +519,22 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
-                  <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', minWidth: 68 }}>Duration</span>
+                  <span style={{ ...labelStyle, minWidth: 72 }}>Duration</span>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {DURATIONS.map((d) => (
                       <button
                         key={d.value}
                         onClick={() => setDuration(d.value)}
+                        aria-pressed={duration === d.value}
                         style={{
-                          minHeight: 44,
-                          padding: '0 14px',
-                          borderRadius: 8,
-                          border: `1.5px solid ${duration === d.value ? 'var(--primary)' : 'var(--border)'}`,
-                          background: duration === d.value ? 'var(--primary-light)' : 'var(--card)',
-                          color: duration === d.value ? 'var(--primary)' : 'var(--text-2)',
-                          fontWeight: duration === d.value ? 700 : 400,
-                          fontSize: 'var(--t-furniture)',
-                          cursor: 'pointer',
+                          ...toolStyle(),
+                          padding: '0 12px',
+                          borderRadius: 10,
+                          letterSpacing: '0.12em',
+                          border: `1px solid ${duration === d.value ? 'var(--text-2)' : LINE_2}`,
+                          background: duration === d.value ? PANEL_2 : PANEL,
+                          color: duration === d.value ? 'var(--text)' : 'var(--text-2)',
+                          fontWeight: duration === d.value ? 800 : 700,
                         }}
                       >
                         {d.label}
@@ -460,8 +544,8 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
                 </div>
               </div>
 
-              <p style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-                💡 Pause the video first, then draw. Annotations appear at the video timestamp where you drew them.
+              <p style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', margin: 0, lineHeight: 1.5 }}>
+                Pause the video first, then draw. Annotations appear at the video timestamp where you drew them.
                 {duration > 0 ? ` Each stroke will fade after ${duration}s with a burst effect.` : ' Strokes are permanent.'}
               </p>
             </>

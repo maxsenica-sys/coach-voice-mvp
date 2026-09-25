@@ -10,7 +10,6 @@ import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnn
 import WellnessGraph from '@/app/components/WellnessGraph'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
-import TrainingSpine from '@/app/components/TrainingSpine'
 import InjuryPanel from '@/app/components/InjuryPanel'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile } from '@/lib/profile-cache'
@@ -21,6 +20,8 @@ import {
 } from '@/lib/wellness-config'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import { formatSessionDate, sessionISODate } from '@/lib/session-date'
+import { buildSpine, SPINE_GAP_DAYS, SPINE_MIN_SESSIONS, SPINE_WEEKS } from '@/lib/training-spine'
+import { responseOption } from '@/lib/session-response'
 import { currentMonth, parseMonth, sameMonth, shiftMonth, toMonthStr } from '@/lib/calendar-month'
 import { todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
@@ -44,6 +45,10 @@ interface Session {
   transcript: string | null; shared_with_athlete: boolean
   session_date?: string | null
   created_at: string | null; sport_context?: string | null; audio_path?: string | null; audio_mime?: string | null
+  /** What the athlete said back — lib/session-response.ts. Optional because
+   *  GET /api/sessions does not select it yet; the row renders it when it is
+   *  there and says nothing when it is not. */
+  athlete_response?: string | null
 }
 interface SessionVideo {
   id: string; session_id: string; file_name: string | null
@@ -78,6 +83,64 @@ function Icon({ name, size = 18, strokeWidth = 2 }: { name: string; size?: numbe
     case 'x':          return <svg {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     default:           return null
   }
+}
+
+// ── Stadium Night furniture ─────────────────────────────────────
+// The scoreboard voice (Big Shoulders, uppercase, tracked) for every label on
+// this page, and the one floodlit control. Kept as constants rather than
+// re-typed at forty call sites, so the tracking cannot drift between them.
+const CAST: React.CSSProperties = {
+  fontFamily: 'var(--font-cast)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.16em',
+}
+const EYEBROW: React.CSSProperties = {
+  ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.22em', color: 'var(--text-2)', margin: 0,
+}
+/* var(--flood) is STATE only. On this page it is spent on the record action,
+   the active tab, and the one bar in the spine that is this week. */
+const RECORD_SOLID: React.CSSProperties = {
+  ...CAST, fontWeight: 800, letterSpacing: '0.08em', fontSize: 15,
+  background: 'var(--flood)', color: 'var(--on-primary)', border: 'none', boxShadow: 'none',
+}
+const CELL: React.CSSProperties = {
+  position: 'relative', zIndex: 1, minWidth: 0,
+  background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 17,
+  padding: '12px 13px', font: 'inherit', color: 'inherit', textAlign: 'left',
+}
+const SEC_LINK: React.CSSProperties = {
+  ...CAST, fontSize: 'var(--t-furniture)', color: 'var(--primary)',
+  background: 'none', border: 'none', cursor: 'pointer', minHeight: 44, padding: '0 0 0 12px', flexShrink: 0,
+}
+const HIT: React.CSSProperties = { minWidth: 44, minHeight: 44 }
+
+function Chip({ color, tint, children, label }: { color: string; tint?: string; children: React.ReactNode; label?: string }) {
+  return (
+    <span
+      aria-label={label}
+      style={{
+        ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.14em', lineHeight: 1.2,
+        display: 'inline-flex', alignItems: 'center', padding: '4px 9px', borderRadius: 999, flexShrink: 0,
+        color, background: tint ?? `color-mix(in srgb, ${color} 10%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${color} 42%, transparent)`,
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
+/* ACTIVE / PENDING is the roster's real split. Pending means invited and never
+   arrived — amber, unfinished, never the red of a failure. */
+function StatusChip({ status }: { status: string }) {
+  return <Chip color={status === 'ACTIVE' ? 'var(--primary)' : 'var(--energy-dark)'}>{status}</Chip>
+}
+
+function SecHead({ title, children }: { title: string; children?: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 44, marginBottom: 2 }}>
+      <h2 style={EYEBROW}>{title}</h2>
+      {children}
+    </div>
+  )
 }
 
 // ── Caretaker Panel ──────────────────────────────────────────────
@@ -171,14 +234,14 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
 
   return (
     <div className="card" style={{ padding: 18 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Caretakers</div>
+      <h3 style={{ ...EYEBROW, marginBottom: 14 }}>Caretakers</h3>
       {caretakers.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
           {caretakers.map(c => (
-            <div key={c.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '8px 10px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div key={c.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 'var(--t-body)', fontWeight: 600, overflowWrap: 'break-word' }}>{c.caretaker_name} <span style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)' }}>({c.relationship})</span></div>
-                <div style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{c.caretaker_email}</div>
+                <div style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text)', overflowWrap: 'break-word' }}>{c.caretaker_name} <span style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.14em', color: 'var(--text-muted)' }}>{c.relationship}</span></div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', overflowWrap: 'anywhere', marginTop: 2 }}>{c.caretaker_email}</div>
               </div>
               <button
                 className="btn btn-ghost"
@@ -189,7 +252,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
               >
                 <Icon name="mail" size={12} /> Send test
               </button>
-              <button className="btn btn-danger" style={{ padding: '4px 8px' }} onClick={async () => {
+              <button className="btn btn-danger" aria-label={`Remove ${c.caretaker_name ?? 'this caretaker'}`} style={{ padding: '4px 8px', ...HIT }} onClick={async () => {
                 try {
                   await apiMutate(`/api/caretakers?id=${c.id}`, { method: 'DELETE' })
                 } catch (e: unknown) {
@@ -204,7 +267,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
                 <div
                   role="alertdialog"
                   aria-label="Confirm test email"
-                  style={{ flexBasis: '100%', marginTop: 8, padding: 10, borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+                  style={{ flexBasis: '100%', marginTop: 8, padding: 12, borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)' }}
                 >
                   <div style={{ fontSize: 'var(--t-body)', lineHeight: 1.5, color: 'var(--text)' }}>
                     Email <strong>{c.caretaker_email}</strong> now? They will receive a short
@@ -240,17 +303,17 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
         <select className="input" style={{ fontSize: 13 }} value={form.relationship} onChange={e => setForm({ ...form, relationship: e.target.value })}>
           {['parent','guardian','family','manager','other'].map(r => <option key={r}>{r}</option>)}
         </select>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--t-min)', cursor: 'pointer', lineHeight: 1.45 }}>
-          <input type="checkbox" checked={form.notify_session_reports} onChange={e => setForm({ ...form, notify_session_reports: e.target.checked })} /> Notify on session reports
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', cursor: 'pointer', lineHeight: 1.45 }}>
+          <input type="checkbox" style={{ accentColor: 'var(--primary)', flexShrink: 0 }} checked={form.notify_session_reports} onChange={e => setForm({ ...form, notify_session_reports: e.target.checked })} /> Notify on session reports
         </label>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--t-min)', cursor: 'pointer', lineHeight: 1.45 }}>
-          <input type="checkbox" checked={form.notify_monthly_reports} onChange={e => setForm({ ...form, notify_monthly_reports: e.target.checked })} /> Notify on monthly reports
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', cursor: 'pointer', lineHeight: 1.45 }}>
+          <input type="checkbox" style={{ accentColor: 'var(--primary)', flexShrink: 0 }} checked={form.notify_monthly_reports} onChange={e => setForm({ ...form, notify_monthly_reports: e.target.checked })} /> Notify on monthly reports
         </label>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--t-min)', cursor: 'pointer', lineHeight: 1.45 }}>
-          <input type="checkbox" checked={form.notify_wellness_alerts} onChange={e => setForm({ ...form, notify_wellness_alerts: e.target.checked })} /> Show in wellness alert &quot;notify parent&quot; list
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', cursor: 'pointer', lineHeight: 1.45 }}>
+          <input type="checkbox" style={{ accentColor: 'var(--primary)', flexShrink: 0 }} checked={form.notify_wellness_alerts} onChange={e => setForm({ ...form, notify_wellness_alerts: e.target.checked })} /> Show in wellness alert &quot;notify parent&quot; list
         </label>
         {msg && <div style={{ fontSize: 'var(--t-min)', color: msg.includes('Saved') ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{msg}</div>}
-        <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Caretaker'}</button>
+        <button className="btn btn-primary" style={{ fontSize: 13, minHeight: 44 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Caretaker'}</button>
       </div>
     </div>
   )
@@ -648,6 +711,9 @@ export default function AthleteDetailPage() {
      things to a coach deciding whether a child is training today. */
   const [wellnessUnavailable, setWellnessUnavailable] = useState(false)
   const [wellnessAlert, setWellnessAlert] = useState<WellnessAlert | null>(null)
+  /* The same 14-day read, kept whole rather than reduced to its last row, so
+     the scoreboard can draw the week behind today's figure. No second fetch. */
+  const [wellnessRecent, setWellnessRecent] = useState<WellnessCheckin[]>([])
   useEffect(() => {
     if (!athleteId) return
     let cancelled = false
@@ -658,6 +724,7 @@ export default function AthleteDetailPage() {
         const list: WellnessCheckin[] = json.checkins ?? []
         setWellnessUnavailable(false)
         setWellnessLatest(list[list.length - 1] ?? null)
+        setWellnessRecent(list.slice(-7))
         setWellnessAlert(json.alert ?? null)
       })
       .catch(() => {
@@ -665,7 +732,7 @@ export default function AthleteDetailPage() {
         // setWellnessLatest(null) renders exactly that, and this panel is on
         // screen precisely when a coach is responding to a wellness alert —
         // the one moment the difference matters most.
-        if (!cancelled) { setWellnessLatest(null); setWellnessAlert(null); setWellnessUnavailable(true) }
+        if (!cancelled) { setWellnessLatest(null); setWellnessRecent([]); setWellnessAlert(null); setWellnessUnavailable(true) }
       })
     return () => { cancelled = true }
   }, [athleteId])
@@ -985,6 +1052,19 @@ export default function AthleteDetailPage() {
     { key: 'notes',     label: 'Notes' },
   ]
 
+  // The coach's spine, drawn inside the scoreboard. The arithmetic is
+  // lib/training-spine.ts — the same function the athlete's own spine uses.
+  const spine = buildSpine(sessions)
+  const spinePeak = Math.max(...spine.weeks, 1)
+  const spineSentence =
+    `${spine.total} session${spine.total === 1 ? '' : 's'} over ${SPINE_WEEKS} weeks` +
+    (spine.thisWeek > 0 ? ` · ${spine.thisWeek} this week` : '')
+  // Coach-only: a gap past a fortnight is named. The athlete's copy never is.
+  const spineGap = spine.daysSinceLast !== null && spine.daysSinceLast >= SPINE_GAP_DAYS
+    ? `Last session ${spine.daysSinceLast} days ago`
+    : null
+  const sharedCount = sessions.filter(s => s.shared_with_athlete).length
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
 
@@ -995,17 +1075,18 @@ export default function AthleteDetailPage() {
           style={{
             position: 'fixed', left: 12, right: 12, bottom: 12, zIndex: 2000,
             maxWidth: 520, margin: '0 auto',
-            background: '#B55C3E', color: '#fff',
-            borderRadius: 12, padding: '12px 14px',
-            display: 'flex', alignItems: 'flex-start', gap: 10,
-            boxShadow: '0 6px 24px rgba(0,0,0,0.18)', fontSize: 13, lineHeight: 1.5,
+            background: 'var(--danger-light)', color: 'var(--text)',
+            border: '1px solid var(--danger)',
+            borderRadius: 14, padding: '6px 6px 6px 14px',
+            display: 'flex', alignItems: 'center', gap: 10,
+            boxShadow: 'var(--shadow-lg)', fontSize: 'var(--t-body-tight)', lineHeight: 1.5,
           }}
         >
-          <span style={{ flex: 1 }}>{actionError}</span>
+          <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{actionError}</span>
           <button
             onClick={() => setActionError('')}
             aria-label="Dismiss"
-            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
+            style={{ ...HIT, background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 0, flexShrink: 0 }}
           >
             ×
           </button>
@@ -1025,88 +1106,119 @@ export default function AthleteDetailPage() {
       )}
 
       {/* ── Sticky header ── */}
-      <header style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ maxWidth: maxW, margin: '0 auto', padding: `7px ${p}`, minHeight: 52, display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 12, rowGap: 8 }}>
-          <Link href="/dashboard" style={{ color: 'var(--text)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, flexShrink: 0, padding: '6px 10px', borderRadius: 8, background: 'var(--bg)', border: '1.5px solid var(--border)' }}>
+      <header style={{
+        background: 'color-mix(in srgb, var(--bg) 92%, transparent)',
+        backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+        borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100,
+      }}>
+        <div style={{ maxWidth: maxW, margin: '0 auto', padding: `8px ${p}`, minHeight: 60, display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 12, rowGap: 8 }}>
+          <Link href="/dashboard" aria-label="Back to dashboard" style={{
+            ...CAST, fontSize: 'var(--t-furniture)', ...HIT,
+            color: 'var(--text-2)', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            flexShrink: 0, padding: isMobile ? 0 : '0 14px 0 10px', borderRadius: 12, border: '1px solid var(--border)',
+          }}>
             <Icon name="arrow-left" size={18} /> {!isMobile && 'Dashboard'}
           </Link>
           {athlete && (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
                 {athlete.photo_signed_url ? (
-                  <img src={athlete.photo_signed_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid var(--border)' }} />
+                  <img src={athlete.photo_signed_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--border)' }} />
                 ) : (
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--coach-color)', color: '#fff', fontWeight: 900, fontSize: 'var(--t-min)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <div style={{ ...CAST, letterSpacing: '0.04em', fontWeight: 800, width: 32, height: 32, borderRadius: '50%', background: 'var(--primary)', color: 'var(--on-primary)', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     {(athlete.first_name?.[0] ?? '?').toUpperCase()}
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Wraps rather than ellipsising: a truncated name is the one
                       thing on this bar that must never happen. */}
-                  <div style={{ fontWeight: 800, fontSize: 15, overflowWrap: 'break-word' }}>{athlete.first_name} {athlete.last_name}</div>
-                  {!isMobile && <div style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)', marginTop: -1, overflowWrap: 'anywhere' }}>{athlete.email}</div>}
+                  <div style={{ ...CAST, fontSize: 18, letterSpacing: '0.05em', lineHeight: 1.1, color: 'var(--text)', overflowWrap: 'break-word' }}>{athlete.first_name} {athlete.last_name}</div>
+                  {!isMobile && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-muted)', marginTop: 3, overflowWrap: 'anywhere' }}>{athlete.email}</div>}
                 </div>
               </div>
 
               <div style={isMobile
                 ? { flexBasis: '100%', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }
                 : { display: 'contents' }}>
-                {athlete.status && <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 'var(--t-furniture)', flexShrink: 0 }}>{athlete.status}</span>}
+                {athlete.status && <StatusChip status={athlete.status} />}
                 {wellnessScore !== null && (
                   <button
                     onClick={() => setActiveTab('wellness')}
                     title={`Latest wellness score: ${wellnessScore}/5`}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
-                      background: wellnessTint, border: `1px solid ${wellnessColor}`,
-                      borderRadius: 99, padding: '2px 8px 2px 6px', cursor: 'pointer',
-                    }}
+                    aria-label={`Latest wellness score ${wellnessScore} out of 5 — open wellness`}
+                    style={{ ...HIT, display: 'flex', alignItems: 'center', flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                   >
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
-                    <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
+                    <span style={{
+                      display: 'flex', alignItems: 'center', gap: 5,
+                      background: wellnessTint, border: `1px solid ${wellnessColor}`,
+                      borderRadius: 99, padding: '3px 9px 3px 7px',
+                    }}>
+                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', fontWeight: 700, color: wellnessColor }}>{wellnessScore}</span>
+                    </span>
                   </button>
                 )}
-                {/* Record Session CTA */}
+                {/* Record Session CTA — outlined here, solid on the overview:
+                    the same action, never two floodlit slabs on one screen. */}
                 <button
-                  className="btn btn-coach"
-                  style={{ fontSize: 'var(--t-furniture)', padding: '7px 14px', gap: 6, fontWeight: 700, flexShrink: 0, marginLeft: 'auto' }}
                   onClick={() => setShowQuickSession(true)}
+                  style={{
+                    ...CAST, fontSize: 14, letterSpacing: '0.1em', minHeight: 44,
+                    display: 'inline-flex', alignItems: 'center', gap: 7, flexShrink: 0, marginLeft: 'auto',
+                    padding: '0 14px', borderRadius: 12, cursor: 'pointer',
+                    border: '1.5px solid var(--flood)', color: 'var(--flood)',
+                    background: 'color-mix(in srgb, var(--flood) 10%, transparent)',
+                  }}
                 >
-                  <Icon name="mic" size={13} /> Record Session
+                  <Icon name="mic" size={15} /> Record Session
                 </button>
               </div>
             </>
           )}
         </div>
 
-        {/* Tab bar */}
+        {/* Tab bar. Three-by-two on a phone rather than a strip that scrolls
+            sideways: every section is visible without a swipe nobody finds. */}
         {athlete && (
-          <div style={{ maxWidth: maxW, margin: '0 auto', padding: `0 ${p}`, display: 'flex', overflowX: 'auto', gap: 0, borderTop: '1px solid var(--border)' }}>
-            {TABS.map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => {
-                  setActiveTab(tab.key)
-                  if (tab.key === 'notes') void loadNotes()
-                }}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '10px 14px', fontSize: 13, fontWeight: activeTab === tab.key ? 700 : 500,
-                  color: activeTab === tab.key ? 'var(--primary)' : 'var(--text-muted)',
-                  borderBottom: activeTab === tab.key ? '2px solid var(--primary)' : '2px solid transparent',
-                  whiteSpace: 'nowrap', flexShrink: 0, transition: 'all 0.12s',
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <nav
+            aria-label="Athlete sections"
+            style={{
+              maxWidth: maxW, margin: '0 auto', padding: `0 ${p}`, borderTop: '1px solid var(--border)',
+              ...(isMobile
+                ? { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }
+                : { display: 'flex', flexWrap: 'wrap' }),
+            }}
+          >
+            {TABS.map(tab => {
+              const on = activeTab === tab.key
+              return (
+                <button
+                  key={tab.key}
+                  aria-current={on ? 'page' : undefined}
+                  onClick={() => {
+                    setActiveTab(tab.key)
+                    if (tab.key === 'notes') void loadNotes()
+                  }}
+                  style={{
+                    ...CAST, fontSize: 14, letterSpacing: '0.1em', lineHeight: 1.15,
+                    background: 'none', border: 'none', cursor: 'pointer', minWidth: 0, minHeight: 44,
+                    padding: isMobile ? '6px 4px' : '6px 14px', textAlign: 'center',
+                    color: on ? 'var(--text)' : 'var(--text-muted)',
+                    borderBottom: on ? '2px solid var(--flood)' : '2px solid transparent',
+                    transition: 'color 0.12s',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </nav>
         )}
       </header>
 
       <main style={{ maxWidth: maxW, margin: '0 auto', padding: `20px ${p}` }}>
         {pageError && pageError !== 'no-athlete-record' && (
-          <div style={{ background: 'var(--danger-light)', border: '1px solid #fca5a5', borderRadius: 10, padding: 14, color: 'var(--danger)', fontWeight: 600, marginBottom: 20 }}>
+          <div role="alert" style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', borderRadius: 12, padding: 14, color: 'var(--text)', fontWeight: 600, marginBottom: 20 }}>
             {pageError}
           </div>
         )}
@@ -1115,75 +1227,133 @@ export default function AthleteDetailPage() {
             TAB: OVERVIEW
         ══════════════════════════════════════ */}
         {activeTab === 'overview' && athlete && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
 
-            {/* ── Identity and the three figures that matter, as one object ──
-                This was a white hero card followed by three saturated colour
-                tiles left over from the old palette. They read as separate,
-                equally-loud things and fought the ivory ground. */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 15, padding: isMobile ? '16px' : '20px 22px' }}>
-                <div style={{ width: 62, height: 62, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border)' }}>
+            {/* ── Identity ── */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+                <div style={{ width: 52, height: 52, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
                   {athlete.photo_signed_url
                     ? <img src={athlete.photo_signed_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--coach-light)', color: 'var(--coach-color)', fontWeight: 800, fontSize: 22 }}>
+                    : <div style={{ ...CAST, letterSpacing: '0.04em', fontWeight: 800, fontSize: 20, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--primary)', color: 'var(--on-primary)' }}>
                         {`${athlete.first_name?.[0] ?? '?'}${athlete.last_name?.[0] ?? ''}`.toUpperCase()}
                       </div>}
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 'clamp(21px, 4.6vw, 27px)', lineHeight: 1.12, letterSpacing: '-0.015em' }}>
+                  <h1 style={{ ...CAST, margin: 0, fontSize: 'clamp(24px, 7vw, 32px)', letterSpacing: '0.03em', lineHeight: 1.02, color: 'var(--text)', overflowWrap: 'break-word' }}>
                     {athlete.first_name} {athlete.last_name}
                   </h1>
-                  <div style={{ display: 'flex', gap: 7, marginTop: 7, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {[athlete.sport, athlete.position, athlete.height].filter(Boolean).map((v, i) => (
-                      <span key={i} style={{ fontSize: 'var(--t-min)', color: 'var(--text-2)', fontWeight: 600 }}>
-                        {i > 0 && <span style={{ color: 'var(--border)', marginRight: 7 }}>·</span>}{v}
-                      </span>
-                    ))}
-                    <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 'var(--t-furniture)' }}>
-                      {athlete.status}
-                    </span>
-                  </div>
+                  {[athlete.sport, athlete.position, athlete.height].some(Boolean) && (
+                    <div style={{ ...CAST, fontSize: 'var(--t-furniture)', fontWeight: 600, letterSpacing: '0.15em', color: 'var(--text-2)', marginTop: 7, overflowWrap: 'break-word' }}>
+                      {[athlete.sport, athlete.position, athlete.height].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
                 </div>
+                {athlete.status && <StatusChip status={athlete.status} />}
               </div>
 
-              {/* The figures live inside the same object as the name, on a
-                  tinted footer — facts about this athlete, not three cards. */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
-                {[
-                  { label: 'Sessions', value: String(sessions.length) },
-                  { label: 'Shared', value: String(sessions.filter(s => s.shared_with_athlete).length) },
-                  { label: 'Last', value: sessions[0] ? formatSessionDate(sessions[0], { month: 'short', day: 'numeric' }) : '—' },
-                ].map((stat, i) => (
-                  <button key={stat.label} onClick={() => setActiveTab('sessions')} style={{
-                    background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-                    padding: '11px 10px 12px',
-                    borderLeft: i > 0 ? '1px solid var(--border)' : 'none',
-                  }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 20, lineHeight: 1, letterSpacing: '-0.03em', color: 'var(--text)' }}>
-                      {stat.value}
-                    </div>
-                    <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                      {stat.label}
-                    </div>
-                  </button>
-                ))}
-              </div>
+              {/* The ticker: what used to be the Shared and Last tiles. */}
+              {sessions.length > 0 && (
+                <div style={{
+                  ...CAST, fontSize: 'var(--t-furniture)', fontWeight: 600, color: 'var(--text-2)',
+                  display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4,
+                  marginTop: 16, padding: '8px 0', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)',
+                }}>
+                  <span>Last <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, letterSpacing: '0.02em', color: 'var(--text)' }}>{formatSessionDate(sessions[0], { month: 'short', day: 'numeric' })}</span></span>
+                  <span aria-hidden style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--text-muted)' }} />
+                  <span>{sharedCount} shared</span>
+                  <span aria-hidden style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--text-muted)' }} />
+                  <span>{sessions.length - sharedCount} private</span>
+                </div>
+              )}
             </div>
 
-            {/* ── Training rhythm ──
-                Twelve weeks of this athlete's sessions. The page already
-                fetched every one of them and the overview rendered none, so
-                "are we still working together, and is this normal for them?"
-                had no answer anywhere. The coach variant names a gap over a
-                fortnight; the athlete's own copy of this never does. */}
-            <TrainingSpine sessions={sessions} variant="coach" />
+            {/* ── The scoreboard ──
+                One enormous number, and it is a count of turning up — the
+                sessions this coach and this athlete have done together — not a
+                score. Beside it, the one figure that governs today. */}
+            <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0, 1.32fr) minmax(0, 1fr)', gap: 9 }}>
+              <div aria-hidden style={{
+                position: 'absolute', inset: '-10px 8px -10px 12px', pointerEvents: 'none', zIndex: 0,
+                background: 'linear-gradient(100deg, color-mix(in srgb, var(--text) 6%, transparent), transparent 58%)',
+                borderLeft: '1px solid var(--border)', transform: 'skewX(-11deg)',
+              }} />
 
-            {/* ── The one thing you came here to do ── */}
-            <button className="btn btn-coach" style={{ gap: 7, fontWeight: 700, justifyContent: 'center', padding: '12px' }} onClick={() => setShowQuickSession(true)}>
-              <Icon name="mic" size={15} /> Record a session
-            </button>
+              <button onClick={() => setActiveTab('sessions')} style={{ ...CELL, cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <span style={{ display: 'block' }}>
+                  <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 'clamp(58px, 21vw, 82px)', lineHeight: 0.82, letterSpacing: '-0.055em', color: 'var(--text)', fontVariantNumeric: 'tabular-nums', margin: '6px 0 0 -4px' }}>
+                    {sessions.length}
+                  </span>
+                  <span style={{ display: 'block', ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.2em', color: 'var(--text-2)', marginTop: 10 }}>
+                    {sessions.length === 1 ? 'Session with you' : 'Sessions with you'}
+                  </span>
+                </span>
+                {spine.total >= SPINE_MIN_SESSIONS && (
+                  <span style={{ display: 'block' }}>
+                    <span role="img" aria-label={spineSentence} style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 24, marginTop: 12 }}>
+                      {spine.weeks.map((n, i) => {
+                        const now = i === spine.weeks.length - 1
+                        return (
+                          <span key={i} aria-hidden style={{
+                            flex: 1, minWidth: 0, borderRadius: 1,
+                            height: `${Math.max(12, Math.round((n / spinePeak) * 100))}%`,
+                            background: now ? 'var(--flood)' : n > 0 ? 'var(--primary)' : 'var(--border)',
+                            opacity: now || n === 0 ? 1 : 0.62,
+                          }} />
+                        )
+                      })}
+                    </span>
+                    <span style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.14em', color: 'var(--text-2)', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: 8, marginTop: 7 }}>
+                      <span>{spine.total} in {SPINE_WEEKS} wks</span>
+                      {spine.thisWeek > 0 && <span>{spine.thisWeek} this week</span>}
+                    </span>
+                  </span>
+                )}
+                {spineGap && (
+                  <span style={{ display: 'block', ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.12em', color: 'var(--coach-on-light)', marginTop: 8 }}>
+                    {spineGap}
+                  </span>
+                )}
+              </button>
+
+              <button onClick={() => setActiveTab('wellness')} style={{ ...CELL, cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <span style={{ display: 'block' }}>
+                  <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 36, lineHeight: 1, letterSpacing: '-0.045em', color: wellnessScore !== null ? wellnessColor : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>
+                    {wellnessScore ?? '—'}
+                    <span style={{ fontSize: 14, letterSpacing: 0, color: 'var(--text-2)', marginLeft: 2 }}>/5</span>
+                  </span>
+                  <span style={{ display: 'block', ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.18em', color: 'var(--text-2)', marginTop: 7 }}>
+                    Wellness
+                  </span>
+                </span>
+                <span style={{ display: 'block' }}>
+                  {wellnessRecent.length > 1 && (
+                    <span aria-hidden style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 18, marginTop: 12 }}>
+                      {wellnessRecent.map((c, i) => {
+                        const sc = overallWellnessScore(c)
+                        const last = i === wellnessRecent.length - 1
+                        return (
+                          <span key={`${c.check_date}-${i}`} style={{
+                            flex: 1, minWidth: 0, borderRadius: 1,
+                            height: `${sc !== null ? Math.max(12, Math.round((sc / 5) * 100)) : 12}%`,
+                            background: sc === null ? 'var(--border)' : 'var(--primary)',
+                            opacity: last || sc === null ? 1 : 0.62,
+                          }} />
+                        )
+                      })}
+                    </span>
+                  )}
+                  <span style={{ display: 'block', ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.14em', marginTop: 7, color: wellnessAlert?.active ? 'var(--danger)' : 'var(--text-2)' }}>
+                    {wellnessAlert?.active
+                      ? 'Needs attention'
+                      : wellnessLatest
+                        ? (wellnessRecent.length > 1 ? `Last ${wellnessRecent.length} check-ins` : 'Latest check-in')
+                        : wellnessUnavailable ? 'Could not load' : 'No check-ins yet'}
+                  </span>
+                </span>
+              </button>
+            </div>
 
             {/* ── Availability ──
                 Above wellness on purpose: soreness is a number that varies by
@@ -1191,102 +1361,143 @@ export default function AthleteDetailPage() {
                 coach is about to plan. */}
             <InjuryPanel athleteId={athleteId} athleteName={athlete.first_name} />
 
-            {/* ── Wellness ── */}
+            {/* ── Wellness, metric by metric ── */}
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
-                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Wellness</div>
-                <button onClick={() => setActiveTab('wellness')} style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>
-                  Details →
-                </button>
-              </div>
+              <SecHead title="Wellness">
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                  {wellnessLatest && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: wellnessAlert?.active ? 'var(--danger)' : 'var(--text-2)', fontWeight: wellnessAlert?.active ? 700 : 500 }}>
+                      {wellnessAlert?.active ? 'Needs attention' : `Checked in ${new Date(wellnessLatest.check_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+                    </span>
+                  )}
+                  <button onClick={() => setActiveTab('wellness')} style={SEC_LINK}>Details →</button>
+                </span>
+              </SecHead>
 
               <div
-                className="card"
-                style={{ padding: 15, cursor: 'pointer', ...(wellnessAlert?.active ? { borderColor: 'var(--danger)', borderWidth: 1.5 } : {}) }}
+                style={{
+                  cursor: 'pointer', paddingTop: 12, borderTop: '1px solid var(--border)',
+                  ...(wellnessAlert?.active ? { borderLeft: '2px solid var(--danger)', paddingLeft: 12 } : {}),
+                }}
                 onClick={() => setActiveTab('wellness')}
               >
                 {wellnessLatest ? (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 10, marginBottom: 13 }}>
-                      <span style={{ fontFamily: 'var(--font-display)', fontSize: 30, lineHeight: 1, fontWeight: 500, color: wellnessColor, letterSpacing: '-0.03em' }}>
-                        {wellnessScore ?? '—'}
-                      </span>
-                      <span style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)', fontWeight: 600 }}>out of 5</span>
-                      <span style={{ flex: 1 }} />
-                      <span style={{ fontSize: 'var(--t-min)', color: wellnessAlert?.active ? 'var(--danger)' : 'var(--text-muted)', fontWeight: wellnessAlert?.active ? 700 : 600 }}>
-                        {wellnessAlert?.active ? 'Needs attention' : `Checked in ${new Date(wellnessLatest.check_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
-                      </span>
-                    </div>
-
-                    {/* One small bar per metric — comparable at a glance, which
-                        a row of coloured dots and numbers never was. */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(74px, 1fr))', gap: 8 }}>
-                      {WELLNESS_METRICS.map(({ key, label }) => {
-                        const score = wellnessLatest[key]
-                        const pct = score ? (score / 5) * 100 : 0
-                        return (
-                          <div key={key}>
-                            <div style={{ height: 4, background: 'var(--border-soft)', borderRadius: 2, overflow: 'hidden' }}>
-                              <div style={{ width: `${pct}%`, height: '100%', background: metricColor(key, score), borderRadius: 2 }} />
-                            </div>
-                            <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                              {label}
-                            </div>
-                            <div style={{ fontSize: 'var(--t-body)', fontWeight: 700, color: 'var(--text)', marginTop: 1 }}>{score ?? '—'}</div>
+                  /* One small bar per metric — comparable at a glance, which
+                     a row of coloured dots and numbers never was. */
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(74px, 1fr))', gap: 10 }}>
+                    {WELLNESS_METRICS.map(({ key, label }) => {
+                      const score = wellnessLatest[key]
+                      const pct = score ? (score / 5) * 100 : 0
+                      return (
+                        <div key={key} style={{ minWidth: 0 }}>
+                          <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', background: metricColor(key, score), borderRadius: 2 }} />
                           </div>
-                        )
-                      })}
-                    </div>
-                  </>
+                          <div style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.06em', color: 'var(--text-2)', marginTop: 8 }}>
+                            {label}
+                          </div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-body)', fontWeight: 500, color: 'var(--text)', marginTop: 3 }}>{score ?? '—'}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 ) : wellnessUnavailable ? (
-                  <div role="alert" style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55 }}>
+                  <div role="alert" style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text)', lineHeight: 1.55 }}>
                     ⚠ Could not read {athlete.first_name}&rsquo;s check-ins just now. This is a
                     connection problem, <strong>not</strong> a sign they have stopped checking in.
                     Refresh to try again.
                   </div>
                 ) : (
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.55 }}>
+                  <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', lineHeight: 1.55 }}>
                     No check-ins yet — {athlete.first_name} hasn&rsquo;t submitted one from their portal.
                   </div>
                 )}
               </div>
             </div>
 
-            {/* ── Recent sessions: the reason to open an athlete at all.
-                   Overview previously showed no session content whatsoever. ── */}
+            {/* ── The one thing you came here to do, aimed at them by name ── */}
+            <button
+              onClick={() => setShowQuickSession(true)}
+              aria-label={`Record a session with ${athlete.first_name}`}
+              style={{
+                ...RECORD_SOLID, position: 'relative', width: '100%', minHeight: 58, borderRadius: 18, overflow: 'hidden',
+                display: 'flex', alignItems: 'stretch', padding: 0, cursor: 'pointer', textAlign: 'left',
+              }}
+            >
+              <span style={{ flex: 1, minWidth: 0, padding: '11px 8px 11px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <span style={{ display: 'block', fontSize: 19, letterSpacing: '0.045em', lineHeight: 1 }}>Record a session</span>
+                <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontWeight: 500, fontSize: 'var(--t-data)', letterSpacing: '0.08em', marginTop: 6, overflowWrap: 'anywhere' }}>
+                  Tap to start · {athlete.first_name}
+                </span>
+              </span>
+              <span aria-hidden style={{
+                width: 100, flexShrink: 0, background: 'var(--bg)',
+                clipPath: 'polygon(30% 0, 100% 0, 100% 100%, 0 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, paddingRight: 13,
+              }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                  {[7, 15, 10, 19, 12].map((h, i) => (
+                    <span key={i} style={{ width: 3, height: h, borderRadius: 2, background: 'var(--flood)', opacity: 0.85 }} />
+                  ))}
+                </span>
+                <span style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, border: '2px solid var(--flood)', color: 'var(--flood)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name="mic" size={16} strokeWidth={2.2} />
+                </span>
+              </span>
+            </button>
+
+            {/* ── Sessions: the reason to open an athlete at all, each one
+                   carrying what the athlete said back. ── */}
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
-                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Recent sessions</div>
+              <SecHead title="Sessions">
                 {sessions.length > 3 && (
-                  <button onClick={() => setActiveTab('sessions')} style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>
+                  <button onClick={() => setActiveTab('sessions')} style={SEC_LINK}>
                     All {sessions.length} →
                   </button>
                 )}
-              </div>
+              </SecHead>
 
               {sessions.length === 0 ? (
-                <div className="card" style={{ padding: 22, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
+                <div style={{ padding: '16px 0', borderTop: '1px solid var(--border)', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
                   Nothing recorded yet. The first session you record will appear here.
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {sessions.slice(0, 3).map(s => (
-                    <Link key={s.id} href={`/sessions/${s.id}`} className="card" style={{ padding: '12px 14px', textDecoration: 'none', color: 'inherit', display: 'block' }}>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                        <span style={{ fontWeight: 700, fontSize: 16, flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
-                          {s.session_name ?? 'Coaching session'}
+                <div>
+                  {sessions.slice(0, 3).map(s => {
+                    const reply = responseOption(s.athlete_response)
+                    return (
+                      <Link key={s.id} href={`/sessions/${s.id}`} style={{
+                        display: 'grid', gridTemplateColumns: '42px minmax(0, 1fr)', gap: 12, alignItems: 'start',
+                        padding: '13px 0', borderTop: '1px solid var(--border)', textDecoration: 'none', color: 'inherit',
+                      }}>
+                        <span style={{ display: 'block' }}>
+                          <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 24, lineHeight: 0.95, letterSpacing: '-0.04em', color: 'var(--text)' }}>
+                            {formatSessionDate(s, { day: 'numeric' })}
+                          </span>
+                          <span style={{ display: 'block', ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.14em', color: 'var(--text-2)', marginTop: 4 }}>
+                            {formatSessionDate(s, { month: 'short' }, '')}
+                          </span>
                         </span>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-muted)', flexShrink: 0 }}>
-                          {formatSessionDate(s, { day: 'numeric', month: 'short' })}
+                        <span style={{ display: 'block', minWidth: 0 }}>
+                          <span style={{ display: 'block', ...CAST, fontSize: 17, letterSpacing: '0.04em', lineHeight: 1.1, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+                            {s.session_name ?? 'Coaching session'}
+                          </span>
+                          {s.summary && (
+                            <span style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 'var(--t-body)', color: 'var(--text-2)', marginTop: 6, lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                              {s.summary}
+                            </span>
+                          )}
+                          {(reply || !s.shared_with_athlete) && (
+                            <span style={{ display: 'flex', marginTop: 9 }}>
+                              {reply
+                                ? <Chip color={reply.color} tint={reply.tint} label={`${athlete.first_name} replied: ${reply.coachLabel}`}>{reply.coachLabel}</Chip>
+                                : <Chip color="var(--text-muted)" label={`Private — not shared with ${athlete.first_name}`}>Private</Chip>}
+                            </span>
+                          )}
                         </span>
-                      </div>
-                      {s.summary && (
-                        <div style={{ fontSize: 'var(--t-body)', color: 'var(--text-2)', marginTop: 5, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-                          {s.summary}
-                        </div>
-                      )}
-                    </Link>
-                  ))}
+                      </Link>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -1294,8 +1505,8 @@ export default function AthleteDetailPage() {
             {/* ── Goals ── */}
             {athlete.goals && (
               <div>
-                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 9 }}>Goals</div>
-                <div style={{ borderLeft: '2px solid var(--coach-color)', paddingLeft: 14, fontSize: 14.5, lineHeight: 1.72, color: 'var(--text-2)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-display)' }}>
+                <SecHead title="Goals" />
+                <div style={{ borderLeft: '2px solid var(--coach-on-light)', paddingLeft: 14, fontSize: 'var(--t-body)', lineHeight: 1.65, color: 'var(--text)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'var(--font-display)' }}>
                   {athlete.goals}
                 </div>
               </div>
@@ -1303,14 +1514,14 @@ export default function AthleteDetailPage() {
 
             {/* ── Secondary actions ── */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 2 }}>
-              <Link href={`/dashboard?tab=messages&athlete=${athleteId}`} className="btn btn-ghost" style={{ gap: 6, fontSize: 'var(--t-furniture)' }}>
-                <Icon name="messages" size={13} /> Message
+              <Link href={`/dashboard?tab=messages&athlete=${athleteId}`} className="btn btn-ghost" style={{ ...CAST, gap: 7, fontSize: 'var(--t-furniture)', minHeight: 44 }}>
+                <Icon name="messages" size={14} /> Message
               </Link>
-              <button className="btn btn-ghost" style={{ gap: 6, fontSize: 'var(--t-furniture)' }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
-                <Icon name="report" size={13} /> Monthly report
+              <button className="btn btn-ghost" style={{ ...CAST, gap: 7, fontSize: 'var(--t-furniture)', minHeight: 44 }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
+                <Icon name="report" size={14} /> Monthly report
               </button>
-              <button className="btn btn-ghost" style={{ gap: 6, fontSize: 'var(--t-furniture)' }} onClick={() => { setActiveTab('notes'); void loadNotes() }}>
-                <Icon name="report" size={13} /> Notes
+              <button className="btn btn-ghost" style={{ ...CAST, gap: 7, fontSize: 'var(--t-furniture)', minHeight: 44 }} onClick={() => { setActiveTab('notes'); void loadNotes() }}>
+                <Icon name="report" size={14} /> Notes
               </button>
             </div>
           </div>
