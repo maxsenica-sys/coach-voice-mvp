@@ -63,6 +63,45 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   const [step, setStep] = useState<'record' | 'review'>('record')
 
   const [micLevel, setMicLevel] = useState(0)
+
+  /* ── The recorder's second proof of life ──────────────────────────────
+   *
+   * The level meter was the only thing on this screen saying the microphone
+   * was live, and it proves it with motion and brightness — both of which
+   * `prefers-reduced-motion: reduce` is entitled to take away, and neither of
+   * which distinguishes "silent room" from "not recording": twelve bars at
+   * their 4px floor look exactly like twelve bars that have stopped being
+   * updated. The cost of getting that wrong is a coach talking to a phone that
+   * is not listening, and a session that cannot be said again.
+   *
+   * So the live state is legible from text. `recSecs` advances once a second
+   * in tabular mono; digits carry no animation for the media query to disable
+   * and no luminance change to flash.
+   *
+   * Two things make it a proof rather than a decoration:
+   *
+   *  - It is derived from a wall-clock start time, not counted up, so a
+   *    throttled or backgrounded tab still reads the true elapsed length.
+   *  - It advances ONLY while the MediaRecorder is actually in its `recording`
+   *    state with a live audio track. If the recorder dies under us — another
+   *    app seizing the mic, an iOS call interrupting — the digits stop where
+   *    they stopped and `recStalled` says so in words. A clock that keeps
+   *    ticking past a dead recorder would be the same lie as the frozen meter.
+   */
+  const [recSecs, setRecSecs] = useState(0)
+  const [recStalled, setRecStalled] = useState(false)
+
+  /* Read only to decide whether to say in words what the meter can no longer
+     show. It never re-enables an animation. */
+  const [reducedMotion, setReducedMotion] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const sync = () => setReducedMotion(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
   /* What Whisper thought of its own output. Shown above the transcript in the
      review step, where the coach can still act on it. */
   const [transcriptWarning, setTranscriptWarning] = useState('')
@@ -102,6 +141,28 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       audioCtxRef.current = null
     }
   }, [])
+
+  /* Drives the elapsed clock described above. Keyed off `recording` alone, so
+     it starts and stops with the UI's own idea of the recorder without any
+     change to startRecording or stopAndTranscribe — it only reads the refs
+     those two own, and never writes them. */
+  useEffect(() => {
+    if (!recording) { setRecSecs(0); setRecStalled(false); return }
+    const startedAt = Date.now()
+    setRecSecs(0)
+    setRecStalled(false)
+    /* Sampled four times a second so the displayed second is never late by
+       more than a quarter of one, and so a stall is noticed promptly. */
+    const id = setInterval(() => {
+      const live =
+        mediaRecorderRef.current?.state === 'recording' &&
+        (streamRef.current?.getAudioTracks() ?? []).some((t) => t.readyState === 'live')
+      if (!live) { setRecStalled(true); return }
+      setRecStalled(false)
+      setRecSecs(Math.floor((Date.now() - startedAt) / 1000))
+    }, 250)
+    return () => clearInterval(id)
+  }, [recording])
 
   /**
    * What this athlete was last asked to work on, and whether it landed.
@@ -548,6 +609,16 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         ? 'Yesterday'
         : formatSessionDate({ session_date: sessionDate }, { weekday: 'long', month: 'short', day: 'numeric' })
 
+  /* mm:ss, with minutes growing past 59 rather than wrapping — a 72-minute
+     session must never read back as twelve minutes. Padded and tabular so the
+     digits sit in fixed columns and a changed second is obvious at a glance
+     rather than shifting the whole line. */
+  const elapsedClock = `${String(Math.floor(recSecs / 60)).padStart(2, '0')}:${String(recSecs % 60).padStart(2, '0')}`
+  const elapsedSpoken = [
+    Math.floor(recSecs / 60) > 0 ? `${Math.floor(recSecs / 60)} min` : null,
+    `${recSecs % 60} sec`,
+  ].filter(Boolean).join(' ')
+
   // The chips are the only live control until a target is picked, which is what
   // makes the required choice self-evident without a line of instructional text.
   const hasTarget = mode === 'athlete' ? !!athleteId : !!groupId
@@ -696,8 +767,11 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                       )
                     })}
                   </div>
+                  {/* Every name, in full, wrapping onto as many lines as it
+                      takes. This is the coach's only confirmation of who the
+                      recording is about, so nothing here is truncated. */}
                   {groupMemberNames.length > 0 && (
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+                    <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--text-muted)', marginTop: 6, overflowWrap: 'anywhere' }}>
                       Session will be saved for: {groupMemberNames.join(', ')}
                     </div>
                   )}
@@ -719,7 +793,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 padding: '11px 13px', borderRadius: 10,
                 background: 'var(--coach-light)', border: '1px solid var(--coach-border)',
               }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--coach-on-light)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: 'var(--coach-on-light)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
                   Last time you said
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', lineHeight: 1.45 }}>
@@ -731,7 +805,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                     ? formatSessionDate({ session_date: lastFocus.session_date }, { day: 'numeric', month: 'short' })
                     : null
                   return (
-                    <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 6 }}>
+                    <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--text-2)', marginTop: 6 }}>
                       {when ? `${when}. ` : ''}
                       {answered
                         ? (lastFocus.response === 'not_clear'
@@ -764,7 +838,10 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   max={today}
                   onChange={(e) => setSessionDate(e.target.value)}
                 />
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>
+                {/* Wraps inside its column rather than widening it: the row
+                    above is flexWrap already, and a long "Wednesday, Sep 24"
+                    must not push the card sideways. */}
+                <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.35, color: 'var(--text-muted)', marginTop: 5 }}>
                   {sessionDateLabel}
                 </div>
               </div>
@@ -774,19 +851,56 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '20px 0' }}>
               {recording ? (
                 <>
-                  {/* Mic level bars */}
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 40 }}>
-                    {Array.from({ length: 12 }).map((_, i) => {
-                      const h = Math.max(4, Math.round(micLevel * 36 * (0.5 + 0.5 * Math.sin(i * 0.8 + Date.now() / 200))))
-                      return (
-                        <div key={i} className="mic-bar" style={{ height: Math.max(4, micLevel > 0 ? (4 + Math.round(micLevel * 32 * Math.abs(Math.sin(i)))) : 4) }} />
-                      )
-                    })}
+                  {/* Mic level bars. Decoration now, not evidence — the clock
+                      below is what actually says the recorder is running, so
+                      the bars are hidden from assistive technology. */}
+                  <div aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 40 }}>
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <div key={i} className="mic-bar" style={{ height: Math.max(4, micLevel > 0 ? (4 + Math.round(micLevel * 32 * Math.abs(Math.sin(i)))) : 4) }} />
+                    ))}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <span className="recording-dot" />
-                    <span style={{ fontWeight: 700, color: 'var(--danger)' }}>Recording…</span>
+                    <span style={{ fontWeight: 700, color: 'var(--danger)' }}>
+                      {recStalled ? 'Recording stopped' : 'Recording…'}
+                    </span>
+                    {/* The clock. Text, tabular, in the same red as the word
+                        beside it — no new colour, and nothing that blinks. */}
+                    <span
+                      role="timer"
+                      data-testid="rec-elapsed"
+                      aria-label={`${recStalled ? 'Recording stopped at' : 'Recording'} ${elapsedSpoken}`}
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 'var(--t-data)',
+                        fontWeight: 700,
+                        fontVariantNumeric: 'tabular-nums',
+                        color: 'var(--danger)',
+                      }}
+                    >
+                      {elapsedClock}
+                    </span>
                   </div>
+                  {/* Said in words, because under reduced motion the bars and
+                      the pulsing dot are both allowed to stand still and the
+                      ticking seconds become the only honest signal left. */}
+                  {reducedMotion && !recStalled && (
+                    <div
+                      data-testid="rec-motion-hint"
+                      style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-2)', textAlign: 'center', maxWidth: 320, lineHeight: 1.4 }}
+                    >
+                      The counter above moves every second while the microphone is live.
+                    </div>
+                  )}
+                  {recStalled && (
+                    <div
+                      role="alert"
+                      data-testid="rec-stalled"
+                      style={{ fontSize: 'var(--t-body-tight)', fontWeight: 600, color: 'var(--danger)', textAlign: 'center', maxWidth: 340, lineHeight: 1.4 }}
+                    >
+                      The microphone stopped — another app may have taken it. Tap Stop &amp; Transcribe to keep what was recorded up to {elapsedClock}.
+                    </div>
+                  )}
                   <button
                     className="btn btn-danger btn-lg"
                     onClick={stopAndTranscribe}
@@ -830,7 +944,9 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 <label className="label" style={{ margin: 0 }}>Transcript</label>
                 <button
                   className="btn btn-ghost"
-                  style={{ fontSize: 12, padding: '4px 10px' }}
+                  /* 44px tall because it is a real target on a phone, and at
+                     the 13px floor the old 4px padding left it about 24. */
+                  style={{ fontSize: 'var(--t-furniture)', minHeight: 44, paddingInline: 12, flexShrink: 0 }}
                   onClick={() => {
                     // Stop any lingering mic stream before re-recording
                     streamRef.current?.getTracks().forEach(t => t.stop())
@@ -961,7 +1077,10 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 editable here for anyone who skipped straight to typing. */}
             <div>
               <label className="label">Session date</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* Wraps: a 190px date input plus "Wednesday, Sep 24" at the
+                  14px floor is wider than this card on a phone, and a too-wide
+                  row is invisibly clipped rather than scrollable. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <input
                   className="input"
                   type="date"
@@ -970,7 +1089,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   onChange={(e) => setSessionDate(e.target.value)}
                   style={{ maxWidth: 190 }}
                 />
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{sessionDateLabel}</span>
+                <span style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)' }}>{sessionDateLabel}</span>
               </div>
             </div>
 

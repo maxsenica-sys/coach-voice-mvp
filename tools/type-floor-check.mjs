@@ -12,12 +12,10 @@
  * WHY A RIG AND NOT A CODE REVIEW: every type regression this project has had
  * passed `tsc`, `eslint` and `next build`. A number is a number to all three.
  *
- * WHY A RATCHET, NOT A HARD ZERO: there are 151 of these today. Failing on all
- * of them would mean either one unreviewable commit or a disabled check, and a
- * disabled check is worth nothing. So the count may only ever go DOWN. Lower
- * the baseline in the same commit that fixes the call sites — the rig prints
- * the exact line to change. The target is 0, at which point this becomes a
- * plain assertion and the baseline constant goes away.
+ * It was written as a ratchet because there were 154 of these. They are all
+ * gone, so the baseline is 0 and this is now a plain assertion: anything under
+ * the floor fails. The ratchet is kept only in shape — if a future change adds
+ * a batch too large for one commit, set BASELINE and drive it back down.
  *
  *   node tools/type-floor-check.mjs            fail if the count rose
  *   node tools/type-floor-check.mjs --list     print every offending line
@@ -28,9 +26,9 @@ import path from 'node:path'
 const ROOT = path.resolve(import.meta.dirname, '..')
 const FLOOR = 13
 
-/* Lower this — never raise it — in the same commit that removes call sites.
- * Raising it is how a floor quietly stops being a floor. */
-const BASELINE = 154
+/* Zero, and it stays zero. Raising this is how a floor quietly stops being a
+ * floor — if you are about to, you are adding type nobody can read outdoors. */
+const BASELINE = 0
 
 const SCAN = ['app', 'lib']
 const SKIP = /node_modules|\.next|\/pdf\//   /* the PDF routes are print, not screen */
@@ -48,10 +46,32 @@ function walk(dir, out = []) {
   return out
 }
 
+/* Blank out comments before scanning, keeping line numbers intact.
+ *
+ * Without this the rig flags its own documentation: the comment in
+ * WellnessGraph that explains the fontSize="9" bug contains the string
+ * fontSize="9", and a scanner that reports a fix as a violation is a scanner
+ * people learn to ignore. */
+function codeOnly(src) {
+  let out = '', inBlock = false, inLine = false, quote = ''
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i], d = src[i + 1]
+    if (c === '\n') { inLine = false; quote = ''; out += c; continue }
+    if (inBlock) { if (c === '*' && d === '/') { inBlock = false; out += '  '; i++ } else out += ' '; continue }
+    if (inLine) { out += ' '; continue }
+    if (quote) { if (c === '\\') { out += '  '; i++; continue } if (c === quote) quote = ''; out += c; continue }
+    if (c === '/' && d === '*') { inBlock = true; out += '  '; i++; continue }
+    if (c === '/' && d === '/') { inLine = true; out += '  '; i++; continue }
+    if (c === '"' || c === "'" || c === '`') { quote = c; out += c; continue }
+    out += c
+  }
+  return out
+}
+
 const hits = []
 for (const file of SCAN.flatMap(d => walk(path.join(ROOT, d)))) {
   const rel = path.relative(ROOT, file)
-  fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+  codeOnly(fs.readFileSync(file, 'utf8')).split('\n').forEach((line, i) => {
     /* the 16px iOS-zoom floor block sets sizes deliberately; it is not type */
     if (/iOS zoom|zoom prevention/.test(line)) return
     const add = (size, what) => hits.push({ rel, line: i + 1, size, what: what.trim().slice(0, 72) })
@@ -59,6 +79,19 @@ for (const file of SCAN.flatMap(d => walk(path.join(ROOT, d)))) {
     for (const m of line.matchAll(/font-size:\s*([\d.]+)px/g))
       if (parseFloat(m[1]) < FLOOR) add(parseFloat(m[1]), line)
     for (const m of line.matchAll(/fontSize:\s*'?([\d.]+)(?:px)?'?/g))
+      if (parseFloat(m[1]) < FLOOR) add(parseFloat(m[1]), line)
+    /* SVG sets type as an ATTRIBUTE, not a style property: fontSize="9" with
+     * no colon, which the rule above cannot see. This is not hypothetical —
+     * WellnessGraph carried fontSize="9" axis labels inside a
+     * viewBox="0 0 520 150" drawn at width:100%. A viewBox scales its contents,
+     * so nine units of a 520-unit box painted into a ~300px phone card landed
+     * on the glass at 5.2px, and the rig reported the file clean.
+     *
+     * A static scanner cannot resolve the viewBox ratio, so it cannot tell you
+     * the rendered size. It can tell you the authored number is under the
+     * floor, which is enough to make someone look. Under a viewBox the real
+     * size is almost always SMALLER than the number, never larger. */
+    for (const m of line.matchAll(/\bfont-?[sS]ize\s*=\s*["']?([\d.]+)["']?/g))
       if (parseFloat(m[1]) < FLOOR) add(parseFloat(m[1]), line)
     for (const [cls, px] of Object.entries(TW))
       if (new RegExp(`(^|["'\\s])${cls}(["'\\s]|$)`).test(line)) add(px, line)

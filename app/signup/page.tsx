@@ -342,7 +342,7 @@ export default function SignupPage() {
               <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 24 }}>
                 This determines your experience on the platform.
               </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
                 {(['coach', 'athlete'] as Role[]).map((r) => {
                   const selected = form.role === r
                   const color = r === 'coach' ? 'var(--coach-color)' : 'var(--athlete-color)'
@@ -368,7 +368,7 @@ export default function SignupPage() {
                     >
                       <div style={{ fontSize: 28, marginBottom: 10 }}>{emoji}</div>
                       <div style={{ fontSize: 16, fontWeight: 800, color: selected ? color : 'var(--text)', textTransform: 'capitalize' }}>{r}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>{desc}</div>
+                      <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>{desc}</div>
                     </button>
                   )
                 })}
@@ -464,7 +464,7 @@ export default function SignupPage() {
                     onChange={(e) => set('password', e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && next()}
                   />
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>Minimum 6 characters</p>
+                  <p style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', marginTop: 5 }}>Minimum 6 characters</p>
                 </div>
               </div>
             </div>
@@ -544,7 +544,7 @@ export default function SignupPage() {
                 />
               )}
 
-              <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 10 }}>
+              <p style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', textAlign: 'center', marginTop: 10 }}>
                 Scroll the wheel · tap to select · {wheelSports.length} sports available
               </p>
             </div>
@@ -654,7 +654,7 @@ export default function SignupPage() {
                       maxLength={40}
                       onChange={(e) => set('coachCode', e.target.value.toLowerCase().trim())}
                     />
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>
+                    <p style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', marginTop: 5 }}>
                       You can also connect with your coach later from your portal.
                     </p>
                   </div>

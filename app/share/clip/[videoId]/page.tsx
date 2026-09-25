@@ -91,8 +91,13 @@ export default function ShareClipPage() {
           videoId={videoId}
           startTime={startTime}
         />
+        {/* 0.55, not 0.35. White at 35% over #0f172a composites to about
+            rgb(99,104,117) — 3.2:1, which fails 1.4.3 at this size. This is the
+            one page in the product a stranger ever sees, and the line tells them
+            why the clip starts where it does. 0.55 measures 6.0:1 and is still
+            visibly secondary to the video above it. */}
         {startTime > 0 && (
-          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 8, textAlign: 'center' }}>
+          <p style={{ fontSize: 'var(--t-body-tight)', color: 'rgba(255,255,255,0.55)', marginTop: 8, textAlign: 'center' }}>
             Starts at {formatTime(startTime)}, where your coach shared it
           </p>
         )}

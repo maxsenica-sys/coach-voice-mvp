@@ -89,7 +89,7 @@ function buildSessionEmailHtml(sessionName: string, summary: string, athleteName
 <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:#2563eb">AI Session Summary</h3>
 <div style="background:#eff6ff;border-left:4px solid #2563eb;padding:14px 16px;border-radius:4px;font-size:15px;line-height:1.7;white-space:pre-wrap">${summary}</div>
 <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0">
-<p style="font-size:12px;color:#94a3b8">Sent via CoachVoice — the AI coaching platform</p>
+<p style="font-size:13px;color:#94a3b8">Sent via CoachVoice — the AI coaching platform</p>
 </body></html>`
 }
 
@@ -175,14 +175,14 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
       {caretakers.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
           {caretakers.map(c => (
-            <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 10px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div key={c.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '8px 10px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{c.caretaker_name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({c.relationship})</span></div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.caretaker_email}</div>
+                <div style={{ fontSize: 'var(--t-body)', fontWeight: 600 }}>{c.caretaker_name} <span style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)' }}>({c.relationship})</span></div>
+                <div style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{c.caretaker_email}</div>
               </div>
               <button
                 className="btn btn-ghost"
-                style={{ padding: '4px 8px', fontSize: 11, gap: 4, minHeight: 44 }}
+                style={{ padding: '4px 8px', fontSize: 'var(--t-furniture)', gap: 4, minHeight: 44 }}
                 onClick={() => setConfirmTestTo(c.id)}
                 disabled={emailSending}
                 title={`Send a test email to ${c.caretaker_email}`}
@@ -206,14 +206,14 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
                   aria-label="Confirm test email"
                   style={{ flexBasis: '100%', marginTop: 8, padding: 10, borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}
                 >
-                  <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text)' }}>
+                  <div style={{ fontSize: 'var(--t-body)', lineHeight: 1.5, color: 'var(--text)' }}>
                     Email <strong>{c.caretaker_email}</strong> now? They will receive a short
                     message saying it is a test.
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
                     <button
                       className="btn btn-primary"
-                      style={{ minHeight: 44, paddingInline: 14, fontSize: 12 }}
+                      style={{ minHeight: 44, paddingInline: 14, fontSize: 'var(--t-furniture)' }}
                       disabled={emailSending}
                       onClick={() => { setConfirmTestTo(null); void sendTestEmail(c.caretaker_email, c.caretaker_name ?? 'there') }}
                     >
@@ -221,7 +221,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
                     </button>
                     <button
                       className="btn btn-ghost"
-                      style={{ minHeight: 44, paddingInline: 14, fontSize: 12 }}
+                      style={{ minHeight: 44, paddingInline: 14, fontSize: 'var(--t-furniture)' }}
                       onClick={() => setConfirmTestTo(null)}
                     >
                       Cancel
@@ -233,23 +233,23 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
           ))}
         </div>
       )}
-      {emailMsg && <div style={{ fontSize: 12, color: emailMsg.startsWith('Test sent') ? 'var(--success)' : 'var(--danger)', marginBottom: 10, fontWeight: 600 }}>{emailMsg}</div>}
+      {emailMsg && <div style={{ fontSize: 'var(--t-min)', color: emailMsg.startsWith('Test sent') ? 'var(--success)' : 'var(--danger)', marginBottom: 10, fontWeight: 600 }}>{emailMsg}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <input className="input" style={{ fontSize: 13 }} placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
         <input className="input" style={{ fontSize: 13 }} type="email" placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
         <select className="input" style={{ fontSize: 13 }} value={form.relationship} onChange={e => setForm({ ...form, relationship: e.target.value })}>
           {['parent','guardian','family','manager','other'].map(r => <option key={r}>{r}</option>)}
         </select>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--t-min)', cursor: 'pointer', lineHeight: 1.45 }}>
           <input type="checkbox" checked={form.notify_session_reports} onChange={e => setForm({ ...form, notify_session_reports: e.target.checked })} /> Notify on session reports
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--t-min)', cursor: 'pointer', lineHeight: 1.45 }}>
           <input type="checkbox" checked={form.notify_monthly_reports} onChange={e => setForm({ ...form, notify_monthly_reports: e.target.checked })} /> Notify on monthly reports
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--t-min)', cursor: 'pointer', lineHeight: 1.45 }}>
           <input type="checkbox" checked={form.notify_wellness_alerts} onChange={e => setForm({ ...form, notify_wellness_alerts: e.target.checked })} /> Show in wellness alert &quot;notify parent&quot; list
         </label>
-        {msg && <div style={{ fontSize: 12, color: msg.includes('Saved') ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{msg}</div>}
+        {msg && <div style={{ fontSize: 'var(--t-min)', color: msg.includes('Saved') ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{msg}</div>}
         <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Caretaker'}</button>
       </div>
     </div>
@@ -261,8 +261,8 @@ function VideoUploadBar({ pct, eta }: { pct: number; eta: string }) {
   return (
     <div style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)' }}>Uploading… {pct}%</span>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{eta}</span>
+        <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--primary-dark)' }}>Uploading… {pct}%</span>
+        <span style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)' }}>{eta}</span>
       </div>
       <div style={{ height: 8, background: 'var(--border)', borderRadius: 999, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: pct === 100 ? 'var(--success)' : 'var(--primary)', transition: 'width 0.3s ease' }} />
@@ -1026,7 +1026,7 @@ export default function AthleteDetailPage() {
 
       {/* ── Sticky header ── */}
       <header style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ maxWidth: maxW, margin: '0 auto', padding: `0 ${p}`, height: 52, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ maxWidth: maxW, margin: '0 auto', padding: `7px ${p}`, minHeight: 52, display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 12, rowGap: 8 }}>
           <Link href="/dashboard" style={{ color: 'var(--text)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, flexShrink: 0, padding: '6px 10px', borderRadius: 8, background: 'var(--bg)', border: '1.5px solid var(--border)' }}>
             <Icon name="arrow-left" size={18} /> {!isMobile && 'Dashboard'}
           </Link>
@@ -1036,15 +1036,15 @@ export default function AthleteDetailPage() {
                 {athlete.photo_signed_url ? (
                   <img src={athlete.photo_signed_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid var(--border)' }} />
                 ) : (
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--coach-color)', color: '#fff', fontWeight: 900, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--coach-color)', color: '#fff', fontWeight: 900, fontSize: 'var(--t-min)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     {(athlete.first_name?.[0] ?? '?').toUpperCase()}
                   </div>
                 )}
-                <div style={{ minWidth: 0 }}>
+                <div style={{ flex: '1 1 90px', minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{athlete.first_name} {athlete.last_name}</div>
-                  {!isMobile && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: -1 }}>{athlete.email}</div>}
+                  {!isMobile && <div style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)', marginTop: -1, overflowWrap: 'anywhere' }}>{athlete.email}</div>}
                 </div>
-                {athlete.status && <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 10, flexShrink: 0 }}>{athlete.status}</span>}
+                {athlete.status && <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 'var(--t-furniture)', flexShrink: 0 }}>{athlete.status}</span>}
                 {wellnessScore !== null && (
                   <button
                     onClick={() => setActiveTab('wellness')}
@@ -1056,14 +1056,14 @@ export default function AthleteDetailPage() {
                     }}
                   >
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
-                    <span style={{ fontSize: 11, fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
+                    <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: wellnessColor }}>{wellnessScore}</span>
                   </button>
                 )}
               </div>
               {/* Record Session CTA */}
               <button
                 className="btn btn-coach"
-                style={{ fontSize: 12, padding: '7px 14px', gap: 6, flexShrink: 0, fontWeight: 700 }}
+                style={{ fontSize: 'var(--t-furniture)', padding: '7px 14px', gap: 6, fontWeight: 700, ...(isMobile ? { flex: '1 1 100%' } : { flexShrink: 0, marginLeft: 'auto' }) }}
                 onClick={() => setShowQuickSession(true)}
               >
                 <Icon name="mic" size={13} /> Record Session
@@ -1130,11 +1130,11 @@ export default function AthleteDetailPage() {
                   </h1>
                   <div style={{ display: 'flex', gap: 7, marginTop: 7, flexWrap: 'wrap', alignItems: 'center' }}>
                     {[athlete.sport, athlete.position, athlete.height].filter(Boolean).map((v, i) => (
-                      <span key={i} style={{ fontSize: 11.5, color: 'var(--text-2)', fontWeight: 600 }}>
+                      <span key={i} style={{ fontSize: 'var(--t-min)', color: 'var(--text-2)', fontWeight: 600 }}>
                         {i > 0 && <span style={{ color: 'var(--border)', marginRight: 7 }}>·</span>}{v}
                       </span>
                     ))}
-                    <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 9.5 }}>
+                    <span className={`badge ${athlete.status === 'ACTIVE' ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 'var(--t-furniture)' }}>
                       {athlete.status}
                     </span>
                   </div>
@@ -1143,7 +1143,7 @@ export default function AthleteDetailPage() {
 
               {/* The figures live inside the same object as the name, on a
                   tinted footer — facts about this athlete, not three cards. */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
                 {[
                   { label: 'Sessions', value: String(sessions.length) },
                   { label: 'Shared', value: String(sessions.filter(s => s.shared_with_athlete).length) },
@@ -1151,13 +1151,13 @@ export default function AthleteDetailPage() {
                 ].map((stat, i) => (
                   <button key={stat.label} onClick={() => setActiveTab('sessions')} style={{
                     background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-                    padding: '11px 14px 12px',
+                    padding: '11px 10px 12px',
                     borderLeft: i > 0 ? '1px solid var(--border)' : 'none',
                   }}>
                     <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 20, lineHeight: 1, letterSpacing: '-0.03em', color: 'var(--text)' }}>
                       {stat.value}
                     </div>
-                    <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                    <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {stat.label}
                     </div>
                   </button>
@@ -1187,8 +1187,8 @@ export default function AthleteDetailPage() {
             {/* ── Wellness ── */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Wellness</div>
-                <button onClick={() => setActiveTab('wellness')} style={{ fontSize: 10.5, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>
+                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Wellness</div>
+                <button onClick={() => setActiveTab('wellness')} style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>
                   Details →
                 </button>
               </div>
@@ -1200,20 +1200,20 @@ export default function AthleteDetailPage() {
               >
                 {wellnessLatest ? (
                   <>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 13 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 10, marginBottom: 13 }}>
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: 30, lineHeight: 1, fontWeight: 500, color: wellnessColor, letterSpacing: '-0.03em' }}>
                         {wellnessScore ?? '—'}
                       </span>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>out of 5</span>
+                      <span style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)', fontWeight: 600 }}>out of 5</span>
                       <span style={{ flex: 1 }} />
-                      <span style={{ fontSize: 10.5, color: wellnessAlert?.active ? 'var(--danger)' : 'var(--text-muted)', fontWeight: wellnessAlert?.active ? 700 : 600 }}>
+                      <span style={{ fontSize: 'var(--t-min)', color: wellnessAlert?.active ? 'var(--danger)' : 'var(--text-muted)', fontWeight: wellnessAlert?.active ? 700 : 600 }}>
                         {wellnessAlert?.active ? 'Needs attention' : `Checked in ${new Date(wellnessLatest.check_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
                       </span>
                     </div>
 
                     {/* One small bar per metric — comparable at a glance, which
                         a row of coloured dots and numbers never was. */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(74px, 1fr))', gap: 8 }}>
                       {WELLNESS_METRICS.map(({ key, label }) => {
                         const score = wellnessLatest[key]
                         const pct = score ? (score / 5) * 100 : 0
@@ -1222,10 +1222,10 @@ export default function AthleteDetailPage() {
                             <div style={{ height: 4, background: 'var(--border-soft)', borderRadius: 2, overflow: 'hidden' }}>
                               <div style={{ width: `${pct}%`, height: '100%', background: metricColor(key, score), borderRadius: 2 }} />
                             </div>
-                            <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                               {label}
                             </div>
-                            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)', marginTop: 1 }}>{score ?? '—'}</div>
+                            <div style={{ fontSize: 'var(--t-body)', fontWeight: 700, color: 'var(--text)', marginTop: 1 }}>{score ?? '—'}</div>
                           </div>
                         )
                       })}
@@ -1249,9 +1249,9 @@ export default function AthleteDetailPage() {
                    Overview previously showed no session content whatsoever. ── */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Recent sessions</div>
+                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Recent sessions</div>
                 {sessions.length > 3 && (
-                  <button onClick={() => setActiveTab('sessions')} style={{ fontSize: 10.5, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>
+                  <button onClick={() => setActiveTab('sessions')} style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>
                     All {sessions.length} →
                   </button>
                 )}
@@ -1266,15 +1266,15 @@ export default function AthleteDetailPage() {
                   {sessions.slice(0, 3).map(s => (
                     <Link key={s.id} href={`/sessions/${s.id}`} className="card" style={{ padding: '12px 14px', textDecoration: 'none', color: 'inherit', display: 'block' }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                        <span style={{ fontWeight: 700, fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: 16, flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
                           {s.session_name ?? 'Coaching session'}
                         </span>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-muted)', flexShrink: 0 }}>
                           {formatSessionDate(s, { day: 'numeric', month: 'short' })}
                         </span>
                       </div>
                       {s.summary && (
-                        <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 5, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        <div style={{ fontSize: 'var(--t-body)', color: 'var(--text-2)', marginTop: 5, lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
                           {s.summary}
                         </div>
                       )}
@@ -1287,7 +1287,7 @@ export default function AthleteDetailPage() {
             {/* ── Goals ── */}
             {athlete.goals && (
               <div>
-                <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 9 }}>Goals</div>
+                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 9 }}>Goals</div>
                 <div style={{ borderLeft: '2px solid var(--coach-color)', paddingLeft: 14, fontSize: 14.5, lineHeight: 1.72, color: 'var(--text-2)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-display)' }}>
                   {athlete.goals}
                 </div>
@@ -1296,13 +1296,13 @@ export default function AthleteDetailPage() {
 
             {/* ── Secondary actions ── */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 2 }}>
-              <Link href={`/dashboard?tab=messages&athlete=${athleteId}`} className="btn btn-ghost" style={{ gap: 6, fontSize: 12.5 }}>
+              <Link href={`/dashboard?tab=messages&athlete=${athleteId}`} className="btn btn-ghost" style={{ gap: 6, fontSize: 'var(--t-furniture)' }}>
                 <Icon name="messages" size={13} /> Message
               </Link>
-              <button className="btn btn-ghost" style={{ gap: 6, fontSize: 12.5 }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
+              <button className="btn btn-ghost" style={{ gap: 6, fontSize: 'var(--t-furniture)' }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
                 <Icon name="report" size={13} /> Monthly report
               </button>
-              <button className="btn btn-ghost" style={{ gap: 6, fontSize: 12.5 }} onClick={() => { setActiveTab('notes'); void loadNotes() }}>
+              <button className="btn btn-ghost" style={{ gap: 6, fontSize: 'var(--t-furniture)' }} onClick={() => { setActiveTab('notes'); void loadNotes() }}>
                 <Icon name="report" size={13} /> Notes
               </button>
             </div>
@@ -1318,7 +1318,7 @@ export default function AthleteDetailPage() {
               <div className="section-title">Session History</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
-                <button className="btn btn-coach" style={{ fontSize: 12, padding: '6px 12px', gap: 5 }} onClick={() => setShowQuickSession(true)}>
+                <button className="btn btn-coach" style={{ fontSize: 'var(--t-furniture)', padding: '6px 12px', gap: 5 }} onClick={() => setShowQuickSession(true)}>
                   <Icon name="mic" size={12} /> Record
                 </button>
               </div>
@@ -1351,12 +1351,12 @@ export default function AthleteDetailPage() {
                             <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {s.session_name ?? 'Session'}
                             </div>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                            <div style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)', marginTop: 2 }}>
                               {formatSessionDate(s, { year: 'numeric', month: 'short', day: '2-digit' })}
                               {sVideos.length > 0 && ` · ${sVideos.length} video${sVideos.length > 1 ? 's' : ''}`}
                             </div>
                           </div>
-                          <span className={`badge ${s.shared_with_athlete ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 10, flexShrink: 0 }}>
+                          <span className={`badge ${s.shared_with_athlete ? 'badge-active' : 'badge-invited'}`} style={{ fontSize: 'var(--t-furniture)', flexShrink: 0 }}>
                             {s.shared_with_athlete ? 'Shared' : 'Private'}
                           </span>
                           <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
@@ -1365,16 +1365,16 @@ export default function AthleteDetailPage() {
                         </button>
 
                         <div style={{ display: 'flex', gap: 6, padding: '0 12px 12px', flexWrap: 'wrap' }}>
-                          <button className="btn btn-ghost" onClick={() => toggleShare(s.id, s.shared_with_athlete)} style={{ fontSize: 12, padding: '5px 10px', gap: 5 }}>
+                          <button className="btn btn-ghost" onClick={() => toggleShare(s.id, s.shared_with_athlete)} style={{ fontSize: 'var(--t-furniture)', padding: '5px 10px', gap: 5 }}>
                             <Icon name="share" size={13} /> {s.shared_with_athlete ? 'Unshare' : 'Share'}
                           </button>
-                          <Link href={`/sessions/${s.id}`} className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', gap: 5, textDecoration: 'none' }}>
+                          <Link href={`/sessions/${s.id}`} className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', padding: '5px 10px', gap: 5, textDecoration: 'none' }}>
                             <Icon name="arrow-right" size={13} /> Open
                           </Link>
-                          <button className="btn btn-ghost" onClick={() => window.open(`/pdf/session/${s.id}`, '_blank')} style={{ fontSize: 12, padding: '5px 10px', gap: 5 }}>
+                          <button className="btn btn-ghost" onClick={() => window.open(`/pdf/session/${s.id}`, '_blank')} style={{ fontSize: 'var(--t-furniture)', padding: '5px 10px', gap: 5 }}>
                             <Icon name="pdf" size={13} /> PDF
                           </button>
-                          <label className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px', gap: 5, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}>
+                          <label className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', padding: '5px 10px', gap: 5, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}>
                             <Icon name="video" size={13} /> {uploading ? `${uploadPct}%` : 'Video'}
                             {/* `e.target.value = ''` on EVERY change, not just success.
                                 Without it the input still holds the last file, so
@@ -1390,13 +1390,13 @@ export default function AthleteDetailPage() {
                           <div style={{ padding: '0 16px 18px', borderTop: '1px solid var(--border)' }}>
                             {s.audio_path && (
                               <div style={{ marginTop: 14 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Recording</div>
+                                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Recording</div>
                                 <SessionAudioPlayer sessionId={s.id} mime={s.audio_mime ?? null} />
                               </div>
                             )}
                             {s.summary && (
                               <div style={{ marginTop: 14 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>AI Summary</div>
+                                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>AI Summary</div>
                                 <div style={{ fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap', background: 'var(--border-soft)', padding: '12px 14px', borderRadius: 10 }}>{s.summary}</div>
                               </div>
                             )}
@@ -1408,17 +1408,17 @@ export default function AthleteDetailPage() {
                             )}
                             {sVideos.length > 0 && (
                               <div style={{ marginTop: 16 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Videos & Annotations ({sVideos.length})</div>
+                                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Videos & Annotations ({sVideos.length})</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                                   {sVideos.map(v => v.signedUrl && (
                                     <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--border-soft)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 6 }}>
                                         <span style={{ fontSize: 13, fontWeight: 600 }}>{v.file_name ?? 'Video'}</span>
                                         <div style={{ display: 'flex', gap: 6 }}>
-                                          <button className="btn btn-ghost" onClick={() => toggleVideoShare(s.id, v.id, v.shared_with_athlete)} style={{ padding: '4px 10px', fontSize: 12, gap: 5 }}>
+                                          <button className="btn btn-ghost" onClick={() => toggleVideoShare(s.id, v.id, v.shared_with_athlete)} style={{ padding: '4px 10px', fontSize: 'var(--t-furniture)', gap: 5 }}>
                                             <Icon name="share" size={12} /> {v.shared_with_athlete ? 'Shared' : 'Share'}
                                           </button>
-                                          <button className="btn btn-danger" onClick={() => deleteVideo(s.id, v.id)} style={{ padding: '4px 10px', fontSize: 12, gap: 5 }}>
+                                          <button className="btn btn-danger" onClick={() => deleteVideo(s.id, v.id)} style={{ padding: '4px 10px', fontSize: 'var(--t-furniture)', gap: 5 }}>
                                             <Icon name="trash" size={12} /> Delete
                                           </button>
                                         </div>
@@ -1493,7 +1493,7 @@ export default function AthleteDetailPage() {
                   {' '}You can loop in a parent or caretaker below.
                 </div>
                 {caretakersUnavailable && (
-                  <div role="alert" style={{ fontSize: 12, color: 'var(--text)', marginBottom: 8, lineHeight: 1.5 }}>
+                  <div role="alert" style={{ fontSize: 'var(--t-min)', color: 'var(--text)', marginBottom: 8, lineHeight: 1.5 }}>
                     ⚠ Could not load this athlete&rsquo;s saved caretakers. The list below is
                     missing, not empty — refresh before assuming there is nobody on file.
                   </div>
@@ -1502,7 +1502,7 @@ export default function AthleteDetailPage() {
                   {alertCaretakers.filter(c => c.notify_wellness_alerts !== false).length > 0 && (
                     <select
                       className="input"
-                      style={{ fontSize: 12, width: 'auto' }}
+                      style={{ fontSize: 'var(--t-body-tight)', width: 'auto', maxWidth: '100%', minWidth: 0 }}
                       value={alertSendTo}
                       onChange={e => setAlertSendTo(e.target.value)}
                     >
@@ -1513,13 +1513,13 @@ export default function AthleteDetailPage() {
                     </select>
                   )}
                   <input
-                    className="input" type="email" style={{ fontSize: 12, width: 200 }}
+                    className="input" type="email" style={{ fontSize: 'var(--t-body-tight)', width: 200, maxWidth: '100%' }}
                     placeholder="or type a parent's email"
                     value={alertSendTo}
                     onChange={e => setAlertSendTo(e.target.value)}
                   />
                   <button
-                    className="btn btn-danger" style={{ fontSize: 12, padding: '6px 12px' }}
+                    className="btn btn-danger" style={{ fontSize: 'var(--t-furniture)', padding: '6px 12px' }}
                     disabled={alertSending || !alertSendTo}
                     onClick={() => sendWellnessAlert(alertSendTo)}
                   >
@@ -1527,7 +1527,7 @@ export default function AthleteDetailPage() {
                   </button>
                 </div>
                 {alertMsg && (
-                  <div style={{ fontSize: 12, marginTop: 8, fontWeight: 600, color: alertMsg.includes('Sent') ? 'var(--success)' : 'var(--danger)' }}>
+                  <div style={{ fontSize: 'var(--t-min)', marginTop: 8, fontWeight: 600, color: alertMsg.includes('Sent') ? 'var(--success)' : 'var(--danger)' }}>
                     {alertMsg}
                   </div>
                 )}
@@ -1542,10 +1542,10 @@ export default function AthleteDetailPage() {
         ══════════════════════════════════════ */}
         {activeTab === 'calendar' && athlete && (
           <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+            <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
               {athlete.first_name}&rsquo;s calendar
             </div>
-            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginBottom: 14 }}>
+            <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', marginBottom: 14 }}>
               {sessions.length === 0
                 ? 'No sessions recorded yet. Anything you record for them appears here.'
                 : `${sessions.length} session${sessions.length === 1 ? '' : 's'} recorded${latestSessionISO ? ` · most recent ${formatSessionDate({ session_date: latestSessionISO }, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`}
@@ -1559,14 +1559,14 @@ export default function AthleteDetailPage() {
               <button
                 className="btn btn-ghost"
                 onClick={() => setCalMonth(latestSessionMonth)}
-                style={{ fontSize: 'var(--fs-2)', padding: '6px 12px', marginBottom: 12 }}
+                style={{ fontSize: 'var(--t-furniture)', padding: '6px 12px', marginBottom: 12 }}
               >
                 Jump to their most recent session &rarr;
               </button>
             )}
 
             {calError && (
-              <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 12 }}>
+              <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--t-min)', fontWeight: 600, marginBottom: 12 }}>
                 {calError}
               </div>
             )}
@@ -1578,14 +1578,14 @@ export default function AthleteDetailPage() {
                 day cell you have to find and tap. */}
             <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: upcomingSessions.length > 0 || upcomingForm ? 10 : 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                <div style={{ fontSize: 'var(--t-furniture)', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 1 }}>
                   Upcoming sessions
                 </div>
                 {!upcomingForm && (
                   <button
                     className="btn btn-ghost"
                     onClick={() => setUpcomingForm({ date: todayISODate(), time: '', title: '', requestCheckin: true })}
-                    style={{ fontSize: 'var(--fs-2)', padding: '5px 10px' }}
+                    style={{ fontSize: 'var(--t-furniture)', padding: '5px 10px' }}
                   >
                     + Add
                   </button>
@@ -1593,7 +1593,7 @@ export default function AthleteDetailPage() {
               </div>
 
               {upcomingSessions.length === 0 && !upcomingForm && (
-                <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)' }}>
                   {/* Only once the window has come back. "Nothing booked" while
                       it is still loading is a confident claim about data we do
                       not have. */}
@@ -1610,24 +1610,24 @@ export default function AthleteDetailPage() {
                 return (
                   <div key={ev.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderTop: '1px solid var(--border-soft)' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text)' }}>
+                      <div style={{ fontSize: 'var(--t-body)', fontWeight: 700, color: 'var(--text)' }}>
                         {isToday ? 'Today' : formatSessionDate({ session_date: ev.event_date }, { weekday: 'short', day: 'numeric', month: 'short' })}
                         {ev.event_time ? ' · ' + ev.event_time.slice(0, 5) : ''}
                         {' · '}{ev.title}
                       </div>
                       {ev.checkin_requested ? (
                         checkin ? (
-                          <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, fontWeight: 700, color: overallScoreColor(score) }}>
+                          <div style={{ fontSize: 'var(--t-min)', marginTop: 3, fontWeight: 700, color: overallScoreColor(score) }}>
                             Checked in{score !== null ? ' · feeling ' + score + '/5' : ''}
                             {typeof checkin.soreness_score === 'number' ? ' · soreness ' + checkin.soreness_score + '/10' : ''}
                           </div>
                         ) : (
-                          <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, color: 'var(--text-muted)', fontWeight: 600 }}>
+                          <div style={{ fontSize: 'var(--t-min)', marginTop: 3, color: 'var(--text-muted)', fontWeight: 600 }}>
                             Check-in asked for &middot; not completed yet
                           </div>
                         )
                       ) : (
-                        <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: 'var(--t-min)', marginTop: 3, color: 'var(--text-muted)' }}>
                           No check-in asked for
                         </div>
                       )}
@@ -1663,7 +1663,7 @@ export default function AthleteDetailPage() {
                     value={upcomingForm.title}
                     onChange={(e) => setUpcomingForm({ ...upcomingForm, title: e.target.value })}
                   />
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--fs-2)', color: 'var(--text-2)', cursor: 'pointer' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', cursor: 'pointer', lineHeight: 1.45 }}>
                     <input
                       type="checkbox" checked={upcomingForm.requestCheckin}
                       onChange={(e) => setUpcomingForm({ ...upcomingForm, requestCheckin: e.target.checked })}
@@ -1672,10 +1672,10 @@ export default function AthleteDetailPage() {
                     <span>Ask {athlete.first_name} to complete their check-in on the day, so you can see how their body is before you start.</span>
                   </label>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-primary" onClick={addUpcomingSession} disabled={upcomingSaving || !upcomingForm.date} style={{ fontSize: 'var(--fs-2)' }}>
+                    <button className="btn btn-primary" onClick={addUpcomingSession} disabled={upcomingSaving || !upcomingForm.date} style={{ fontSize: 'var(--t-furniture)' }}>
                       {upcomingSaving ? 'Adding…' : 'Add session'}
                     </button>
-                    <button className="btn btn-ghost" onClick={() => setUpcomingForm(null)} disabled={upcomingSaving} style={{ fontSize: 'var(--fs-2)' }}>
+                    <button className="btn btn-ghost" onClick={() => setUpcomingForm(null)} disabled={upcomingSaving} style={{ fontSize: 'var(--t-furniture)' }}>
                       Cancel
                     </button>
                   </div>
@@ -1712,12 +1712,12 @@ export default function AthleteDetailPage() {
                   }
                   {photoUploading && (
                     <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }}>
-                      <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>…</span>
+                      <span style={{ color: '#fff', fontSize: 'var(--t-furniture)', fontWeight: 700 }}>…</span>
                     </div>
                   )}
                 </div>
                 <label style={{ cursor: 'pointer' }}>
-                  <span className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>
+                  <span className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', padding: '4px 10px' }}>
                     {photoUploading ? 'Uploading…' : 'Change photo'}
                   </span>
                   <input type="file" accept="image/*" style={{ display: 'none' }} disabled={photoUploading} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadPhoto(f) }} />
@@ -1761,16 +1761,16 @@ export default function AthleteDetailPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                     {Object.entries(profileForm.sport_metrics).map(([k, v]) => (
                       <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', minWidth: 100, padding: '6px 10px', background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)' }}>{k}</span>
-                        <input className="input" style={{ flex: 1, fontSize: 13 }} value={v} onChange={e => setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [k]: e.target.value } }))} />
+                        <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-2)', minWidth: 100, maxWidth: '100%', padding: '6px 10px', background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)', overflowWrap: 'anywhere' }}>{k}</span>
+                        <input className="input" style={{ flex: 1, minWidth: 0, fontSize: 13 }} value={v} onChange={e => setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [k]: e.target.value } }))} />
                         <button onClick={() => setProfileForm(f => { const m = { ...f.sport_metrics }; delete m[k]; return { ...f, sport_metrics: m } })} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 18, padding: '0 4px', flexShrink: 0 }}>×</button>
                       </div>
                     ))}
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <input className="input" style={{ flex: 1, fontSize: 12 }} placeholder="Metric (e.g. 40m Sprint)" value={metricKey} onChange={e => setMetricKey(e.target.value)} />
-                    <input className="input" style={{ flex: 1, fontSize: 12 }} placeholder="Value (e.g. 5.2s)" value={metricVal} onChange={e => setMetricVal(e.target.value)} />
-                    <button className="btn btn-ghost" style={{ fontSize: 12, flexShrink: 0 }} onClick={() => { if (!metricKey.trim()) return; setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [metricKey.trim()]: metricVal.trim() } })); setMetricKey(''); setMetricVal('') }}>+ Add</button>
+                    <input className="input" style={{ flex: 1, minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Metric (e.g. 40m Sprint)" value={metricKey} onChange={e => setMetricKey(e.target.value)} />
+                    <input className="input" style={{ flex: 1, minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. 5.2s)" value={metricVal} onChange={e => setMetricVal(e.target.value)} />
+                    <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', flexShrink: 0 }} onClick={() => { if (!metricKey.trim()) return; setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [metricKey.trim()]: metricVal.trim() } })); setMetricKey(''); setMetricVal('') }}>+ Add</button>
                   </div>
                 </div>
 
@@ -1780,16 +1780,16 @@ export default function AthleteDetailPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                     {profileForm.custom_fields.map((cf, i) => (
                       <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input className="input" style={{ flex: 1, fontSize: 12, fontWeight: 700 }} value={cf.label} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} />
-                        <input className="input" style={{ flex: 2, fontSize: 13 }} value={cf.value} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, value: e.target.value } : x) }))} />
+                        <input className="input" style={{ flex: 1, minWidth: 0, fontSize: 'var(--t-body-tight)', fontWeight: 700 }} value={cf.label} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} />
+                        <input className="input" style={{ flex: 2, minWidth: 0, fontSize: 13 }} value={cf.value} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, value: e.target.value } : x) }))} />
                         <button onClick={() => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.filter((_, j) => j !== i) }))} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 18, padding: '0 4px', flexShrink: 0 }}>×</button>
                       </div>
                     ))}
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <input className="input" style={{ flex: 1, fontSize: 12 }} placeholder="Label (e.g. Club)" value={customLabel} onChange={e => setCustomLabel(e.target.value)} />
-                    <input className="input" style={{ flex: 2, fontSize: 12 }} placeholder="Value (e.g. City FC)" value={customVal} onChange={e => setCustomVal(e.target.value)} />
-                    <button className="btn btn-ghost" style={{ fontSize: 12, flexShrink: 0 }} onClick={() => { if (!customLabel.trim()) return; setProfileForm(f => ({ ...f, custom_fields: [...f.custom_fields, { label: customLabel.trim(), value: customVal.trim() }] })); setCustomLabel(''); setCustomVal('') }}>+ Add</button>
+                    <input className="input" style={{ flex: 1, minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Label (e.g. Club)" value={customLabel} onChange={e => setCustomLabel(e.target.value)} />
+                    <input className="input" style={{ flex: 2, minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. City FC)" value={customVal} onChange={e => setCustomVal(e.target.value)} />
+                    <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', flexShrink: 0 }} onClick={() => { if (!customLabel.trim()) return; setProfileForm(f => ({ ...f, custom_fields: [...f.custom_fields, { label: customLabel.trim(), value: customVal.trim() }] })); setCustomLabel(''); setCustomVal('') }}>+ Add</button>
                   </div>
                 </div>
 
@@ -1797,7 +1797,7 @@ export default function AthleteDetailPage() {
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 4 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                     <div style={{ fontSize: 13, fontWeight: 700 }}>Caretakers</div>
-                    <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px' }} onClick={() => setShowCaretakers(v => !v)}>
+                    <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', padding: '5px 10px' }} onClick={() => setShowCaretakers(v => !v)}>
                       {showCaretakers ? 'Hide' : 'Manage'}
                     </button>
                   </div>
@@ -1815,8 +1815,8 @@ export default function AthleteDetailPage() {
                             }
                           }} />
                           <div>
-                            <div style={{ fontSize: 13, fontWeight: 700 }}>Auto Monthly Report</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Send monthly progress report to caretakers</div>
+                            <div style={{ fontSize: 15, fontWeight: 700 }}>Auto Monthly Report</div>
+                            <div style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)' }}>Send monthly progress report to caretakers</div>
                           </div>
                         </label>
                       </div>
@@ -1874,11 +1874,11 @@ export default function AthleteDetailPage() {
                 {notes.map((n) => (
                   <div key={n.id} className="card" style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      <span style={{ fontSize: 'var(--t-min)', color: 'var(--text-muted)' }}>
                         {n.created_at ? new Date(n.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : '—'}
                       </span>
                       {n.shared_with_athlete && (
-                        <span className="badge badge-active" style={{ fontSize: 10 }}>Shared</span>
+                        <span className="badge badge-active" style={{ fontSize: 'var(--t-furniture)' }}>Shared</span>
                       )}
                     </div>
                     <div style={{ fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>{n.summary}</div>

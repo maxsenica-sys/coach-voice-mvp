@@ -309,6 +309,46 @@ function assertBuildOutput() {
       fontBytes <= FONT_PRELOAD_BUDGET,
       `${fontPreloads.length} file(s), ${fontBytes}B (budget ${FONT_PRELOAD_BUDGET}B) — ${fontPreloads.join(', ') || 'none'}`,
     )
+
+    /* ── which family, not just how many bytes ────────────────────────────
+     *
+     * The budget above is a number standing in for a decision, and the decision
+     * is narrower than the number: exactly one family is preloaded, the one that
+     * carries body copy on every screen, because the first painted frame is the
+     * boot shell and the boot shell hardcodes the system stack. Three families
+     * say `preload: false` for that reason and a fourth family is a fourth
+     * chance to forget.
+     *
+     * A byte budget can only catch a family that is big enough. This one is
+     * pinned by name instead, so it catches a small one too. Changing the pin
+     * is the deliberate act of changing the decision — and it is one line, with
+     * the reason next to it.
+     *
+     * Families are matched back through the built CSS rather than guessed from
+     * the hashed filename, because the hash says nothing and next/font emits
+     * several files per family. (Which one gets preloaded is not predictable
+     * either: Big Shoulders ships a 9,840B latin file and a 36,480B one, and it
+     * is the 36,480B one that is preloaded. That is exactly why this asserts a
+     * name and leaves the arithmetic to the budget.)
+     *
+     * NOTE — the first version of this check read `preload: false` out of
+     * layout.tsx and compared it with the document. It passed the mutation it
+     * was written for, because deleting `preload: false` moves both sides of
+     * that comparison together: it could only ever prove next/font obeyed the
+     * source, never that the source was right. A check that cannot fail on the
+     * regression it names is worse than no check, because it reads like cover.
+     */
+    const PRELOADED_FAMILIES = ['Plus Jakarta Sans']
+    const preloadedFamilies = [...new Set(fontPreloads.map((href) => {
+      const face = (css.match(new RegExp(`@font-face\\{[^}]*${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^}]*\\}`)) || [''])[0]
+      return (face.match(/font-family:([^;}]+)/) || [, `unknown (${href})`])[1].trim()
+    }))].sort()
+    check(
+      `only ${PRELOADED_FAMILIES.join(' + ')} is on the critical path`,
+      preloadedFamilies.join(', ') === PRELOADED_FAMILIES.join(', '),
+      `preloaded: ${preloadedFamilies.join(', ') || 'nothing'} — expected exactly ${PRELOADED_FAMILIES.join(', ')}.` +
+      ' Every other family must carry `preload: false`: the first painted frame is the boot shell, which reads none of them.',
+    )
   }
 }
 

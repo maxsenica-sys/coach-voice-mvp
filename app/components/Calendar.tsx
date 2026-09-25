@@ -148,14 +148,14 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
   return (
     <div style={{ fontFamily: 'inherit' }}>
       {/* Month grid header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             onClick={() => goToMonth(shiftMonth(ym, -1))}
             aria-label="Previous month"
             style={{ width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >‹</button>
-          <span style={{ fontSize: 16, fontWeight: 800, minWidth: 160, textAlign: 'center' }}>
+          <span style={{ fontSize: 16, fontWeight: 800, minWidth: 120, textAlign: 'center' }}>
             {formatMonthYear(ym)}
           </span>
           <button
@@ -166,7 +166,7 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
         </div>
         <button
           onClick={() => { const now = currentMonth(); setSelectedDate(todayStr); onMonthChange(toMonthStr(now)) }}
-          style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+          style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--primary-dark)', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}
         >
           Today
         </button>
@@ -176,19 +176,19 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
           The hosts used to render `{calLoading ? <div>Loading…</div> :
           <Calendar/>}`, which threw away the month the user had just chosen —
           see lib/calendar-month.ts. */}
-      <div aria-live="polite" style={{ height: 14, marginTop: -8, marginBottom: 4, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+      <div aria-live="polite" style={{ height: 17, lineHeight: '17px', marginTop: -8, marginBottom: 4, fontSize: 'var(--t-furniture)', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
         {loading ? 'Loading…' : ''}
       </div>
 
       {/* Day-of-week headers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 2, marginBottom: 4 }}>
         {DAY_LABELS.map((d) => (
-          <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', padding: '4px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{d}</div>
+          <div key={d} style={{ textAlign: 'center', fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', padding: '4px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{d}</div>
         ))}
       </div>
 
       {/* Grid */}
-      <div aria-busy={loading ? true : undefined} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, opacity: loading ? 0.45 : 1, transition: 'opacity 0.12s ease' }}>
+      <div aria-busy={loading ? true : undefined} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 2, opacity: loading ? 0.45 : 1, transition: 'opacity 0.12s ease' }}>
         {Array.from({ length: totalCells }).map((_, i) => {
           const dayNum = i - firstDay + 1
           const isValid = dayNum >= 1 && dayNum <= days
@@ -205,7 +205,7 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
               key={dateStr}
               onClick={() => setSelectedDate(isSelected ? null : dateStr)}
               style={{
-                minHeight: 52,
+                minHeight: 64, minWidth: 0,
                 border: `1.5px solid ${isSelected ? '#0d9488' : isToday ? 'var(--primary)' : 'var(--border)'}`,
                 borderRadius: 8,
                 background: isSelected ? '#f0fdfa' : isToday ? '#f0f9ff' : 'var(--card)',
@@ -226,11 +226,11 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
                 {dayNum}
               </span>
               {hasEvents && (
-                <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 40 }}>
+                <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center', maxWidth: '100%' }}>
                   {dayEvents.slice(0, 3).map((ev) => (
                     <div key={ev.id} style={{ width: 6, height: 6, borderRadius: '50%', background: EVENT_TYPE_COLOR[ev.event_type] ?? '#64748b', opacity: ev.created_by_role === 'athlete' ? 0.7 : 1 }} />
                   ))}
-                  {dayEvents.length > 3 && <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700 }}>+{dayEvents.length - 3}</span>}
+                  {dayEvents.length > 3 && <span style={{ fontSize: 'var(--t-furniture)', lineHeight: 1, color: 'var(--text-muted)', fontWeight: 700 }}>+{dayEvents.length - 3}</span>}
                 </div>
               )}
             </button>
@@ -241,12 +241,12 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
       {/* Selected day events */}
       {selected && (
         <div style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--border-soft)', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--border-soft)', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}>
               {new Date(selected + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
             </span>
             {onAddEvent && (
-              <button className="btn btn-primary" onClick={() => onAddEvent(selected)} style={{ padding: '5px 12px', fontSize: 12 }}>
+              <button className="btn btn-primary" onClick={() => onAddEvent(selected)} style={{ padding: '5px 12px', fontSize: 'var(--t-furniture)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 + Add event
               </button>
             )}
@@ -277,10 +277,10 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{ev.title}</span>
                       <span className={`badge badge-${ev.event_type}`}>{EVENT_TYPE_LABEL[ev.event_type]}</span>
-                      {ev.created_by_role === 'coach' && <span className="badge badge-coach" style={{ fontSize: 10 }}>From coach</span>}
-                      {ev.created_by_role === 'athlete' && <span className="badge badge-athlete" style={{ fontSize: 10 }}>My event</span>}
+                      {ev.created_by_role === 'coach' && <span className="badge badge-coach" style={{ fontSize: 'var(--t-furniture)' }}>From coach</span>}
+                      {ev.created_by_role === 'athlete' && <span className="badge badge-athlete" style={{ fontSize: 'var(--t-furniture)' }}>My event</span>}
                     </div>
-                    {ev.event_time && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>⏰ {formatTime(ev.event_time)}</div>}
+                    {ev.event_time && <div style={{ fontSize: 'var(--t-data)', color: 'var(--text-muted)', marginTop: 3 }}>⏰ {formatTime(ev.event_time)}</div>}
                     {ev.description && <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 5, lineHeight: 1.5 }}>{ev.description}</div>}
                   </div>
                   {onDeleteEvent && ev.created_by_role === role && (
@@ -296,7 +296,7 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
       {/* Legend */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
         {Object.entries(EVENT_TYPE_LABEL).map(([type, label]) => (
-          <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-muted)' }}>
+          <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--t-furniture)', color: 'var(--text-muted)' }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: EVENT_TYPE_COLOR[type] }} />
             {label}
           </div>

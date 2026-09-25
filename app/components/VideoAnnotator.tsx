@@ -303,10 +303,15 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
             transform: 'translateX(-50%)',
             background: 'rgba(0,0,0,0.7)',
             color: '#fff',
-            fontSize: 12,
+            fontSize: 'var(--t-furniture)',
             fontWeight: 700,
-            padding: '4px 12px',
-            borderRadius: 999,
+            lineHeight: 1.35,
+            padding: '5px 12px',
+            borderRadius: 14,
+            /* Wraps to two lines on a narrow frame instead of being cut off by
+               the video wrapper's overflow: hidden. */
+            maxWidth: 'calc(100% - 20px)',
+            textAlign: 'center',
             backdropFilter: 'blur(4px)',
             pointerEvents: 'none',
           }}>
@@ -341,14 +346,14 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
             <button className="btn btn-danger" onClick={clearAll} disabled={strokes.length === 0}>
               🗑 Clear all
             </button>
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>
+            <span style={{ marginLeft: 'auto', fontSize: 'var(--t-furniture)', color: 'var(--text-muted)' }}>
               {strokes.length} annotation{strokes.length !== 1 ? 's' : ''}
             </span>
             {sessionId && videoId && (
               <button
                 className="btn btn-ghost"
                 onClick={copyShareLink}
-                style={{ gap: 5, fontSize: 12, color: shareCopied ? 'var(--success)' : undefined }}
+                style={{ gap: 6, fontSize: 'var(--t-furniture)', color: shareCopied ? 'var(--success)' : undefined }}
                 title="Copy link to current clip timestamp"
               >
                 🔗 {shareCopied ? 'Copied!' : 'Share clip'}
@@ -359,42 +364,62 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
           {drawMode && (
             <>
               {/* Row 2: Colors */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', minWidth: 50 }}>Colour</span>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', minWidth: 58 }}>Colour</span>
+                <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  {/* The swatch is the same circle it always was, with the same
+                      ring for the selected one. What grew is the button around
+                      it: 24px was a target for a mouse, and this toolbar is
+                      used on a phone at the side of a court. Nothing about the
+                      colour values or the selection logic changes. */}
                   {COLORS.map((c) => (
                     <button
                       key={c}
                       onClick={() => setColor(c)}
+                      aria-label={`Pen colour ${c}`}
                       style={{
-                        width: 24,
-                        height: 24,
+                        width: 44,
+                        height: 44,
+                        padding: 0,
+                        border: 'none',
+                        background: 'none',
                         borderRadius: '50%',
-                        background: c,
-                        border: color === c ? '3px solid var(--primary)' : '2px solid var(--border)',
                         cursor: 'pointer',
-                        outline: color === c ? '2px solid rgba(37,99,235,0.3)' : 'none',
-                        outlineOffset: 1,
-                        boxShadow: c === '#ffffff' ? 'inset 0 0 0 1px #ccc' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                       }}
-                    />
+                    >
+                      <span
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: '50%',
+                          background: c,
+                          border: color === c ? '3px solid var(--primary)' : '2px solid var(--border)',
+                          outline: color === c ? '2px solid rgba(37,99,235,0.3)' : 'none',
+                          outlineOffset: 1,
+                          boxShadow: c === '#ffffff' ? 'inset 0 0 0 1px #ccc' : 'none',
+                        }}
+                      />
+                    </button>
                   ))}
                 </div>
               </div>
 
               {/* Row 3: Width + Duration */}
-              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', minWidth: 50 }}>Width</span>
-                  <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', gap: '12px 20px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+                  <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', minWidth: 58 }}>Width</span>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {WIDTHS.map((w) => (
                       <button
                         key={w}
                         onClick={() => setStrokeWidth(w)}
                         style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 6,
+                          width: 44,
+                          height: 44,
+                          borderRadius: 8,
                           border: `1.5px solid ${strokeWidth === w ? 'var(--primary)' : 'var(--border)'}`,
                           background: strokeWidth === w ? 'var(--primary-light)' : 'var(--card)',
                           cursor: 'pointer',
@@ -409,21 +434,22 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', minWidth: 60 }}>Duration</span>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+                  <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--text-muted)', minWidth: 68 }}>Duration</span>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {DURATIONS.map((d) => (
                       <button
                         key={d.value}
                         onClick={() => setDuration(d.value)}
                         style={{
-                          padding: '4px 10px',
-                          borderRadius: 6,
+                          minHeight: 44,
+                          padding: '0 14px',
+                          borderRadius: 8,
                           border: `1.5px solid ${duration === d.value ? 'var(--primary)' : 'var(--border)'}`,
                           background: duration === d.value ? 'var(--primary-light)' : 'var(--card)',
                           color: duration === d.value ? 'var(--primary)' : 'var(--text-2)',
                           fontWeight: duration === d.value ? 700 : 400,
-                          fontSize: 12,
+                          fontSize: 'var(--t-furniture)',
                           cursor: 'pointer',
                         }}
                       >
@@ -434,7 +460,7 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
                 </div>
               </div>
 
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
                 💡 Pause the video first, then draw. Annotations appear at the video timestamp where you drew them.
                 {duration > 0 ? ` Each stroke will fade after ${duration}s with a burst effect.` : ' Strokes are permanent.'}
               </p>
