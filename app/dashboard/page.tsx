@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback, useMemo, Suspense } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, Suspense, Fragment } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
@@ -301,6 +301,16 @@ function PeopleSwitch({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
 /* The active target used to fill with its own colour under white text —
  * which on the ink ground meant white on the lifted --primary, 1.6:1. The
  * colour is now the left rule only, and the text is always cream. */
+/** An email that wraps after its @ and dots instead of mid-word.
+ *  overflow-wrap: anywhere keeps a long address from pushing the page
+ *  sideways, but on its own it breaks wherever the line runs out
+ *  ("westlake.schoo / l"). A <wbr> after each separator gives the browser
+ *  better places to break, and it takes those before an arbitrary one. */
+function BreakableEmail({ email }: { email: string }) {
+  const parts = email.split(/(?<=[@.])/)
+  return <>{parts.map((p, i) => <Fragment key={i}>{p}{i < parts.length - 1 && <wbr />}</Fragment>)}</>
+}
+
 function sideItem(active: boolean, color?: string): React.CSSProperties {
   return {
     display: 'flex', alignItems: 'center', gap: 10, minHeight: 44,
@@ -1865,7 +1875,7 @@ function DashboardPageInner() {
                           <Link href={`/athletes/${a.id}`} style={{ ...cast(18, 700, '.04em'), lineHeight: 1.1, color: 'var(--text)', textDecoration: 'none', overflowWrap: 'anywhere' }}>{name}</Link>
                           {unread > 0 && <span role="img" aria-label={`${unread} unread`} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--coach-on-light)', display: 'inline-block', marginLeft: 8, verticalAlign: 2 }} />}
                         </div>
-                        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere', marginTop: 4 }}>{a.email}</div>
+                        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere', marginTop: 4 }}><BreakableEmail email={a.email} /></div>
                         {pending && (
                           <div style={{ ...cast(13, 600, '.1em'), color: 'var(--text-2)', marginTop: 4, lineHeight: 1.35 }}>
                             {invited && <>Invited <span style={{ ...MONO, textTransform: 'none' }}>{invited.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span> · </>}Waiting to arrive
@@ -2401,7 +2411,7 @@ function DashboardPageInner() {
                   <Mono initials={initialsOf(lastInvite.firstName, lastInvite.lastName)} pending />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ ...cast(18, 700, '.04em'), color: 'var(--text)', lineHeight: 1.1, overflowWrap: 'anywhere' }}>{lastInvite.firstName} {lastInvite.lastName}</div>
-                    <div style={{ ...MONO, fontSize: 13, color: 'var(--text-2)', marginTop: 5, overflowWrap: 'anywhere' }}>{lastInvite.email}</div>
+                    <div style={{ ...MONO, fontSize: 13, color: 'var(--text-2)', marginTop: 5, overflowWrap: 'anywhere' }}><BreakableEmail email={lastInvite.email} /></div>
                   </div>
                   <Chip tone="amber">Pending</Chip>
                 </div>
