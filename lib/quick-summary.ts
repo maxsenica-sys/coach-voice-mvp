@@ -23,6 +23,8 @@ import {
   EMPTY_SUMMARY,
   type QuickSummary,
 } from '@/lib/summary-prompt'
+import { guardSummary } from '@/lib/summary-guard'
+import { checkContent } from '@/lib/content-gate'
 
 export async function makeQuickSummary(
   transcript: string,
@@ -33,6 +35,15 @@ export async function makeQuickSummary(
 ): Promise<QuickSummary> {
   const key = process.env.OPENAI_API_KEY
   if (!key) return EMPTY_SUMMARY
+
+  // Not every recording is coaching, and not everything said may reach a
+  // child. A blocked recording gets no summary at all — not a softened one —
+  // and the caller is told why (lib/content-gate.ts).
+  const gate = await checkContent(transcript)
+  if (gate.blocked) {
+    console.warn('[summary] not summarised:', gate.reasons.join(', '))
+    return { ...EMPTY_SUMMARY, blocked: true }
+  }
 
   /* The name reaches the prompt only if it can safely identify one child.
    *
@@ -65,7 +76,11 @@ export async function makeQuickSummary(
 
     const json = await res.json()
     const content: string = json?.choices?.[0]?.message?.content?.trim() || ''
-    return parseSummaryResponse(content)
+    // Enforced, not requested: at most five bullets, and only what was said
+    // (lib/summary-guard.ts). A bullet or takeaway the coach never said is
+    // dropped before anyone reads it.
+    const guarded = guardSummary(parseSummaryResponse(content), transcript)
+    return { summary: guarded.summary, next: guarded.next }
   } catch {
     return EMPTY_SUMMARY
   }

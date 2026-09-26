@@ -18,6 +18,8 @@
  * done with the reply — lives in lib/split-summary.ts, where the prompt rig can
  * run it.
  */
+import { guardSummary } from '@/lib/summary-guard'
+import { checkContent, BLOCKED_MESSAGE } from '@/lib/content-gate'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { routeIdentity } from '@/lib/route-identity'
@@ -99,6 +101,14 @@ export async function POST(req: NextRequest) {
   const key = process.env.OPENAI_API_KEY
   if (!key) return reply({ error: 'Summaries are not configured on this server. You can write each one.' }, 503)
 
+  // Same gate as the single summary: some recordings must not be summarised
+  // for any athlete at all (lib/content-gate.ts).
+  const gate = await checkContent(transcript)
+  if (gate.blocked) {
+    console.warn('[split-summary] not summarised:', gate.reasons.join(', '))
+    return reply({ error: BLOCKED_MESSAGE, blocked: true }, 422)
+  }
+
   let drafted: SplitSection[]
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -114,7 +124,15 @@ export async function POST(req: NextRequest) {
     if (!res.ok) return reply({ error: 'Could not draft the summaries. You can write each one.' }, 502)
     const json = await res.json()
     const content: string = json?.choices?.[0]?.message?.content ?? ''
-    drafted = parseSplitSummaryResponse(content, athletes)
+    // Each athlete's section is held to the same rules as a single summary: at
+    // most five points, and only what the coach actually said.
+    drafted = parseSplitSummaryResponse(content, athletes).map((sec) => {
+      if (sec.reason !== 'drafted') return sec
+      const g = guardSummary({ summary: sec.summary, next: sec.next }, transcript)
+      return g.summary || g.next
+        ? { ...sec, summary: g.summary, next: g.next }
+        : { athlete_id: sec.athlete_id, summary: null, next: null, reason: 'nothing-specific' as const }
+    })
   } catch (e: unknown) {
     return reply(
       { error: e instanceof SplitParseError

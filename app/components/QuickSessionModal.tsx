@@ -325,7 +325,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     setSummarising(true)
     setSummaryError('')
     try {
-      const out = await apiJson<{ summary: string | null; next: string | null }>(
+      const out = await apiJson<{ summary: string | null; next: string | null; blocked?: boolean; message?: string }>(
         '/api/sessions/summary',
         {
           method: 'POST',
@@ -338,8 +338,22 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         },
       )
       if (req !== draftReqRef.current) return
+      // Content that must not reach an athlete gets no draft, and the coach is
+      // told plainly why (lib/content-gate.ts). Saving with Share ticked is
+      // refused by the server for the same reason.
+      if (out.blocked) {
+        setShareWithAthlete(false)
+        setSummaryError(out.message ?? "This recording can't be summarised or shared with an athlete.")
+        return
+      }
       setSummaryDraft((typed) => (typed.trim() ? typed : out.summary ?? ''))
       setNextDraft((typed) => (typed.trim() ? typed : out.next ?? ''))
+      // Every drafted point must be something the coach said (lib/summary-
+      // guard.ts), so an empty draft is a real answer. Say so rather than
+      // leave a blank box that looks like it is still loading.
+      if (!out.summary && !out.next) {
+        setSummaryError('No summary drafted: nothing in this recording matched a coaching point you made. Write your own, or leave it blank.')
+      }
     } catch (e: unknown) {
       if (req === draftReqRef.current) setSummaryError(errorMessage(e, 'Could not draft a summary. You can write one below.'))
     } finally {

@@ -3,6 +3,8 @@ import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
 import { MAX_NEXT_LENGTH } from '@/lib/summary-prompt'
 import { makeQuickSummary } from '@/lib/quick-summary'
+import { capBullets } from '@/lib/summary-guard'
+import { checkContent, BLOCKED_MESSAGE } from '@/lib/content-gate'
 import { notifySessionShared } from '@/lib/notify'
 import { notifyPushSessionShared } from '@/lib/push'
 import type { CookieToSet } from '@/lib/supabase-route'
@@ -261,7 +263,7 @@ export async function POST(req: NextRequest) {
     .map((a) => (a?.first_name ?? '').trim())
     .filter(Boolean)
 
-  const { summary, next: nextFocus } = coachSupplied
+  const { summary: rawSummary, next: nextFocus } = coachSupplied
     ? { summary: suppliedSummary || null, next: suppliedNext || null }
     : await makeQuickSummary(
         transcript.trim(),
@@ -269,6 +271,22 @@ export async function POST(req: NextRequest) {
         athleteRow?.first_name ?? null,
         rosterFirstNames,
       )
+  // Never more than five points for the athlete, whoever wrote them — the
+  // coach's own edit included (Max, 2026-09-26).
+  const summary = rawSummary ? capBullets(rawSummary) || null : null
+
+  /* Nothing sexual, hateful or threatening is shared with an athlete. Checked
+   * on everything the athlete could read: the summary and takeaway, and the
+   * transcript (shown on individual sessions). A private note is the coach's
+   * own business, so an unshared save is not checked. */
+  if (shared_with_athlete) {
+    const gate = await checkContent([transcript, summary ?? '', nextFocus ?? ''].join('\n'))
+    if (gate.blocked) {
+      console.warn('[sessions] share refused:', gate.reasons.join(', '))
+      const res = NextResponse.json({ error: BLOCKED_MESSAGE, blocked: true }, { status: 422 })
+      return attachCookies(res, cookiesToSet)
+    }
+  }
 
   const { data, error } = await supabase
     .from('sessions')
