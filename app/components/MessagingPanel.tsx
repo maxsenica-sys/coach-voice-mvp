@@ -5,7 +5,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { apiJson } from '@/lib/api-client'
 import { SUPPORTED_RECORDING_TYPES } from '@/lib/audio-mime'
 import { fmtDateDivider } from '@/lib/date-utils'
-import { matchesName, byName } from '@/lib/athlete-filter'
+import { matchesName, byName, nameWords } from '@/lib/athlete-filter'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Athlete {
@@ -411,12 +411,18 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
 
   // ─── Filtered athletes ─────────────────────────────────────────────────────
   // Name match is the shared word-start rule (lib/athlete-filter.ts), so "ana"
-  // finds Ana and not Diana. Email stays a plain substring match — it is how a
-  // coach finds an athlete by address, and addresses have no word starts.
+  // finds Ana and not Anastasia or Diana. The email is searched by the same
+  // rule over its parts ("kai@", "club.example"); a plain substring match here
+  // brought Diana back for "ana" through diana@….
   // Unread threads first (most unread at the top), then by name.
-  const q = search.trim()
+  const queryWords = nameWords(search)
+  const emailMatches = (email: string | null | undefined) => {
+    if (queryWords.length === 0 || !email) return false
+    const parts = nameWords(email)
+    return queryWords.every((q) => parts.some((w) => w.startsWith(q)))
+  }
   const filtered = athletes
-    .filter((a) => matchesName(a, q) || (q !== '' && (a.email ?? '').toLowerCase().includes(q.toLowerCase())))
+    .filter((a) => matchesName(a, search) || emailMatches(a.email))
     .sort((a, b) => (localUnread[b.id] ?? 0) - (localUnread[a.id] ?? 0) || byName(a, b))
 
   // ─── Date dividers ─────────────────────────────────────────────────────────

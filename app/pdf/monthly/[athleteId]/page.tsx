@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { formatSessionDate, parseISODate, todayISODate } from '@/lib/session-date'
 import { WELLNESS_METRICS } from '@/lib/wellness-config'
+import { errorMessage } from '@/lib/errors'
 
 interface Session {
   id: string
@@ -343,54 +344,84 @@ export default function MonthlyReportPage() {
   // remembered between prints, so every report starts from none.
   const [included, setIncluded] = useState<Set<number>>(() => new Set())
 
+  // Set when the report could not be built. The report is not printed then:
+  // a blank "0 sessions, no check-ins" page handed to a parent reads as a
+  // quiet month, when the truth is the query failed.
+  const [loadError, setLoadError] = useState('')
+
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setLoading(false); return }
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) throw new Error('You are signed out. Sign in again, then reopen this report.')
 
-      const { data: profile } = await supabase.from('profiles').select('first_name, last_name, sport').eq('id', user.id).single()
-      setCoach(profile)
+        const { data: profile, error: profileErr } = await supabase.from('profiles').select('first_name, last_name, sport').eq('id', user.id).single()
+        if (profileErr) throw new Error(`Could not load your profile: ${profileErr.message}`)
+        setCoach(profile)
 
-      const { data: ath } = await supabase.from('athletes').select('first_name, last_name, email').eq('id', athleteId).single()
-      setAthlete(ath)
+        const { data: ath, error: athErr } = await supabase.from('athletes').select('first_name, last_name, email').eq('id', athleteId).single()
+        if (athErr || !ath) throw new Error(`Could not load this athlete${athErr ? `: ${athErr.message}` : '.'}`)
+        setAthlete(ath)
 
-      // Last 30 days
-      const since = new Date()
-      since.setDate(since.getDate() - 30)
-      const sinceStr = since.toISOString()
-      const sinceDate = new Intl.DateTimeFormat('en-CA').format(since)
+        // Last 30 days, as a local calendar date. Both queries use the same
+        // one: check-ins were cut at since.toISOString(), a UTC date, which a
+        // day either side of midnight is a different day from the sessions'.
+        const since = new Date()
+        since.setDate(since.getDate() - 30)
+        const sinceStr = since.toISOString()
+        const sinceDate = new Intl.DateTimeFormat('en-CA').format(since)
 
-      const { data: sess } = await supabase
-        .from('sessions')
-        .select('id, session_name, summary, session_date, created_at')
-        .eq('athlete_id', athleteId)
-        // Backdated sessions belong in the window they happened in, so filter
-        // on session_date and keep created_at only for rows that predate it.
-        .or(`session_date.gte.${sinceDate},and(session_date.is.null,created_at.gte.${sinceStr})`)
-        .order('session_date', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-      setSessions(sess ?? [])
+        const { data: sess, error: sessErr } = await supabase
+          .from('sessions')
+          .select('id, session_name, summary, session_date, created_at')
+          .eq('athlete_id', athleteId)
+          // Backdated sessions belong in the window they happened in, so filter
+          // on session_date and keep created_at only for rows that predate it.
+          .or(`session_date.gte.${sinceDate},and(session_date.is.null,created_at.gte.${sinceStr})`)
+          .order('session_date', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+        if (sessErr) throw new Error(`Could not load sessions: ${sessErr.message}`)
+        setSessions(sess ?? [])
 
-      const { data: chk } = await supabase
-        .from('wellness_checkins')
-        .select('check_date, energy, mood, sleep_q, soreness, stress, notes')
-        .eq('athlete_id', athleteId)
-        .gte('check_date', since.toISOString().split('T')[0])
-        .order('check_date')
-      setCheckins(chk ?? [])
+        const { data: chk, error: chkErr } = await supabase
+          .from('wellness_checkins')
+          .select('check_date, energy, mood, sleep_q, soreness, stress, notes')
+          .eq('athlete_id', athleteId)
+          .gte('check_date', sinceDate)
+          .order('check_date')
+        if (chkErr) throw new Error(`Could not load check-ins: ${chkErr.message}`)
+        setCheckins(chk ?? [])
 
-      const now = new Date()
-      setReportMonth(now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))
-      setPeriodFrom(sinceDate)
-      setPeriodTo(todayISODate())
-      setLoading(false)
+        const now = new Date()
+        setReportMonth(now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))
+        setPeriodFrom(sinceDate)
+        setPeriodTo(todayISODate())
+      } catch (e: unknown) {
+        setLoadError(errorMessage(e, 'Could not build this report.'))
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [athleteId])
 
   useEffect(() => {
-    if (!loading && athlete) setTimeout(() => window.print(), 400)
-  }, [loading, athlete])
+    if (!loading && athlete && !loadError) setTimeout(() => window.print(), 400)
+  }, [loading, athlete, loadError])
+
+  if (loadError) return (
+    <div className="pdf">
+      <style>{BASE_CSS}</style>
+      <div className="state" role="alert" style={{ flexDirection: 'column', gap: 16 }}>
+        <span>This report could not be built, so it has not been printed.</span>
+        <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--t-body)', overflowWrap: 'anywhere' }}>{loadError}</span>
+        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+          <button type="button" className="tb-btn tb-print" onClick={() => window.location.reload()}>Try again</button>
+          <button type="button" className="tb-btn tb-close" onClick={() => window.close()}>Close</button>
+        </span>
+      </div>
+    </div>
+  )
 
   if (loading) return (
     <div className="pdf">

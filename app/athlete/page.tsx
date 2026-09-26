@@ -413,8 +413,12 @@ function WellnessHistory({ rows }: { rows: WellnessRow[] }) {
     // all three of these.
     const ELIGIBLE = ['energy', 'sleep_q', 'soreness'] as const
 
+    // Legacy five-slider rows only. A two-tap row's energy and soreness are
+    // DERIVED (lib/readiness.ts) — "Energy is your biggest drop, averaging
+    // 3.0" would be quoting a number back to an athlete who never gave it.
     const meanOf = (subset: typeof cells, key: (typeof ELIGIBLE)[number]) => {
       const vals = subset
+        .filter((c) => c.row && c.row.readiness == null)
         .map((c) => c.row?.[key])
         .filter((v): v is number => typeof v === 'number')
       return vals.length >= 2 ? vals.reduce((a, b) => a + b, 0) / vals.length : null
@@ -439,6 +443,12 @@ function WellnessHistory({ rows }: { rows: WellnessRow[] }) {
     // compare against and "nothing much has moved" would be an assertion we
     // have not earned. Say the true thing instead.
     if (!compared) {
+      // Two-tap check-ins never feed the comparison above, so for an athlete
+      // who only uses the current form "a few more days" would be a promise
+      // that never comes true. Say what is true instead.
+      if (present.some((c) => c.row?.readiness != null)) {
+        return { text: `You checked in on ${present.length} of the last ${DAYS} days.`, tone: 'quiet' as const }
+      }
       return { text: 'A few more days and we can show you what is changing week to week.', tone: 'quiet' as const }
     }
     if (!worst) {
@@ -647,98 +657,137 @@ export default function AthletePage() {
   const [joinCode, setJoinCode] = useState('')
   const [joinMsg, setJoinMsg] = useState('')
   const [joinLoading, setJoinLoading] = useState(false)
+  // Set once a join succeeds, and never cleared in this visit. It lives apart
+  // from `error` on purpose: the join card is shown BY `error`, so a success
+  // message written into that card vanished the moment `error` was cleared.
+  const [joinedCoach, setJoinedCoach] = useState(false)
+
+  // Loads that used to fail into an empty state. A failed notes or sessions
+  // load said "No notes yet" / "No sessions yet" — untrue, and to a teenager
+  // indistinguishable from their coach never having shared anything.
+  const [sessionsError, setSessionsError] = useState<string | null>(null)
+  const [notesError, setNotesError] = useState<string | null>(null)
 
   // ── Boot ──────────────────────────────────────────────────
+  /* A named function rather than the body of the effect, so joining a coach
+   * from inside the portal can run it again. Before, a successful join set an
+   * athleteId and nothing else: the sessions, notes and name that depend on
+   * the athlete row were never fetched, and the screen said "Refresh to see
+   * your sessions".
+   *
+   * `quiet` skips the full-screen "Loading your portal…" — a reload after a
+   * join must not blank the page that is telling them it worked. */
+  const loadPortal = useCallback(async (
+    { quiet = false, isCancelled = () => false }: { quiet?: boolean; isCancelled?: () => boolean } = {},
+  ) => {
+    const cancelled = isCancelled
+    try {
+      if (!quiet) setLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/'); return }
+      if (cancelled()) return
+
+      setUserId(user.id)
+      const onboardKey = `cv_onboarded_${user.id}`
+      setHasOnboarded(localStorage.getItem(onboardKey) === 'true')
+
+      // Fetch profile + athlete record first — the sessions query needs the
+      // athlete's own id so it can't leak or miss rows if it ever runs
+      // outside the intended RLS scope.
+      const [{ data: profile }, { data: athRecord }] = await Promise.all([
+        supabase.from('profiles').select('role, first_name, last_name, sport').eq('id', user.id).single(),
+        supabase.from('athletes').select('id, first_name, last_name').eq('athlete_user_id', user.id).maybeSingle(),
+      ])
+
+      if (cancelled()) return
+
+      if (profile?.role === 'coach') { router.push('/dashboard'); return }
+
+      // A reload after a join must clear the 'no-athlete-record' marker, or
+      // the join card would still be showing over a linked account.
+      setError('')
+
+      setSport(profile?.sport ?? '')
+
+      const [sessResult, notesResult] = await Promise.all([
+        athRecord
+          ? supabase.from('sessions')
+              .select('id, session_name, title, summary, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime, group_id, athlete_response')
+              .eq('athlete_id', athRecord.id)
+              .eq('shared_with_athlete', true)
+              // By when the session happened, not when the row was written —
+              // matching the coach side. Ordering by created_at alone put a
+              // backdated session at the top of the athlete's list as though
+              // it had happened tonight.
+              .order('session_date', { ascending: false, nullsFirst: false })
+              .order('created_at', { ascending: false })
+          : Promise.resolve({ data: [] as SessionRow[], error: null }),
+        // apiJson, not raw fetch: a non-2xx here used to parse to `{}` and
+        // render as "No notes yet". Settled rather than thrown so a notes
+        // failure does not take the sessions down with it.
+        apiJson<{ notes?: AthleteNote[] }>('/api/athlete-notes', { cache: 'no-store' })
+          .then((j) => ({ notes: j.notes ?? [], error: null as string | null }))
+          .catch((e: unknown) => ({ notes: [] as AthleteNote[], error: errorMessage(e, 'Could not load your notes.') })),
+      ])
+
+      if (cancelled()) return
+
+      if (athRecord) {
+        setAthleteId(athRecord.id)
+        const first = profile?.first_name ?? athRecord.first_name ?? ''
+        const last = profile?.last_name ?? athRecord.last_name ?? ''
+        setAthleteName(`${first} ${last}`.trim() || (user.email ?? 'Athlete'))
+        writeCachedProfile({
+          userId: user.id,
+          role: 'athlete',
+          firstName: first,
+          lastName: last,
+          sport: profile?.sport ?? '',
+          email: user.email ?? '',
+        })
+        // Mark this athlete as ACTIVE on their first portal visit.
+        //
+        // Deliberately not awaited — nothing on this screen depends on it —
+        // but no longer silently swallowed. A raw fetch with an empty catch
+        // is CLAUDE.md checklist item #1, and the cost of it here is not
+        // cosmetic: a failure means an athlete who is looking at their own
+        // portal reads PENDING on their coach's roster, for ever, with
+        // nothing anywhere to say why.
+        void apiMutate('/api/athlete/activate', { method: 'POST' })
+          .catch((e) => console.error('[athlete] activate failed:', errorMessage(e, 'unknown')))
+      } else {
+        const first = profile?.first_name ?? ''
+        const last = profile?.last_name ?? ''
+        setAthleteName(`${first} ${last}`.trim() || (user.email ?? 'Athlete'))
+        setError('no-athlete-record')
+      }
+
+      // The query error was destructured away, so a failed load became an
+      // empty list and "No sessions yet".
+      if (sessResult.error) {
+        console.error('[athlete] sessions load failed:', errorMessage(sessResult.error, 'unknown'))
+        setSessionsError('Could not load your sessions. Check your connection and try again.')
+      } else {
+        setSessionsError(null)
+        setSessions((sessResult.data ?? []) as SessionRow[])
+      }
+
+      setNotesError(notesResult.error)
+      if (!notesResult.error) setNotes(notesResult.notes)
+
+    } catch (e: unknown) {
+      if (!cancelled()) setError(errorMessage(e, 'Failed to load'))
+    } finally {
+      if (!cancelled()) setLoading(false)
+      markAppReady()
+    }
+  }, [router, supabase])
+
   useEffect(() => {
     let cancelled = false
-    const load = async () => {
-      try {
-        setLoading(true)
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { router.push('/'); return }
-        if (cancelled) return
-
-        setUserId(user.id)
-        const onboardKey = `cv_onboarded_${user.id}`
-        setHasOnboarded(localStorage.getItem(onboardKey) === 'true')
-
-        // Fetch profile + athlete record first — the sessions query needs the
-        // athlete's own id so it can't leak or miss rows if it ever runs
-        // outside the intended RLS scope.
-        const [{ data: profile }, { data: athRecord }] = await Promise.all([
-          supabase.from('profiles').select('role, first_name, last_name, sport').eq('id', user.id).single(),
-          supabase.from('athletes').select('id, first_name, last_name').eq('athlete_user_id', user.id).maybeSingle(),
-        ])
-
-        if (cancelled) return
-
-        if (profile?.role === 'coach') { router.push('/dashboard'); return }
-
-        setSport(profile?.sport ?? '')
-
-        const [{ data: sessData }, notesRes] = await Promise.all([
-          athRecord
-            ? supabase.from('sessions')
-                .select('id, session_name, title, summary, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime, group_id, athlete_response')
-                .eq('athlete_id', athRecord.id)
-                .eq('shared_with_athlete', true)
-                // By when the session happened, not when the row was written —
-                // matching the coach side. Ordering by created_at alone put a
-                // backdated session at the top of the athlete's list as though
-                // it had happened tonight.
-                .order('session_date', { ascending: false, nullsFirst: false })
-                .order('created_at', { ascending: false })
-            : Promise.resolve({ data: [] as SessionRow[] }),
-          fetch('/api/athlete-notes', { cache: 'no-store' }),
-        ])
-
-        if (cancelled) return
-
-        if (athRecord) {
-          setAthleteId(athRecord.id)
-          const first = profile?.first_name ?? athRecord.first_name ?? ''
-          const last = profile?.last_name ?? athRecord.last_name ?? ''
-          setAthleteName(`${first} ${last}`.trim() || (user.email ?? 'Athlete'))
-          writeCachedProfile({
-            userId: user.id,
-            role: 'athlete',
-            firstName: first,
-            lastName: last,
-            sport: profile?.sport ?? '',
-            email: user.email ?? '',
-          })
-          // Mark this athlete as ACTIVE on their first portal visit.
-          //
-          // Deliberately not awaited — nothing on this screen depends on it —
-          // but no longer silently swallowed. A raw fetch with an empty catch
-          // is CLAUDE.md checklist item #1, and the cost of it here is not
-          // cosmetic: a failure means an athlete who is looking at their own
-          // portal reads PENDING on their coach's roster, for ever, with
-          // nothing anywhere to say why.
-          void apiMutate('/api/athlete/activate', { method: 'POST' })
-            .catch((e) => console.error('[athlete] activate failed:', errorMessage(e, 'unknown')))
-        } else {
-          const first = profile?.first_name ?? ''
-          const last = profile?.last_name ?? ''
-          setAthleteName(`${first} ${last}`.trim() || (user.email ?? 'Athlete'))
-          setError('no-athlete-record')
-        }
-
-        setSessions((sessData ?? []) as SessionRow[])
-
-        const notesJson = await notesRes.json().catch(() => ({}))
-        if (!cancelled) setNotes(notesJson.notes ?? [])
-
-      } catch (e: unknown) {
-        if (!cancelled) setError(errorMessage(e, 'Failed to load'))
-      } finally {
-        if (!cancelled) setLoading(false)
-        markAppReady()
-      }
-    }
-    void load()
+    void loadPortal({ isCancelled: () => cancelled })
     return () => { cancelled = true }
-  }, [router, supabase])
+  }, [loadPortal])
 
   // ── Calendar ──────────────────────────────────────────────
   /** Only the newest request may write — see the note on the coach's copy in
@@ -1083,7 +1132,20 @@ export default function AthletePage() {
       }
       recorder.start()
       setNoteRecording(true)
-    } catch {}
+      setNoteError(null)
+    } catch (e: unknown) {
+      // Was `catch {}`: a denied microphone, or a phone with none, made the
+      // Voice note button do nothing at all.
+      const denied = e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
+      const missing = e instanceof DOMException && e.name === 'NotFoundError'
+      setNoteError(
+        denied
+          ? 'CoachVoice is not allowed to use your microphone. Allow it in your browser or phone settings, then try again.'
+          : missing
+            ? 'No microphone was found on this device.'
+            : errorMessage(e, 'Could not start recording. Try again.'),
+      )
+    }
   }
 
   const stopNoteRecording = () => {
@@ -1194,26 +1256,28 @@ export default function AthletePage() {
     setJoinLoading(true)
     setJoinMsg('')
     try {
-      const res = await fetch('/api/join', {
+      // apiJson throws with the server's own message on a non-2xx, which the
+      // catch below shows in the card.
+      const json = await apiJson<{ athleteId?: string }>('/api/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: joinCode.trim().toLowerCase() }),
       })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok) {
-        setJoinMsg('Successfully joined your coach\'s database! Refresh to see your sessions.')
-        setAthleteId(json.athleteId)
-        setError('')
-        // Belt and braces on top of the route's own insert. The load effect
-        // above is the only other caller of activate, it already ran — before
-        // this athlete had a roster row at all — and it will not run again. So
-        // without this, an athlete who joins from inside the portal is
-        // recorded as never having opened it. See lib/athlete-status.ts.
-        void apiMutate('/api/athlete/activate', { method: 'POST' })
-          .catch((e) => console.error('[athlete] activate after join failed:', errorMessage(e, 'unknown')))
-      } else {
-        setJoinMsg(json?.error ?? 'Failed to join')
-      }
+      if (json.athleteId) setAthleteId(json.athleteId)
+      setJoinCode('')
+      // The confirmation has its own state and its own card. It used to be
+      // written into the join card and then `setError('')` hid that card in
+      // the same tick, so the athlete saw the form disappear and nothing else.
+      setJoinedCoach(true)
+      // Belt and braces on top of the route's own insert, and on top of the
+      // reload below (which also calls activate). Without it, an athlete who
+      // joins from inside the portal could be recorded as never having opened
+      // it. See lib/athlete-status.ts.
+      void apiMutate('/api/athlete/activate', { method: 'POST' })
+        .catch((e) => console.error('[athlete] activate after join failed:', errorMessage(e, 'unknown')))
+      // Fetch what the new athlete row unlocks — name, sessions, notes — rather
+      // than telling them to refresh.
+      await loadPortal({ quiet: true })
     } catch (e: unknown) {
       // A dropped connection rejects rather than returning a status, and this
       // had no catch, so the button stopped spinning and nothing was said.
@@ -1228,6 +1292,10 @@ export default function AthletePage() {
     await supabase.auth.signOut()
     router.push('/')
   }
+  // "Out" sat next to Messages in the header and signed out on one tap — a
+  // thumb aiming for Messages on a moving bus logged a teenager out, and the
+  // way back in is a password they may not remember. Two steps now.
+  const [confirmOut, setConfirmOut] = useState(false)
 
   // ── Derived data ──────────────────────────────────────────
   const filteredNotes = noteFilter ? notes.filter((n) => n.session_id === noteFilter) : notes
@@ -1245,7 +1313,12 @@ export default function AthletePage() {
   }
 
   // ── First-login onboarding ─────────────────────────────────
-  if (hasOnboarded === false && sessions.length === 0) {
+  // Only for an athlete who is linked to a coach. Without an athlete row there
+  // is no coach, so "your coach has set up your training profile" was untrue —
+  // and this full-screen welcome stood between them and the one thing they
+  // can do, which is enter the invite code. Not straight after joining,
+  // either: that would cover the confirmation that the join worked.
+  if (hasOnboarded === false && sessions.length === 0 && athleteId && !joinedCoach) {
     const onboardFirstName = athleteName.split(' ')[0] || 'Athlete'
     const onboardDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()
     const dismissOnboarding = () => {
@@ -1263,12 +1336,12 @@ export default function AthletePage() {
               <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{onboardFirstName}.</span>
             </h1>
             <p style={{ margin: '12px 0 0', fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, maxWidth: 340 }}>
-              Your coach has set up your training profile. Here&apos;s how to get started.
+              You&apos;re connected to your coach. Here&apos;s how it works.
             </p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 28 }}>
             {[
-              { icon: 'pulse', title: 'Check in daily', desc: 'Mark anywhere that hurts, then say how ready you feel. Two taps on a normal day.' },
+              { icon: 'pulse', title: 'Check in daily', desc: 'Say how ready you feel, and mark anywhere that hurts. Two taps on a normal day.' },
               { icon: 'book', title: 'View your sessions', desc: 'After each session, your coach will share notes and feedback here.' },
               { icon: 'messages', title: 'Message your coach', desc: "Ask questions, share how you're feeling, stay connected." },
             ].map((step, i) => (
@@ -1351,10 +1424,26 @@ export default function AthletePage() {
           <button className="ah-iconbtn" onClick={() => setTab('messages')} aria-label="Messages">
             <AthleteIcon name="messages" size={17} strokeWidth={1.8} />
           </button>
-          <button className="ah-iconbtn" onClick={logout} aria-label="Sign out">
+          <button className="ah-iconbtn" onClick={() => setConfirmOut((v) => !v)} aria-label="Sign out" aria-expanded={confirmOut}>
             Out
           </button>
         </div>
+        {/* The confirm drops in under the bar rather than replacing "Out" in
+            it: at 320px the bar has no room for two worded buttons beside the
+            wordmark and Messages, and it wraps rather than going off the edge. */}
+        {confirmOut && (
+          <div role="group" aria-label="Sign out?" style={{ maxWidth: 1000, margin: '0 auto', padding: '0 20px 10px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <span style={{ flex: '1 1 140px', minWidth: 0, fontSize: 'var(--fs-3)', color: 'var(--text)', fontWeight: 600 }}>
+              Sign out of CoachVoice?
+            </span>
+            <button className="btn btn-ghost" onClick={() => setConfirmOut(false)} style={{ minHeight: 44 }}>
+              Stay
+            </button>
+            <button className="btn btn-danger" onClick={() => void logout()} style={{ minHeight: 44 }}>
+              Sign out
+            </button>
+          </div>
+        )}
       </header>
 
       {/* 20px gutter. The bottom pad clears the floating nav — 64px tall,
@@ -1376,7 +1465,7 @@ export default function AthletePage() {
         </div>
 
         {/* No athlete record — show join form */}
-        {error === 'no-athlete-record' && (
+        {error === 'no-athlete-record' && !joinedCoach && (
           // Was a saturated amber gradient from the retired palette.
           <div style={{ background: 'var(--warning-light)', border: '1px solid var(--warning-border)', borderRadius: 14, padding: 20, marginBottom: 20 }}>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 'var(--fs-5)', marginBottom: 6, color: 'var(--text)' }}>
@@ -1397,7 +1486,19 @@ export default function AthletePage() {
                 {joinLoading ? 'Joining…' : 'Join Team →'}
               </button>
             </div>
-            {joinMsg && <p style={{ marginTop: 10, fontSize: 'var(--fs-3)', color: joinMsg.includes('Success') ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{joinMsg}</p>}
+            {/* Only ever an error now — success has its own card below. */}
+            {joinMsg && <p role="alert" style={{ marginTop: 10, fontSize: 'var(--fs-3)', color: 'var(--danger)', fontWeight: 600, overflowWrap: 'anywhere' }}>{joinMsg}</p>}
+          </div>
+        )}
+
+        {joinedCoach && (
+          <div role="status" style={{ background: 'var(--success-light)', border: '1px solid var(--success-border)', borderRadius: 14, padding: 20, marginBottom: 20 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 'var(--fs-5)', marginBottom: 6, color: 'var(--text)' }}>
+              You&rsquo;ve joined your coach.
+            </div>
+            <p style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.6, margin: 0 }}>
+              Anything they share with you will show up here, and you can check in and message them now.
+            </p>
           </div>
         )}
 
@@ -1438,7 +1539,9 @@ export default function AthletePage() {
                 <em>{athleteName.split(' ')[0] || 'Athlete'}.</em>
               </h1>
               <p>
-                {sessions.length === 0
+                {sessionsError
+                  ? 'Your sessions did not load.'
+                  : sessions.length === 0
                   ? 'Nothing from your coach yet.'
                   : `${sessions.length} session${sessions.length !== 1 ? 's' : ''} from your coach`}
               </p>
@@ -1453,31 +1556,59 @@ export default function AthletePage() {
               <section className="ah-panel ah-ci" aria-label="Today’s check-in">
                 <div className="ah-ci-beam" aria-hidden />
                 {todayWellness ? (() => {
-                  const overall = overallWellnessScore(todayWellness)
                   // What she answered on the two-tap form, in its own words.
                   // Absent on rows from the old five-slider form.
                   const said = READINESS_OPTIONS.find((o) => o.value === todayWellness.readiness)?.label ?? null
+                  const top = (
+                    <div className="ah-ci-top">
+                      <span className="ah-eyebrow">
+                        {sessionToday ? 'Checked in for today’s session' : 'Checked in today'}
+                      </span>
+                      <span style={{ flex: 1 }} />
+                      <button className="ah-link" onClick={() => setTab('wellness')} style={TAP_INLINE}>
+                        Trends →
+                      </button>
+                    </div>
+                  )
+                  /* A two-tap check-in is shown as what was said, not as five
+                     numbers. lib/readiness.ts derives energy, mood, stress and
+                     soreness from it so the coach's scoring keeps one code
+                     path — but the athlete never gave those numbers, and
+                     reading "Stress 3" and "Average today 3.8/5" back to a
+                     child who tapped "OK" is putting words in their mouth. */
+                  if (said) {
+                    const sore = todayWellness.sore_areas ?? []
+                    return (
+                      <>
+                        {top}
+                        <div className="ah-ci-body">
+                          <div className="ah-hero">
+                            <div className="ah-score-lbl" style={{ marginTop: 0 }}>You said</div>
+                            <div className="ah-score" style={{ marginTop: 8 }}>{said}</div>
+                          </div>
+                          <div style={{ flex: '1 1 180px', minWidth: 0, fontSize: 'var(--fs-3)', lineHeight: 1.5, color: 'var(--text)', overflowWrap: 'anywhere', alignSelf: 'center' }}>
+                            {sore.length === 0
+                              ? 'Nothing sore.'
+                              : <><strong>Sore: </strong>{sore.map(regionLabel).join(', ')}</>}
+                          </div>
+                        </div>
+                      </>
+                    )
+                  }
+                  const overall = overallWellnessScore(todayWellness)
                   return (
                     <>
-                      <div className="ah-ci-top">
-                        <span className="ah-eyebrow">
-                          {sessionToday ? 'Checked in for today’s session' : 'Checked in today'}
-                        </span>
-                        <span style={{ flex: 1 }} />
-                        <button className="ah-link" onClick={() => setTab('wellness')} style={TAP_INLINE}>
-                          Trends →
-                        </button>
-                      </div>
+                      {top}
                       <div className="ah-ci-body">
                         {overall !== null && (
                           <div className="ah-hero">
                             <div className="ah-score">{overall.toFixed(1)}<span className="of">/5</span></div>
                             <div className="ah-score-lbl">Average today</div>
-                            {said && <div className="ah-score-say">You said {said}</div>}
                           </div>
                         )}
                         {/* Every label spelled out in full, every track the
-                            same length. See .ah-metrics. */}
+                            same length. See .ah-metrics. Legacy five-slider
+                            rows only — those are numbers the athlete gave. */}
                         <div className="ah-metrics">
                           {WELLNESS_METRICS.map(({ key, label }) => {
                             const score = todayWellness[key] as number | null
@@ -1603,7 +1734,11 @@ export default function AthletePage() {
                           </div>
                           {i.expected_return && (
                             <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 4 }}>
-                              Your coach has you back around {i.expected_return}.
+                              {/* Was the raw column — "back around 2026-10-04". */}
+                              Your coach has you back around{' '}
+                              {parseISODate(i.expected_return)
+                                ?.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })
+                                .replace(',', '') ?? i.expected_return}.
                             </div>
                           )}
                         </div>
@@ -1785,7 +1920,15 @@ export default function AthletePage() {
               </div>
             )}
 
-            {sessions.length === 0 ? (
+            {sessionsError ? (
+              <ListState
+                loading={false}
+                error={sessionsError}
+                isEmpty={false}
+                emptyTitle=""
+                onRetry={() => { void loadPortal({ quiet: true }) }}
+              />
+            ) : sessions.length === 0 ? (
               <div className="card" style={{ padding: 32, textAlign: 'center' }}>
                 <div style={{ color: 'var(--text-muted)', display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
                   <AthleteIcon name="book" size={30} strokeWidth={1.5} />
@@ -2192,7 +2335,12 @@ export default function AthletePage() {
             {/* The history goes above the form on purpose: this tab is reached
                 from a control labelled "Trends →", and it used to answer that
                 with a blank form and nothing else. */}
-            <WellnessHistory rows={wellnessHistory} />
+            {/* …once they have checked in today. Before that, the check-in
+                goes first: the history panel pushed Done below the fold on a
+                390x844 phone, and "Check in" (nav) and the home card's Check
+                in button both land here. "Trends →" only shows after a
+                check-in, so it still opens on the history. */}
+            {todayWellness && <WellnessHistory rows={wellnessHistory} />}
             {/* Two taps, attached to the session when the coach scheduled one.
                 sessionToday is already resolved above from the calendar; when
                 it is null the athlete is checking in proactively, which is
@@ -2210,6 +2358,7 @@ export default function AthletePage() {
               // the same session, something it had just stored.
               onSaved={() => { void loadWellness() }}
             />
+            {!todayWellness && <div style={{ marginTop: 14 }}><WellnessHistory rows={wellnessHistory} /></div>}
           </div>
         )}
 
@@ -2432,13 +2581,21 @@ export default function AthletePage() {
                 )}
               </div>
 
-              {filteredNotes.length === 0 ? (
+              {notesError ? (
+                <ListState
+                  loading={false}
+                  error={notesError}
+                  isEmpty={false}
+                  emptyTitle=""
+                  onRetry={() => { void loadPortal({ quiet: true }) }}
+                />
+              ) : filteredNotes.length === 0 ? (
                 <div className="card" style={{ padding: 40, textAlign: 'center' }}>
                   <div style={{ color: 'var(--text-2)', display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
                     <AthleteIcon name="pencil" size={28} strokeWidth={1.5} />
                   </div>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--text)', marginBottom: 6 }}>No notes yet</div>
-                  <div style={{ color: 'var(--text-2)', fontSize: 14 }}>Your private notes will appear here.</div>
+                  <div style={{ color: 'var(--text-2)', fontSize: 'var(--t-body-tight)' }}>Your private notes will appear here.</div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -2573,6 +2730,10 @@ function NoteCard({
   sessions?: { id: string; session_name: string | null }[]
 }) {
   const isEditing = editId === note.id
+  // Private notes have no undo and no copy anywhere else — the coach cannot
+  // see them, so nobody can restore one. A one-tap Delete beside Edit lost a
+  // note to a mis-tap. Two steps, inline.
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const sessionName = showSession && sessions ? sessions.find((s) => s.id === note.session_id)?.session_name : null
 
   return (
@@ -2587,13 +2748,21 @@ function NoteCard({
               and a spaceless session name took it past the edge of the screen. */}
           {sessionName && <span className="badge badge-athlete" style={{ fontSize: 'var(--fs-1)', maxWidth: '100%', overflowWrap: 'anywhere' }}>{sessionName}</span>}
         </div>
-        {!isEditing && (
+        {!isEditing && !confirmDelete && (
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-            <button className="btn btn-ghost" onClick={onStartEdit} style={{ padding: '4px 8px', fontSize: 'var(--fs-2)' }}>Edit</button>
-            <button className="btn btn-danger" onClick={onDelete} style={{ padding: '4px 8px', fontSize: 'var(--fs-2)' }}>Delete</button>
+            <button className="btn btn-ghost" onClick={onStartEdit} style={{ padding: '4px 8px', minHeight: 44, fontSize: 'var(--fs-2)' }}>Edit</button>
+            <button className="btn btn-danger" onClick={() => setConfirmDelete(true)} style={{ padding: '4px 8px', minHeight: 44, fontSize: 'var(--fs-2)' }}>Delete</button>
           </div>
         )}
       </div>
+
+      {!isEditing && confirmDelete && (
+        <div role="group" aria-label="Delete this note?" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10, padding: '8px 10px', borderRadius: 10, background: 'var(--danger-light)' }}>
+          <span style={{ flex: '1 1 120px', minWidth: 0, fontSize: 'var(--fs-3)', fontWeight: 600, color: 'var(--text)' }}>Delete this note?</span>
+          <button className="btn btn-ghost" onClick={() => setConfirmDelete(false)} style={{ minHeight: 44, fontSize: 'var(--fs-3)' }} autoFocus>Keep</button>
+          <button className="btn btn-danger" onClick={() => { setConfirmDelete(false); onDelete() }} style={{ minHeight: 44, fontSize: 'var(--fs-3)' }}>Yes, delete</button>
+        </div>
+      )}
 
       {isEditing ? (
         <>

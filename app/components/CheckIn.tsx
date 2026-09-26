@@ -15,9 +15,19 @@
  *
  * ── The shape ─────────────────────────────────────────────────────────────
  *
- * Marking nothing on the body is the answer "nothing hurts". That is the common
- * case and it costs zero taps — the athlete presses Done. Then one three-way
- * readiness control. Two taps for the ordinary day.
+ * Readiness first — one three-way control — then one two-way question:
+ * "Nothing sore" or "Something's sore". "Nothing sore" starts pressed, because
+ * it is the common case and because it is the answer this screen has always
+ * recorded for an untouched body map; it is now said in words on the screen
+ * rather than implied by a blank drawing. Two taps for the ordinary day:
+ * readiness, then Done.
+ *
+ * The body map only appears behind "Something's sore". It is ~690px tall on a
+ * phone, and when it sat first, readiness and Done were below the fold — the
+ * "two-tap" check-in was a scroll and two taps, every day, to report nothing.
+ * Switching back to "Nothing sore" hides the map but keeps what was tapped on
+ * it, so a mis-tap does not throw away the athlete's marks; what is SENT
+ * follows the visible choice.
  *
  * A follow-up appears only when the athlete has an open injury on file, and it
  * asks about THAT injury rather than adding a standing daily question.
@@ -66,6 +76,9 @@ export default function CheckIn({
   onSaved,
 }: Props) {
   const [soreAreas, setSoreAreas] = useState<string[]>(initial?.sore_areas ?? [])
+  // Which of the two answers is pressed. Derived once from today's row, so a
+  // re-check-in opens on what they said last time.
+  const [somethingSore, setSomethingSore] = useState<boolean>((initial?.sore_areas?.length ?? 0) > 0)
   const [readiness, setReadiness] = useState<Readiness | null>(
     (initial?.readiness as Readiness | undefined) ?? null,
   )
@@ -78,6 +91,12 @@ export default function CheckIn({
   const save = async () => {
     if (readiness === null) {
       setError('Pick how you are feeling first — one tap.')
+      return
+    }
+    if (somethingSore && soreAreas.length === 0) {
+      // "Something's sore" with nothing marked would be saved as [] — which
+      // this route reads as "nothing hurts", the opposite of what they said.
+      setError('Tap where it is sore on the body — or pick “Nothing sore”.')
       return
     }
     setSaving(true)
@@ -94,7 +113,7 @@ export default function CheckIn({
           readiness,
           // Sent explicitly, including when empty: [] means "nothing hurts",
           // which is an answer, not an absence of one.
-          sore_areas: soreAreas,
+          sore_areas: somethingSore ? soreAreas : [],
           session_event_id: sessionEventId ?? null,
           injury_update: openInjuries.length ? injuryUpdate.trim() || null : null,
         }),
@@ -158,27 +177,11 @@ export default function CheckIn({
         {sessionLabel ? `Before ${sessionLabel}` : <>How are you <em style={{ fontStyle: 'italic', fontWeight: 500 }}>today</em>?</>}
       </h2>
 
-      {/* ── 1 · the body, where nothing is the normal answer ──────────────── */}
-      <div style={{ marginTop: 18 }}>
-        <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.5 }}>
-          Anything sore or bothering you? <strong style={{ color: 'var(--text)' }}>Only mark it if something is wrong</strong> —
-          leaving this blank tells your coach you are fine.
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <BodyMap selected={soreAreas} onChange={setSoreAreas} perspective="self" />
-        </div>
-        <div aria-live="polite" style={{ marginTop: 8, fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5 }}>
-          {soreAreas.length === 0
-            ? 'Nothing marked — nothing hurts.'
-            : `Marked: ${soreAreas.map(regionLabel).join(', ')}`}
-        </div>
-      </div>
-
-      {/* ── 2 · readiness ────────────────────────────────────────────────── */}
+      {/* ── 1 · readiness, first, so it is on screen without a scroll ───── */}
       {/* One track, three stops. A low answer is drawn exactly like a high
           one — same fill, same weight — because the control records where you
           are and must not react to it. */}
-      <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+      <div style={{ marginTop: 16 }}>
         <div style={EYEBROW}>How are you feeling?</div>
         <div
           role="group"
@@ -230,6 +233,62 @@ export default function CheckIn({
             )
           })}
         </div>
+      </div>
+
+      {/* ── 2 · the body, behind one question ────────────────────────────── */}
+      <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+        <div style={EYEBROW} id={`${noteId}-sore`}>Anything sore?</div>
+        <div
+          role="group"
+          aria-labelledby={`${noteId}-sore`}
+          style={{
+            display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, marginTop: 10,
+            padding: 4, borderRadius: 18, border: '1px solid var(--border)', background: 'var(--bg)',
+          }}
+        >
+          {([
+            { value: false, label: 'Nothing sore' },
+            { value: true, label: 'Something’s sore' },
+          ]).map((opt) => {
+            const on = somethingSore === opt.value
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                aria-pressed={on}
+                onClick={() => { setSomethingSore(opt.value); setError(null) }}
+                style={{
+                  minWidth: 0, minHeight: 48, padding: '8px 6px',
+                  borderRadius: 14, cursor: 'pointer', border: 'none',
+                  background: on ? 'var(--primary)' : 'transparent',
+                  color: on ? 'var(--on-primary)' : 'var(--text)',
+                  fontFamily: 'inherit', fontWeight: on ? 800 : 600,
+                  fontSize: 'var(--fs-4)', lineHeight: 1.25, textAlign: 'center',
+                }}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+        {somethingSore && (
+          <>
+            <div style={{ marginTop: 14, fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.5 }}>
+              Tap each place that is sore or bothering you.
+            </div>
+            <div style={{ marginTop: 12 }}>
+              {/* showSelection off: the line below is the one list of what is
+                  marked. BodyMap's own "Selected: …" said the same thing in
+                  different words, and disagreed with it when empty. */}
+              <BodyMap selected={soreAreas} onChange={(next) => { setSoreAreas(next); setError(null) }} perspective="self" showSelection={false} />
+            </div>
+            <div aria-live="polite" style={{ marginTop: 8, fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+              {soreAreas.length === 0
+                ? 'Nothing marked yet — tap where it is sore.'
+                : <><strong>Marked: </strong>{soreAreas.map(regionLabel).join(', ')}</>}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── 3 · only if something is already on file ──────────────────────── */}

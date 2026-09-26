@@ -18,9 +18,10 @@
  * What it records is **availability**: out, modified, or back. That is the
  * thing a coach decides, and the thing the rest of the app should respect.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import { errorMessage } from '@/lib/errors'
+import { parseISODate } from '@/lib/session-date'
 import { regionLabel } from '@/lib/body-map'
 import BodyMap from '@/app/components/BodyMap'
 import {
@@ -55,10 +56,28 @@ function StatusChip({ status }: { status: InjuryStatus }) {
   )
 }
 
+/* "Sun 20 Sep" for a `YYYY-MM-DD`. parseISODate builds local midnight, so the
+ * weekday is the one on the coach's own calendar; `new Date('2026-09-20')` is
+ * UTC midnight and names the 19th west of Greenwich. An unparseable value is
+ * shown as stored rather than dropped. */
+function fmtInjuryDate(iso: string): string {
+  const d = parseISODate(iso)
+  return d ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : iso
+}
+
 export default function InjuryPanel({ athleteId, athleteName }: { athleteId: string; athleteName: string }) {
   const [injuries, setInjuries] = useState<Injury[]>([])
   const [loading, setLoading] = useState(true)
+  /* A failed READ is kept apart from a failed action. It used to share `error`
+   * with the save/patch paths, and the list stayed at its initial [] — so the
+   * panel said "{name} is available. Nothing logged." about a child whose
+   * record it had not been able to read. That is a clearance to play, issued
+   * on no information. `loaded` says whether the list on screen is real. */
+  const [loadError, setLoadError] = useState('')
+  const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
+  // Only the newest request for the newest athlete may write the list.
+  const loadSeq = useRef(0)
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -68,17 +87,28 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
   const [note, setNote] = useState('')
 
   const load = async () => {
+    const seq = ++loadSeq.current
+    setLoading(true)
+    setLoadError('')
     try {
-      const j = await apiJson<{ injuries?: Injury[] }>(`/api/injuries?athlete_id=${athleteId}`, { cache: 'no-store' })
+      const j = await apiJson<{ injuries?: Injury[] }>(`/api/injuries?athlete_id=${encodeURIComponent(athleteId)}`, { cache: 'no-store' })
+      if (seq !== loadSeq.current) return
       setInjuries(j.injuries ?? [])
+      setLoaded(true)
     } catch (e: unknown) {
-      setError(errorMessage(e, 'Could not load injuries'))
+      if (seq !== loadSeq.current) return
+      setLoadError(errorMessage(e, 'Could not load injuries'))
     } finally {
-      setLoading(false)
+      if (seq === loadSeq.current) setLoading(false)
     }
   }
 
-  useEffect(() => { void load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [athleteId])
+  useEffect(() => {
+    // A different athlete: nothing on screen belongs to them yet.
+    setInjuries([]); setLoaded(false); setError('')
+    void load()
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [athleteId])
 
   const reset = () => { setArea(null); setStatus('active'); setExpected(''); setNote(''); setAdding(false) }
 
@@ -160,7 +190,25 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
       </div>
 
       <div className="card" style={{ padding: 16, borderRadius: 'var(--radius-lg)' }}>
-        {loading ? (
+        {loadError ? (
+          // We could not find out. Never say "available" on no information,
+          // and if an older list is still on screen, say it may be out of date.
+          <div role="alert" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, marginBottom: open.length > 0 || adding ? 14 : 0 }}>
+            <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+              {loaded
+                ? <>Could not refresh {athleteName}&rsquo;s injuries, so this may be out of date. {loadError}</>
+                : <>Could not load {athleteName}&rsquo;s injuries, so their availability is unknown. {loadError}</>}
+            </div>
+            <button
+              className="btn btn-ghost"
+              onClick={() => void load()}
+              disabled={loading}
+              style={{ minHeight: 44, paddingInline: 16, fontSize: 'var(--fs-3)', borderRadius: 999, color: 'var(--text)', background: 'var(--bg)' }}
+            >
+              {loading ? 'Trying…' : 'Try again'}
+            </button>
+          </div>
+        ) : loading && !loaded ? (
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Loading…</div>
         ) : open.length === 0 && !adding ? (
           // No injuries is the normal state and gets one quiet line, not a
@@ -190,9 +238,9 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
             )}
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-2)', marginTop: 6, lineHeight: 1.5 }}>
               {/* Each date is kept whole: a wrapped line breaks between
-                  phrases, never inside 2026-09-30. */}
-              <span style={{ whiteSpace: 'nowrap' }}>Since {i.started_on}</span>
-              {i.expected_return && <> · <span style={{ whiteSpace: 'nowrap' }}>back around {i.expected_return}</span></>}
+                  phrases, never inside "Sun 20 Sep". */}
+              <span style={{ whiteSpace: 'nowrap' }}>Since {fmtInjuryDate(i.started_on)}</span>
+              {i.expected_return && <> · <span style={{ whiteSpace: 'nowrap' }}>back around {fmtInjuryDate(i.expected_return)}</span></>}
             </div>
             {i.note && (
               // The coach's words, in the reading face.
@@ -337,7 +385,9 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
               <textarea
                 className="input"
                 rows={2}
-                style={{ resize: 'none', fontSize: 13 }}
+                // No inline fontSize: the .input rule sets 16px on phones, and
+                // anything smaller makes iOS zoom the page on focus.
+                style={{ resize: 'none' }}
                 placeholder="Tweaked it landing. Physio Thursday."
                 value={note}
                 onChange={(e) => setNote(e.target.value)}

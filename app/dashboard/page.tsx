@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback, useMemo, Suspense, Fragment } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, useId, Suspense, Fragment } from 'react'
 import { byName, matchesName } from '@/lib/athlete-filter'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -10,6 +10,7 @@ import QuickSessionModal from '@/app/components/QuickSessionModal'
 import { markAppReady } from '@/lib/boot-shell'
 import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
+import AthletePicker from '@/app/components/AthletePicker'
 import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import ListState from '@/app/components/ListState'
@@ -330,6 +331,118 @@ function TabTitle({ title, sub }: { title: string; sub?: React.ReactNode }) {
     <div style={{ minWidth: 0 }}>
       <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, lineHeight: 1.1, letterSpacing: -0.6, color: 'var(--text)' }}>{title}</h1>
       {sub && <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginTop: 4 }}>{sub}</div>}
+    </div>
+  )
+}
+
+// ── Squad builder ────────────────────────────────────────────────
+/* Adding people to a squad, many at a time.
+ *
+ * It was one <select> and one Add tap per athlete: building a squad of twelve
+ * was twelve round trips through a native dropdown. Now it is a checklist of
+ * everyone not already in the squad, and one "Add N".
+ *
+ * `onAdd` resolves to the ids that did NOT go in. Those stay ticked, and the
+ * list says so, so a partial failure can be retried in one tap rather than
+ * being reported once in a toast and then forgotten. */
+function SquadAdder({ squadName, candidates, onAdd }: {
+  squadName: string
+  candidates: Athlete[]
+  onAdd: (ids: string[]) => Promise<string[]>
+}) {
+  const [picked, setPicked] = useState<string[]>([])
+  const [query, setQuery] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [notAdded, setNotAdded] = useState<string[]>([])
+  const searchId = useId()
+
+  const sorted = useMemo(() => [...candidates].sort(byName), [candidates])
+  const showSearch = candidates.length > 7
+  const shown = showSearch ? sorted.filter((a) => matchesName(a, query)) : sorted
+  // Anyone who has since joined the squad is no longer a candidate.
+  const live = picked.filter((id) => candidates.some((a) => a.id === id))
+  const failedNames = notAdded
+    .map((id) => candidates.find((a) => a.id === id))
+    .filter((a): a is Athlete => !!a)
+    .map((a) => `${a.first_name} ${a.last_name}`)
+  const allShownPicked = shown.length > 0 && shown.every((a) => live.includes(a.id))
+
+  const toggle = (id: string) =>
+    setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+
+  const submit = async () => {
+    if (live.length === 0 || busy) return
+    setBusy(true)
+    try {
+      const failed = await onAdd(live)
+      setNotAdded(failed)
+      setPicked(failed)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <SecHead title={`Add to ${squadName}`} />
+      {showSearch && (
+        <div>
+          <label htmlFor={searchId} style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+            Find an athlete to add to {squadName}
+          </label>
+          <input
+            id={searchId}
+            className="input"
+            type="search"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={`Find one of ${candidates.length}…`}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{ width: '100%', minWidth: 0, minHeight: 44 }}
+          />
+        </div>
+      )}
+      {shown.length > 1 && (
+        <button
+          type="button"
+          onClick={() => setPicked((prev) => allShownPicked
+            ? prev.filter((id) => !shown.some((a) => a.id === id))
+            : Array.from(new Set([...prev, ...shown.map((a) => a.id)])))}
+          style={{ alignSelf: 'flex-start', minHeight: 44, padding: '0 4px', border: 'none', background: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: 'var(--fs-2)', cursor: 'pointer' }}
+        >
+          {allShownPicked ? 'Untick all shown' : `Tick all ${shown.length}${query ? ' shown' : ''}`}
+        </button>
+      )}
+      {shown.length === 0 ? (
+        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', padding: '6px 0' }}>
+          Nobody matches “{query}”.{' '}
+          <button type="button" onClick={() => setQuery('')} style={{ minHeight: 44, padding: '0 6px', border: 'none', background: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: 'var(--fs-2)', cursor: 'pointer' }}>Show everyone</button>
+        </div>
+      ) : (
+        <div role="group" aria-label={`Athletes not in ${squadName}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 190px), 1fr))', columnGap: 12 }}>
+          {shown.map((a) => {
+            const on = live.includes(a.id)
+            return (
+              <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, minWidth: 0, padding: '6px 4px', borderTop: HAIR, cursor: 'pointer', color: 'var(--text)', fontSize: 'var(--fs-3)' }}>
+                <input type="checkbox" checked={on} onChange={() => toggle(a.id)} style={{ width: 20, height: 20, flexShrink: 0, accentColor: 'var(--primary)' }} />
+                <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{a.first_name} {a.last_name}</span>
+              </label>
+            )
+          })}
+        </div>
+      )}
+      {failedNames.length > 0 && (
+        <div role="alert" style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 'var(--fs-2)', fontWeight: 600, overflowWrap: 'anywhere' }}>
+          Not added: {failedNames.join(', ')}. They are still ticked — press Add to try again.
+        </div>
+      )}
+      <button
+        className="btn btn-primary"
+        onClick={() => void submit()}
+        disabled={busy || live.length === 0}
+        style={{ minHeight: 44, alignSelf: 'stretch' }}
+      >
+        {busy ? 'Adding…' : live.length === 0 ? 'Tick athletes to add' : `Add ${live.length} to ${squadName}`}
+      </button>
     </div>
   )
 }
@@ -681,7 +794,6 @@ function DashboardPageInner() {
   const [newGroupForm, setNewGroupForm] = useState({ name: '', color: DEFAULT_GROUP_COLOR, description: '' })
   const [groupMsg, setGroupMsg] = useState('')
   const [groupSaving, setGroupSaving] = useState(false)
-  const [addMemberMap, setAddMemberMap] = useState<Record<string, string>>({})
 
   const [allSessions, setAllSessions] = useState<Session[]>([])
   /* The same newest-N list with no search or athlete filter applied, which is
@@ -705,12 +817,20 @@ function DashboardPageInner() {
   const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [sessionsSearch, setSessionsSearch] = useState('')
   const [sessionsAthleteFilter, setSessionsAthleteFilter] = useState('')
+  /** The search and athlete that produced `allSessions` — not whatever is typed
+   *  in the box now. "Load older" continues THIS list. */
+  const [sessionsQuery, setSessionsQuery] = useState({ search: '', athleteId: '' })
+  /** The route returned a full page, so there may be older sessions. */
+  const [sessionsHasMore, setSessionsHasMore] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [olderError, setOlderError] = useState<string | null>(null)
 
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [msgPreselectedId, setMsgPreselectedId] = useState<string | null>(urlAthlete ?? null)
 
   const [deleteConfirmAthlete, setDeleteConfirmAthlete] = useState<Athlete | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // Join notifications
   const [joinToasts, setJoinToasts] = useState<JoinToastData[]>([])
@@ -731,6 +851,8 @@ function DashboardPageInner() {
 
   const [calMode, setCalMode] = useState<CalMode>('personal')
   const [calTargetId, setCalTargetId] = useState('')
+  /** Phone only: whether the "Showing: …" control is open. */
+  const [calPickerOpen, setCalPickerOpen] = useState(false)
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
   const [calLoading, setCalLoading] = useState(false)
   const [calError, setCalError] = useState('')
@@ -748,28 +870,48 @@ function DashboardPageInner() {
   const [homeWeekEvents, setHomeWeekEvents] = useState<CalendarEvent[]>([])
   const [homeSelectedDay, setHomeSelectedDay] = useState<string | null>(null)
 
+  const [homeEventsError, setHomeEventsError] = useState<string | null>(null)
+  /** What the wheel last showed, so a month that fails to load keeps it. */
+  const homeEventsRef = useRef<CalendarEvent[]>([])
+  const homeEventsReqRef = useRef(0)
+
   // The day wheel spans roughly eight weeks either side of today, which can
   // cross three or four calendar months — fetch each one the range touches and
   // merge, rather than the single current month the old seven-day strip needed.
+  //
+  // A month that fails is NOT "no events". It used to be read as
+  // `r.ok ? r.json() : { events: [] }`, so one 500 emptied a month of the
+  // wheel and the coach saw a free fortnight that was actually booked. Now a
+  // failed month keeps whatever the wheel already had for it, and the wheel
+  // says it could not refresh.
   const refreshHomeEvents = useCallback(async () => {
-    try {
-      const months = wheelMonths()
-      const results = await Promise.all(
-        months.map((m) =>
-          fetch(`/api/calendar?mode=personal&month=${m}`, { cache: 'no-store' })
-            .then((r) => (r.ok ? r.json() : { events: [] }))
-            .catch(() => ({ events: [] })),
-        ),
-      )
-      const byId = new Map<string, CalendarEvent>()
-      for (const r of results) for (const ev of (r.events ?? []) as CalendarEvent[]) byId.set(ev.id, ev)
-      const allEvs = Array.from(byId.values())
-      const todayStr = toDateStr(new Date())
-      setHomeWeekEvents(allEvs)
-      setTodayEvents(allEvs.filter((e) => e.event_date === todayStr))
-    } catch {
-      /* leave whatever is already on screen rather than blanking the wheel */
+    const seq = ++homeEventsReqRef.current
+    const months = wheelMonths()
+    const results = await Promise.allSettled(
+      months.map((m) =>
+        apiJson<{ events?: CalendarEvent[] }>(`/api/calendar?mode=personal&month=${m}`, { cache: 'no-store' }),
+      ),
+    )
+    if (seq !== homeEventsReqRef.current) return
+    const failed = new Set<string>()
+    const byId = new Map<string, CalendarEvent>()
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') { failed.add(months[i]); return }
+      for (const ev of r.value.events ?? []) byId.set(ev.id, ev)
+    })
+    for (const ev of homeEventsRef.current) {
+      if (failed.has(ev.event_date.slice(0, 7)) && !byId.has(ev.id)) byId.set(ev.id, ev)
     }
+    const allEvs = Array.from(byId.values())
+    homeEventsRef.current = allEvs
+    const todayStr = toDateStr(new Date())
+    setHomeWeekEvents(allEvs)
+    setTodayEvents(allEvs.filter((e) => e.event_date === todayStr))
+    setHomeEventsError(
+      failed.size === 0 ? null
+        : failed.size === months.length ? 'Could not load your calendar.'
+        : 'Some of your calendar could not be loaded.',
+    )
   }, [])
 
   useEffect(() => {
@@ -883,26 +1025,115 @@ function DashboardPageInner() {
     } finally { setLoadingGroups(false) }
   }
 
+  /* One page of /api/sessions/all. `hasMore` is the route's own answer (it
+   * returned a full page), so "50 newest" is only said when there may be more. */
+  const getSessionsPage = (search: string, athleteId: string, offset: number) => {
+    const p = new URLSearchParams({ limit: String(SESSIONS_WINDOW), offset: String(offset) })
+    if (search) p.set('search', search)
+    if (athleteId) p.set('athlete_id', athleteId)
+    return apiJson<{ sessions?: Session[]; hasMore?: boolean }>(`/api/sessions/all?${p}`, { cache: 'no-store' })
+  }
+
+  /* Only the newest request may write — the same rule as calReqRef below.
+   *
+   * Every search, every athlete pick, a save, a synced upload and the boot read
+   * all call fetchAllSessions, with no ordering guarantee between them. Without
+   * a guard the boot's unfiltered read could land after the coach had filtered
+   * to one athlete and replace their list with everyone's, under a filter box
+   * still naming that athlete. Two counters, because the Sessions list and
+   * Home's unfiltered copy are different lists: a stale response can be stale
+   * for one and still the newest word for the other. */
+  const sessionsReqRef = useRef(0)
+  const homeSessionsReqRef = useRef(0)
+  /** Where the next "Load older" page starts. Tracked separately from the list
+   *  length because rows already on screen are de-duplicated out of a page. */
+  const sessionsNextOffsetRef = useRef(SESSIONS_WINDOW)
+
   const fetchAllSessions = async (search = '', athleteId = '') => {
+    const seq = ++sessionsReqRef.current
+    const homeSeq = !search && !athleteId ? ++homeSessionsReqRef.current : null
     setLoadingSessions(true)
     setSessionsError(null)
+    setOlderError(null)
+    setLoadingOlder(false)
     try {
-      const p = new URLSearchParams({ limit: String(SESSIONS_WINDOW) })
-      if (search) p.set('search', search)
-      if (athleteId) p.set('athlete_id', athleteId)
-      const json = await apiJson<{ sessions?: Session[] }>(`/api/sessions/all?${p}`, { cache: 'no-store' })
+      const json = await getSessionsPage(search, athleteId, 0)
       const rows: Session[] = json.sessions ?? []
-      setAllSessions(rows)
-      if (!search && !athleteId) setHomeSessions(rows)
+      if (homeSeq !== null && homeSeq === homeSessionsReqRef.current) setHomeSessions(rows)
+      if (seq === sessionsReqRef.current) {
+        setAllSessions(rows)
+        setSessionsHasMore(json.hasMore === true)
+        setSessionsQuery({ search, athleteId })
+        sessionsNextOffsetRef.current = SESSIONS_WINDOW
+      }
       // Returned so a caller can diff before/after and work out what a save
       // actually created — see the receipt in onSaved.
       return rows
     } catch (e) {
       // The list is left exactly as it was. Replacing it with [] here is how
       // "we could not reach the server" turned into "you have no sessions".
-      setSessionsError(e instanceof Error ? e.message : 'Could not load sessions.')
+      if (seq === sessionsReqRef.current) setSessionsError(errorMessage(e, 'Could not load sessions.'))
       return [] as Session[]
-    } finally { setLoadingSessions(false) }
+    } finally {
+      if (seq === sessionsReqRef.current) setLoadingSessions(false)
+    }
+  }
+
+  /** Home's unfiltered newest-N only; leaves the Sessions tab's list alone. */
+  const fetchHomeSessions = async () => {
+    const seq = ++homeSessionsReqRef.current
+    try {
+      const json = await getSessionsPage('', '', 0)
+      const rows: Session[] = json.sessions ?? []
+      if (seq === homeSessionsReqRef.current) setHomeSessions(rows)
+      return rows
+    } catch {
+      // Home keeps what it had. The Sessions list refresh that runs beside
+      // this one surfaces the failure where there is room to say it.
+      return [] as Session[]
+    }
+  }
+
+  /* After something changed the data underneath (a save, a synced upload, a
+   * deleted athlete): refresh Home, and refresh the Sessions tab AS IT IS
+   * FILTERED. These callers used to run an unfiltered fetch, which replaced a
+   * coach's filtered list with everyone's while the filter box still showed
+   * the filter. Returns Home's unfiltered rows, which is what onSaved diffs. */
+  const refreshSessions = async (): Promise<Session[]> => {
+    const { search, athleteId } = sessionsQuery
+    if (!search && !athleteId) return fetchAllSessions()
+    const [home] = await Promise.all([fetchHomeSessions(), fetchAllSessions(search, athleteId)])
+    return home
+  }
+
+  /* The Sessions tab past its first page. Appends; never touches Home. A page
+   * that lands after the list was re-queried (new search, new athlete) belongs
+   * to a list that no longer exists and is dropped. */
+  const loadOlderSessions = async () => {
+    if (loadingOlder) return
+    const seq = sessionsReqRef.current
+    const { search, athleteId } = sessionsQuery
+    const offset = sessionsNextOffsetRef.current
+    setLoadingOlder(true)
+    setOlderError(null)
+    try {
+      const json = await getSessionsPage(search, athleteId, offset)
+      if (seq !== sessionsReqRef.current) return
+      const rows: Session[] = json.sessions ?? []
+      sessionsNextOffsetRef.current = offset + SESSIONS_WINDOW
+      // A session saved since the first page shifts every offset down by one,
+      // so the new page can repeat the last row already shown. Drop repeats by
+      // id rather than show one session twice.
+      setAllSessions(prev => {
+        const seen = new Set(prev.map(s => s.id))
+        return [...prev, ...rows.filter(s => !seen.has(s.id))]
+      })
+      setSessionsHasMore(json.hasMore === true)
+    } catch (e) {
+      if (seq === sessionsReqRef.current) setOlderError(errorMessage(e, 'Could not load older sessions.'))
+    } finally {
+      if (seq === sessionsReqRef.current) setLoadingOlder(false)
+    }
   }
 
   // Who has gone longest without a recording. Server-computed on purpose: the
@@ -955,6 +1186,11 @@ function DashboardPageInner() {
     setCalTargetId(targetId)
     setCalEvents([])
     setCalError('')
+  }
+
+  const pickCalendar = (mode: CalMode, targetId: string) => {
+    showCalendarFor(mode, targetId)
+    setCalPickerOpen(false)
   }
 
   const fetchCalendar = useCallback(async (mode: CalMode, targetId: string, month: string) => {
@@ -1096,14 +1332,27 @@ function DashboardPageInner() {
     if (expandedGroup === id) setExpandedGroup(null)
   }
 
-  const addMemberToGroup = async (groupId: string) => {
-    const athleteId = addMemberMap[groupId]
-    if (!athleteId) return
-    const res = await fetch(`/api/groups/${groupId}/members`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ athlete_id: athleteId }),
-    })
-    if (res.ok) { setAddMemberMap(prev => ({ ...prev, [groupId]: '' })); await fetchGroups() }
+  /** Adds each athlete; resolves to the ids that failed. Reports honestly:
+   *  "2 of 3 added" is a different sentence from "added". */
+  const addMembersToGroup = async (group: Group, athleteIds: string[]): Promise<string[]> => {
+    const results = await Promise.allSettled(athleteIds.map((athleteId) =>
+      apiMutate(`/api/groups/${group.id}/members`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete_id: athleteId }),
+      }),
+    ))
+    const failed = athleteIds.filter((_, i) => results[i].status === 'rejected')
+    const firstReason = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')?.reason
+    const added = athleteIds.length - failed.length
+    if (failed.length === 0) {
+      showToast(`Added ${added} to ${group.name}`)
+    } else if (added === 0) {
+      showToast(`Could not add ${failed.length === 1 ? 'that athlete' : `any of the ${failed.length}`} to ${group.name}: ${errorMessage(firstReason, 'try again.')}`, 'error')
+    } else {
+      showToast(`Added ${added} of ${athleteIds.length} to ${group.name}. ${failed.length} could not be added: ${errorMessage(firstReason, 'try again.')}`, 'error')
+    }
+    if (added > 0) await fetchGroups()
+    return failed
   }
 
   const removeMemberFromGroup = async (groupId: string, athleteId: string) => {
@@ -1184,19 +1433,29 @@ function DashboardPageInner() {
   }
 
   const confirmDelete = async () => {
-    if (!deleteConfirmAthlete) return
+    const target = deleteConfirmAthlete
+    if (!target) return
     setDeleteLoading(true)
+    setDeleteError(null)
     try {
-      const res = await fetch(`/api/athletes/${deleteConfirmAthlete.id}/hard-delete`, { method: 'POST' })
-      if (res.ok) {
-        setDeleteConfirmAthlete(null)
-        await fetchAthletes()
-      } else {
-        const json = await res.json().catch(() => ({}))
-        alert(json?.error ?? 'Delete failed')
-      }
-    } finally { setDeleteLoading(false) }
+      // apiMutate: a dropped connection used to escape this try/finally as an
+      // unhandled rejection, and the dialog just stopped saying "Deleting…"
+      // with nothing to tell the coach whether a child's record was gone.
+      await apiMutate(`/api/athletes/${target.id}/hard-delete`, { method: 'POST' })
+    } catch (e: unknown) {
+      setDeleteError(errorMessage(e, 'Could not delete this athlete. Try again.'))
+      setDeleteLoading(false)
+      return
+    }
+    setDeleteLoading(false)
+    setDeleteConfirmAthlete(null)
+    showToast(`Deleted ${target.first_name} ${target.last_name}`)
+    // Their sessions and squad places went with them; Home and Squads were
+    // still counting them.
+    await Promise.all([fetchAthletes(), fetchGroups(), refreshSessions(), fetchCoverage()])
   }
+
+  const closeDeleteConfirm = () => { setDeleteConfirmAthlete(null); setDeleteError(null) }
 
   const logout = async () => { clearCachedProfile(); await supabase.auth.signOut(); router.push('/') }
 
@@ -1251,6 +1510,11 @@ function DashboardPageInner() {
     : calMode === 'group'
       ? (groups.find(g => g.id === calTargetId)?.name ?? 'Group') + ' Calendar'
       : (() => { const a = athletes.find(a => a.id === calTargetId); return a ? `${a.first_name}'s Calendar` : 'Calendar' })()
+  const calTargetLabel = calMode === 'personal'
+    ? 'My calendar'
+    : calMode === 'group'
+      ? (groups.find(g => g.id === calTargetId)?.name ?? 'Squad')
+      : (() => { const a = athletes.find(a => a.id === calTargetId); return a ? `${a.first_name} ${a.last_name}` : 'Athlete' })()
   const calSubtitle = calMode === 'personal'
     ? 'Personal events only you can see'
     : calMode === 'group'
@@ -1504,7 +1768,7 @@ function DashboardPageInner() {
                   queue is empty, which is almost always — and sits above
                   everything else when it is not, because an unsent recording
                   is more urgent than any summary of past ones. */}
-              <PendingRecordings onSynced={() => { fetchAllSessions(); fetchCoverage() }} />
+              <PendingRecordings onSynced={() => { void refreshSessions(); void fetchCoverage() }} />
 
               {/* Attention headline, or the greeting when there is nothing to say. */}
               <section>
@@ -1702,6 +1966,12 @@ function DashboardPageInner() {
               {/* Day wheel — scrolls back through what you've done and
                   forward through what's booked, with a Today control. */}
               <div>
+                {homeEventsError && (
+                  <div role="alert" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8, padding: '6px 6px 6px 12px', borderRadius: 8, background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 'var(--fs-2)', fontWeight: 600 }}>
+                    <span style={{ flex: '1 1 160px', minWidth: 0, overflowWrap: 'anywhere' }}>{homeEventsError} Events below may be missing or out of date.</span>
+                    <button onClick={() => void refreshHomeEvents()} className="btn btn-ghost" style={{ minHeight: 44, padding: '0 14px' }}>Retry</button>
+                  </div>
+                )}
                 <DayWheel
                   events={homeWeekEvents as WheelEvent[]}
                   selectedDay={homeSelectedDay}
@@ -1934,7 +2204,7 @@ function DashboardPageInner() {
                         <button onClick={() => { setTab('calendar'); showCalendarFor('athlete', a.id) }} style={ICON_BTN} title="Calendar" aria-label={`${a.first_name}'s calendar`}>
                           <Icon name="calendar" size={16} />
                         </button>
-                        <button onClick={() => setDeleteConfirmAthlete(a)} style={{ ...ICON_BTN, color: 'var(--danger)', borderColor: tint('var(--danger)', 35) }} title="Remove athlete" aria-label={`Remove ${name}`}>
+                        <button onClick={() => { setDeleteError(null); setDeleteConfirmAthlete(a) }} style={{ ...ICON_BTN, color: 'var(--danger)', borderColor: tint('var(--danger)', 35) }} title="Remove athlete" aria-label={`Remove ${name}`}>
                           <Icon name="trash" size={15} />
                         </button>
                       </div>
@@ -2090,7 +2360,7 @@ function DashboardPageInner() {
                             <button onClick={() => openRecorder(undefined, g.id)} className="btn btn-primary" style={{ fontSize: 'var(--fs-2)', padding: '0 14px', minHeight: 44, gap: 5 }}>
                               <Icon name="mic" size={14} /> Record
                             </button>
-                            <button onClick={() => { setTab('calendar'); setCalMode('group'); setCalTargetId(g.id) }} style={ICON_BTN} title="Group calendar" aria-label={`${g.name} calendar`}>
+                            <button onClick={() => { setTab('calendar'); showCalendarFor('group', g.id) }} style={ICON_BTN} title="Group calendar" aria-label={`${g.name} calendar`}>
                               <Icon name="calendar" size={15} />
                             </button>
                             <button onClick={() => setExpandedGroup(isExp ? null : g.id)} style={ICON_BTN} aria-expanded={isExp} aria-label={isExp ? `Hide ${g.name} members` : `Show ${g.name} members`}>
@@ -2117,15 +2387,9 @@ function DashboardPageInner() {
                                 </div>
                               )
                             }
-                            {nonMembers.length > 0 && (
-                              <div style={{ display: 'flex', gap: 8 }}>
-                                <select className="input" aria-label={`Add an athlete to ${g.name}`} value={addMemberMap[g.id] ?? ''} onChange={e => setAddMemberMap(prev => ({ ...prev, [g.id]: e.target.value }))} style={{ flex: 1, minWidth: 0, maxWidth: '100%', fontSize: 'var(--fs-3)', minHeight: 44 }}>
-                                  <option value="">Add athlete…</option>
-                                  {nonMembers.map(a => <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>)}
-                                </select>
-                                <button className="btn btn-primary" onClick={() => addMemberToGroup(g.id)} disabled={!addMemberMap[g.id]} style={{ minHeight: 44 }}>Add</button>
-                              </div>
-                            )}
+                            {nonMembers.length > 0
+                              ? <SquadAdder squadName={g.name} candidates={nonMembers} onAdd={(ids) => addMembersToGroup(g, ids)} />
+                              : athletes.length > 0 && <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)' }}>Everyone on your roster is in this squad.</div>}
                           </div>
                         )}
                       </div>
@@ -2172,7 +2436,14 @@ function DashboardPageInner() {
           {tab === 'sessions' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
-                <TabTitle title="All sessions" sub={`${allSessions.length} session${allSessions.length !== 1 ? 's' : ''}`} />
+                {/* "50 newest", not "50 sessions", while the route says there may be
+                    more: a coach with 180 sessions was told they had 50. */}
+                <TabTitle
+                  title="All sessions"
+                  sub={sessionsHasMore
+                    ? `${allSessions.length} newest${sessionsQuery.search || sessionsQuery.athleteId ? ' matching' : ''} · older below`
+                    : `${allSessions.length} session${allSessions.length !== 1 ? 's' : ''}`}
+                />
                 <button className="btn btn-primary" onClick={() => openRecorder()} style={{ gap: 6, minHeight: 44 }}>
                   <Icon name="mic" size={15} /> Record Session
                 </button>
@@ -2203,6 +2474,22 @@ function DashboardPageInner() {
                         summary: true,
                         meta: formatSessionDate(s, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }),
                       }))}
+                      {olderError && (
+                        <div role="alert" style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 'var(--fs-2)', fontWeight: 600, overflowWrap: 'anywhere' }}>
+                          {olderError}
+                        </div>
+                      )}
+                      {sessionsHasMore && (
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => void loadOlderSessions()}
+                          disabled={loadingOlder}
+                          aria-busy={loadingOlder}
+                          style={{ marginTop: 12, width: '100%', minHeight: 44 }}
+                        >
+                          {loadingOlder ? 'Loading…' : olderError ? 'Try again' : 'Load older'}
+                        </button>
+                      )}
                     </div>
                   )
               }
@@ -2214,33 +2501,87 @@ function DashboardPageInner() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <TabTitle title="Calendar" />
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '220px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
-                <div className="card" style={{ padding: 10, minWidth: 0 }}>
-                  <button onClick={() => showCalendarFor('personal', '')} style={sideItem(calMode === 'personal', 'var(--primary)')}>
-                    <Icon name="calendar" size={15} /> My Calendar
-                  </button>
-                  {athletes.length > 0 && (
-                    <>
-                      <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '12px 12px 4px' }}>Athletes</div>
-                      {athletes.map(a => (
-                        <button key={a.id} onClick={() => showCalendarFor('athlete', a.id)} style={sideItem(calMode === 'athlete' && calTargetId === a.id, 'var(--coach-on-light)')}>
-                          <Mono initials={initialsOf(a.first_name, a.last_name)} pending={statusOf(a) === 'INVITED'} size={28} />
-                          {a.first_name} {a.last_name}
+                {/* On a phone the sidebar stacked every athlete as a 44px row
+                    ABOVE the calendar — about a thousand pixels at twenty
+                    athletes — so the calendar a coach had just chosen was a
+                    long scroll below the list they chose it from. One line
+                    says whose calendar this is; the full choice opens on
+                    demand, with search and squad filtering from AthletePicker. */}
+                {isMobile ? (
+                  <div className="card" style={{ padding: 10, minWidth: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => setCalPickerOpen(o => !o)}
+                      aria-expanded={calPickerOpen}
+                      aria-controls="cal-target-picker"
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 44, padding: '6px 8px', border: 'none', background: 'none', color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}
+                    >
+                      <span style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', flexShrink: 0 }}>Showing</span>
+                      <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 'var(--fs-3)', overflowWrap: 'anywhere' }}>{calTargetLabel}</span>
+                      <span style={{ ...cast(13, 700, '.12em'), color: 'var(--primary)', flexShrink: 0 }}>{calPickerOpen ? 'Close' : 'Change'}</span>
+                    </button>
+                    {calPickerOpen && (
+                      <div id="cal-target-picker" style={{ borderTop: HAIR, marginTop: 6, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <button onClick={() => pickCalendar('personal', '')} aria-pressed={calMode === 'personal'} style={sideItem(calMode === 'personal', 'var(--primary)')}>
+                          <Icon name="calendar" size={15} /> My calendar
                         </button>
-                      ))}
-                    </>
-                  )}
-                  {groups.length > 0 && (
-                    <>
-                      <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '12px 12px 4px' }}>Squads</div>
-                      {groups.map(g => (
-                        <button key={g.id} onClick={() => showCalendarFor('group', g.id)} style={sideItem(calMode === 'group' && calTargetId === g.id, g.color)}>
-                          <span style={{ width: 12, height: 12, borderRadius: '50%', background: g.color, flexShrink: 0, boxShadow: '0 0 0 1.5px var(--text-muted)' }} />
-                          {g.name}
-                        </button>
-                      ))}
-                    </>
-                  )}
-                </div>
+                        {groups.length > 0 && (
+                          <>
+                            <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '10px 12px 2px' }}>Squad calendars</div>
+                            {groups.map(g => (
+                              <button key={g.id} onClick={() => pickCalendar('group', g.id)} aria-pressed={calMode === 'group' && calTargetId === g.id} style={sideItem(calMode === 'group' && calTargetId === g.id, g.color)}>
+                                <span style={{ width: 12, height: 12, borderRadius: '50%', background: g.color, flexShrink: 0, boxShadow: '0 0 0 1.5px var(--text-muted)' }} />
+                                {g.name}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                        {athletes.length > 0 && (
+                          <>
+                            <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '10px 12px 0' }}>An athlete&apos;s calendar</div>
+                            {/* value="" so it opens straight onto the list rather
+                                than folded onto the current athlete behind a
+                                second Change; "Showing" above already says who. */}
+                            <AthletePicker
+                              athletes={athletes}
+                              squads={groups.map(g => ({ id: g.id, name: g.name, member_ids: g.member_ids }))}
+                              value=""
+                              onChange={id => pickCalendar('athlete', id)}
+                            />
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="card" style={{ padding: 10, minWidth: 0 }}>
+                    <button onClick={() => showCalendarFor('personal', '')} style={sideItem(calMode === 'personal', 'var(--primary)')}>
+                      <Icon name="calendar" size={15} /> My Calendar
+                    </button>
+                    {athletes.length > 0 && (
+                      <>
+                        <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '12px 12px 4px' }}>Athletes</div>
+                        {athletes.map(a => (
+                          <button key={a.id} onClick={() => showCalendarFor('athlete', a.id)} style={sideItem(calMode === 'athlete' && calTargetId === a.id, 'var(--coach-on-light)')}>
+                            <Mono initials={initialsOf(a.first_name, a.last_name)} pending={statusOf(a) === 'INVITED'} size={28} />
+                            {a.first_name} {a.last_name}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {groups.length > 0 && (
+                      <>
+                        <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '12px 12px 4px' }}>Squads</div>
+                        {groups.map(g => (
+                          <button key={g.id} onClick={() => showCalendarFor('group', g.id)} style={sideItem(calMode === 'group' && calTargetId === g.id, g.color)}>
+                            <span style={{ width: 12, height: 12, borderRadius: '50%', background: g.color, flexShrink: 0, boxShadow: '0 0 0 1.5px var(--text-muted)' }} />
+                            {g.name}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
                 <div className="card" style={{ padding: 18, minWidth: 0 }}>
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ ...cast(19, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere' }}>{calTitle}</div>
@@ -2574,8 +2915,13 @@ function DashboardPageInner() {
             <p style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', margin: '0 0 20px', lineHeight: 1.6 }}>
               This will permanently delete <strong style={{ color: 'var(--text)' }}>{deleteConfirmAthlete.first_name} {deleteConfirmAthlete.last_name}</strong> and all their sessions, notes, and data. This cannot be undone.
             </p>
+            {deleteError && (
+              <div role="alert" style={{ margin: '-6px 0 16px', padding: '10px 12px', borderRadius: 8, background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 'var(--fs-2)', fontWeight: 600, overflowWrap: 'anywhere' }}>
+                {deleteError}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button className="btn btn-ghost" onClick={() => setDeleteConfirmAthlete(null)} disabled={deleteLoading} style={{ flex: '1 1 120px', minHeight: 44 }}>
+              <button className="btn btn-ghost" onClick={closeDeleteConfirm} disabled={deleteLoading} style={{ flex: '1 1 120px', minHeight: 44 }}>
                 Cancel
               </button>
               <button className="btn btn-danger btn-lg" onClick={confirmDelete} disabled={deleteLoading} style={{ flex: '1 1 150px', fontWeight: 800 }}>
@@ -2637,7 +2983,7 @@ function DashboardPageInner() {
             // from the list means the receipt describes what the server
             // actually wrote rather than what the client asked for.
             const before = new Set(homeSessions.map((s) => s.id))
-            const [after] = await Promise.all([fetchAllSessions(), fetchAthletes(), fetchCoverage()])
+            const [after] = await Promise.all([refreshSessions(), fetchAthletes(), fetchCoverage()])
             const created = (after ?? []).filter((s) => !before.has(s.id))
             if (created.length === 0) return
 
