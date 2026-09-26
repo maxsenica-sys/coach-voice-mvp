@@ -124,6 +124,25 @@ jobs:
       - name: Montage sprite is in step with the artwork
         run: npm run verify:sprite
 
+      # A push notification is read by whoever holds the phone, on a lock
+      # screen, and many recipients are 13-18. It may name the sender and say
+      # nothing else — no message text, summary, transcript, wellness or injury.
+      # Adding `body: content` to one object literal passes every build. This
+      # runs the real payload builder and the real service worker and fails if
+      # content can reach a notification, if a tap can be steered off-site, or
+      # if anything but the message and session routes starts pushing (the
+      # digest and the takeaway reminder stay in the app).
+      - name: Push notification payloads
+        run: npm run verify:push
+
+      # Video moments, side-by-side compare and athlete clips. A moment's range
+      # has to agree with the database CHECK in migration 032; compare has to
+      # keep the second video inside its own length; and athleteMayViewVideo —
+      # the one rule every video route calls — has to keep one child's video
+      # away from another. All three type-check when they are wrong.
+      - name: Video rig
+        run: npm run verify:video
+
       # `next build` prerenders /athlete, which constructs a Supabase client at
       # module scope and throws without these. They are placeholders — the build
       # never makes a network call — so no real secrets belong in CI.

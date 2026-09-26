@@ -178,3 +178,71 @@ self.addEventListener('message', (event) => {
     })(),
   )
 })
+
+/* ── Push notifications ──────────────────────────────────────────────────
+ *
+ * Sent by lib/push.ts for a new message and for a session shared with an
+ * athlete — never for the weekly digest or the takeaway reminder, which stay
+ * in the app.
+ *
+ * A notification shows a TITLE ("New message from Max") and nothing else. The
+ * server never puts message text, a transcript, a summary or anything about
+ * wellness or injury in the payload, and this handler would not show it if it
+ * did: it reads `title`, `url` and `tag` by name and builds the options object
+ * itself, with no `body`. Lock screens are read by whoever holds the phone, and
+ * many of the people these reach are children.
+ *
+ * Neither handler touches a cache or a fetch, so nothing above changes.
+ */
+
+/** A same-origin path to open, or "/" for anything else. */
+function pushTarget(raw) {
+  try {
+    const u = new URL(typeof raw === 'string' && raw ? raw : '/', self.location.origin)
+    if (u.origin !== self.location.origin) return '/'
+    return u.pathname + u.search
+  } catch {
+    return '/'
+  }
+}
+
+self.addEventListener('push', (event) => {
+  let data = {}
+  try { data = event.data ? event.data.json() : {} } catch { data = {} }
+  if (!data || typeof data !== 'object') data = {}
+  const title = typeof data.title === 'string' && data.title.trim()
+    ? data.title.trim().slice(0, 120)
+    : 'CoachVoice'
+  const options = {
+    tag: typeof data.tag === 'string' && data.tag ? data.tag.slice(0, 80) : 'cv',
+    data: { url: pushTarget(data.url) },
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+  }
+  // Every push must show something: a push that shows nothing is treated by
+  // the browser as abuse and can cost the subscription.
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const target = pushTarget(event.notification.data && event.notification.data.url)
+  event.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      for (const c of wins) {
+        let sameOrigin = false
+        try { sameOrigin = new URL(c.url).origin === self.location.origin } catch { /* skip */ }
+        if (!sameOrigin) continue
+        // Focus first, while the tap still counts as a user gesture; then move
+        // the already-open app to the right page rather than opening a second.
+        try { await c.focus() } catch { /* still navigate */ }
+        try {
+          if ('navigate' in c) { await c.navigate(target); return }
+        } catch { /* an uncontrolled window cannot be navigated — open one */ }
+        break
+      }
+      await self.clients.openWindow(target)
+    })(),
+  )
+})

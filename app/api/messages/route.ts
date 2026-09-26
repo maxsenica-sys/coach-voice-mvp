@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { notifyNewMessage } from '@/lib/notify'
+import { notifyPushNewMessage } from '@/lib/push'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
 
@@ -175,6 +176,13 @@ export async function POST(req: NextRequest) {
       senderRole,
       content,
     })
+  }
+
+  // Push to the other side's devices, after the response has gone: a push
+  // service that is slow or down must never be why a message failed to send.
+  // The payload names the sender and nothing else — never `content`.
+  if (data?.id) {
+    after(() => notifyPushNewMessage({ athleteId: athlete_id, senderUserId: user.id, senderRole }))
   }
 
   const res = NextResponse.json({ message: withMedia ?? data }, { status: 201 })

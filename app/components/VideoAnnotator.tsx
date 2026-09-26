@@ -27,6 +27,20 @@ type Props = {
    * The sending half worked; nothing ever acted on it.
    */
   startTime?: number
+  /**
+   * Where playback stops, in seconds — the end of a "moment" a coach clipped
+   * onto a takeaway. The video is the original, not a cut: playing past this
+   * pauses on the last frame of the moment, and pressing play there replays
+   * the moment from `startTime` instead of running on into the rest.
+   */
+  endTime?: number
+  /**
+   * Hands the underlying <video> to the host, for controls that read or drive
+   * the playhead (marking a moment's start and end). The element, not a
+   * wrapper: the host needs currentTime and duration exactly as the browser
+   * has them.
+   */
+  onVideoElement?: (el: HTMLVideoElement | null) => void
 }
 
 /* The pen colours — Stadium Night's five, replacing nine stock Tailwind hues
@@ -133,7 +147,7 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: AnnotationStroke, alp
 }
 
 
-export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAnnotationsChange, readOnly = false, sessionId, videoId, startTime = 0 }: Props) {
+export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAnnotationsChange, readOnly = false, sessionId, videoId, startTime = 0, endTime, onVideoElement }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -192,6 +206,10 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
     const seek = () => {
       if (done) return
       const d = video.duration
+      // A WebM written by a browser recorder reports Infinity until read to
+      // the end. There is nothing to clamp against, so seek as asked — a
+      // moment opened on one of those must still open at its start.
+      if (d === Infinity) { video.currentTime = startTime; done = true; return }
       if (!Number.isFinite(d) || d <= 0) return
       video.currentTime = Math.min(startTime, Math.max(0, d - 0.1))
       done = true
@@ -200,6 +218,47 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
     if (video.readyState >= 1) seek()
     return () => video.removeEventListener('loadedmetadata', seek)
   }, [videoUrl, startTime])
+
+  // Hand the element to a host that asked for it.
+  const onVideoElementRef = useRef(onVideoElement)
+  useEffect(() => { onVideoElementRef.current = onVideoElement }, [onVideoElement])
+  useEffect(() => {
+    onVideoElementRef.current?.(videoRef.current)
+    return () => onVideoElementRef.current?.(null)
+  }, [videoUrl])
+
+  /* Stop at the end of a moment.
+   *
+   * `timeupdate` fires every ~250ms, so on its own the video would run up to a
+   * quarter-second past the mark; the same check also runs once a frame. Only
+   * mounted when a moment is being shown, so an ordinary video pays nothing.
+   * Pressing play on the stop frame starts the moment again rather than
+   * playing on into footage the coach did not pick. */
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || endTime === undefined || !(endTime > startTime)) return
+    const onTime = () => {
+      if (!video.paused && video.currentTime >= endTime) {
+        video.pause()
+        video.currentTime = endTime
+      }
+    }
+    const onPlay = () => {
+      if (video.currentTime >= endTime - 0.05 || video.currentTime < startTime - 0.05) {
+        video.currentTime = startTime
+      }
+    }
+    video.addEventListener('timeupdate', onTime)
+    video.addEventListener('play', onPlay)
+    let raf = 0
+    const tick = () => { onTime(); raf = requestAnimationFrame(tick) }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      video.removeEventListener('timeupdate', onTime)
+      video.removeEventListener('play', onPlay)
+      cancelAnimationFrame(raf)
+    }
+  }, [videoUrl, startTime, endTime])
 
   // Render loop
   useEffect(() => {
