@@ -1,6 +1,7 @@
 'use client'
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 
 /* Stadium Night — step three of the password reset. Steps one and two (ask
@@ -152,7 +153,12 @@ function ResetForm() {
   const [confirm, setConfirm] = useState('')
   const [show, setShow] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(sp.get('error'))
+  // A reset link that did not work — expired, already used, or opened in a
+  // different browser from the one that asked for it. Nothing on this form can
+  // succeed without a session, so the form is replaced rather than shown with
+  // the error above it; the one useful action is a fresh link.
+  const linkError = sp.get('error')
+  const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -164,7 +170,9 @@ function ResetForm() {
     setLoading(false)
     if (err) return setError(err.message)
     setDone(true)
-    setTimeout(() => router.push('/athlete'), 1800)
+    // `/`, not a role's home: the proxy's fast path sends a signed-in user to
+    // theirs. This always went to /athlete, which bounced every coach.
+    setTimeout(() => router.push('/'), 1800)
   }
 
   // What the rule strip says — read off the two fields, never stored.
@@ -194,7 +202,7 @@ function ResetForm() {
         </header>
 
         <div className="sn-sec">
-          <span>{done ? 'Done' : 'Set a new one'}</span>
+          <span>{done ? 'Done' : linkError ? 'Link didn’t work' : 'Set a new one'}</span>
           <span className="sn-of"><i aria-hidden="true" className={done ? undefined : 'sn-dot-now'} />THREE OF THREE</span>
         </div>
 
@@ -202,6 +210,29 @@ function ResetForm() {
           <div className="sn-state" role="status" style={{ borderColor: 'var(--success-border)' }}>
             <h1 className="sn-title">Password set.</h1>
             <p className="sn-body">Taking you to your portal…</p>
+          </div>
+        ) : linkError ? (
+          <div className="sn-state" role="alert" style={{ borderColor: 'var(--danger)' }}>
+            <h1 className="sn-title">This link has stopped working.</h1>
+            <p className="sn-body">
+              Reset links work once, for a short time, and only in the browser you asked from.
+              Ask for a new one and use the newest email.
+            </p>
+            {linkError !== 'missing_code' && (
+              <p className="sn-body" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-furniture)', overflowWrap: 'anywhere' }}>
+                {linkError}
+              </p>
+            )}
+            <Link href="/?forgot=1" className="sn-act" style={{ marginTop: 16, textDecoration: 'none' }}>
+              Send a new link
+              <span className="sn-cut" aria-hidden="true">
+                <span className="sn-ring">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4.5 12h14" /><path d="m12.8 6 5.7 6-5.7 6" />
+                  </svg>
+                </span>
+              </span>
+            </Link>
           </div>
         ) : (
           <div className="sn-state">

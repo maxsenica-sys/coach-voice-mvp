@@ -40,6 +40,10 @@ interface Props<T extends NamedAthlete> {
   onChange: (id: string) => void
   /** Rosters at or above this size get the search box. */
   searchFrom?: number
+  /** Fold to a one-row "who" summary once someone is picked. Off where the
+   *  picker is itself the whole surface, e.g. the profile's switch sheet,
+   *  so the current athlete stays highlighted in the list. */
+  foldOnPick?: boolean
 }
 
 const CAST: CSSProperties = { fontFamily: 'var(--font-cast)', textTransform: 'uppercase' }
@@ -48,8 +52,8 @@ function initials(a: NamedAthlete) {
   return `${a.first_name.trim()[0] ?? ''}${a.last_name.trim()[0] ?? ''}`.toUpperCase()
 }
 
-export default function AthletePicker<T extends NamedAthlete>({ athletes, squads = [], value, onChange, searchFrom = 7 }: Props<T>) {
-  const [open, setOpen] = useState(!value)
+export default function AthletePicker<T extends NamedAthlete>({ athletes, squads = [], value, onChange, searchFrom = 7, foldOnPick = true }: Props<T>) {
+  const [open, setOpen] = useState(!value || !foldOnPick)
   const [query, setQuery] = useState('')
   const [squadId, setSquadId] = useState('')
   const searchId = useId()
@@ -63,7 +67,7 @@ export default function AthletePicker<T extends NamedAthlete>({ athletes, squads
 
   const pick = (id: string) => {
     onChange(id)
-    setOpen(false)
+    if (foldOnPick) setOpen(false)
     setQuery('')
   }
 
@@ -205,7 +209,7 @@ export default function AthletePicker<T extends NamedAthlete>({ athletes, squads
         </div>
       )}
 
-      {selected && (
+      {selected && foldOnPick && (
         <button
           type="button"
           onClick={() => setOpen(false)}

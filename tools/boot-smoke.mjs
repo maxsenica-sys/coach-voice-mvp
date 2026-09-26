@@ -510,6 +510,18 @@ async function assertMiddleware(base) {
   r = await go(AUTH)
   check('signed in, no hint → /dashboard', r.status === 307 && r.to.endsWith('/dashboard'), `${r.status} ${r.to}`)
 
+  // A session too large for one cookie arrives chunked as .0, .1, … and is
+  // still a session.
+  r = await go('sb-proj-auth-token.0=x; sb-proj-auth-token.1=y')
+  check('a chunked session cookie still takes the fast path', r.status === 307 && r.to.endsWith('/dashboard'), `${r.status} ${r.to}`)
+
+  // A password-reset or signUp request leaves a PKCE code verifier named
+  // sb-<ref>-auth-token-code-verifier on a visitor who is NOT signed in. The
+  // prefix test matched it, so that visitor was sent to /dashboard and
+  // bounced straight back to /?next=/dashboard.
+  r = await go('sb-proj-auth-token-code-verifier=x')
+  check('a PKCE code verifier alone is not a session', r.status === 200, `${r.status} ${r.to}`)
+
   r = await go(`${AUTH}; cv_role_hint=athlete`)
   check('hint=athlete → /athlete (no wasted hop)', r.status === 307 && r.to.endsWith('/athlete'), `${r.status} ${r.to}`)
 

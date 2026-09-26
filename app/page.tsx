@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '../lib/supabase-browser'
@@ -180,8 +180,18 @@ function Stage() {
   )
 }
 
+/** The URL does not change under this page without a navigation, so there is
+ *  nothing to subscribe to. */
+const noSubscribe = () => () => {}
+
+/** Plain words for the reasons /auth/callback puts in `?error=`. */
+const URL_ERRORS: Record<string, string> = {
+  confirm_link: 'That link could not sign you in on this device. If you have just confirmed your email, sign in below to finish setting up your account.',
+  missing_code: 'That link was incomplete. Try the newest email we sent, or sign in below.',
+}
+
 export default function Home() {
-  const [mode, setMode] = useState<Mode>('login')
+  const [modeChoice, setMode] = useState<Mode | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -220,13 +230,37 @@ export default function Home() {
     return document.documentElement.getAttribute('data-intro') === '1'
   })
 
+  // Two things another page can ask of this one through the URL:
+  //   ?forgot=1       — /reset's "Send a new link", for a link that failed
+  //   ?error=<reason> — /auth/callback, when an emailed link could not sign in
+  // Read through useSyncExternalStore so the server HTML and hydration both
+  // see '' (the plain sign-in form) and the URL applies on the next render,
+  // with no hydration mismatch. Either gives way to the first thing the person
+  // does: choosing a mode, or trying to sign in.
+  const search = useSyncExternalStore(noSubscribe, () => window.location.search, () => '')
+  const urlQuery = new URLSearchParams(search)
+  const mode: Mode = modeChoice ?? (urlQuery.get('forgot') === '1' ? 'forgot' : 'login')
+  const [urlNoticeLive, setUrlNoticeLive] = useState(true)
+  const urlReason = urlQuery.get('error')
+  const urlNotice = urlNoticeLive && urlReason ? (URL_ERRORS[urlReason] ?? urlReason) : ''
+  const shownMessage = message || urlNotice
+
   const signIn = async () => {
     if (!email.trim() || !password.trim()) return setMessage('Please enter your email and password.')
     setLoading(true)
     setMessage('')
+    setUrlNoticeLive(false)
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     setLoading(false)
     if (error) return setMessage(error.message)
+
+    // An account made while email confirmation was on parked its profile in
+    // user_metadata, because signup had no session to save it with. Finish it
+    // before going anywhere — /signup?finish=1 applies it and routes on.
+    if (data.user.user_metadata?.signup_profile) {
+      router.push('/signup?finish=1')
+      return
+    }
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -260,7 +294,7 @@ export default function Home() {
     else sendResetEmail()
   }
 
-  const toMode = (m: Mode) => { setMode(m); setMessage(''); setSentTo('') }
+  const toMode = (m: Mode) => { setMode(m); setMessage(''); setSentTo(''); setUrlNoticeLive(false) }
 
   return (
     <div className="sn-page">
@@ -365,7 +399,7 @@ export default function Home() {
                         onKeyDown={handleKey}
                       />
                     </div>
-                    {message && <p className="sn-err" role="alert">{message}</p>}
+                    {shownMessage && <p className="sn-err" role="alert">{shownMessage}</p>}
                     <button type="button" className="sn-act" onClick={sendResetEmail} disabled={loading} style={{ marginTop: 16 }}>
                       {loading ? 'Sending…' : 'Email me a link'}
                       <span className="sn-cut" aria-hidden="true"><span className="sn-ring"><Arrow /></span></span>
@@ -421,7 +455,7 @@ export default function Home() {
                 </button>
               </div>
 
-              {message && <p className="sn-err" role="alert">{message}</p>}
+              {shownMessage && <p className="sn-err" role="alert">{shownMessage}</p>}
 
               {/* The primary action is the record bar: 64px, the diagonal cut
                   over ink, the flood ring. The screen's one floodlight. */}

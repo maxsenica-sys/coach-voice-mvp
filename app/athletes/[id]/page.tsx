@@ -11,6 +11,8 @@ import WellnessGraph from '@/app/components/WellnessGraph'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import InjuryPanel from '@/app/components/InjuryPanel'
+import AthleteSwitcher from '@/app/components/AthleteSwitcher'
+import ListState from '@/app/components/ListState'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile } from '@/lib/profile-cache'
 import { preflightVideo } from '@/lib/video-preflight'
@@ -399,7 +401,33 @@ export default function AthleteDetailPage() {
 
   // ── Tab navigation + Quick Session ───────────────────────────
   type AthleteTab = 'overview' | 'sessions' | 'wellness' | 'calendar' | 'profile' | 'notes'
-  const [activeTab, setActiveTab] = useState<AthleteTab>('overview')
+  const [activeTab, setActiveTabState] = useState<AthleteTab>('overview')
+  /* The tab lives in the URL as `?tab=` so it survives a switch to another
+   * athlete (a coach going down the squad's wellness tabs stays on Wellness)
+   * and a reload. Written with history.replaceState, which the App Router
+   * picks up without a navigation or a refetch; replace rather than push, so
+   * Back still leaves the profile instead of stepping through its tabs. */
+  const setActiveTab = (tab: AthleteTab) => {
+    setActiveTabState(tab)
+    try {
+      const url = new URL(window.location.href)
+      if (tab === 'overview') url.searchParams.delete('tab')
+      else url.searchParams.set('tab', tab)
+      window.history.replaceState(null, '', url)
+    } catch { /* the tab still changes; only the URL does not remember it */ }
+  }
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    const valid: AthleteTab[] = ['overview', 'sessions', 'wellness', 'calendar', 'profile', 'notes']
+    const match = valid.find((v) => v === t)
+    if (match) setActiveTabState(match)
+  }, [])
+  const [switcherOpen, setSwitcherOpen] = useState(false)
+  const switchTo = (id: string) => {
+    setSwitcherOpen(false)
+    const q = activeTab === 'overview' ? '' : `?tab=${activeTab}`
+    router.replace(`/athletes/${encodeURIComponent(id)}${q}`)
+  }
   const [showQuickSession, setShowQuickSession] = useState(false)
   const [sessionsShowAll, setSessionsShowAll] = useState(false)
 
@@ -409,7 +437,11 @@ export default function AthleteDetailPage() {
   const [noteShared, setNoteShared] = useState(false)
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteMsg, setNoteMsg] = useState('')
-  const [notesLoaded, setNotesLoaded] = useState(false)
+  /* 'error' is its own state: a failed read used to leave `notes` at [] and
+   * the tab said "No notes yet" to a coach who had written dozens. */
+  const [notesState, setNotesState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [notesError, setNotesError] = useState('')
+  const notesSeq = useRef(0)
 
   /* Four serial round trips used to run here, behind a blank screen, and only
    * one of them was a real dependency.
@@ -424,8 +456,15 @@ export default function AthleteDetailPage() {
    * at the top of this file and the boot path simply never called it, which is
    * the cache paying its cost and delivering none of its benefit.
    */
+  /* Only the newest load may write. Moving from athlete A to athlete B, A's
+   * responses can still be in flight; without this they could land after B's
+   * and paint A's name and sessions under B's URL. `loadSeq` also covers the
+   * refetch after a session is saved racing an id change. */
+  const loadSeq = useRef(0)
   const load = async () => {
     if (!athleteId) return
+    const seq = ++loadSeq.current
+    const stale = () => seq !== loadSeq.current
     setLoading(true); setPageError(null)
 
     // Synchronous, from the last page that knew. Revalidated below.
@@ -447,9 +486,11 @@ export default function AthleteDetailPage() {
       })()
 
       const aRes = await athletePromise
+      if (stale()) return
       if (aRes.status === 401) { router.push('/'); return }
       if (!aRes.ok) throw new Error((await aRes.json().catch(() => ({}))).error ?? 'Failed to load athlete')
       const { athlete: a } = await aRes.json()
+      if (stale()) return
       setAthlete(a); setAutoMonthlyReport(a.auto_monthly_report ?? false)
       setProfileForm({
         first_name: a.first_name ?? '',
@@ -462,14 +503,30 @@ export default function AthleteDetailPage() {
         custom_fields: a.custom_fields ?? [],
       })
       const sRes = await sessionsPromise
+      if (stale()) return
       if (!sRes.ok) throw new Error((await sRes.json().catch(() => ({}))).error ?? 'Failed to load sessions')
       const { sessions: s } = await sRes.json()
+      if (stale()) return
       setSessions(s ?? [])
-    } catch (e: unknown) { setPageError(errorMessage(e, 'Something went wrong')) }
-    finally { setLoading(false) }
+    } catch (e: unknown) { if (!stale()) setPageError(errorMessage(e, 'Something went wrong')) }
+    finally { if (!stale()) setLoading(false) }
   }
 
-  useEffect(() => { void load() }, [athleteId])
+  /* The App Router keys this page by its [id], so a switch normally mounts a
+   * fresh page with fresh state. The reset below does not rely on that: if the
+   * same instance ever sees a new id, nothing of the previous athlete's —
+   * header, sessions, notes, open panels — survives into the next one. */
+  const loadedFor = useRef(athleteId)
+  useEffect(() => {
+    if (loadedFor.current !== athleteId) {
+      loadedFor.current = athleteId
+      setAthlete(null); setSessions([]); setOpenSessionId(null); setSessionVideos({})
+      setNotes([]); setNotesState('idle'); setNotesError(''); notesSeq.current++
+      setNoteText(''); setNoteMsg(''); setSessionsShowAll(false)
+    }
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [athleteId])
 
   // ── Wellness at-a-glance (Overview card + header chip) ───────────
   // Self-contained, same pattern as WellnessGraph's own fetch: a failure
@@ -960,16 +1017,28 @@ export default function AthleteDetailPage() {
     finally { setProfileSaving(false) }
   }
 
-  const loadNotes = async () => {
-    if (notesLoaded) return
+  const loadNotes = async (force = false) => {
+    if (!athleteId) return
+    if (!force && (notesState === 'ready' || notesState === 'loading')) return
+    const seq = ++notesSeq.current
+    setNotesState('loading'); setNotesError('')
     try {
-      const res = await fetch(`/api/notes?athlete_id=${encodeURIComponent(athleteId)}`)
-      if (!res.ok) return
-      const json = await res.json()
+      const json = await apiJson<{ notes?: CoachNote[] }>(`/api/notes?athlete_id=${encodeURIComponent(athleteId)}`)
+      if (seq !== notesSeq.current) return
       setNotes(json.notes ?? [])
-      setNotesLoaded(true)
-    } catch {}
+      setNotesState('ready')
+    } catch (e: unknown) {
+      if (seq !== notesSeq.current) return
+      setNotesError(errorMessage(e, 'Could not load notes.'))
+      setNotesState('error')
+    }
   }
+  // Arriving on ?tab=notes (a reload, or a switch from another athlete's
+  // Notes) has to load them too — the tab buttons are not the only way in.
+  useEffect(() => {
+    if (activeTab === 'notes' && notesState === 'idle') void loadNotes()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, notesState, athleteId])
 
   const saveNote = async () => {
     if (!noteText.trim()) return
@@ -1106,6 +1175,16 @@ export default function AthleteDetailPage() {
         />
       )}
 
+      {/* ── Switch athlete ── */}
+      {switcherOpen && athlete && (
+        <AthleteSwitcher
+          currentId={athleteId}
+          currentName={`${athlete.first_name} ${athlete.last_name}`}
+          onPick={switchTo}
+          onClose={() => setSwitcherOpen(false)}
+        />
+      )}
+
       {/* ── Sticky header ── */}
       <header style={{
         background: 'color-mix(in srgb, var(--bg) 92%, transparent)',
@@ -1133,7 +1212,25 @@ export default function AthleteDetailPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Wraps rather than ellipsising: a truncated name is the one
                       thing on this bar that must never happen. */}
-                  <div style={{ ...CAST, fontSize: 18, letterSpacing: '0.05em', lineHeight: 1.1, color: 'var(--text)', overflowWrap: 'break-word' }}>{athlete.first_name} {athlete.last_name}</div>
+                  {/* The name is the way to the next athlete: a coach going
+                      down a squad after training switches here instead of
+                      going back to the roster each time. Still reads as the
+                      name — same face, same size — plus a chevron. */}
+                  <button
+                    type="button"
+                    onClick={() => setSwitcherOpen(true)}
+                    aria-haspopup="dialog"
+                    aria-expanded={switcherOpen}
+                    aria-label={`${athlete.first_name} ${athlete.last_name} — switch athlete`}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', minHeight: 44,
+                      margin: '-6px 0', padding: '0 4px 0 0', background: 'none', border: 'none', borderRadius: 10,
+                      textAlign: 'left', color: 'var(--text)', cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ ...CAST, minWidth: 0, fontSize: 18, letterSpacing: '0.05em', lineHeight: 1.1, overflowWrap: 'break-word' }}>{athlete.first_name} {athlete.last_name}</span>
+                    <span aria-hidden style={{ color: 'var(--text-2)', display: 'inline-flex' }}><Icon name="chevron-down" size={16} strokeWidth={2.4} /></span>
+                  </button>
                   {!isMobile && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-muted)', marginTop: 3, overflowWrap: 'anywhere' }}>{athlete.email}</div>}
                 </div>
               </div>
@@ -2087,11 +2184,20 @@ export default function AthleteDetailPage() {
             </div>
 
             {/* Notes list */}
-            {notes.length === 0 ? (
-              <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-2)', fontSize: 14 }}>
-                No notes yet. Add your first coaching note above.
-              </div>
-            ) : (
+            {/* Error outranks the list: a note saved after a failed read is
+                not "all the notes", and must not read as if it were. */}
+            {(notes.length === 0 || notesState === 'error') && (
+              <ListState
+                loading={notesState === 'loading' || notesState === 'idle'}
+                error={notesState === 'error' ? notesError : null}
+                isEmpty={notes.length === 0}
+                emptyTitle="No notes yet."
+                emptyHint="Add your first coaching note above."
+                loadingLabel="Loading notes…"
+                onRetry={() => void loadNotes(true)}
+              />
+            )}
+            {notes.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {notes.map((n) => (
                   <div key={n.id} className="card" style={{ padding: '14px 16px' }}>

@@ -102,12 +102,20 @@ export default function BodyMap({
   selected,
   onChange,
   perspective = 'self',
+  showSelection = true,
 }: {
   selected: string[]
   onChange: (next: string[]) => void
   /** Whose body this is to the reader: the athlete's own ("your left") on the
    *  check-in, someone else's ("their left") on the coach's injury panel. */
   perspective?: 'self' | 'other'
+  /** The "Selected: …" line under the figure. On by default, which is what
+   *  InjuryPanel relies on. CheckIn turns it off because it states the same
+   *  fact in its own words directly underneath — two lines that disagreed
+   *  about what an empty map meant ("Nothing selected yet" over "Nothing
+   *  marked — nothing hurts") were one line too many. Whoever turns this off
+   *  owns the accessible list of what is selected. */
+  showSelection?: boolean
 }) {
   const [view, setView] = useState<BodyView>('front')
 
@@ -207,7 +215,7 @@ export default function BodyMap({
 
       {/* The accessible source of truth, and the fastest way for anyone to
           check what they picked. */}
-      <div style={{ marginTop: 10, fontSize: 'var(--fs-2)', color: 'var(--text-2)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+      {showSelection && <div style={{ marginTop: 10, fontSize: 'var(--fs-2)', color: 'var(--text-2)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
         {selected.length === 0
           ? 'Nothing selected yet — tap the areas that are sore.'
           : (
@@ -216,7 +224,7 @@ export default function BodyMap({
               {selected.map(regionLabel).join(', ')}
             </>
           )}
-      </div>
+      </div>}
     </div>
   )
 }

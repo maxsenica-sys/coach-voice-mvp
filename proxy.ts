@@ -17,7 +17,7 @@ const SHARED_ROUTES = ['/sessions']
 
 /** Is there a Supabase auth cookie at all? Cheap, local, no network. */
 function looksSignedIn(request: NextRequest) {
-  return request.cookies.getAll().some((c) => /^sb-.*-auth-token/.test(c.name))
+  return request.cookies.getAll().some((c) => /^sb-.*-auth-token(\.\d+)?$/.test(c.name))
 }
 
 /** Which home to send someone to from "/", remembered from the last time this

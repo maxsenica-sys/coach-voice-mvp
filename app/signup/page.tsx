@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { ALL_SPORTS } from '@/lib/sports'
 import { errorMessage } from '@/lib/errors'
+import { apiJson } from '@/lib/api-client'
 
 /* ── Stadium Night — the new-account flow ────────────────────────────────────
  *
@@ -340,6 +341,37 @@ const GOALS_OPTIONS_COACH = [
 // Sorted alphabetical sports list for wheel picker
 const SORTED_SPORTS = [...ALL_SPORTS].sort((a, b) => a.localeCompare(b))
 
+/** The sport a filter query settles on, or null when it does not settle.
+ *
+ *  It used to take the alphabetically first substring match, so "tennis"
+ *  chose Table Tennis. Now: an exact name wins; otherwise the names where the
+ *  query starts a word ("ten" → Tennis, Table Tennis), falling back to any
+ *  substring match; and only when exactly one name is left is it chosen. */
+function settleSport(query: string): string | null {
+  const q = query.trim().toLowerCase()
+  if (!q) return null
+  const exact = SORTED_SPORTS.find((s) => s.toLowerCase() === q)
+  if (exact) return exact
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const wordStart = new RegExp(`(^|[^a-z0-9])${esc}`)
+  const starts = SORTED_SPORTS.filter((s) => wordStart.test(s.toLowerCase()))
+  const pool = starts.length > 0 ? starts : SORTED_SPORTS.filter((s) => s.toLowerCase().includes(q))
+  return pool.length === 1 ? pool[0] : null
+}
+
+/** Loose on purpose: Supabase is the real check. This only catches the
+ *  address that is obviously not one yet, so Continue can say why. */
+const looksLikeEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())
+
+/** An athlete's coach code that did not put them on a roster. */
+type Unlinked = { code: string; reason: 'not_found' | 'failed' }
+type CompleteSignupReply = {
+  role?: string | null
+  coachLinked?: boolean | null
+  coachLinkReason?: 'not_found' | 'failed' | null
+  coachCode?: string | null
+}
+
 export default function SignupPage() {
   const router = useRouter()
   const supabase = createSupabaseBrowserClient()
@@ -348,6 +380,13 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [sportSearch, setSportSearch] = useState('')
+  // Set when the account exists but the coach code did not link. The form is
+  // replaced by what happened and one way on, rather than being skipped past.
+  const [unlinked, setUnlinked] = useState<Unlinked | null>(null)
+  // /signup?finish=1 — the first sign-in after email confirmation. The
+  // profile was parked in user_metadata at signUp; this applies it.
+  const [finishing, setFinishing] = useState<'idle' | 'working' | 'failed'>('idle')
+  const passwordRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState<FormData>({
     role: null,
@@ -381,7 +420,7 @@ export default function SignupPage() {
   const canProceed = (): boolean => {
     if (step === 1) return form.role !== null
     if (step === 2) return form.firstName.trim().length > 0 && form.lastName.trim().length > 0
-    if (step === 3) return form.email.trim().length > 4 && form.password.length >= 6
+    if (step === 3) return looksLikeEmail(form.email) && form.password.length >= 6
     if (step === 4) return form.sport.length > 0
     if (step === 5) return true // optional fields
     return false
@@ -393,6 +432,7 @@ export default function SignupPage() {
       if (step === 2) setError('First and last name are required.')
       if (step === 3) {
         if (!form.email.trim()) setError('Email is required.')
+        else if (!looksLikeEmail(form.email)) setError('That email address looks incomplete. It should look like you@example.com.')
         else if (form.password.length < 6) setError('Password must be at least 6 characters.')
       }
       if (step === 4) setError('Please select your sport.')
@@ -409,20 +449,53 @@ export default function SignupPage() {
 
   // ─── Final submit ──────────────────────────────────────────
 
+  /** Save the profile and go on — or stop on the unlinked-code message. */
+  const completeProfile = useCallback(async (body: Record<string, unknown>, fallbackRole: Role | null) => {
+    const payload = await apiJson<CompleteSignupReply>('/api/complete-signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const role = payload.role === 'athlete' || payload.role === 'coach' ? payload.role : fallbackRole
+    if (role === 'athlete' && payload.coachCode && payload.coachLinked === false) {
+      setUnlinked({ code: payload.coachCode, reason: payload.coachLinkReason === 'not_found' ? 'not_found' : 'failed' })
+      return
+    }
+    router.push(role === 'athlete' ? '/athlete' : '/dashboard')
+  }, [router])
+
   const submit = async () => {
     setLoading(true)
     setError('')
 
+    const profile = {
+      role: form.role,
+      firstName: form.firstName.trim(),
+      lastName: form.lastName.trim(),
+      sport: form.sport,
+      positionOrEvent: form.positionOrEvent.trim(),
+      experienceLevel: form.experienceLevel,
+      coachingLevel: form.coachingLevel,
+      goals: form.goals,
+      coachCode: form.coachCode.trim().toLowerCase(),
+    }
+
     try {
-      // 1. Create auth user
+      // 1. Create auth user. The whole profile rides along in user_metadata:
+      // if the project asks for email confirmation there is no session yet,
+      // and /api/complete-signup cannot be called until there is. It was
+      // called anyway, got a 401, and the profile was lost. Now the metadata
+      // copy is applied on first sign-in (/signup?finish=1) instead.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: form.email.trim(),
         password: form.password,
         options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent('/signup?finish=1')}`,
           data: {
             role: form.role,
-            first_name: form.firstName.trim(),
-            last_name: form.lastName.trim(),
+            first_name: profile.firstName,
+            last_name: profile.lastName,
+            signup_profile: profile,
           },
         },
       })
@@ -430,39 +503,46 @@ export default function SignupPage() {
       if (authError) throw new Error(authError.message)
       if (!authData.user) throw new Error('Signup failed — no user returned.')
 
-      // 2. Save full profile via API (generates coach code if coach)
-      const res = await fetch('/api/complete-signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          role: form.role,
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          sport: form.sport,
-          positionOrEvent: form.positionOrEvent.trim(),
-          experienceLevel: form.experienceLevel,
-          coachingLevel: form.coachingLevel,
-          goals: form.goals,
-          coachCode: form.coachCode.trim().toLowerCase(),
-        }),
-      })
-
-      const payload = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(payload?.error ?? 'Could not save profile.')
-
       if (!authData.session) {
-        // Email confirmation required
+        // Email confirmation required — nothing more can be saved until the
+        // link is clicked.
         router.push('/signup/confirm')
         return
       }
 
-      router.push(form.role === 'athlete' ? '/athlete' : '/dashboard')
+      // 2. Signed in already: save the full profile now (generates the coach
+      // code if coach). The parked metadata copy is cleared by the first
+      // fromMetadata call, which finds the profile complete and applies nothing.
+      await completeProfile(profile, form.role)
     } catch (e: unknown) {
       setError(errorMessage(e, 'Something went wrong.'))
     } finally {
       setLoading(false)
     }
   }
+
+  const finish = useCallback(async () => {
+    setFinishing('working')
+    setError('')
+    try {
+      await completeProfile({ fromMetadata: true }, null)
+      setFinishing('idle')
+    } catch (e: unknown) {
+      setError(errorMessage(e, 'Could not finish setting up your account.'))
+      setFinishing('failed')
+    }
+  }, [completeProfile])
+
+  // Once per page load. The route only applies metadata to a bare profile, but
+  // two overlapping calls could both see it bare (Strict Mode runs effects
+  // twice in development) and put the athlete on a roster twice.
+  const finishStarted = useRef(false)
+  useEffect(() => {
+    if (finishStarted.current) return
+    if (new URLSearchParams(window.location.search).get('finish') !== '1') return
+    finishStarted.current = true
+    void finish()
+  }, [finish])
 
   // ─── Render ────────────────────────────────────────────────
 
@@ -500,7 +580,9 @@ export default function SignupPage() {
           </Link>
         </header>
 
-        {/* Ticker + progress */}
+        {/* Ticker + progress — not while finishing a confirmed account, which
+            is not on any step of this form. */}
+        {finishing === 'idle' && <>
         <div className="sn-ticker">
           <span className="sn-step">Step {step} of {totalSteps}</span>
           {form.role && <><i className="sn-sep" aria-hidden="true" /><span>{form.role}</span></>}
@@ -516,8 +598,62 @@ export default function SignupPage() {
         >
           {Array.from({ length: totalSteps }, (_, i) => <i key={i} className={i < step ? 'on' : undefined} />)}
         </div>
+        </>}
 
         <div style={{ paddingTop: 26 }}>
+          {unlinked ? (
+            /* ── The account exists; the coach code did not link. Said here,
+                once, before the portal — never skipped past in silence. */
+            <div className="fade-in">
+              <p className="sn-eyebrow">Account made</p>
+              <h2 className="sn-lede">One thing <em>didn&apos;t work.</em></h2>
+              <div className="sn-found" role="status">
+                <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 'var(--t-body)', lineHeight: 1.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+                  {unlinked.reason === 'not_found'
+                    ? <>We couldn&apos;t find a coach with code <b style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>&lsquo;{unlinked.code}&rsquo;</b>. You can connect later from your portal.</>
+                    : <>We couldn&apos;t connect you to the coach with code <b style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>&lsquo;{unlinked.code}&rsquo;</b> just now. You can connect later from your portal.</>}
+                </p>
+              </div>
+              <div className="sn-actions">
+                <button
+                  type="button"
+                  className="sn-act sn-dim"
+                  onClick={() => router.push(`/athlete?join=${encodeURIComponent(unlinked.code)}`)}
+                >
+                  Go to my portal
+                  <span className="sn-cut" aria-hidden="true"><span className="sn-ring"><Arrow /></span></span>
+                </button>
+              </div>
+            </div>
+          ) : finishing !== 'idle' ? (
+            /* ── /signup?finish=1: first sign-in after confirming the email. */
+            <div className="fade-in">
+              <p className="sn-eyebrow">Email confirmed</p>
+              {finishing === 'working' ? (
+                <>
+                  <h2 className="sn-lede">Finishing your <em>account&hellip;</em></h2>
+                  <p className="sn-sub" role="status">Saving the details you gave when you signed up.</p>
+                </>
+              ) : (
+                <>
+                  <h2 className="sn-lede">We couldn&apos;t finish <em>setting up.</em></h2>
+                  <p className="sn-sub">Your account is safe. Try again, or sign in and we&apos;ll pick up where this stopped.</p>
+                  {error && (
+                    <p role="alert" style={{ marginTop: 0, fontSize: 14, lineHeight: 1.45, color: 'var(--danger)', fontWeight: 600, overflowWrap: 'anywhere' }}>{error}</p>
+                  )}
+                  <div className="sn-actions">
+                    <button type="button" className="sn-act sn-dim" onClick={() => { void finish() }}>
+                      Try again
+                      <span className="sn-cut" aria-hidden="true"><span className="sn-ring"><Arrow /></span></span>
+                    </button>
+                  </div>
+                  <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--text-2)', margin: '14px 0 0' }}>
+                    <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}>Go to sign in</Link>
+                  </p>
+                </>
+              )}
+            </div>
+          ) : (<>
           {/* ── Step 1: Role ── */}
           {step === 1 && (
             <div className="fade-in">
@@ -624,6 +760,14 @@ export default function SignupPage() {
                   enterKeyHint="next"
                   autoFocus
                   onChange={(e) => set('email', e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return
+                    e.preventDefault()
+                    // "Next" on the keyboard goes to the password while it is
+                    // empty; once both are filled it is Continue.
+                    if (looksLikeEmail(form.email) && !form.password) passwordRef.current?.focus()
+                    else next()
+                  }}
                 />
               </div>
               <label htmlFor="sn-password" className="sn-k" style={{ marginTop: 18 }}>Password</label>
@@ -633,6 +777,7 @@ export default function SignupPage() {
                 </svg>
                 <input
                   id="sn-password"
+                  ref={passwordRef}
                   type="password"
                   placeholder="At least 6 characters"
                   value={form.password}
@@ -678,12 +823,10 @@ export default function SignupPage() {
                   autoComplete="off"
                   onChange={(e) => {
                     setSportSearch(e.target.value)
-                    // Auto-select first match when filtering
-                    const q = e.target.value.trim().toLowerCase()
-                    if (q) {
-                      const match = SORTED_SPORTS.find(s => s.toLowerCase().includes(q))
-                      if (match) set('sport', match)
-                    }
+                    // Choose for them only when the query settles on one
+                    // sport — see settleSport.
+                    const match = settleSport(e.target.value)
+                    if (match) set('sport', match)
                   }}
                 />
               </div>
@@ -842,15 +985,16 @@ export default function SignupPage() {
 
                     {/* What the code does — stated, because it is the one thing
                         on this form with a consequence on someone else's screen.
-                        Only what /api/complete-signup actually does: a code that
-                        matches a coach puts the athlete on that roster with
-                        activationFields() — ACTIVE at once. It does not claim
-                        the code was recognised; nothing checks it until submit. */}
+                        Only what /api/complete-signup actually does, in words a
+                        13-year-old reads once: a code that matches puts them on
+                        the coach's team straight away. It does not promise the
+                        code matches — nothing checks it until Create account,
+                        and a code that matches no one is said so after. */}
                     <div className="sn-found">
                       <div className="sn-k" style={{ margin: 0 }}>What the code does</div>
                       <ul>
-                        <li><span>If it matches your coach&apos;s code, you join their roster as <b style={{ color: 'var(--primary)' }}>ACTIVE</b> the moment this account is made &mdash; not a week later.</span></li>
-                        <li><span><b style={{ color: 'var(--warning)' }}>PENDING</b> on a roster only means invited and not yet arrived. With a code, you skip it.</span></li>
+                        <li><span>If the code is right, you join your coach&apos;s team as soon as your account is made.</span></li>
+                        <li><span>If we can&apos;t find it, we&apos;ll tell you. Your account still gets made, and you can add the code later.</span></li>
                       </ul>
                     </div>
                   </div>
@@ -893,6 +1037,7 @@ export default function SignupPage() {
             Already have an account?{' '}
             <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}>Sign in</Link>
           </p>
+          </>)}
         </div>
       </div>
     </div>

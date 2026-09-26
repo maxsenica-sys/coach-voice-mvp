@@ -12,7 +12,7 @@
  * Serves both roles: the coach edits, the athlete reads.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { apiJson, apiMutate } from '@/lib/api-client'
@@ -24,6 +24,41 @@ import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/s
 import { formatSessionDate, parseISODate, sessionDate, sessionISODate } from '@/lib/session-date'
 
 type FocusPoint = string
+
+/**
+ * Whether the page before this one is ours, so back can be a real back.
+ *
+ * A coach reaches a session from the athlete's profile, the dashboard's
+ * Sessions tab, the calendar or a notification. Back used to be a fixed link to
+ * the athlete profile, which from the dashboard cost a detour and a second tap.
+ *
+ * The test: did this document start life on a different URL of this app? The
+ * Navigation Timing entry records the URL the document was loaded at and is
+ * fixed for the document's life. Next's client-side navigations don't create a
+ * new document, so if it was loaded at /dashboard and we are now at
+ * /sessions/x, the previous history entry is an in-app page and router.back()
+ * lands on it. If the document was loaded right here — a deep link, a
+ * notification, a reload, a pasted URL — history.back() could leave the app or
+ * do nothing, so the fixed link is used instead.
+ *
+ * Chosen over the alternatives because each fails silently:
+ *  - history.length counts entries from other sites and forward entries too;
+ *  - document.referrer is never updated by client-side navigation;
+ *  - a sessionStorage marker would have to be set by every page that links
+ *    here, and the first one that forgets sends back out of the app.
+ */
+function previousPageIsInApp(): boolean {
+  try {
+    if (window.history.length <= 1) return false
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    if (!nav?.name) return false
+    const loadedAt = new URL(nav.name)
+    return loadedAt.origin === window.location.origin && loadedAt.pathname !== window.location.pathname
+  } catch {
+    return false
+  }
+}
+const noSubscribe = () => () => {}
 
 type SessionDetail = {
   athlete_response?: string | null
@@ -347,22 +382,33 @@ export default function SessionDetailPage() {
     }
   }
 
-  const setFocusPoints = async (points: FocusPoint[]) => {
-    if (!session) return
+  const setFocusPoints = async (points: FocusPoint[]): Promise<boolean> => {
+    if (!session) return false
     const previous = session.focus_points
     setData((d) => (d ? { ...d, session: { ...d.session, focus_points: points } } : d))
     const ok = await patchSession({ focus_points: points })
     if (!ok) {
       setData((d) => (d ? { ...d, session: { ...d.session, focus_points: previous } } : d))
     }
+    return ok
   }
 
+  const [addingFocus, setAddingFocus] = useState(false)
   const addFocus = async () => {
     const text = newFocus.trim()
-    if (!text || !session) return
-    setNewFocus('')
-    await setFocusPoints([...session.focus_points, text])
+    if (!text || !session || addingFocus) return
+    // The input is only cleared once the point has saved. It used to be
+    // emptied before the PATCH, so a failed save (patchSession shows the
+    // error) threw away what the coach had typed. The busy flag stops a second
+    // tap adding the same point twice while the first is in flight.
+    setAddingFocus(true)
+    const ok = await setFocusPoints([...session.focus_points, text])
+    setAddingFocus(false)
+    // Only clear if the coach hasn't started typing something else meanwhile.
+    if (ok) setNewFocus((cur) => (cur.trim() === text ? '' : cur))
   }
+
+  const canGoBack = useSyncExternalStore(noSubscribe, previousPageIsInApp, () => false)
 
   const toggleShare = async () => {
     if (!session) return
@@ -524,7 +570,15 @@ export default function SessionDetailPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Link
             href={backHref}
-            aria-label={isCoach ? `Back to ${athleteName}` : 'Back to my portal'}
+            onClick={(e) => {
+              // A real back when the previous page is ours (see
+              // previousPageIsInApp); the href stays as the fallback and for
+              // open-in-new-tab.
+              if (!canGoBack || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+              e.preventDefault()
+              router.back()
+            }}
+            aria-label={canGoBack ? 'Back' : isCoach ? `Back to ${athleteName}` : 'Back to my portal'}
             style={{
               width: 44, height: 44, borderRadius: 13, flexShrink: 0, textDecoration: 'none',
               border: `1px solid ${LINE_2}`, background: PANEL, color: 'var(--text-2)',
@@ -904,9 +958,9 @@ export default function SessionDetailPage() {
                       background: PANEL, color: 'var(--text)',
                     }}
                   />
-                  <button onClick={() => void addFocus()} disabled={!newFocus.trim()}
-                    style={{ ...toolButton, flexShrink: 0, opacity: newFocus.trim() ? 1 : 0.5, cursor: newFocus.trim() ? 'pointer' : 'not-allowed' }}>
-                    <Icon name="plus" size={13} /> Add
+                  <button onClick={() => void addFocus()} disabled={!newFocus.trim() || addingFocus}
+                    style={{ ...toolButton, flexShrink: 0, opacity: newFocus.trim() && !addingFocus ? 1 : 0.5, cursor: newFocus.trim() && !addingFocus ? 'pointer' : 'not-allowed' }}>
+                    <Icon name="plus" size={13} /> {addingFocus ? 'Adding…' : 'Add'}
                   </button>
                 </div>
               )}

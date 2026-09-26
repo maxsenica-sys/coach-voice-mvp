@@ -6,8 +6,8 @@
 // has already shipped a name test that matched "Ana" inside "Anastasia".
 //
 // The rule: every word the coach types must be the START of some word in the
-// athlete's name. "so gr" finds Sophie Grabovac; "ana" finds Ana Liang and not
-// Anastasia or Diana; "ross" finds Mathilde Ross. Accents and case are ignored,
+// athlete's name. "so gr" finds Sophie Grabovac; "ana" finds Ana and Anastasia
+// (both start with it) but never Diana; "ross" finds Mathilde Ross. Accents and case are ignored,
 // so "zoe" finds Zoë. A hyphenated or two-part surname is several words.
 
 export interface NamedAthlete {

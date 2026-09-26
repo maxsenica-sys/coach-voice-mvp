@@ -5,6 +5,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { apiJson } from '@/lib/api-client'
 import { SUPPORTED_RECORDING_TYPES } from '@/lib/audio-mime'
 import { fmtDateDivider } from '@/lib/date-utils'
+import { matchesName, byName, nameWords } from '@/lib/athlete-filter'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Athlete {
@@ -389,22 +390,40 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   }
 
   const discardAudio = () => {
+    // Detach onstop before stopping. MediaRecorder fires onstop asynchronously,
+    // and startAudio's handler builds the blob and sets audioBlob/audioUrl — so
+    // "Cancel" mid-recording used to clear the state here and then have onstop
+    // put the recording straight back. The handler's other job, releasing the
+    // mic, is done on the next line instead. Capture itself is untouched.
+    const rec = mediaRecRef.current
+    if (rec) {
+      rec.onstop = null
+      if (rec.state !== 'inactive') rec.stop()
+    }
+    mediaRecRef.current = null
+    chunksRef.current = []
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    if (audioUrl) URL.revokeObjectURL(audioUrl)
     setAudioBlob(null)
     setAudioUrl(null)
     setRecordingAudio(false)
-    mediaRecRef.current?.stop()
-    streamRef.current?.getTracks().forEach((t) => t.stop())
   }
 
   // ─── Filtered athletes ─────────────────────────────────────────────────────
-  const filtered = athletes.filter((a) => {
-    const q = search.toLowerCase()
-    return (
-      a.first_name.toLowerCase().includes(q) ||
-      a.last_name.toLowerCase().includes(q) ||
-      a.email.toLowerCase().includes(q)
-    )
-  })
+  // Name match is the shared word-start rule (lib/athlete-filter.ts), so "ana"
+  // finds Ana and Anastasia but not Diana. The email is searched by the same
+  // rule over its parts ("kai@", "club.example"); a plain substring match here
+  // brought Diana back for "ana" through diana@….
+  // Unread threads first (most unread at the top), then by name.
+  const queryWords = nameWords(search)
+  const emailMatches = (email: string | null | undefined) => {
+    if (queryWords.length === 0 || !email) return false
+    const parts = nameWords(email)
+    return queryWords.every((q) => parts.some((w) => w.startsWith(q)))
+  }
+  const filtered = athletes
+    .filter((a) => matchesName(a, search) || emailMatches(a.email))
+    .sort((a, b) => (localUnread[b.id] ?? 0) - (localUnread[a.id] ?? 0) || byName(a, b))
 
   // ─── Date dividers ─────────────────────────────────────────────────────────
   const messagesWithDividers: ({ type: 'divider'; label: string; key: string } | { type: 'msg'; msg: Message })[] = []
