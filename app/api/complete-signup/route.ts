@@ -131,6 +131,26 @@ export async function POST(req: NextRequest) {
     fields = readFields(pending as Record<string, unknown>)
   } else {
     fields = readFields((body ?? {}) as Record<string, unknown>)
+    /* This path used to accept any body from any signed-in user, at any time,
+     * and write `role` from it. So an athlete could POST { role: 'coach' } and
+     * become a coach: the proxy and every coach route trust profiles.role.
+     * It is a signup step, called only by /signup, so it now refuses
+     *  - an account whose profile is already filled in (first_name set), and
+     *  - ever turning an athlete into a coach. The trigger in migration 002
+     *    starts every self-signup as 'coach', so coach → athlete on first
+     *    completion is the one role change this route legitimately makes. */
+    const { data: current, error: currentErr } = await admin
+      .from('profiles')
+      .select('role, first_name')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (currentErr) return reply({ error: currentErr.message }, 500)
+    if (current?.first_name) {
+      return reply({ error: 'This account is already set up.' }, 409)
+    }
+    if (current?.role === 'athlete' && fields && fields.role !== 'athlete') {
+      return reply({ error: 'An athlete account cannot be changed to a coach account.' }, 403)
+    }
   }
 
   if (!fields) {
