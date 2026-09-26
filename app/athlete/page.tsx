@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
+import AthleteClipUpload from '@/app/components/AthleteClipUpload'
 import CheckIn from '@/app/components/CheckIn'
 import { currentMonth, toMonthStr } from '@/lib/calendar-month'
 import { markAppReady } from '@/lib/boot-shell'
@@ -83,6 +84,9 @@ type SessionVideo = {
   annotations: AnnotationStroke[]
   created_at: string
   signedUrl: string | null
+  /** 'athlete' on a clip this athlete sent. Absent before migration 032. */
+  uploaded_by_role?: 'coach' | 'athlete'
+  shared_with_athlete?: boolean
 }
 
 function AthleteIcon({ name, size = 20, strokeWidth = 2 }: { name: string; size?: number; strokeWidth?: number }) {
@@ -2006,6 +2010,15 @@ export default function AthletePage() {
         {/* ─── Tab: Sessions ─── */}
         {tab === 'sessions' && (
           <div>
+            {/* Clips for the coach — the athlete's one way to send video the
+                other way. A general clip here; a clip about one session is
+                sent from inside that session below. */}
+            {athleteId && (
+              <div className="ah-panel" style={{ padding: '14px 16px', marginBottom: 16, minWidth: 0 }}>
+                <div className="ah-sec" style={{ margin: '0 0 10px' }}><h2>Clips for your coach</h2></div>
+                <AthleteClipUpload athleteId={athleteId} />
+              </div>
+            )}
             {/* The newest session used to be repeated in a hero card directly
                 above the list that starts with it. Home surfaces what's new;
                 this tab is the full record, so it's just the record. */}
@@ -2176,15 +2189,18 @@ export default function AthletePage() {
                           )}
 
                           {/* Videos */}
-                          {sVideos.length > 0 && (
+                          {sVideos.some((v) => v.uploaded_by_role !== 'athlete') && (
                             <div style={{ marginTop: 16 }}>
                               <div className="ah-eyebrow" style={{ marginBottom: 10 }}>
-                                Videos ({sVideos.length})
+                                Videos from your coach ({sVideos.filter((v) => v.uploaded_by_role !== 'athlete').length})
                               </div>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                {sVideos.map((v) => v.signedUrl && (
+                                {/* The athlete's own clips are listed under "Show
+                                    your coach" below, with their status, and
+                                    refresh there after a send — not twice. */}
+                                {sVideos.filter((v) => v.uploaded_by_role !== 'athlete').map((v) => v.signedUrl && (
+                                  <div key={v.id} style={{ minWidth: 0 }}>
                                   <VideoAnnotator
-                                    key={v.id}
                                     videoUrl={v.signedUrl}
                                     initialAnnotations={v.annotations ?? []}
                                     sessionId={v.session_id}
@@ -2210,8 +2226,19 @@ export default function AthletePage() {
                                      * feature for the athlete anyway. */
                                     readOnly
                                   />
+                                  </div>
                                 ))}
                               </div>
+                            </div>
+                          )}
+
+                          {/* Send the coach a clip about this session. Only on a
+                              session the coach has shared, which is every one
+                              this list shows — the route checks it again. */}
+                          {athleteId && s.shared_with_athlete && (
+                            <div style={{ marginTop: 16 }}>
+                              <div className="ah-eyebrow" style={{ marginBottom: 8 }}>Show your coach</div>
+                              <AthleteClipUpload athleteId={athleteId} sessionId={s.id} />
                             </div>
                           )}
 
