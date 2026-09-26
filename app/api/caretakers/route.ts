@@ -45,6 +45,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'athlete_id, caretaker_name and caretaker_email required' }, { status: 400 })
   }
 
+  /* The athlete must be on the caller's own roster.
+   *
+   * The row is written with coach_id = caller, which RLS accepted for ANY
+   * athlete_id, so a coach could attach a "parent" email to a child on some
+   * other coach's roster. Today's senders also filter caretakers by coach_id,
+   * which is what keeps that row inert — but a row asserting who a child's
+   * parent is should never exist outside that child's own coach, and the
+   * next sender to look caretakers up by athlete_id alone would turn it into
+   * a live channel. Migration 033 closes the same hole in the policy. */
+  const { data: owned, error: ownErr } = await supabase
+    .from('athletes')
+    .select('id')
+    .eq('id', athlete_id)
+    .eq('coach_id', user.id)
+    .maybeSingle()
+  if (ownErr) return NextResponse.json({ error: ownErr.message }, { status: 500 })
+  if (!owned) return NextResponse.json({ error: 'That athlete was not found, or is not yours.' }, { status: 403 })
+
   const { data, error } = await supabase
     .from('athlete_caretakers')
     .upsert({

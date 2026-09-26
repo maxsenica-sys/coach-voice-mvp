@@ -187,8 +187,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   ])
 
   let audioUrl: string | null = null
-  // The recording itself is the combined transcript, spoken — same rule.
-  if (session.audio_path && !sharedRecording) {
+  // The recording itself is the combined transcript, spoken — same rule, and
+  // the same TWO conditions as the transcript below. This used to test only
+  // sharedRecording, so a squad member opening a squad session was handed a
+  // signed URL for the whole squad talk while its transcript was withheld —
+  // the audio-url route refused them the same file.
+  const athleteMayHearIt = !session.group_id && !sharedRecording
+  if (session.audio_path && (isCoach || athleteMayHearIt)) {
     const { data } = await admin.storage.from(AUDIO_BUCKET).createSignedUrl(session.audio_path, SIGNED_TTL)
     audioUrl = data?.signedUrl ?? null
   }

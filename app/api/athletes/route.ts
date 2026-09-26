@@ -63,6 +63,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const admin = createSupabaseAdminClient()
+
+    /* Coaches only. This route generates an auth invite for any email it is
+     * given, sends a branded email in the caller's name, and writes a roster
+     * row with coach_id = caller — and it used to do all three for ANY
+     * signed-in user, athletes included. So a thirteen-year-old could put
+     * classmates on a "roster" of their own and email them an invitation that
+     * looked like it came from a coach.
+     *
+     * The role is read from profiles with the service-role client, not from
+     * the token: a token's user_role claim lives until it refreshes, and
+     * profiles.role is the value migration 033 stops a client changing. */
+    const { data: caller, error: callerErr } = await admin
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (callerErr) {
+      return NextResponse.json({ error: callerErr.message }, { status: 500 })
+    }
+    if (caller?.role !== 'coach') {
+      return NextResponse.json({ error: 'Only coaches can add athletes.' }, { status: 403 })
+    }
+
     const body = await request.json().catch(() => ({} as Record<string, unknown>))
     const first_name = String(body?.first_name ?? '').trim()
     const last_name = String(body?.last_name ?? '').trim()
@@ -71,8 +95,6 @@ export async function POST(request: Request) {
     if (!first_name || !last_name || !email) {
       return NextResponse.json({ error: 'first_name, last_name, and email are required' }, { status: 400 })
     }
-
-    const admin = createSupabaseAdminClient()
 
     // Determine the app's base URL from the request (works in dev + production)
     const host = request.headers.get('host') ?? 'coach-voice-mvp-pi.vercel.app'

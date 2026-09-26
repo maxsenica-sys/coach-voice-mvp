@@ -289,13 +289,23 @@ export default function SessionPDFPage() {
         .single()
       setCoach(profile)
 
+      /* The coach's own sessions only. This report prints the full
+       * transcript, and the RLS policy an athlete reads through used to hand
+       * them the whole row — so an athlete who opened this URL for a squad
+       * recording, or one recording about several athletes, got a printable
+       * transcript of the coach talking about other children. The athlete's
+       * copy of a session is the session page, whose detail route decides the
+       * transcript per viewer. Pinned here as well as in migration 033 so the
+       * page is correct whichever of the two is live. */
       const { data: s, error: sErr } = await supabase
         .from('sessions')
         .select('*, athletes(first_name, last_name, email)')
         .eq('id', id)
-        .single()
+        .eq('coach_id', user.id)
+        .maybeSingle()
 
-      if (sErr || !s) { setError('Session not found'); setLoading(false); return }
+      if (sErr) { setError(`Could not load this session: ${sErr.message}`); setLoading(false); return }
+      if (!s) { setError('Session not found. Only the coach who recorded a session can print its report.'); setLoading(false); return }
       setSession(s)
       setLoading(false)
     }

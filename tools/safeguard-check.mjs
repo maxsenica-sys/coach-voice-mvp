@@ -92,6 +92,59 @@ const FILES = [...walk(path.join(ROOT, 'app')), ...walk(path.join(ROOT, 'lib'))]
   }
 })
 
+/* ── migrations, as the database will hold them ─────────────────────────────
+ *
+ * The routes are only half the access model; row-level security is the other
+ * half, and every hole closed by migration 033 was in the half this scanner
+ * never read. A policy that says "coach_id = auth.uid()" and nothing about WHO
+ * the row is about type-checks, builds and passes every route rule here.
+ *
+ * So the migrations are replayed, in filename order, into the set of policies,
+ * triggers and function bodies that the LAST migration leaves standing. That is
+ * what the database holds if every file has been applied — and it is only that:
+ * a policy created by hand in the dashboard (see migration 017's header) is
+ * invisible here, which is why that is listed under KNOWN GAPS.
+ */
+const MIGRATIONS_DIR = path.join(ROOT, 'supabase', 'migrations')
+
+function replayMigrations() {
+  const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()
+  const policies = new Map() // `${table}::${name}` -> { table, name, cmd, using, check, file }
+  const triggers = new Map() // `${table}::${name}` -> { table, name, timing, fn, file }
+  const functions = new Map() // name -> { body, file }
+  for (const file of files) {
+    let sql = readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8').replace(/\r\n/g, '\n')
+    sql = sql.replace(/--[^\n]*/g, '')
+    // Function bodies first: they contain semicolons, and they are what a
+    // trigger actually runs.
+    for (const m of sql.matchAll(/create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?(\w+)\s*\([\s\S]*?\$\$([\s\S]*?)\$\$/gi)) {
+      functions.set(m[1].toLowerCase(), { body: m[2], file })
+    }
+    sql = sql.replace(/\$\$[\s\S]*?\$\$/g, '')
+    for (const raw of sql.split(';')) {
+      const stmt = raw.replace(/\s+/g, ' ').trim()
+      const table = (s) => s.replace(/^public\./i, '').toLowerCase()
+      let m
+      if ((m = stmt.match(/^drop policy (?:if exists )?"([^"]+)" on ([\w.]+)/i))) {
+        policies.delete(`${table(m[2])}::${m[1]}`)
+      } else if ((m = stmt.match(/^create policy "([^"]+)" on ([\w.]+)(.*)$/i))) {
+        const rest = m[3]
+        const cmd = (rest.match(/\bfor (all|select|insert|update|delete)\b/i)?.[1] ?? 'all').toLowerCase()
+        const checkIdx = rest.search(/\bwith check\b/i)
+        const usingIdx = rest.search(/\busing\b/i)
+        const using = usingIdx === -1 ? '' : rest.slice(usingIdx, checkIdx > usingIdx ? checkIdx : undefined)
+        const check = checkIdx === -1 ? '' : rest.slice(checkIdx)
+        policies.set(`${table(m[2])}::${m[1]}`, { table: table(m[2]), name: m[1], cmd, using, check, file })
+      } else if ((m = stmt.match(/^drop trigger (?:if exists )?(\w+) on ([\w.]+)/i))) {
+        triggers.delete(`${table(m[2])}::${m[1].toLowerCase()}`)
+      } else if ((m = stmt.match(/^create trigger (\w+) (before|after) (.*?) on ([\w.]+) .*execute (?:function|procedure) (?:public\.)?(\w+)/i))) {
+        triggers.set(`${table(m[4])}::${m[1].toLowerCase()}`, { table: table(m[4]), name: m[1], timing: `${m[2]} ${m[3]}`.toLowerCase(), fn: m[5].toLowerCase(), file })
+      }
+    }
+  }
+  return { policies: [...policies.values()], triggers: [...triggers.values()], functions }
+}
+
 /** Line number (1-indexed) of the first line matching `re`, or 0. */
 function lineOf(file, re) {
   const i = file.lines.findIndex((l) => re.test(l))
@@ -363,6 +416,24 @@ const RULES = [
         }
       }
 
+      // The detail route signs the same audio for an athlete viewer, so it must
+      // gate on the same two columns. It gated on shared_recording_id only, and
+      // a squad member was handed the whole squad talk as a signed URL while
+      // its transcript was withheld two lines below.
+      if (detail) {
+        const dsrc = code(detail)
+        const signIdx = dsrc.search(/createSignedUrl\(\s*session\.audio_path/)
+        const lead = signIdx === -1 ? '' : dsrc.slice(Math.max(0, signIdx - 600), signIdx)
+        const guard = lead.match(/if\s*\(\s*session\.audio_path\s*&&([^\n]*)\)\s*\{\s*$/m)?.[1] ?? ''
+        // Either both columns in the guard, or a local assigned from both.
+        const locals = [...guard.matchAll(/\b([A-Za-z_$][\w$]*)\b/g)].map((m) => m[1])
+        const namesBoth = (t) => /\bgroup_id\b/.test(t) && /\bsharedRecording\b|\bshared_recording_id\b/.test(t)
+        const ok = namesBoth(guard) || locals.some((v) => namesBoth(lead.match(new RegExp(`const\\s+${v}\\s*=([^\\n]*)`))?.[1] ?? ''))
+        if (signIdx === -1 || !ok) {
+          found.push({ file: DETAIL, line: lineOf(detail, /createSignedUrl\(\s*session\.audio_path/), msg: 'signs session audio for an athlete without gating on BOTH group_id and shared_recording_id' })
+        }
+      }
+
       for (const f of files) {
         if (!/^app\/athlete\//.test(f.rel)) continue
         const src = code(f)
@@ -599,6 +670,161 @@ const RULES = [
       return found
     },
   },
+  {
+    id: 'SG11',
+    title: 'The database, not just the routes, decides who a row may be about',
+    why: 'Every rule above reads route code, and PostgREST does not go through a route: anyone holding a token can call the database with the anon key. Until migration 033 an athlete could PATCH their own profiles row to role = "coach" — which the proxy, every coach route and the access-token hook all trust — and read the transcript of a squad talk naming other children; a coach could write a session, a message or a squad membership onto another coach\'s athlete. Each policy said "you own this row" and none said "and it is about someone you may write about".',
+    cite: 'supabase/migrations/033_security_integrity.sql',
+    check() {
+      const found = []
+      const M = 'supabase/migrations'
+      const { policies, triggers, functions } = replayMigrations()
+
+      // (a) profiles: a trigger refuses a client changing role, coach_id or
+      //     invite_code, on UPDATE and INSERT, and no client INSERT policy.
+      const guard = triggers.find((t) => {
+        if (t.table !== 'profiles' || !/before/.test(t.timing) || !/update/.test(t.timing) || !/insert/.test(t.timing)) return false
+        const body = functions.get(t.fn)?.body ?? ''
+        return ['role', 'coach_id', 'invite_code'].every((c) => new RegExp(`new\\.${c}\\s+is\\s+distinct\\s+from\\s+old\\.${c}`, 'i').test(body)) &&
+          /raise\s+exception/i.test(body) && /current_user\s+in\s*\(\s*'authenticated'/i.test(body)
+      })
+      if (!guard) {
+        found.push({ file: M, line: 0, msg: 'no BEFORE INSERT OR UPDATE trigger on profiles refuses a client changing role, coach_id and invite_code — any user can make themselves a coach' })
+      } else if (/auth\.role\(\)/i.test(functions.get(guard.fn)?.body ?? '')) {
+        // Found by running 033 against a real Postgres: auth.role() casts an
+        // empty request.jwt.claims to jsonb and throws, which inside this
+        // trigger fails signups and ON DELETE SET NULL cascades.
+        found.push({ file: M, line: 0, msg: `${guard.fn}() calls auth.role(), which throws on an empty claims setting — test current_user instead` })
+      }
+      for (const p of policies) {
+        if (p.table === 'profiles' && (p.cmd === 'insert' || p.cmd === 'all')) {
+          found.push({ file: `${M}/${p.file}`, line: 0, msg: `profiles policy "${p.name}" lets a client insert its own profile row — the signup trigger makes every one` })
+        }
+      }
+
+      // (b) An athlete never reads a squad or shared-recording session row.
+      for (const p of policies) {
+        if (p.table !== 'sessions' || !(p.cmd === 'select' || p.cmd === 'all')) continue
+        if (!/athlete_user_id/i.test(p.using)) continue
+        if (!/group_id\s+is\s+null/i.test(p.using) || !/shared_recording_id\s+is\s+null/i.test(p.using)) {
+          found.push({ file: `${M}/${p.file}`, line: 0, msg: `sessions policy "${p.name}" lets an athlete read squad or shared-recording rows, transcript included (needs group_id is null and shared_recording_id is null)` })
+        }
+      }
+
+      // (c) Every coach write policy pins the athlete (or session) to the
+      //     caller's own roster, not just coach_id to the caller.
+      const PINNED = {
+        sessions: /athletes\s+where\s+coach_id\s*=/i,
+        messages: /athletes\s+where\s+coach_id\s*=/i,
+        group_members: /athletes\s+where\s+coach_id\s*=/i,
+        athlete_caretakers: /athletes\s+where\s+coach_id\s*=/i,
+        injuries: /athletes\s+where\s+coach_id\s*=/i,
+        notes: /athletes\s+where\s+coach_id\s*=/i,
+        session_attachments: /sessions\s+where\s+coach_id\s*=/i,
+      }
+      const COACH_WRITER = /coach_id\s*=\s*\(?\s*(?:select\s+)?auth\.uid\(\)|auth\.uid\(\)\s*\)?\s*=\s*coach_id|groups\s+where\s+coach_id/i
+      for (const p of policies) {
+        if (!(p.table in PINNED) || !['all', 'insert', 'update'].includes(p.cmd)) continue
+        const check = p.check || p.using // no WITH CHECK means USING is the check
+        if (!COACH_WRITER.test(check)) continue
+        if (!PINNED[p.table].test(check)) {
+          found.push({ file: `${M}/${p.file}`, line: 0, msg: `${p.table} policy "${p.name}" lets a coach write a row about someone else's athlete (WITH CHECK never compares the athlete to the caller's roster)` })
+        }
+      }
+
+      // (d) A stored recording path is always its own coach's.
+      const insertSessions = policies.filter((p) => p.table === 'sessions' && ['all', 'insert', 'update'].includes(p.cmd) && COACH_WRITER.test(p.check || p.using))
+      for (const p of insertSessions) {
+        if (!/audio_path\s+is\s+null\s+or\s+audio_path\s+like\s+'coach\/'/i.test(p.check)) {
+          found.push({ file: `${M}/${p.file}`, line: 0, msg: `sessions policy "${p.name}" accepts any audio_path — the audio routes sign it with the service-role key` })
+        }
+      }
+
+      // (e) Messages: a client never gets FOR ALL — they are append-only
+      //     except the read marker.
+      for (const p of policies) {
+        if (p.table === 'messages' && (p.cmd === 'all' || p.cmd === 'delete')) {
+          found.push({ file: `${M}/${p.file}`, line: 0, msg: `messages policy "${p.name}" is FOR ${p.cmd.toUpperCase()} — either side can rewrite or delete the other's messages` })
+        }
+      }
+
+      // (f) athletes: a client never links athlete_user_id itself.
+      const link = triggers.find((t) => t.table === 'athletes' && /before/.test(t.timing) && /insert/.test(t.timing) &&
+        /new\.athlete_user_id/i.test(functions.get(t.fn)?.body ?? '') && /raise\s+exception/i.test(functions.get(t.fn)?.body ?? ''))
+      if (!link) {
+        found.push({ file: M, line: 0, msg: 'no trigger on athletes refuses a client setting athlete_user_id — a coach can put any user on their roster' })
+      }
+      for (const p of policies) {
+        if (p.table === 'athletes' && /athlete_user_id\s*=/i.test(p.using) && ['all', 'update'].includes(p.cmd)) {
+          found.push({ file: `${M}/${p.file}`, line: 0, msg: `athletes policy "${p.name}" lets an athlete rewrite their own roster row, coach_id included` })
+        }
+      }
+      return found
+    },
+  },
+  {
+    id: 'SG12',
+    title: 'A route that writes on the service-role key proves who and what first',
+    why: 'The service-role client skips every policy SG11 checks, so on these routes the route IS the policy. POST /api/athletes generated auth invites and roster rows for any signed-in user — athletes included; POST /api/caretakers attached a "parent" to any athlete id; POST /api/sessions stored a client-supplied audio_path that two routes later sign with the service-role key; the clip route ignored whether the session was shared; and the session PDF printed whatever row RLS returned, squad transcripts included.',
+    cite: 'supabase/migrations/033_security_integrity.sql — the route half of the same fixes',
+    check(files) {
+      const found = []
+      for (const f of files) {
+        if (!f.isRoute) continue
+        const src = code(f)
+        for (const h of handlerBlocks(src)) {
+          const at = lineOf(f, new RegExp(`export\\s+async\\s+function\\s+${h.name}\\b`))
+          // (a) Creating an auth user or an invite is a coach's act.
+          if (/auth\.admin\.(generateLink|inviteUserByEmail|createUser)\s*\(/.test(h.src) &&
+              !/role\s*!==\s*['"]coach['"]/.test(h.src)) {
+            found.push({ file: f.rel, line: at, msg: `${h.name} creates an auth invite without refusing non-coaches (no role !== 'coach' check)` })
+          }
+          // (b) A client-supplied audio_path must be under the caller's prefix.
+          if (/(?:body\??\.audio_path|form\.get\(\s*['"]audio_path['"]\s*\))/.test(h.src) &&
+              !/startsWith\(\s*`coach\/\$\{user\.id\}\//.test(h.src)) {
+            found.push({ file: f.rel, line: at, msg: `${h.name} accepts audio_path from the client without checking it starts with coach/\${user.id}/` })
+          }
+          // (c) A caretaker row names an athlete on the caller's roster.
+          if (/\.from\(\s*['"]athlete_caretakers['"]\s*\)[\s\S]{0,200}?\.(insert|upsert)\s*\(/.test(h.src) &&
+              !/\.from\(\s*['"]athletes['"]\s*\)[\s\S]{0,200}?\.eq\(\s*['"]coach_id['"]\s*,\s*user\.id\s*\)/.test(h.src)) {
+            found.push({ file: f.rel, line: at, msg: `${h.name} writes a caretaker without checking the athlete is on the caller's roster` })
+          }
+        }
+      }
+
+      // (d) The clip route's athlete branch requires the SESSION to be shared.
+      const CLIP = 'app/api/share/clip/[videoId]/route.ts'
+      const clip = files.find((f) => f.rel === CLIP)
+      if (clip) {
+        const csrc = code(clip)
+        const sel = [...csrc.matchAll(/\.from\(\s*['"]sessions['"]\s*\)\s*\.select\(\s*['"`]([^'"`]*)/g)].map((m) => m[1]).join(',')
+        if (!/\bshared_with_athlete\b/.test(sel) || !/!\s*session\.shared_with_athlete/.test(csrc)) {
+          found.push({ file: CLIP, line: lineOf(clip, /shared_with_athlete/), msg: 'serves a clip to an athlete without checking the session itself is shared' })
+        }
+      }
+
+      // (e) The session PDF prints a transcript, so it is the coach's own only.
+      const PDF = 'app/pdf/session/[id]/page.tsx'
+      const pdf = files.find((f) => f.rel === PDF)
+      if (pdf) {
+        const psrc = code(pdf)
+        const q = psrc.match(/\.from\(\s*['"]sessions['"]\s*\)[\s\S]{0,300}?\.(?:single|maybeSingle)\(\)/)?.[0] ?? ''
+        if (!/\.eq\(\s*['"]coach_id['"]\s*,\s*user\.id\s*\)/.test(q)) {
+          found.push({ file: PDF, line: lineOf(pdf, /\.from\(\s*['"]sessions['"]/), msg: 'loads the session to print without .eq(\'coach_id\', user.id) — an athlete can print a squad transcript' })
+        }
+      }
+
+      // (f) The athlete portal reads no session row directly; its list comes
+      //     from /api/athlete/sessions, which has no transcript column.
+      for (const f of files) {
+        if (!/^app\/athlete\//.test(f.rel)) continue
+        if (/\.from\(\s*['"]sessions['"]\s*\)/.test(code(f))) {
+          found.push({ file: f.rel, line: lineOf(f, /\.from\(\s*['"]sessions['"]/), msg: 'athlete portal queries sessions directly — use /api/athlete/sessions' })
+        }
+      }
+      return found
+    },
+  },
 ]
 
 /**
@@ -615,6 +841,9 @@ const KNOWN_GAPS = [
   'What the Focus Card image actually contains. It is built to carry the coaching sentence, the date and the wordmark and nothing else — no name, no photo, no URL, no session id — because it is designed to leave the app. That constraint lives in canvas drawing code and cannot be checked by reading source shape, so it has to be re-read by a human whenever app/components/FocusCard.tsx changes.',
   'Whether an access-log call sits on the athlete branch of its handler. SG10 proves a handler that logs also checks athlete_user_id against the caller, not that the log call is guarded by the result — the detail route serves the coach too, and only its `if (isAthlete)` keeps a coach\'s view out of the log.',
   'What the AI summariser writes about a child. `tools/prompt-rig.mjs` covers the prompt; nothing covers a model\'s output on an unseen transcript.',
+  'Whether the LIVE database matches the migrations SG11 replays. Policies have been created by hand in the dashboard before (017\'s header), and a migration that exists in the repo may not have been applied. SG11 proves what the files would leave standing; only `select * from pg_policies` against the project proves what is standing. Run it after every migration that touches access.',
+  'Whether a policy SG11 does not know the shape of is safe. It checks the tables that had holes (profiles, sessions, messages, group_members, athletes, caretakers, injuries, notes, attachments); a new table with a coach_id-only WITH CHECK passes until it is added to PINNED. event_rsvps is one today: an athlete may RSVP to any event id, and it shows on that event\'s coach\'s list.',
+  'Sessions saved as squad talks BEFORE sessions.group_id existed carry a null group_id, so the narrowed athlete policy (033) still returns their transcript to the athlete over PostgREST. None was found on 2026-09-26 (no shared, unflagged transcript is duplicated across athletes), but nothing enforces that.',
 ]
 
 // ── run ───────────────────────────────────────────────────────────────────

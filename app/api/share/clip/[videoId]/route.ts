@@ -34,7 +34,7 @@ export async function GET(
     // Verify user has access: either coach who owns the session, or athlete linked to it
     const { data: session } = await admin
       .from('sessions')
-      .select('coach_id, athlete_id')
+      .select('coach_id, athlete_id, shared_with_athlete')
       .eq('id', sessionId)
       .single()
 
@@ -51,7 +51,13 @@ export async function GET(
       // other surface checks. On a squad session that is a real leak rather
       // than a technicality: the clip a coach deliberately withheld shows the
       // other children in it, to a child who was never meant to see it.
-      if (!video.shared_with_athlete) {
+      //
+      // And the SESSION must be shared too. A clip flagged shared on a session
+      // the coach later unshared (or never shared) is still the coach's
+      // private material: every other athlete surface — the detail route, the
+      // audio route, the RLS policy — requires sessions.shared_with_athlete,
+      // and this one checked only the clip.
+      if (!video.shared_with_athlete || !session.shared_with_athlete) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const { data: athlete } = await admin
