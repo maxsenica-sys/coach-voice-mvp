@@ -109,9 +109,15 @@ async function saveSession(rec: PendingRecording, transcript: string, audioPath:
   const saved = results.filter(Boolean).length
   if (saved === 0) throw new Error('Could not save this recording. Nothing was written.')
   if (saved < results.length) {
-    // Partial group saves are reported, not retried. Retrying would duplicate
-    // the sessions that did save, and a duplicate is worse than a gap the
-    // coach can see and fix.
+    // Narrow the queued row to the athletes whose save failed before
+    // reporting. It used to be left listing every member while still marked
+    // ready, so the next drain POSTed the whole squad again and every athlete
+    // whose session HAD saved got a duplicate they can see and nobody can
+    // delete. Now a retry only ever writes the missing sessions.
+    if (rec.mode === 'group') {
+      const failed = rec.memberIds.filter((_, i) => !results[i])
+      await patchRecording(rec.id, { memberIds: failed })
+    }
     throw new Error(`Saved for ${saved} of ${results.length} athletes.`)
   }
 }

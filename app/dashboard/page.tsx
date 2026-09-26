@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback, useMemo, Suspense, Fragment } from 'react'
+import { byName, matchesName } from '@/lib/athlete-filter'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
@@ -607,7 +608,15 @@ function DashboardPageInner() {
   // Read ?tab= and ?athlete= from URL to support deep linking (e.g. from athlete profile Message button)
   const urlTab = searchParams.get('tab') as Tab | null
   const urlAthlete = searchParams.get('athlete')
-  const [tab, setTab] = useState<Tab>(urlTab ?? 'home')
+  const [tab, setTabState] = useState<Tab>(urlTab ?? 'home')
+  /* The tab lives in the URL as well as in state. It used to be state alone,
+   * so opening an athlete from the roster and pressing back landed on Home:
+   * with twenty athletes, every switch cost a trip back to the Athletes tab
+   * and a retyped search. replace, not push, so tabs do not pile up history. */
+  const setTab = useCallback((t: Tab) => {
+    setTabState(t)
+    router.replace(t === 'home' ? '/dashboard' : `/dashboard?tab=${t}`, { scroll: false })
+  }, [router])
   const mainRef = useRef<HTMLElement>(null)
 
   // Scroll to top whenever tab changes
@@ -640,7 +649,15 @@ function DashboardPageInner() {
    * refresh the user has no reason to attempt. */
   const [athletesError, setAthletesError] = useState<string | null>(null)
   const [wellnessByAthlete, setWellnessByAthlete] = useState<Map<string, WellnessCheckin>>(new Map())
-  const [athleteSearch, setAthleteSearch] = useState('')
+  // Kept for the browser tab's session, so a search survives opening a
+  // profile and coming back. sessionStorage can throw in private modes.
+  const [athleteSearch, setAthleteSearchState] = useState(() => {
+    try { return sessionStorage.getItem('cv:roster-q') ?? '' } catch { return '' }
+  })
+  const setAthleteSearch = (q: string) => {
+    setAthleteSearchState(q)
+    try { sessionStorage.setItem('cv:roster-q', q) } catch { /* not kept */ }
+  }
   // 'INACTIVE' is not a status like the other two, and it deliberately overlaps
   // both. It asks "has anything been recorded for this person lately", which
   // is true of an ACTIVE athlete nobody has recorded for in a fortnight AND of
@@ -838,7 +855,10 @@ function DashboardPageInner() {
       // not an empty roster: a coach shown no athletes would reasonably believe
       // their athletes had been deleted.
       if (!Array.isArray(json.athletes)) throw new Error('Could not load your athletes.')
-      setAthletes(json.athletes)
+      // Alphabetical, once, here. The API returns newest-invited first, and
+      // every list on this screen, the recorder and Messages inherited that
+      // accident: twenty names in the order they were invited.
+      setAthletes([...json.athletes].sort(byName))
     } catch (e) {
       setAthletesError(e instanceof Error ? e.message : 'Could not load your athletes.')
     } finally { setLoadingAthletes(false); markAppReady() }
@@ -1217,8 +1237,10 @@ function DashboardPageInner() {
     if (athleteFilter === 'INACTIVE') {
       if (!inactiveIds.has(a.id)) return false
     } else if (athleteFilter !== 'all' && status !== athleteFilter) return false
-    const s = athleteSearch.toLowerCase()
-    return !s || a.first_name.toLowerCase().includes(s) || a.last_name.toLowerCase().includes(s) || a.email.toLowerCase().includes(s)
+    // "Sophie G" and an autocompleted "Sophie " both used to match nobody:
+    // first and last name were tested separately against the raw string.
+    const s = athleteSearch.trim()
+    return !s || matchesName(a, s) || a.email.toLowerCase().includes(s.toLowerCase())
   })
 
   const recentSessions = homeSessions.slice(0, 3)
@@ -1383,7 +1405,7 @@ function DashboardPageInner() {
               const unread = item.key === 'messages' ? totalUnreadAll : 0
               const active = tab === item.key
               return (
-                <button key={item.key} onClick={() => setTab(item.key)} aria-current={active ? 'page' : undefined} style={{
+                <button key={item.key} onClick={() => { if (item.key === 'messages') setMsgPreselectedId(null); setTab(item.key) }} aria-current={active ? 'page' : undefined} style={{
                   display: 'flex', alignItems: 'center', gap: 10, minHeight: 44,
                   padding: '8px 12px', borderRadius: 9, border: 'none', width: '100%',
                   background: active ? tint('var(--text)', 7) : 'transparent',
@@ -1439,7 +1461,7 @@ function DashboardPageInner() {
           }}>
             <Brand rolecap={ROLECAP[tab]} />
             <span style={{ flex: 1 }} />
-            <button onClick={() => setTab('messages')} aria-label={totalUnreadAll > 0 ? `Messages, ${totalUnreadAll} unread` : 'Messages'} style={ICON_BTN}>
+            <button onClick={() => { setMsgPreselectedId(null); setTab('messages') }} aria-label={totalUnreadAll > 0 ? `Messages, ${totalUnreadAll} unread` : 'Messages'} style={ICON_BTN}>
               <Icon name="messages" size={17} strokeWidth={1.8} />
               {totalUnreadAll > 0 && <span style={{ position: 'absolute', top: 9, right: 9, width: 8, height: 8, borderRadius: '50%', background: 'var(--coach-on-light)', border: '1.5px solid var(--bg)' }} />}
             </button>
@@ -1698,7 +1720,7 @@ function DashboardPageInner() {
                 <section>
                   <SecHead title="Athletes" action={{ label: 'Roster', onClick: () => setTab('athletes') }} />
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))', gap: 9, marginTop: 6 }}>
-                    {athletes.slice(0, 8).map((a) => {
+                    {athletes.map((a) => {
                       const status = statusOf(a)
                       const unread = (unreadCounts[a.id] ?? 0) as number
                       const wellnessScore = overallWellnessScore(wellnessByAthlete.get(a.id) ?? null)
@@ -1715,7 +1737,7 @@ function DashboardPageInner() {
                           style={{ minWidth: 0, background: PANEL, borderRadius: 14, border: HAIR, padding: '12px 6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', cursor: 'pointer', font: 'inherit', color: 'inherit', textAlign: 'center' }}>
                           {unread > 0 && <div style={{ position: 'absolute', top: 5, right: 5, minWidth: 20, minHeight: 20, lineHeight: 1, borderRadius: 99, background: 'var(--coach-on-light)', color: 'var(--on-primary)', ...cast(13, 800, '0'), padding: '0 5px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</div>}
                           <Mono initials={initialsOf(a.first_name, a.last_name)} pending={status === 'INVITED'} size={40} />
-                          <div style={{ ...cast(15, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere', maxWidth: '100%' }}>{a.first_name}</div>
+                          <div style={{ ...cast(15, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere', maxWidth: '100%' }}>{a.first_name}{a.last_name ? ` ${a.last_name.trim()[0]}.` : ''}</div>
                           {wellnessScore !== null ? (
                             <div title={`Wellness ${wellnessScore}/5`} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                               <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
@@ -1951,7 +1973,7 @@ function DashboardPageInner() {
                       <span aria-hidden style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-2)', display: 'flex' }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
                       </span>
-                      <input className="input" placeholder="Search…" aria-label="Search athletes" value={athleteSearch} onChange={e => setAthleteSearch(e.target.value)} style={{ minWidth: 0, minHeight: 44, paddingLeft: 36, borderRadius: 12, border: HAIR_2, background: tint('var(--text)', 4) }} />
+                      <input className="input" placeholder="Search…" aria-label="Search athletes" type="search" autoCorrect="off" autoCapitalize="none" spellCheck={false} value={athleteSearch} onChange={e => setAthleteSearch(e.target.value)} style={{ minWidth: 0, minHeight: 44, paddingLeft: 36, borderRadius: 12, border: HAIR_2, background: tint('var(--text)', 4) }} />
                     </div>
                     <button onClick={fetchAthletes} disabled={loadingAthletes} style={{ ...ICON_BTN, opacity: loadingAthletes ? 0.5 : 1 }} title="Refresh" aria-label="Refresh the roster">
                       <Icon name="refresh" size={15} />
@@ -2157,7 +2179,7 @@ function DashboardPageInner() {
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <input className="input" placeholder="Search sessions…" aria-label="Search sessions" value={sessionsSearch} onChange={e => setSessionsSearch(e.target.value)} style={{ flex: '1 1 180px', minWidth: 0, maxWidth: isMobile ? 'none' : 260, minHeight: 44 }} onKeyDown={e => e.key === 'Enter' && fetchAllSessions(sessionsSearch, sessionsAthleteFilter)} />
-                <select className="input" aria-label="Filter by athlete" value={sessionsAthleteFilter} onChange={e => setSessionsAthleteFilter(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0, maxWidth: isMobile ? 'none' : 200, minHeight: 44 }}>
+                <select className="input" aria-label="Filter by athlete" value={sessionsAthleteFilter} onChange={e => { setSessionsAthleteFilter(e.target.value); fetchAllSessions(sessionsSearch, e.target.value) }} style={{ flex: '1 1 160px', minWidth: 0, maxWidth: isMobile ? 'none' : 200, minHeight: 44 }}>
                   <option value="">All athletes</option>
                   {athletes.map(a => <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>)}
                 </select>
@@ -2347,7 +2369,7 @@ function DashboardPageInner() {
               const active = tab === item.key || (item.key === 'athletes' && tab === 'groups')
               const unread = item.key === 'messages' ? totalUnreadAll : 0
               return (
-                <button key={item.key} onClick={() => setTab(item.key)} aria-current={active ? 'page' : undefined} style={{
+                <button key={item.key} onClick={() => { if (item.key === 'messages') setMsgPreselectedId(null); setTab(item.key) }} aria-current={active ? 'page' : undefined} style={{
                   background: 'none', border: 'none', padding: 0, position: 'relative', minWidth: 0,
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
                   color: active ? 'var(--flood)' : 'var(--text-2)',

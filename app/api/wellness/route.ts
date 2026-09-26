@@ -137,13 +137,26 @@ export async function POST(req: NextRequest) {
   const { data: ath } = await supabase.from('athletes').select('coach_id').eq('id', athlete_id).single()
   if (!ath) return NextResponse.json({ error: 'Athlete not found' }, { status: 404 })
 
+  /* The athlete's own calendar date, as their phone sends it. It used to be
+   * the server's UTC date whenever the client sent nothing, which is what the
+   * check-in sent: an Australian athlete checking in before about 10am was
+   * filed under yesterday, the card still said "Check in", and the next one
+   * overwrote it. A client date is accepted only as a real YYYY-MM-DD within a
+   * day of UTC today (every timezone's today is), so it cannot be backdated. */
+  const utcToday = new Date().toISOString().split('T')[0]
+  const shift = (days: number) => new Date(Date.UTC(+utcToday.slice(0, 4), +utcToday.slice(5, 7) - 1, +utcToday.slice(8, 10) + days)).toISOString().split('T')[0]
+  const checkDate =
+    typeof check_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(check_date) && check_date >= shift(-1) && check_date <= shift(1)
+      ? check_date
+      : utcToday
+
   // Upsert (athlete can update today's check-in)
   const { data, error } = await supabase
     .from('wellness_checkins')
     .upsert({
       athlete_id,
       coach_id: ath.coach_id,
-      check_date: check_date ?? new Date().toISOString().split('T')[0],
+      check_date: checkDate,
       energy, mood, sleep_q, soreness, stress, notes,
       readiness,
       sore_areas: sore_areas ?? [],

@@ -68,6 +68,14 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
     return live
   }, [])
 
+  // onSynced is an inline arrow on the dashboard, so it is a new function on
+  // every render. It used to be a dependency of drain, which made drain new on
+  // every render, which re-ran the effect below: every toast or unread poll
+  // started another drain, and a row left `ready` was POSTed again each time,
+  // creating duplicate sessions. Read it through a ref instead.
+  const onSyncedRef = useRef(onSynced)
+  useEffect(() => { onSyncedRef.current = onSynced }, [onSynced])
+
   const drain = useCallback(async () => {
     if (drainingRef.current) return
     drainingRef.current = true
@@ -83,12 +91,12 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
         if (result.done) anySaved = true
       }
       await refresh()
-      if (anySaved) onSynced?.()
+      if (anySaved) onSyncedRef.current?.()
     } finally {
       drainingRef.current = false
       setBusy(false)
     }
-  }, [refresh, onSynced])
+  }, [refresh])
 
   useEffect(() => {
     void drain()
