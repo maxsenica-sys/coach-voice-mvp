@@ -811,15 +811,18 @@ console.log(`\n   ${BOLD}Content gate${OFF} ${DIM}— some recordings must never
   else for (const f of gateFails) console.log(`   ${RED}FAIL${OFF}  ${f}`)
 }
 
-// Every path that produces or shares a summary goes through both. A route that
-// forgets is invisible to tsc — the join between files, again.
+// Every path that produces or shares a NEW summary goes through both. A route
+// that forgets is invisible to tsc — the join between files, again.
+//
+// Editing or re-sharing a session that is already saved (PATCH
+// /api/sessions/[id]) is deliberately left as it was. Max, 2026-09-26: "don't
+// change anything that's currently deployed, just change future events."
 {
   const src = (f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')
   const wired = [
     ['lib/quick-summary.ts', /guardSummary\(/, /checkContent\(/, 'the single summary is guarded and gated'],
     ['app/api/sessions/split-summary/route.ts', /guardSummary\(/, /checkContent\(/, 'each split section is guarded and the recording gated'],
     ['app/api/sessions/route.ts', /capBullets\(/, /checkContent\(/, 'the save route caps and gates a shared session'],
-    ['app/api/sessions/[id]/route.ts', /capBullets\(/, /checkContent\(/, 'sharing or editing later is capped and gated too'],
   ]
   for (const [file, guard, gate, name] of wired) {
     const code = src(file)
