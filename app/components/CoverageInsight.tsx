@@ -135,7 +135,7 @@ export default function CoverageInsight({ athleteHref = (id: string) => `/athlet
               })}
             </ol>
             <p style={{ ...BODY, marginTop: 8, fontSize: 'var(--t-data)' }}>
-              The dark tick on each bar is the roster median. Only you can see this.
+              The upright tick on each bar marks the roster median. Only you can see this.
             </p>
           </>
         ) : null}

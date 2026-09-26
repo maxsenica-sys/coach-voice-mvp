@@ -21,6 +21,7 @@ import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import { buildSpine, SPINE_MIN_SESSIONS, SPINE_WEEKS } from '@/lib/training-spine'
 import { READINESS_OPTIONS } from '@/lib/readiness'
 import { apiMutate, apiJson } from '@/lib/api-client'
+import { drainCheckins } from '@/lib/checkin-queue'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
 import { formatSessionDate, parseISODate, sessionISODate, todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
@@ -876,6 +877,9 @@ export default function AthletePage() {
   }, [athleteId])
 
   useEffect(() => { void loadWellness() }, [loadWellness])
+  // Check-ins saved on the phone while there was no signal (lib/checkin-queue)
+  // are sent as soon as the portal opens; reload wellness if any went through.
+  useEffect(() => { void drainCheckins().then((r) => { if (r.sent) void loadWellness() }) }, [loadWellness])
 
   // ── Load messages ─────────────────────────────────────────
   /* Named, so the error state can offer a real retry.
@@ -1037,6 +1041,10 @@ export default function AthletePage() {
     if (openSession === id) { setOpenSession(null); return }
     setOpenSession(id)
     loadVideos(id)
+    // Tells the coach this session was opened (lib/access-log.ts). Best effort
+    // by design: logging must never surface to the athlete, so a failure is
+    // swallowed rather than shown.
+    void apiMutate(`/api/sessions/${id}/seen`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'summary_viewed' }) }).catch(() => {})
   }
 
   // ── Notes ─────────────────────────────────────────────────
@@ -2008,6 +2016,14 @@ export default function AthletePage() {
                   <span className="num">{sessions.length}</span> session{sessions.length !== 1 ? 's' : ''}
                 </div>
               </div>
+            )}
+            {/* Said plainly, because it is true: opening a session is logged
+                for the coach (lib/access-log.ts). A young athlete should not
+                find that out later. */}
+            {sessions.length > 0 && (
+              <p style={{ margin: '0 0 12px', fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--text-2)' }}>
+                Your coach can see when you&apos;ve opened a session, so they know it reached you.
+              </p>
             )}
 
             {sessionsError ? (

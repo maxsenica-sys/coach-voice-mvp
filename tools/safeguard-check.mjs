@@ -256,7 +256,11 @@ const RULES = [
     cite: 'lib/attention.ts — "Coach-only, always"; PROJECT-STATE.md safeguarding limits',
     check(files) {
       const found = []
-      const forbidden = /@\/lib\/attention|athletes\/coverage/
+      // Extended 2026-09-26 with every coach-only figure batch 1 added: the
+      // repeated-phrase and reply insights, the roster coverage ranking, the
+      // pre-session brief (who has not checked in) and the access log (when a
+      // child opened something). Each is about one child as seen by the coach.
+      const forbidden = /@\/lib\/attention|athletes\/coverage|@\/lib\/insights|coach\/insights|coach\/brief|coach\/access-log|CoverageInsight|CoachInsights|PreSessionBrief|components\/AccessLog/
       for (const f of files) {
         // Athlete-facing surfaces: the athlete app, and the athlete's own
         // shared session view is role-agnostic so it is included too.

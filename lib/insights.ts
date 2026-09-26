@@ -207,11 +207,18 @@ export function containsPhrase(longer: string, shorter: string): boolean {
 /**
  * The recurring themes in a coach's sessions with one athlete.
  *
- * Merging: a shorter phrase is folded into a longer one that contains it when
- * the two occur in exactly the same sessions — "call", "ball" and "call the
- * ball" are then one theme, shown as the longer. When the shorter phrase turns
- * up in MORE sessions ("elbow" in 6, "high elbow" in 4) both are kept, because
- * folding would either lose two sessions or claim four that did not happen.
+ * Merging: a shorter phrase is folded into the longer qualifying phrases that
+ * contain it unless it recurs IN ITS OWN RIGHT — in at least `minSessions`
+ * sessions where none of those longer phrases was said.
+ *
+ *   - "call", "ball", "call the ball" in the same four sessions: "call" and
+ *     "ball" have no sessions of their own, so one theme, shown as the longer.
+ *   - "high elbow" in 3 and "high" in 4, the fourth being "hands high on the
+ *     block": "high" has one session of its own — a different cue that happens
+ *     to share a word — so it folds, and "high elbow" stands.
+ *   - "elbow" in 6 and "high elbow" in 3: "elbow" has three sessions of its
+ *     own, so both are kept, each with its TRUE count. A kept phrase always
+ *     shows every session it was said in; folding never edits a number.
  *
  * Ranking: most sessions first, then the longer (more specific) phrase, then
  * the most recent, then alphabetical — fully deterministic.
@@ -245,10 +252,13 @@ export function recurringThemes(
   }
 
   const candidates = [...where.entries()].filter(([, ids]) => ids.size >= minSessions)
-  const sameSet = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every((x) => b.has(x))
-  const kept = candidates.filter(
-    ([p, ids]) => !candidates.some(([q, qids]) => containsPhrase(q, p) && sameSet(ids, qids)),
-  )
+  const kept = candidates.filter(([p, ids]) => {
+    const longer = candidates.filter(([q]) => containsPhrase(q, p))
+    if (longer.length === 0) return true
+    let own = 0
+    for (const id of ids) if (!longer.some(([, qids]) => qids.has(id))) own++
+    return own >= minSessions
+  })
 
   const order = new Map(inWindow.map((s, i) => [s.id, i]))
   const newest = (ids: Set<string>) => Math.min(...[...ids].map((id) => order.get(id) ?? Infinity))

@@ -431,14 +431,19 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     const queueId = newRecordingId()
     const group = groups.find((g) => g.id === groupId)
     const athlete = athletes.find((a) => a.id === athleteId)
+    // Recording first means the target may still be empty here. That is
+    // fine: the row is not `ready`, so nothing saves it, and save() writes the
+    // target onto it once the coach has chosen.
+    const severalChosen = athletes.filter((a) => athleteIds.includes(a.id))
     const queued: PendingRecording = {
       id: queueId,
       createdAt: Date.now(),
       blob,
       mimeType,
       mode,
-      athleteId: mode === 'athlete' ? athleteId : null,
-      groupId: mode === 'group' ? groupId : null,
+      athleteId: mode === 'athlete' ? athleteId || null : null,
+      groupId: mode === 'group' ? groupId || null : null,
+      athleteIds: mode === 'several' ? athleteIds : [],
       // Snapshotted so a queued recording survives the squad being renamed.
       groupName: group?.name ?? null,
       memberIds: mode === 'group' ? (group?.member_ids ?? []) : [],
@@ -446,11 +451,15 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       // later must prime the names that were in the room, not today's squad.
       rosterNames: (mode === 'group'
         ? athletes.filter((a) => (group?.member_ids ?? []).includes(a.id))
-        : athletes.filter((a) => a.id === athleteId)
+        : mode === 'several'
+          ? severalChosen
+          : athletes.filter((a) => a.id === athleteId)
       ).map((a) => a.first_name).filter(Boolean),
       targetLabel: mode === 'group'
         ? (group?.name ?? 'Squad')
-        : athlete ? `${athlete.first_name} ${athlete.last_name}` : 'an athlete',
+        : mode === 'several'
+          ? (severalChosen.length ? severalChosen.map((a) => a.first_name).join(', ') : 'Athletes not chosen yet')
+          : athlete ? `${athlete.first_name} ${athlete.last_name}` : 'Athlete not chosen yet',
       sessionName,
       sessionDate,
       coachSport: coachSport || null,
@@ -511,9 +520,14 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
        *
        * The `file` append above is untouched — the extension it carries is how
        * Whisper detects the codec. */
+      // 'several' primes exactly the athletes chosen, which is the same bound.
+      // Recorded before choosing anyone, the list is empty and nothing is
+      // primed — Whisper behaves as it did before priming existed.
       const rosterForPrompt = mode === 'group'
         ? athletes.filter((a) => (groups.find((g) => g.id === groupId)?.member_ids ?? []).includes(a.id))
-        : athletes.filter((a) => a.id === athleteId)
+        : mode === 'several'
+          ? athletes.filter((a) => athleteIds.includes(a.id))
+          : athletes.filter((a) => a.id === athleteId)
       const rosterNames = rosterForPrompt.map((a) => a.first_name).filter(Boolean)
       if (rosterNames.length) fd.append('roster', rosterNames.join(', '))
 
@@ -538,17 +552,16 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       }
       if (json.text) setTranscript(json.text)
 
-      /* Draft the summary now, so the review step has something to show and
-       * change. Athlete mode only: a group save posts the same transcript once
-       * per member and the server writes a different summary for each, gated by
-       * mayPersonalise — one shared draft would be wrong for all of them.
+      /* Hand what was heard to the drafting effect below, which writes the
+       * summary (one athlete) or the split (several) as soon as there is a
+       * target — now, if one was chosen before recording, or the moment the
+       * coach picks one on the review step. Squad mode still drafts nothing
+       * here: the server writes a different summary per member at save.
        *
        * Deliberately not awaited into the transcription failure path: a draft
        * that does not arrive is a missing convenience, not a lost recording,
        * and the coach can still write the summary themselves. */
-      if (json.text && mode === 'athlete' && athleteId) {
-        void draftSummary(json.text, athleteId)
-      }
+      if (typeof json.text === 'string' && json.text) setHeardText(json.text)
 
       // The recording is already in storage — keep the path on the session so a
       // mis-heard transcript can be replayed later.
@@ -576,6 +589,14 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
 
   const save = async () => {
     if (!transcript.trim()) { setError('Please record or type a transcript.'); return }
+    // Recording first means a save can be the first moment the target is
+    // missing. The button is disabled then; this is the belt to that brace.
+    if (!hasTarget) {
+      setError(mode === 'several'
+        ? `Choose ${MIN_SPLIT_ATHLETES} to ${MAX_SPLIT_ATHLETES} athletes this recording is about.`
+        : mode === 'group' ? 'Choose the squad this session is for.' : 'Choose the athlete this session is for.')
+      return
+    }
     // Saving a cleared date would quietly file the session under today, which
     // is the exact mistake the picker exists to prevent.
     if (!sessionDate) { setError('Pick the date this session happened.'); return }
@@ -583,11 +604,25 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     setSaving(true)
     setError('')
 
+    const group = groups.find((g) => g.id === groupId)
+    const unsaved = (ids: string[]) => ids.filter((id) => !savedIdsRef.current.has(id))
+    if (mode === 'several' && !sharedRecordingIdRef.current) sharedRecordingIdRef.current = newSharedRecordingId()
+    const sharedRecordingId = sharedRecordingIdRef.current
+    const drafts: Record<string, { summary: string; next: string }> = mode === 'several'
+      ? Object.fromEntries(athleteIds.map((id) => [id, { summary: splitDrafts[id]?.summary ?? '', next: splitDrafts[id]?.next ?? '' }]))
+      : mode === 'athlete'
+        ? { [athleteId]: { summary: summaryDraft, next: nextDraft } }
+        : {}
+
     // Mark the queued recording as wanted BEFORE attempting the network, and
-    // with the coach's final answers on it. If the save fails from here the row
-    // is already complete and `ready`, so the drainer can finish it later
-    // without the coach re-entering anything.
+    // with the coach's final answers on it — including who it is for, which
+    // may have been chosen only after the recording stopped, and the drafts
+    // they reviewed. If the save fails from here the row is already complete
+    // and `ready`, so the drainer can finish it later without the coach
+    // re-entering anything.
     if (queuedIdRef.current) {
+      const chosen = athletes.filter((a) => athleteIds.includes(a.id))
+      const one = athletes.find((a) => a.id === athleteId)
       await patchRecording(queuedIdRef.current, {
         ready: true,
         transcript: transcript.trim(),
@@ -595,12 +630,61 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         sessionDate,
         shareWithAthlete,
         audioPath,
+        mode,
+        athleteId: mode === 'athlete' ? athleteId : null,
+        groupId: mode === 'group' ? groupId : null,
+        groupName: mode === 'group' ? group?.name ?? null : null,
+        memberIds: mode === 'group' ? unsaved(group?.member_ids ?? []) : [],
+        athleteIds: mode === 'several' ? unsaved(athleteIds) : [],
+        drafts,
+        sharedRecordingId: mode === 'several' ? sharedRecordingId : null,
+        targetLabel: mode === 'group'
+          ? (group?.name ?? 'Squad')
+          : mode === 'several'
+            ? chosen.map((a) => a.first_name).join(', ')
+            : one ? `${one.first_name} ${one.last_name}` : 'an athlete',
       })
+    }
+
+    /* One POST per athlete, each reported by name. Shared by the squad and
+     * 'several' saves. Skips anyone already saved from this recording, and
+     * narrows the queued row to whoever is still missing, so neither a retry
+     * here nor the background drain writes anyone twice. */
+    const saveEach = async (ids: string[], body: (aid: string) => Record<string, unknown>, whole: string) => {
+      const todo = unsaved(ids)
+      const results = await Promise.all(
+        todo.map(async (aid) => {
+          try {
+            await apiMutate('/api/sessions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body(aid)),
+            })
+            savedIdsRef.current.add(aid)
+            return { aid, ok: true }
+          } catch {
+            return { aid, ok: false }
+          }
+        }),
+      )
+      const failed = results.filter((r) => !r.ok)
+      if (failed.length === 0) return
+      const remaining = failed.map((r) => r.aid)
+      if (queuedIdRef.current) {
+        await patchRecording(queuedIdRef.current, mode === 'group' ? { memberIds: remaining } : { athleteIds: remaining })
+      }
+      if (failed.length === results.length && savedIdsRef.current.size === 0) {
+        throw new Error(`Could not save this session for anyone in ${whole}. Nothing was recorded.`)
+      }
+      const names = failed
+        .map((r) => athletes.find((a) => a.id === r.aid))
+        .map((a) => (a ? `${a.first_name} ${a.last_name}` : 'an athlete'))
+        .join(', ')
+      throw new Error(`Saved for ${ids.length - failed.length} of ${ids.length}. Failed for: ${names}. Save again to retry just those.`)
     }
 
     try {
       if (mode === 'athlete') {
-        if (!athleteId) { setError('Select an athlete.'); setSaving(false); return }
         const res = await fetch('/api/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -621,57 +705,49 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           }),
         })
         if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? 'Failed to save')
+      } else if (mode === 'several') {
+        /* One session per athlete, each carrying ONLY that athlete's reviewed
+         * summary and takeaway, and all carrying the same shared id — which is
+         * what withholds the transcript (it is about all of them) from every
+         * one of them. With the shared id the server never regenerates, so an
+         * empty card saves as no summary rather than a summary of everyone. */
+        await saveEach(athleteIds, (aid) => ({
+          athlete_id: aid,
+          shared_recording_id: sharedRecordingId,
+          session_name: sessionName.trim() || null,
+          transcript: transcript.trim(),
+          summary: splitDrafts[aid]?.summary.trim() || null,
+          next: splitDrafts[aid]?.next.trim() || null,
+          shared_with_athlete: shareWithAthlete,
+          session_date: sessionDate,
+          sport_context: coachSport || null,
+          audio_path: audioPath,
+          audio_mime: audioMime,
+        }), 'this recording')
       } else {
         // Group session: save one session per member
-        if (!groupId) { setError('Select a group.'); setSaving(false); return }
-        const group = groups.find((g) => g.id === groupId)
         if (!group || group.member_ids.length === 0) { setError('This group has no members.'); setSaving(false); return }
 
         // One session per member. Previously these were fired without checking
         // any response, so a group save reported success even when every insert
         // failed. Report partial failure by name instead of swallowing it.
-        const results = await Promise.all(
-          group.member_ids.map(async (aid) => {
-            try {
-              await apiMutate('/api/sessions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  athlete_id: aid,
-                  // Marks the row as a squad recording. This is what lets the
-                  // athlete side withhold a transcript that is the coach
-                  // talking about the whole group — until this existed, every
-                  // member could read what the coach said about every other
-                  // member. The server validates it against the coach's own
-                  // groups rather than trusting it.
-                  group_id: group.id,
-                  session_name: sessionName.trim() ? `[${group.name}] ${sessionName.trim()}` : `[${group.name}] Session`,
-                  transcript: transcript.trim(),
-                  shared_with_athlete: shareWithAthlete,
-                  session_date: sessionDate,
-                  sport_context: coachSport || null,
-                  audio_path: audioPath,
-                  audio_mime: audioMime,
-                }),
-              })
-              return { aid, ok: true }
-            } catch {
-              return { aid, ok: false }
-            }
-          })
-        )
-
-        const failed = results.filter((r) => !r.ok)
-        if (failed.length === results.length) {
-          throw new Error('Could not save this session for anyone in the group. Nothing was recorded.')
-        }
-        if (failed.length > 0) {
-          const names = failed
-            .map((r) => athletes.find((a) => a.id === r.aid))
-            .map((a) => (a ? `${a.first_name} ${a.last_name}` : 'an athlete'))
-            .join(', ')
-          throw new Error(`Saved for ${results.length - failed.length} of ${results.length}. Failed for: ${names}.`)
-        }
+        await saveEach(group.member_ids, (aid) => ({
+          athlete_id: aid,
+          // Marks the row as a squad recording. This is what lets the
+          // athlete side withhold a transcript that is the coach
+          // talking about the whole group — until this existed, every
+          // member could read what the coach said about every other
+          // member. The server validates it against the coach's own
+          // groups rather than trusting it.
+          group_id: group.id,
+          session_name: sessionName.trim() ? `[${group.name}] ${sessionName.trim()}` : `[${group.name}] Session`,
+          transcript: transcript.trim(),
+          shared_with_athlete: shareWithAthlete,
+          session_date: sessionDate,
+          sport_context: coachSport || null,
+          audio_path: audioPath,
+          audio_mime: audioMime,
+        }), 'the group')
       }
 
       // Saved for real — the local copy has done its job.
@@ -717,9 +793,46 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     `${recSecs % 60} sec`,
   ].filter(Boolean).join(' ')
 
-  // The chips are the only live control until a target is picked, which is what
-  // makes the required choice self-evident without a line of instructional text.
-  const hasTarget = mode === 'athlete' ? !!athleteId : !!groupId
+  // Required to save, not to record. 'several' needs two to five: one is an
+  // individual session, and more than five is a squad talk, not a split.
+  const hasTarget = mode === 'athlete'
+    ? !!athleteId
+    : mode === 'group'
+      ? !!groupId
+      : athleteIds.length >= MIN_SPLIT_ATHLETES && athleteIds.length <= MAX_SPLIT_ATHLETES
+  // Nothing to record for if the roster is empty — the one case the record
+  // button still waits for.
+  const canRecord = athletes.length > 0 || groups.length > 0
+  const severalChosen = athleteIds
+    .map((id) => athletes.find((a) => a.id === id))
+    .filter((a): a is Athlete => Boolean(a))
+
+  /* Draft once there is both something heard and someone it is for.
+   *
+   * Recording first, the target can arrive after the transcript: this is what
+   * drafts then. It also covers the old order (target first, draft at stop),
+   * and a change of target on the review step, since the reset above clears
+   * the old draft and changes draftFor. Each target is drafted at most once,
+   * from the transcript as it stands — so a name the coach corrected in the
+   * box is the name the model reads. */
+  const autoDraftedForRef = useRef('')
+  const transcriptRef = useRef(transcript)
+  useEffect(() => { transcriptRef.current = transcript }, [transcript])
+  useEffect(() => {
+    if (step !== 'review' || !heardText || !hasTarget) return
+    if (autoDraftedForRef.current === draftFor) return
+    const text = transcriptRef.current.trim() || heardText
+    if (mode === 'athlete') {
+      autoDraftedForRef.current = draftFor
+      void draftSummary(text, athleteId)
+    } else if (mode === 'several') {
+      autoDraftedForRef.current = draftFor
+      void draftSplit(text, athleteIds)
+    }
+    // draftSummary/draftSplit are recreated each render but only read state
+    // setters and coachSport; draftFor is what changes when they should run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, heardText, hasTarget, draftFor])
 
   const groupMembers = groups.find((g) => g.id === groupId)?.member_ids ?? []
   const groupMemberNames = groupMembers
@@ -742,7 +855,9 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   const selectedAthlete = athletes.find((a) => a.id === athleteId)
   const targetLabel = mode === 'group'
     ? (groups.find((g) => g.id === groupId)?.name ?? '')
-    : selectedAthlete ? `${selectedAthlete.first_name} ${selectedAthlete.last_name}` : ''
+    : mode === 'several'
+      ? severalChosen.map((a) => a.first_name).join(', ')
+      : selectedAthlete ? `${selectedAthlete.first_name} ${selectedAthlete.last_name}` : ''
   const dateShort = sessionDate
     ? formatSessionDate({ session_date: sessionDate }, { weekday: 'short', day: 'numeric', month: 'short' }, '')
     : ''
@@ -758,9 +873,120 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
       : recording && !recStalled ? 'Stop when you are done talking' : ''
   const targetMeta = [
     mode === 'group' && groupId ? `${groupMembers.length} athlete${groupMembers.length === 1 ? '' : 's'}` : null,
+    mode === 'several' && severalChosen.length ? `${severalChosen.length} athletes, one recording` : null,
     sessionName.trim() || null,
     dateShort || null,
   ].filter(Boolean).join(' · ')
+
+  /* Who the session is for — the same control before recording (phase 1) and
+     on the review step (phase 3), so a coach who recorded first chooses here
+     after stopping. Rendered once at a time, never twice. */
+  const targetSection = (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+        <div style={LBL}>Session for</div>
+        {!hasDefaultTarget && !hasTarget && (
+          <span style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-2)' }}>
+            {phase === 1 ? 'Choose now, or after you stop.' : 'Choose to save.'}
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
+        <button onClick={() => setMode('athlete')} aria-pressed={mode === 'athlete'} style={modeTab(mode === 'athlete', false)}>
+          One athlete
+        </button>
+        {/* Several named athletes in one recording, split into a summary each.
+            Needs at least two athletes to mean anything. */}
+        <button
+          onClick={() => setMode('several')}
+          aria-pressed={mode === 'several'}
+          disabled={athletes.length < MIN_SPLIT_ATHLETES}
+          style={modeTab(mode === 'several', athletes.length < MIN_SPLIT_ATHLETES)}
+        >
+          Several
+        </button>
+        {/* Shown disabled with a reason rather than removed: a tab that
+            silently vanishes when there are no squads tells a new
+            coach nothing about the feature. */}
+        <button
+          onClick={() => setMode('group')}
+          aria-pressed={mode === 'group'}
+          disabled={groups.length === 0}
+          style={modeTab(mode === 'group', groups.length === 0)}
+        >
+          Squad <span style={{ ...MONO, letterSpacing: 0, textTransform: 'none' }}>{groups.length}</span>
+        </button>
+      </div>
+      {groups.length === 0 && mode === 'athlete' && (
+        <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-muted)', marginTop: 8 }}>
+          No squads yet — create one first, or record for an individual athlete.
+        </div>
+      )}
+
+      {/* Chips rather than a native <select>. A select hides the current
+          value's meaning behind an interaction and costs a wheel drag;
+          with no pre-selection the target has to be visible, not
+          discovered. Selected is sage, not flood: in this sheet
+          chartreuse means the microphone. */}
+      {mode === 'athlete' ? (
+        athletes.length === 0 ? (
+          <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', padding: '10px 0' }}>
+            No athletes yet — add one first before recording a session.
+          </div>
+        ) : (
+          // Search, squad filter and a list that scrolls with the
+          // sheet: the 132px chip box it replaces showed three rows
+          // of a twenty-athlete roster. See AthletePicker.
+          <AthletePicker athletes={athletes} squads={groups} value={athleteId} onChange={setAthleteId} />
+        )
+      ) : mode === 'several' ? (
+        <div>
+          <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--text-2)', marginTop: 10 }}>
+            Talk about {MIN_SPLIT_ATHLETES} to {MAX_SPLIT_ATHLETES} athletes in one recording, using their names. Each gets their own summary to check before it sends, and only their own.
+          </div>
+          <AthletePicker
+            multiple
+            athletes={athletes}
+            squads={groups}
+            value={athleteIds}
+            onChange={setAthleteIds}
+            max={MAX_SPLIT_ATHLETES}
+          />
+          {athleteIds.length === 1 && (
+            <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-2)', marginTop: 8 }}>
+              Choose at least one more — or use One athlete for a single person.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div>
+          {groups.length === 0 && (
+            <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', padding: '10px 0' }}>
+              No squads yet — create one first, or record for an individual athlete.
+            </div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
+            {groups.map((g) => {
+              const on = groupId === g.id
+              return (
+                <button key={g.id} onClick={() => setGroupId(on ? '' : g.id)} aria-pressed={on} style={chip(on)}>
+                  {g.name} ({g.member_ids.length})
+                </button>
+              )
+            })}
+          </div>
+          {/* Every name, in full, wrapping onto as many lines as it
+              takes. This is the coach's only confirmation of who the
+              recording is about, so nothing here is truncated. */}
+          {groupMemberNames.length > 0 && (
+            <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--text-muted)', marginTop: 8, overflowWrap: 'anywhere' }}>
+              Session will be saved for: {groupMemberNames.join(', ')}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div
@@ -850,74 +1076,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           {/* ── 1 · Who and when ── */}
           {phase === 1 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <div style={LBL}>Session for</div>
-                <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
-                  <button onClick={() => setMode('athlete')} aria-pressed={mode === 'athlete'} style={modeTab(mode === 'athlete', false)}>
-                    One athlete
-                  </button>
-                  {/* Shown disabled with a reason rather than removed: a tab that
-                      silently vanishes when there are no squads tells a new
-                      coach nothing about the feature. */}
-                  <button
-                    onClick={() => setMode('group')}
-                    aria-pressed={mode === 'group'}
-                    disabled={groups.length === 0}
-                    style={modeTab(mode === 'group', groups.length === 0)}
-                  >
-                    Squad <span style={{ ...MONO, letterSpacing: 0, textTransform: 'none' }}>{groups.length}</span>
-                  </button>
-                </div>
-                {groups.length === 0 && mode === 'athlete' && (
-                  <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-muted)', marginTop: 8 }}>
-                    No squads yet — create one first, or record for an individual athlete.
-                  </div>
-                )}
-
-                {/* Chips rather than a native <select>. A select hides the current
-                    value's meaning behind an interaction and costs a wheel drag;
-                    with no pre-selection the target has to be visible, not
-                    discovered. Selected is sage, not flood: in this sheet
-                    chartreuse means the microphone. */}
-                {mode === 'athlete' ? (
-                  athletes.length === 0 ? (
-                    <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', padding: '10px 0' }}>
-                      No athletes yet — add one first before recording a session.
-                    </div>
-                  ) : (
-                    // Search, squad filter and a list that scrolls with the
-                    // sheet: the 132px chip box it replaces showed three rows
-                    // of a twenty-athlete roster. See AthletePicker.
-                    <AthletePicker athletes={athletes} squads={groups} value={athleteId} onChange={setAthleteId} />
-                  )
-                ) : (
-                  <div>
-                    {groups.length === 0 && (
-                      <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-muted)', padding: '10px 0' }}>
-                        No squads yet — create one first, or record for an individual athlete.
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
-                      {groups.map((g) => {
-                        const on = groupId === g.id
-                        return (
-                          <button key={g.id} onClick={() => setGroupId(on ? '' : g.id)} aria-pressed={on} style={chip(on)}>
-                            {g.name} ({g.member_ids.length})
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {/* Every name, in full, wrapping onto as many lines as it
-                        takes. This is the coach's only confirmation of who the
-                        recording is about, so nothing here is truncated. */}
-                    {groupMemberNames.length > 0 && (
-                      <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--text-muted)', marginTop: 8, overflowWrap: 'anywhere' }}>
-                        Session will be saved for: {groupMemberNames.join(', ')}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              {targetSection}
 
               {/* ── Last time you said ──
                   Read-only, and only when there is something to show. It does
@@ -1000,12 +1159,20 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           {/* ── 2 · Recording ── */}
           {phase === 2 && (
             <>
-              {targetLabel && (
+              {targetLabel ? (
                 <div style={{ borderLeft: '2px solid var(--primary)', paddingLeft: 13, minHeight: 46, display: 'flex', flexDirection: 'column', justifyContent: 'center', flexShrink: 0 }}>
                   <div style={{ ...CAST, fontSize: 23, letterSpacing: '0.045em', lineHeight: 1.05, color: 'var(--text)', overflowWrap: 'anywhere' }}>{targetLabel}</div>
                   {targetMeta && (
                     <div style={{ ...MONO, color: 'var(--text-2)', marginTop: 6, overflowWrap: 'anywhere' }}>{targetMeta}</div>
                   )}
+                </div>
+              ) : (
+                /* Recording before choosing. Said, so the coach knows the
+                   choice is still to come rather than silently skipped. */
+                <div style={{ borderLeft: '2px solid var(--border)', paddingLeft: 13, minHeight: 46, display: 'flex', alignItems: 'center', flexShrink: 0, fontSize: 'var(--t-body)', lineHeight: 1.4, color: 'var(--text-2)' }}>
+                  {mode === 'several' && athleteIds.length === 1
+                    ? 'Choose the other athletes when you stop.'
+                    : 'Choose who this is for when you stop.'}
                 </div>
               )}
               {lastFocus && (
@@ -1087,6 +1254,10 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           {/* ── 3 · Before you send ── */}
           {phase === 3 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {/* Recorded first, chosen now. Opened with a target already,
+                  the review step is exactly what it was. */}
+              {!hasDefaultTarget && targetSection}
+
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <label htmlFor="qs-transcript" style={LBL}>Transcript</label>
@@ -1122,6 +1293,14 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                       setSummaryError('')
                       setSummarising(false)
                       setTranscriptWarning('')
+                      setHeardText('')
+                      setSplitDrafts({})
+                      setSplitError('')
+                      setSplitting(false)
+                      autoDraftedForRef.current = ''
+                      // A new recording is a new set of sibling sessions.
+                      sharedRecordingIdRef.current = null
+                      savedIdsRef.current = new Set()
                     }}
                   >
                     ← Re-record
@@ -1228,6 +1407,97 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 </>
               )}
 
+              {/* ── Several: one card per athlete ──
+                  Each headed with that athlete's full name, each editable,
+                  each saved to that athlete only. An empty card is said to be
+                  empty, with the reason, rather than left blank: the coach
+                  needs to know nothing was found for Kai, not wonder whether
+                  the draft failed. */}
+              {mode === 'several' && hasTarget && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <div style={LBL}>Summary for each athlete</div>
+                    {splitting && <span role="status" style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>splitting…</span>}
+                    <span style={{ flex: 1 }} />
+                    {transcript.trim() && !splitting && (
+                      <button
+                        type="button"
+                        onClick={() => { autoDraftedForRef.current = draftFor; void draftSplit(transcript.trim(), athleteIds) }}
+                        style={{
+                          ...CAST, fontSize: 14, letterSpacing: '0.14em', color: 'var(--text-2)',
+                          minHeight: 44, padding: '0 12px', flexShrink: 0, cursor: 'pointer',
+                          border: '1px solid var(--border)', borderRadius: 12, background: 'transparent',
+                        }}
+                      >
+                        {Object.keys(splitDrafts).length ? 'Split again' : 'Split transcript'}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-2)' }}>
+                    Each athlete sees only their own card. The transcript and recording stay with you, because they mention everyone.
+                  </div>
+                  {splitError && (
+                    <div role="alert" style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--coach-on-light)' }}>
+                      {splitError}
+                    </div>
+                  )}
+                  {severalChosen.map((a) => {
+                    const d = splitDrafts[a.id] ?? { summary: '', next: '', reason: null }
+                    const setD = (patch: Partial<SplitDraft>) =>
+                      setSplitDrafts((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] ?? { summary: '', next: '', reason: null }), ...patch } }))
+                    const empty = !d.summary.trim() && !d.next.trim()
+                    const why = !empty || splitting ? null : SPLIT_REASON_TEXT[d.reason ?? ''] ?? null
+                    return (
+                      <section
+                        key={a.id}
+                        aria-labelledby={`qs-split-${a.id}`}
+                        style={{ padding: '12px 13px 13px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card)', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}
+                      >
+                        <h3
+                          id={`qs-split-${a.id}`}
+                          style={{ ...CAST, margin: 0, fontSize: 19, fontWeight: 800, letterSpacing: '0.05em', lineHeight: 1.15, color: 'var(--text)', overflowWrap: 'anywhere' }}
+                        >
+                          {a.first_name} {a.last_name}
+                        </h3>
+                        {why && (
+                          <div role="status" style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-2)' }}>
+                            {why(a.first_name)}
+                          </div>
+                        )}
+                        <label htmlFor={`qs-split-sum-${a.id}`} style={{ ...LBL, marginTop: 2 }}>Summary</label>
+                        <textarea
+                          id={`qs-split-sum-${a.id}`}
+                          className="input"
+                          rows={3}
+                          value={d.summary}
+                          onChange={(e) => setD({ summary: e.target.value })}
+                          placeholder={splitting ? 'Reading your recording…' : `What you said to or about ${a.first_name}.`}
+                          style={{ width: '100%', fontFamily: 'var(--font-display)', fontSize: 16, lineHeight: 1.45, resize: 'vertical', borderRadius: 14 }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+                          <label htmlFor={`qs-split-next-${a.id}`} style={{ ...CAST, fontSize: 'var(--t-furniture)', fontWeight: 800, letterSpacing: '0.22em', color: 'var(--coach-on-light)' }}>
+                            Take into next session
+                          </label>
+                          <span style={{ ...MONO, marginLeft: 'auto', color: 'var(--text-2)' }}>
+                            {d.next.length}/{MAX_NEXT_LENGTH}
+                          </span>
+                        </div>
+                        <textarea
+                          id={`qs-split-next-${a.id}`}
+                          className="input"
+                          rows={2}
+                          value={d.next}
+                          maxLength={MAX_NEXT_LENGTH}
+                          onChange={(e) => setD({ next: e.target.value.replace(/\s*\n+\s*/g, ' ') })}
+                          placeholder={`The one thing for ${a.first_name} to work on.`}
+                          style={{ ...FIELD, marginTop: 0, minHeight: 0, resize: 'none', fontWeight: 600, lineHeight: 1.4, borderColor: 'var(--coach-border)' }}
+                        />
+                      </section>
+                    )
+                  })}
+                </div>
+              )}
+
               {/* Session date — the save happens on this step, so it stays
                   editable here for anyone who skipped straight to typing. */}
               <div>
@@ -1261,7 +1531,9 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   style={{ width: 22, height: 22, flexShrink: 0, accentColor: 'var(--primary)', WebkitAppearance: 'checkbox', appearance: 'auto' }}
                 />
                 <span style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.35 }}>
-                  Share transcript & summary with athlete{mode === 'group' ? 's' : ''}
+                  {mode === 'several'
+                    ? 'Share each athlete\'s own summary with them'
+                    : `Share transcript & summary with athlete${mode === 'group' ? 's' : ''}`}
                 </span>
               </label>
 
@@ -1287,22 +1559,26 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   </div>
                 )}
                 {/* The record action — floodlight, the first of its two uses. */}
+                {/* Live without a target: "record fast". Who it is for can be
+                    chosen after stopping, and Save waits for it instead. */}
                 <button
                   onClick={startRecording}
-                  disabled={!hasTarget}
+                  disabled={!canRecord}
                   style={{
                     width: '100%', minHeight: 62, borderRadius: 19, overflow: 'hidden', padding: 0,
                     display: 'flex', alignItems: 'stretch', border: 'none', textAlign: 'left',
-                    background: hasTarget ? 'var(--flood)' : 'var(--card)',
-                    color: hasTarget ? 'var(--on-primary)' : 'var(--text-muted)',
-                    cursor: hasTarget ? 'pointer' : 'not-allowed',
+                    background: canRecord ? 'var(--flood)' : 'var(--card)',
+                    color: canRecord ? 'var(--on-primary)' : 'var(--text-muted)',
+                    cursor: canRecord ? 'pointer' : 'not-allowed',
                   }}
                 >
                   <span style={{ flex: 1, minWidth: 0, padding: '12px 8px 12px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                     <span style={{ ...CAST, fontSize: 22, fontWeight: 800, letterSpacing: '0.045em', lineHeight: 1 }}>Start recording</span>
-                    {hasTarget && (
+                    {canRecord && (
                       <span style={{ ...MONO, marginTop: 6, overflowWrap: 'anywhere' }}>
-                        {[targetLabel, coachSport].filter(Boolean).join(' · ')}
+                        {hasTarget
+                          ? [targetLabel, coachSport].filter(Boolean).join(' · ')
+                          : 'Choose who it is for after'}
                       </span>
                     )}
                   </span>
@@ -1316,9 +1592,9 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   >
                     <span style={{
                       width: 38, height: 38, borderRadius: '50%',
-                      border: `2px solid ${hasTarget ? 'var(--flood)' : 'var(--border)'}`,
-                      color: hasTarget ? 'var(--flood)' : 'var(--text-muted)',
-                      background: hasTarget ? 'rgba(203,239,94,0.10)' : 'transparent',
+                      border: `2px solid ${canRecord ? 'var(--flood)' : 'var(--border)'}`,
+                      color: canRecord ? 'var(--flood)' : 'var(--text-muted)',
+                      background: canRecord ? 'rgba(203,239,94,0.10)' : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       <MicGlyph />
@@ -1327,11 +1603,11 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 </button>
                 <button
                   onClick={() => setStep('review')}
-                  disabled={!hasTarget}
+                  disabled={!canRecord}
                   style={{
                     width: '100%', minHeight: 44, marginTop: 4, border: 'none', background: 'transparent',
                     fontSize: 'var(--t-body-tight)', fontWeight: 600, color: 'var(--text-2)',
-                    cursor: hasTarget ? 'pointer' : 'not-allowed', opacity: hasTarget ? 1 : 0.6,
+                    cursor: canRecord ? 'pointer' : 'not-allowed', opacity: canRecord ? 1 : 0.6,
                   }}
                 >
                   Skip — type transcript manually →
@@ -1353,6 +1629,13 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
               </button>
             )}
 
+            {phase === 3 && !hasTarget && (
+              <div style={{ fontSize: 'var(--t-body-tight)', fontWeight: 600, lineHeight: 1.4, color: 'var(--text-2)', marginBottom: 8 }}>
+                {mode === 'several'
+                  ? `Choose ${MIN_SPLIT_ATHLETES} to ${MAX_SPLIT_ATHLETES} athletes above to save.`
+                  : mode === 'group' ? 'Choose the squad above to save.' : 'Choose the athlete above to save.'}
+              </div>
+            )}
             {phase === 3 && (
               <div style={{ display: 'flex', gap: 10 }}>
                 <button
@@ -1367,17 +1650,21 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 </button>
                 <button
                   onClick={save}
-                  disabled={saving || !transcript.trim()}
+                  disabled={saving || !transcript.trim() || !hasTarget}
                   style={{
                     ...CAST, flex: 2, minWidth: 0, minHeight: 58, borderRadius: 19, border: 'none',
                     padding: '6px 12px', lineHeight: 1.1,
                     background: 'var(--primary)', color: 'var(--on-primary)',
                     fontSize: 20, fontWeight: 800, letterSpacing: '0.06em',
-                    cursor: saving || !transcript.trim() ? 'not-allowed' : 'pointer',
-                    opacity: saving || !transcript.trim() ? 0.5 : 1,
+                    cursor: saving || !transcript.trim() || !hasTarget ? 'not-allowed' : 'pointer',
+                    opacity: saving || !transcript.trim() || !hasTarget ? 0.5 : 1,
                   }}
                 >
-                  {saving ? 'Saving…' : mode === 'group' ? `Save for ${groupMembers.length} Athletes` : 'Save Session'}
+                  {saving
+                    ? 'Saving…'
+                    : mode === 'group'
+                      ? `Save for ${groupMembers.length} Athletes`
+                      : mode === 'several' && hasTarget ? `Save for ${athleteIds.length} Athletes` : 'Save Session'}
                 </button>
               </div>
             )}
@@ -1418,6 +1705,15 @@ const FIELD: CSSProperties = {
   minHeight: 48,
   borderRadius: 14,
   fontSize: 16,
+}
+
+/* Why a card in 'several' mode is empty, in words, with the athlete's name.
+   Every case ends the same way: the coach writes one or leaves it. */
+const SPLIT_REASON_TEXT: Record<string, (name: string) => string> = {
+  'not-named': (n) => `${n}'s name wasn't heard in the recording, so nothing was drafted — write one or leave it.`,
+  'ambiguous-name': (n) => `Another athlete here is also called ${n}, so it can't tell who was meant — write one or leave it.`,
+  'nothing-specific': (n) => `Nothing specific for ${n} — write one or leave it.`,
+  'named-another': (n) => `The draft for ${n} mentioned another athlete, so it wasn't used — write one or leave it.`,
 }
 
 /* Forty 3px bars fill 256px, which fits inside the narrowest sheet (a 320px

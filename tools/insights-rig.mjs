@@ -30,7 +30,7 @@
  *   - counting per clause instead of per distinct session  → I1–I7 red;
  *   - `>=` → `>` in the not-sure flag                     → I8 red;
  *   - sorting coverage descending                          → I10 red;
- *   - dropping the sameSet() condition from the merge      → I3 red;
+ *   - folding every contained sub-phrase, and never folding → I3 red (both);
  *   - threshold `>= 3` → `> 3`                              → I1, I3, I4, I6, I7 red;
  *   - letting a squad transcript count                     → I6 red;
  *   - an app/athlete/ file importing @/lib/insights        → I13 red;
@@ -111,8 +111,8 @@ check('I2', 'Stopwords and coaching filler never become a theme',
     return p
   })
 
-check('I3', 'Sub-phrases fold into the longer phrase only when they are the same evidence',
-  '"call", "ball" and "call the ball" in the same four sessions are one theme said three ways. But "elbow" in five sessions and "high elbow" in three are two facts: folding would lose two sessions or invent them.',
+check('I3', 'A sub-phrase folds into the longer phrase unless it recurs in its own right',
+  '"call", "ball" and "call the ball" in the same four sessions are one theme said three ways. "high" in "high elbow" and once in "hands high" is a shared word, not a second cue. But "elbow" in six sessions, three of them without "high", is two facts — and a kept phrase always shows its true count.',
   () => {
     const p = []
     const r = recurringThemes([
@@ -120,11 +120,16 @@ check('I3', 'Sub-phrases fold into the longer phrase only when they are the same
     ], { today: TODAY })
     eq(p, phrases(r).filter((x) => /call|ball/.test(x)), ['call the ball'], 'identical-evidence sub-phrases')
     const r2 = recurringThemes([
-      S(1, 'High elbow.'), S(2, 'High elbow on contact.'), S(3, 'High elbow.'), S(4, 'Elbow up.'), S(5, 'Your elbow.'),
+      S(1, 'High elbow.'), S(2, 'High elbow on contact.'), S(3, 'High elbow.'),
+      S(4, 'Elbow up.'), S(5, 'Your elbow.'), S(6, 'Elbow through.'), S(7, 'Hands high on the block.'),
     ], { today: TODAY })
-    eq(p, theme(r2, 'elbow')?.count, 5, '"elbow" keeps its own 5')
+    eq(p, theme(r2, 'elbow')?.count, 6, '"elbow" (3 sessions of its own) keeps its true 6')
     eq(p, theme(r2, 'high elbow')?.count, 3, '"high elbow" keeps its 3')
-    expect(p, !phrases(r2).includes('high'), '"high" (same sessions as "high elbow") folds away')
+    expect(p, !phrases(r2).includes('high'), '"high" (1 session of its own) folds into "high elbow"')
+    const r3 = recurringThemes([
+      S(1, 'High elbow.'), S(2, 'High elbow.'), S(3, 'High elbow.'), S(4, 'Elbow up.'), S(5, 'Elbow up.'),
+    ], { today: TODAY })
+    expect(p, !phrases(r3).includes('elbow'), '"elbow" with only 2 sessions of its own folds')
     return p
   })
 

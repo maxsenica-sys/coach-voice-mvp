@@ -98,7 +98,7 @@ export type BriefPhase = 'early' | 'soon' | 'started' | 'past'
  * change. The trap is building the instants, which eventStart does.
  */
 export function briefPhase(start: Date, now: Date): BriefPhase {
-  const ahead = ((start.getHours() * 60 + start.getMinutes()) - (now.getHours() * 60 + now.getMinutes())) * MINUTE
+  const ahead = start.getTime() - now.getTime()
   if (ahead > BRIEF_LEAD_MINUTES * MINUTE) return 'early'
   if (ahead > 0) return 'soon'
   if (-ahead <= BRIEF_GRACE_MINUTES * MINUTE) return 'started'
