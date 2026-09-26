@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo, useId, Suspense, Fragment } from 'react'
 import { byName, matchesName } from '@/lib/athlete-filter'
 import CoverageInsight from '@/app/components/CoverageInsight'
+import PushOptIn from '@/app/components/PushOptIn'
+import { forgetPushOnSignOut } from '@/lib/push-client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
@@ -624,6 +626,8 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 560 }}>
       <TabTitle title="Settings" />
+      {/* Renders nothing until the VAPID keys are set in the environment. */}
+      <PushOptIn audience="coach" />
 
       {/* ── Profile ── */}
       <div className="card" style={{ padding: 22 }}>
@@ -1470,7 +1474,8 @@ function DashboardPageInner() {
 
   const closeDeleteConfirm = () => { setDeleteConfirmAthlete(null); setDeleteError(null) }
 
-  const logout = async () => { clearCachedProfile(); await supabase.auth.signOut(); router.push('/') }
+  // Stop this device receiving the signed-out coach's notifications first.
+  const logout = async () => { clearCachedProfile(); await forgetPushOnSignOut(); await supabase.auth.signOut(); router.push('/') }
 
   /**
    * Per-athlete session totals, from the coverage route rather than from

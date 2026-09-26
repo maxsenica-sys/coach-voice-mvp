@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { notifyNewMessage } from '@/lib/notify'
+import { athleteMayViewVideo, athleteSeesAnnotations } from '@/lib/video-clip'
 
 export const runtime = 'nodejs'
 
@@ -61,7 +63,7 @@ async function authorize(
   if (!session) return { ok: false as const, status: 404, error: 'Session not found.' }
 
   if (session.coach_id === userId) {
-    return { ok: true as const, isCoach: true, session }
+    return { ok: true as const, isCoach: true, session, athleteIds: [] as string[] }
   }
 
   // An athlete reaches their own session only once the coach has shared it.
@@ -72,7 +74,7 @@ async function authorize(
       .eq('id', session.athlete_id)
       .eq('athlete_user_id', userId)
       .maybeSingle()
-    if (ath) return { ok: true as const, isCoach: false, session }
+    if (ath) return { ok: true as const, isCoach: false, session, athleteIds: [ath.id] }
   }
 
   return { ok: false as const, status: 403, error: 'Forbidden' }
@@ -115,21 +117,40 @@ export async function GET(
   // *their* sessions. Reading `profiles.role` answered a different question.
   const isAthlete = !auth.isCoach
 
-  const q = admin
+  // `*`, then mapped: this route predates migration 032 and must keep serving
+  // the athlete home and the coach's profile page whether or not 032's columns
+  // exist yet. Naming `uploaded_by_role` in the select would 500 every video
+  // list in the app until the migration ran.
+  const { data: rows, error } = await admin
     .from('session_videos')
-    .select('id, session_id, storage_path, file_name, mime_type, annotations, shared_with_athlete, share_note, created_at')
+    .select('*')
     .eq('session_id', sessionId)
     .order('created_at', { ascending: true })
 
-  // Athletes only see videos explicitly shared with them. Applied as a fresh
-  // binding rather than reassigning `q`, which is what the cast was working
-  // around: chaining .eq() narrows the builder's type and TypeScript will not
-  // assign the narrower result back onto the wider variable.
-  const query = isAthlete ? q.eq('shared_with_athlete', true) : q
-
-  const { data: videos, error } = await query
-
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
+
+  // The athlete's gate is lib/video-clip.ts athleteMayViewVideo: the session is
+  // theirs and shared AND the video is shared — or it is their own upload.
+  // One rule for every route, so the rig that proves it proves them all.
+  const viewer = { userId: user.id, athleteIds: auth.athleteIds }
+  const videos = (rows ?? [])
+    .filter((v) => !isAthlete || athleteMayViewVideo(v, auth.session, viewer))
+    .map((v) => ({
+      id: v.id as string,
+      session_id: v.session_id as string,
+      storage_path: v.storage_path as string,
+      file_name: (v.file_name ?? null) as string | null,
+      mime_type: (v.mime_type ?? null) as string | null,
+      // An athlete's own clip carries the coach's strokes only once the coach
+      // has sent it back; until then they are the coach's draft.
+      annotations: !isAthlete || athleteSeesAnnotations(v) ? (v.annotations ?? []) : [],
+      shared_with_athlete: v.shared_with_athlete === true,
+      share_note: (v.share_note ?? null) as string | null,
+      uploaded_by_role: (v.uploaded_by_role ?? 'coach') as 'coach' | 'athlete',
+      note: (v.note ?? null) as string | null,
+      duration_s: v.duration_s === null || v.duration_s === undefined ? null : Number(v.duration_s),
+      created_at: v.created_at as string,
+    }))
 
   const withUrls = await generateSignedUrls(admin, videos ?? [])
   return attach(NextResponse.json({ videos: withUrls }), cookiesToSet)
@@ -286,7 +307,7 @@ export async function PATCH(
   // Verify ownership via session
   const { data: video } = await admin
     .from('session_videos')
-    .select('id, session_id')
+    .select('*')
     .eq('id', videoId)
     .eq('session_id', sessionId)
     .maybeSingle()
@@ -295,7 +316,7 @@ export async function PATCH(
 
   const { data: session } = await admin
     .from('sessions')
-    .select('coach_id')
+    .select('coach_id, athlete_id')
     .eq('id', sessionId)
     .eq('coach_id', user.id)
     .maybeSingle()
@@ -313,6 +334,20 @@ export async function PATCH(
     .eq('id', videoId)
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
+
+  // An athlete's clip, sent back marked up: say so in the thread, once, on the
+  // flip to shared. Best effort — the save above is what matters.
+  if (updatePayload.shared_with_athlete === true && video.shared_with_athlete !== true && video.uploaded_by_role === 'athlete') {
+    const content = 'I’ve marked up the clip you sent me. It is on the session page.'
+    const { data: msg } = await admin
+      .from('messages')
+      .insert({ coach_id: user.id, athlete_id: session.athlete_id, sender_id: user.id, sender_role: 'coach', content, msg_type: 'text' })
+      .select('id')
+      .single()
+    if (msg?.id) {
+      await notifyNewMessage({ supabase: admin, req, messageId: msg.id, athleteId: session.athlete_id, coachUserId: user.id, senderRole: 'coach', content })
+    }
+  }
   return attach(NextResponse.json({ ok: true }), cookiesToSet)
 }
 

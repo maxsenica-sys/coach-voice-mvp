@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
 import { MAX_NEXT_LENGTH } from '@/lib/summary-prompt'
 import { makeQuickSummary } from '@/lib/quick-summary'
 import { notifySessionShared } from '@/lib/notify'
+import { notifyPushSessionShared } from '@/lib/push'
 import type { CookieToSet } from '@/lib/supabase-route'
 
 
@@ -339,6 +340,10 @@ export async function POST(req: NextRequest) {
         sessionTitle: session_name,
         summary,
       })
+      // "Max shared a new session" on the athlete's devices, after the
+      // response: a push failure must never fail the save. No title, summary
+      // or transcript goes in the payload — see lib/push.ts.
+      after(() => notifyPushSessionShared({ athleteId: athlete_id, coachUserId: user.id }))
     }
   }
 
