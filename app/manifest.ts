@@ -53,6 +53,16 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     screenshots: [],
     shortcuts: [
+      // First, because it is the reason to long-press the icon at all: "record
+      // fast". The dashboard opens the recorder on ?record=1, and the recorder
+      // lets the coach start talking before choosing who it is for.
+      {
+        name: 'Record a session',
+        short_name: 'Record',
+        url: '/dashboard?record=1',
+        description: 'Start recording straight away',
+        icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
+      },
       {
         name: 'Dashboard',
         url: '/dashboard',

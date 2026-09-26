@@ -22,13 +22,16 @@ import { buildSpine, SPINE_MIN_SESSIONS, SPINE_WEEKS } from '@/lib/training-spin
 import { READINESS_OPTIONS } from '@/lib/readiness'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
-import { formatSessionDate, parseISODate, todayISODate } from '@/lib/session-date'
+import { formatSessionDate, parseISODate, sessionISODate, todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import type { MessageRow, RsvpEvent } from '@/lib/api-types'
-import { SESSION_RESPONSES, type SessionResponse } from '@/lib/session-response'
+import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/session-response'
 import { injuryStatusOption, openInjuries, type Injury } from '@/lib/injury'
 import { regionLabel } from '@/lib/body-map'
 import { SUPPORTED_RECORDING_TYPES, audioExtension } from '@/lib/audio-mime'
+import { buildDigest, isDigestDay, trainingToday, formatEventTime, takeawayPlacement, firstTakeaway } from '@/lib/digest'
+import TakeawayReminder from '@/app/components/TakeawayReminder'
+import AthleteDigest, { DigestLink } from '@/app/components/AthleteDigest'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -587,6 +590,10 @@ export default function AthletePage() {
    * losing it costs nothing.
    */
   const [sessionToday, setSessionToday] = useState<CalendarEvent | null>(null)
+  /* Any session the coach has planned for today, check-in asked for or not —
+   * the takeaway reminder's "Training at 4:30pm today". Same fetch; which
+   * event counts is lib/digest.ts (trainingToday). */
+  const [trainingEvent, setTrainingEvent] = useState<CalendarEvent | null>(null)
   useEffect(() => {
     if (!athleteId) return
     void (async () => {
@@ -595,6 +602,7 @@ export default function AthletePage() {
           '/api/calendar?month=' + toMonthStr(currentMonth()),
         )
         const today = todayISODate()
+        setTrainingEvent(trainingToday(json.events ?? [], today))
         setSessionToday(
           (json.events ?? []).find(
             (e) => e.created_by_role === 'coach'
@@ -605,6 +613,7 @@ export default function AthletePage() {
         )
       } catch {
         setSessionToday(null)
+        setTrainingEvent(null)
       }
     })()
   }, [athleteId])
@@ -1303,6 +1312,46 @@ export default function AthletePage() {
   // arithmetic the clock rig runs under nine timezones.
   const spine = useMemo(() => buildSpine(sessions), [sessions])
 
+  /* ── Takeaway reminder and weekly digest ──
+   * Both in-app only (no push, no email), both decided in lib/digest.ts so the
+   * clock rig runs the real week and placement logic under nine timezones.
+   *
+   * The newest takeaway is shown ONCE. On a training day (the coach has a
+   * session planned today, and the takeaway is from before today) it moves to
+   * the top of Today as the reminder, chips and all, and the latest-session
+   * card leaves it out. Every other day it stays in that card, where it is on
+   * the home every day until the next session replaces it. */
+  const newestSession = sessions[0] ?? null
+  const newestTakeaway = firstTakeaway(newestSession?.focus_points)
+  const takeawayWhere = takeawayPlacement({
+    takeaway: newestTakeaway,
+    newestSessionISO: newestSession ? sessionISODate(newestSession) : null,
+    todayISO: todayISODate(),
+    trainsToday: trainingEvent !== null,
+  })
+  const digest = useMemo(
+    () => buildDigest({ sessions, checkins: wellnessHistory, injuries }),
+    [sessions, wellnessHistory, injuries],
+  )
+  // Opened from the "Last week" link, on any day.
+  const [digestOpen, setDigestOpen] = useState(false)
+  // Hidden for this week: remembered per athlete and per week in this browser.
+  // Storage can be absent or throw (private mode, blocked site data), and the
+  // card must still render correctly without it, so every access is guarded
+  // and the in-memory key covers this visit either way.
+  const digestKey = userId ? `cv_digest_hidden_${userId}_${digest.week.startISO}` : null
+  const [digestHiddenKey, setDigestHiddenKey] = useState<string | null>(null)
+  const digestHidden = digestKey !== null && (digestHiddenKey === digestKey || (() => {
+    try { return localStorage.getItem(digestKey) === '1' } catch { return false }
+  })())
+  const hideDigest = () => {
+    if (!digestKey) return
+    setDigestHiddenKey(digestKey)
+    setDigestOpen(false)
+    try { localStorage.setItem(digestKey, '1') } catch { /* this visit still honours it */ }
+  }
+  const digestAuto = isDigestDay() && !digest.isEmpty && !digestHidden
+
   // ── Loading ───────────────────────────────────────────────
   if (loading) {
     return (
@@ -1547,6 +1596,21 @@ export default function AthletePage() {
               </p>
             </div>
 
+            {/* ── Today: remember — ──
+                The takeaway reminder, on a training day only. See the note on
+                takeawayWhere: when this shows, the card below leaves the
+                takeaway and the reply chips out, so they appear once. */}
+            {takeawayWhere === 'top' && newestSession && newestTakeaway && (
+              <TakeawayReminder
+                takeaway={newestTakeaway}
+                sessionTitle={newestSession.session_name ?? newestSession.title ?? 'Coaching session'}
+                sessionHref={`/sessions/${newestSession.id}`}
+                trainingTime={formatEventTime(trainingEvent?.event_time)}
+                response={responseOption(newestSession.athlete_response)?.value ?? null}
+                onRespond={(v) => { void respondToSession(newestSession.id, v) }}
+              />
+            )}
+
             {/* ── Today's check-in: the one thing to do here each day ──
                 The metric bars keep the coach's colours (metricColor), so a
                 score means the same thing on both sides of the app. The numeral
@@ -1752,6 +1816,22 @@ export default function AthletePage() {
               )
             })()}
 
+            {/* ── The week, looked back on ──
+                Shows by itself Sunday to Tuesday (lib/digest.ts) until hidden
+                for the week; every other day, and after hiding, it is one tap
+                away on the "Last week" row. A recap, so it sits under today's
+                check-in and availability and above the coach's latest words. */}
+            {athleteId && (digestAuto || digestOpen ? (
+              <AthleteDigest
+                digest={digest}
+                mode={digestOpen ? 'opened' : 'auto'}
+                onDismiss={hideDigest}
+                onClose={() => setDigestOpen(false)}
+              />
+            ) : (
+              <DigestLink digest={digest} onOpen={() => setDigestOpen(true)} />
+            ))}
+
             {/* ── From your coach ──
                 This is the reason the app exists. The newest session is set as
                 the feature and opens in full; the two before it are hairline
@@ -1802,7 +1882,15 @@ export default function AthletePage() {
                         </ul>
                       )}
 
-                      {next && (
+                      {/* Pinned at the top as today's reminder instead —
+                          said here so it never reads as missing. */}
+                      {takeawayWhere === 'top' && (
+                        <p style={{ margin: '14px 0 0', fontSize: 'var(--fs-2)', lineHeight: 1.45, color: 'var(--text-2)' }}>
+                          Your takeaway from this session is at the top of the page for today&rsquo;s training.
+                        </p>
+                      )}
+
+                      {next && takeawayWhere !== 'top' && (
                         <div className="ah-take">
                           <div className="k">Take into next session</div>
                           <div className="v">{next}</div>
@@ -1818,6 +1906,7 @@ export default function AthletePage() {
                           session. Only on the newest session — a list of old
                           sessions each asking to be rated is homework, and the
                           point of this is that it costs ten seconds once. */}
+                      {takeawayWhere !== 'top' && (
                       <div className="ah-reply" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
                         <div className="ah-eyebrow">
                           {s.athlete_response ? 'You told your coach' : 'Tell your coach'}
@@ -1849,6 +1938,7 @@ export default function AthletePage() {
                             : 'One tap. Your coach sees which one you picked, and nothing else.'}
                         </p>
                       </div>
+                      )}
 
                       <div className="ah-d-foot">
                         {s.audio_path && (

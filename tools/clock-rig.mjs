@@ -97,6 +97,10 @@ async function runZone(zone, year) {
   // cannot hold an opinion about it.
   const { fmtDateDivider, fmtTime, fmtShortDate } =
     await import(pathToFileURL(path.join(ROOT, 'lib/date-utils.ts')).href)
+  // The pre-session brief's window: "twenty minutes before a calendar event"
+  // is a date, a wall-clock time and no timezone, turned into an instant.
+  const { eventStart, briefPhase, upcomingBrief, startLabel, BRIEF_LEAD_MINUTES, BRIEF_GRACE_MINUTES } =
+    await import(pathToFileURL(path.join(ROOT, 'lib/pre-session.ts')).href)
 
   const failures = []
   let checks = 0
@@ -283,6 +287,62 @@ async function runZone(zone, year) {
     }
   }
 
+  // ── P11 · the pre-session brief opens at the right instant ──────────────
+  //
+  // Every day of the year, at wall times chosen for the traps: midnight and
+  // just after it (a Santiago spring-forward day has no 00:00), 01:30 and
+  // 02:30 (inside northern gaps and overlaps), an afternoon session, and one
+  // just before midnight.
+  const MIN = 60000
+  for (let i = 0; i < days.length; i++) {
+    const today = days[i]
+    const label = iso(today)
+    for (const time of ['00:00', '00:10', '01:30', '02:30', '16:30:00', '23:55']) {
+      const start = eventStart(label, time)
+      // P11a · the start is on the event's own local date, at that wall time
+      // — or, inside a spring-forward gap, a little after it (never before,
+      // never another day).
+      check(start !== null && iso(start) === label, 'P11a eventStart keeps the local date', `${label} ${time} -> ${start && start.toString()}`)
+      if (!start) continue
+      const [hh, mm] = time.split(':').map(Number)
+      const wantMin = hh * 60 + mm
+      const gotMin = start.getHours() * 60 + start.getMinutes()
+      check(gotMin >= wantMin && gotMin - wantMin <= 60, 'P11a eventStart is that wall time', `${label} ${time} -> ${start.getHours()}:${start.getMinutes()}`)
+
+      // P11b · the window edges, in elapsed minutes from the real instant.
+      const at = (m) => new Date(start.getTime() + m * MIN)
+      check(briefPhase(start, at(-BRIEF_LEAD_MINUTES - 1)) === 'early', 'P11b 21 min before is early', `${label} ${time}`)
+      check(briefPhase(start, at(-BRIEF_LEAD_MINUTES)) === 'soon', 'P11b exactly 20 min before is soon', `${label} ${time}`)
+      check(briefPhase(start, at(-1)) === 'soon', 'P11b 1 min before is soon', `${label} ${time}`)
+      check(briefPhase(start, at(0)) === 'started', 'P11b the start is started', `${label} ${time}`)
+      check(briefPhase(start, at(BRIEF_GRACE_MINUTES)) === 'started', 'P11b end of grace is started', `${label} ${time}`)
+      check(briefPhase(start, at(BRIEF_GRACE_MINUTES + 1)) === 'past', 'P11b after grace is past', `${label} ${time}`)
+
+      // P11c · upcomingBrief finds it from the other side of midnight. It is
+      // given the event's DATE and judged on instants; a version that first
+      // kept only "today's" events finds nothing at 23:50 for a 00:10 session.
+      const ev = { id: 'e1', title: 'Senior A training', event_date: label, event_time: time, event_type: 'session', athlete_id: 'a1' }
+      const sib = { ...ev, id: 'e2', athlete_id: 'a2' }
+      const own = { ...ev, id: 'e3', athlete_id: null }
+      const soon = upcomingBrief([ev, sib, own], at(-15))
+      check(soon !== null && soon.event.id === 'e1' && soon.phase === 'soon', 'P11c found 15 min before', `${label} ${time} at ${at(-15).toString()}`)
+      check(soon === null || soon.athleteCount === 2, 'P11c a squad session counts its athletes, not the coach copy', `${label} ${time} gave ${soon && soon.athleteCount}`)
+      const late = upcomingBrief([ev], at(8))
+      check(late !== null && late.phase === 'started', 'P11c found 8 min after the start', `${label} ${time} at ${at(8).toString()}`)
+      check(upcomingBrief([ev], at(-BRIEF_LEAD_MINUTES - 1)) === null, 'P11c nothing 21 min before', `${label} ${time}`)
+      check(upcomingBrief([ev], at(BRIEF_GRACE_MINUTES + 1)) === null, 'P11c nothing after grace', `${label} ${time}`)
+      // The same wall time on the next day is a day away, not "now".
+      const tomorrow = { ...ev, event_date: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)) }
+      check(upcomingBrief([tomorrow], at(-15)) === null, 'P11c the same time tomorrow is not due', `${label} ${time}`)
+    }
+  }
+  // P11d · labels are the wall time the coach typed, in every zone.
+  for (const [t, want] of [['16:30:00', '4:30pm'], ['00:05', '12:05am'], ['12:00', '12:00pm'], ['09:07:00', '9:07am']]) {
+    check(startLabel(t) === want, 'P11d startLabel', `${t} -> ${startLabel(t)}, want ${want}`)
+  }
+  check(eventStart('2027-02-31', '10:00') === null, 'P11d an impossible date is refused', '2027-02-31')
+  check(eventStart('2027-03-01', null) === null, 'P11d an untimed event has no start', '2027-03-01')
+
   // ── P9 · todayISODate agrees with the local clock ───────────────────────
   const now = new Date()
   check(
@@ -291,7 +351,118 @@ async function runZone(zone, year) {
     `${todayISODate()} vs ${iso(now)}`,
   )
 
+  // ── D · the weekly digest and takeaway reminder (lib/digest.ts) ────────
+  await digestChecks(year, check, iso, days)
+
   return { zone, checks, failures }
+}
+
+// ── lib/digest.ts: the athlete's weekly digest and takeaway reminder ─────
+//
+// Its own block so the week rule is read in one place. The rule: the digest
+// week is the Monday-to-Sunday week whose Sunday is the most recent Sunday on
+// or before today; it shows by itself on Sunday, Monday and Tuesday. The
+// awkward minutes are Sunday 23:30 and Monday 00:30 — the same digest week,
+// an hour apart, often across a clock change — and Saturday 23:30 against
+// Sunday 00:30, which are different weeks. Every Sunday of the year is stood
+// on in every zone, so the DST weekends are in the walk rather than picked.
+async function digestChecks(year, check, iso, days) {
+  const D = await import(pathToFileURL(path.join(ROOT, 'lib/digest.ts')).href)
+  const { calendarDaysBetween, parseISODate } =
+    await import(pathToFileURL(path.join(ROOT, 'lib/session-date.ts')).href)
+  const at = (d, h, m, plus = 0) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + plus, h, m)
+
+  for (let i = 0; i < days.length; i++) {
+    const today = days[i]
+    const label = iso(today)
+    const dow = today.getDay()
+
+    for (const [h, m] of [[0, 30], [12, 0], [23, 30]]) {
+      const now = at(today, h, m)
+      const w = D.digestWeek(now)
+      const start = parseISODate(w.startISO)
+      const end = parseISODate(w.endISO)
+      const when = `${label} ${h}:${String(m).padStart(2, '0')}`
+
+      // D1 · a week is Monday to Sunday, seven calendar days.
+      check(start?.getDay() === 1, 'D1 digest week starts on a Monday', `${when} -> ${w.startISO}`)
+      check(end?.getDay() === 0, 'D1 digest week ends on a Sunday', `${when} -> ${w.endISO}`)
+      check(start && end && calendarDaysBetween(start, end) === 6, 'D1 digest week is seven days', `${when} -> ${w.startISO}..${w.endISO}`)
+
+      // D2 · it is the week ending on the most recent Sunday on or before today.
+      const back = end ? calendarDaysBetween(end, today) : NaN
+      check(dow === 0 ? back === 0 : back >= 1 && back <= 6, 'D2 digest week ends on the latest Sunday', `${when} (day ${dow}) -> ends ${w.endISO}, ${back} days back`)
+      check(w.endsToday === (dow === 0), 'D2 endsToday only on Sunday', `${when} -> ${w.endsToday}`)
+      check(D.inDigestWeek(label, w) === (dow === 0), 'D2 today is inside the digest week only on Sunday', `${when}`)
+
+      // D3 · it shows by itself on Sunday, Monday and Tuesday, at any hour.
+      check(D.isDigestDay(now) === (dow === 0 || dow === 1 || dow === 2), 'D3 shown Sun-Tue only', `${when} (day ${dow}) -> ${D.isDigestDay(now)}`)
+
+      // D4 · one session on each of the nine days around the week: the seven
+      // inside count, the day before Monday and the day after Sunday do not.
+      if (h === 0 || h === 23) {
+        const around = []
+        for (let k = -1; k <= 7; k++) {
+          const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + k)
+          around.push({ id: 's' + k, session_date: iso(d), focus_points: ['Point ' + k], athlete_response: k % 2 ? 'got_it' : null })
+        }
+        const checkins = around.map((s) => ({ check_date: s.session_date }))
+        const dg = D.buildDigest({ sessions: around, checkins, injuries: [] }, now)
+        check(dg.sessions.length === 7, 'D4 seven sessions in the week', `${when} -> ${dg.sessions.length}`)
+        check(dg.checkinDays === 7, 'D4 seven check-in days in the week', `${when} -> ${dg.checkinDays}`)
+        check(dg.sessions[0]?.iso === w.startISO && dg.sessions[6]?.iso === w.endISO, 'D4 sessions run Monday to Sunday', `${when} -> ${dg.sessions.map((s) => s.iso).join(',')}`)
+        check(dg.takeaways.length === 7, 'D4 one takeaway per session', `${when} -> ${dg.takeaways.length}`)
+
+        // D5 · a timestamp is placed by the local day it happened on.
+        const inj = (id, ts) => ({ id, body_area: 'knee', status: 'recovering', started_on: '2000-01-01', cleared_on: null, updated_at: ts })
+        const firstMinute = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 30).toISOString()
+        const lastMinute = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 30).toISOString()
+        const before = new Date(start.getFullYear(), start.getMonth(), start.getDate() - 1, 23, 30).toISOString()
+        const after = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1, 0, 30).toISOString()
+        const ch = D.buildDigest({ sessions: [], checkins: [], injuries: [inj('a', firstMinute), inj('b', lastMinute), inj('c', before), inj('d', after)] }, now)
+        check(ch.injuryChanges.map((c) => c.id).join() === 'a,b', 'D5 injury updates placed by local day', `${when} -> ${ch.injuryChanges.map((c) => c.id).join()}`)
+      }
+    }
+
+    // D6 · Sunday 23:30 and the Monday 00:30 an hour later are the same digest
+    // week; Saturday 23:30 and Sunday 00:30 are consecutive weeks.
+    if (dow === 0 && i + 1 < days.length) {
+      const sun = D.digestWeek(at(today, 23, 30))
+      const mon = D.digestWeek(at(today, 0, 30, 1))
+      check(sun.startISO === mon.startISO, 'D6 Sunday 23:30 and Monday 00:30 share a digest week', `${label}: ${sun.startISO} vs ${mon.startISO}`)
+      if (i > 0) {
+        const sat = D.digestWeek(at(today, 23, 30, -1))
+        const sun0 = D.digestWeek(at(today, 0, 30))
+        const gap = calendarDaysBetween(parseISODate(sat.startISO), parseISODate(sun0.startISO))
+        check(gap === 7, 'D6 Saturday 23:30 and Sunday 00:30 are consecutive weeks', `${label}: ${sat.startISO} -> ${sun0.startISO}`)
+      }
+    }
+  }
+
+  // D7 · the reminder's pure parts: no clock, but pinned so they cannot drift.
+  const ev = (event_date, event_time, extra = {}) => ({ created_by_role: 'coach', event_type: 'session', event_date, event_time, session_id: null, ...extra })
+  const t = '2027-03-28'
+  check(D.trainingToday([ev(t, '18:00:00'), ev(t, '07:15:00')], t)?.event_time === '07:15:00', 'D7 earliest planned session today', 'order')
+  check(D.trainingToday([ev(t, null), ev(t, '16:30:00')], t)?.event_time === '16:30:00', 'D7 timed session before untimed', 'untimed')
+  check(D.trainingToday([ev(t, '16:30', { session_id: 'x' })], t) === null, 'D7 a recorded session is not a planned one', 'session_id')
+  check(D.trainingToday([ev(t, '16:30', { created_by_role: 'athlete' })], t) === null, 'D7 only the coach plans training', 'role')
+  check(D.trainingToday([ev('2027-03-29', '16:30')], t) === null, 'D7 tomorrow is not today', 'date')
+  for (const [inp, want] of [['16:30:00', '4:30pm'], ['00:05', '12:05am'], ['12:00', '12:00pm'], ['9:45', '9:45am'], [null, null], ['25:00', null]]) {
+    check(D.formatEventTime(inp) === want, 'D7 formatEventTime', `${inp} -> ${D.formatEventTime(inp)}, want ${want}`)
+  }
+  const P = (takeaway, newestSessionISO, trainsToday) => D.takeawayPlacement({ takeaway, newestSessionISO, todayISO: t, trainsToday })
+  check(P('Hands up', '2027-03-25', true) === 'top', 'D7 training day pins an older takeaway to the top', P('Hands up', '2027-03-25', true))
+  check(P('Hands up', t, true) === 'card', 'D7 a takeaway from today stays in its card', P('Hands up', t, true))
+  check(P('Hands up', '2027-03-25', false) === 'card', 'D7 no training, takeaway stays in its card', P('Hands up', '2027-03-25', false))
+  check(P(null, '2027-03-25', true) === 'none', 'D7 no takeaway, no reminder', P(null, '2027-03-25', true))
+  const rs = (responses) => D.replySentence({ sessions: responses.map((r, k) => ({ id: String(k), response: r })), replies: [
+    { value: 'got_it', label: 'Got it', count: responses.filter((r) => r === 'got_it').length },
+    { value: 'working_on_it', label: 'Working on it', count: responses.filter((r) => r === 'working_on_it').length },
+    { value: 'not_clear', label: 'Not sure what you mean', count: responses.filter((r) => r === 'not_clear').length },
+  ] })
+  check(rs(['got_it', 'got_it', null]) === 'You said Got it to 2 of 3.', 'D7 reply sentence', rs(['got_it', 'got_it', null]))
+  check(rs(['got_it', 'working_on_it', null]) === 'Of 3 sessions, you said Got it to 1 and Working on it to 1.', 'D7 reply sentence, two kinds', rs(['got_it', 'working_on_it', null]))
+  check(D.formatWeekRange({ startISO: '2026-09-28', endISO: '2026-10-04' }) === '28 Sep – 4 Oct', 'D7 week range across a month', D.formatWeekRange({ startISO: '2026-09-28', endISO: '2026-10-04' }))
 }
 
 // ── parent mode: fan out over the zones ───────────────────────────────────

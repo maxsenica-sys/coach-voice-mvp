@@ -407,6 +407,24 @@ export default function SignupPage() {
     setForm((prev) => ({ ...prev, [key]: val }))
   }
 
+  /* /signup?code=xyz — arrived by scanning a coach's invite QR code (see
+   * app/components/InviteQR.tsx). A coach's code is only ever for an athlete,
+   * so the role is chosen and the code filled in; both stay editable, and the
+   * athlete still presses Continue on every step. The code is cleaned the same
+   * way the input cleans what is typed, so a hand-edited URL cannot put
+   * anything into the field that typing could not. */
+  const [joinCode, setJoinCode] = useState<string | null>(null)
+  const joinCodeRead = useRef(false)
+  useEffect(() => {
+    if (joinCodeRead.current) return
+    joinCodeRead.current = true
+    const raw = new URLSearchParams(window.location.search).get('code') ?? ''
+    const code = raw.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '').slice(0, 40)
+    if (!code) return
+    setJoinCode(code)
+    setForm((prev) => ({ ...prev, role: 'athlete', coachCode: code }))
+  }, [])
+
   // Wheel picker shows filtered (or all) sports
   const wheelSports = useMemo(
     () => sportSearch.trim()
@@ -601,6 +619,11 @@ export default function SignupPage() {
         </>}
 
         <div style={{ paddingTop: 26 }}>
+          {joinCode && !unlinked && finishing === 'idle' && form.role === 'athlete' && form.coachCode && (
+            <p className="sn-joining" role="status" style={{ margin: '0 0 18px', padding: '10px 14px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--athlete-light)', fontSize: 15, lineHeight: 1.4, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+              Joining with code <b style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--athlete-color)' }}>{form.coachCode}</b>
+            </p>
+          )}
           {unlinked ? (
             /* ── The account exists; the coach code did not link. Said here,
                 once, before the portal — never skipped past in silence. */

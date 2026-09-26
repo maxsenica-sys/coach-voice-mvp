@@ -86,6 +86,16 @@ jobs:
       - name: Roster rig
         run: npm run verify:roster
 
+      # The coach insights: "you've said 'elbow' in 6 of your last 9
+      # sessions", the "not sure" flag, and who got least attention this month.
+      # Each is a number about a child, and a number that is off by one — a
+      # phrase counted per mention rather than per session, a flag at 1 instead
+      # of 2, a list sorted the wrong way so the least-attended athlete sits at
+      # the bottom — builds exactly like a right one. Also fails if anything
+      # under app/athlete/ reaches these coach-only figures.
+      - name: Insights rig
+        run: npm run verify:insights
+
       # Max asked for the type floor so the app is readable on a touchline and
       # by a parent over a shoulder, not only at a desk. A size is just a number
       # to tsc, eslint and next build, so nothing else would catch a new 11px

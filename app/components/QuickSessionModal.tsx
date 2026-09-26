@@ -8,7 +8,8 @@ import { errorMessage } from '@/lib/errors'
 import { responseOption } from '@/lib/session-response'
 import type { LastFocus } from '@/app/api/athletes/[id]/last-focus/route'
 import { SUPPORTED_RECORDING_TYPES, transcribeFile } from '@/lib/audio-mime'
-import { newRecordingId, patchRecording, putRecording, deleteRecording, type PendingRecording } from '@/lib/recording-queue'
+import { newRecordingId, newSharedRecordingId, patchRecording, putRecording, deleteRecording, type PendingRecording } from '@/lib/recording-queue'
+import { MAX_SPLIT_ATHLETES, MIN_SPLIT_ATHLETES, type SplitReason, type SplitSection } from '@/lib/split-summary'
 import AthletePicker from '@/app/components/AthletePicker'
 
 interface Athlete {
@@ -34,8 +35,20 @@ interface QuickSessionModalProps {
   onSaved: () => void
 }
 
+/* One athlete's part of a recording split between several. `reason` is why the
+   draft is what it is, so an empty one can say so in words. */
+interface SplitDraft {
+  summary: string
+  next: string
+  reason: SplitReason | null
+}
+
 export default function QuickSessionModal({ athletes, groups, defaultAthleteId, defaultGroupId, coachSport = '', onClose, onSaved }: QuickSessionModalProps) {
-  const [mode, setMode] = useState<'athlete' | 'group'>(defaultGroupId ? 'group' : 'athlete')
+  /* Three targets. 'several' is one recording about two to five named
+     athletes, split into one reviewed summary each (Max, 2026-09-26: "I'd
+     rather talk and include the athletes in one message and then it can split
+     from there"). */
+  const [mode, setMode] = useState<'athlete' | 'group' | 'several'>(defaultGroupId ? 'group' : 'athlete')
   // No fallback to athletes[0]/groups[0]. The roster arrives ordered
   // created_at desc, so that fallback silently attributed a session to whoever
   // was added to the roster most recently — a different person each time the
@@ -44,6 +57,11 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   // Opened without a target, the modal now opens with no target.
   const [athleteId, setAthleteId] = useState(defaultAthleteId ?? '')
   const [groupId, setGroupId] = useState(defaultGroupId ?? '')
+  const [athleteIds, setAthleteIds] = useState<string[]>([])
+  /* Record first, choose after. Max: "record fast". The target is no longer
+     required to start recording — only to save. Opened with a target already
+     (from an athlete's profile, a squad), the sheet behaves as it always has. */
+  const hasDefaultTarget = Boolean(defaultAthleteId || defaultGroupId)
   const [sessionName, setSessionName] = useState('')
   // Sessions are often written up after the fact — the day before's training
   // logged over breakfast. Defaults to today; the picker moves it back.
@@ -116,6 +134,22 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
   const [nextDraft, setNextDraft] = useState('')
   const [summarising, setSummarising] = useState(false)
   const [summaryError, setSummaryError] = useState('')
+
+  /* 'several' mode: one draft per athlete, keyed by athlete id. */
+  const [splitDrafts, setSplitDrafts] = useState<Record<string, SplitDraft>>({})
+  const [splitting, setSplitting] = useState(false)
+  const [splitError, setSplitError] = useState('')
+  /* What Whisper heard, kept so the draft can be written once a target is
+     picked — which, recording first, may be after the recording stopped. */
+  const [heardText, setHeardText] = useState('')
+  /* The id every sibling session of a 'several' save carries (migration 029).
+     Made once per recording and reused on a retry, so a partial save that is
+     finished later still links to the same siblings. */
+  const sharedRecordingIdRef = useRef<string | null>(null)
+  /* Athletes whose session from THIS recording has already saved. A retry
+     after a partial failure skips them, so nobody gets a duplicate session —
+     visible to them and not deletable from the app. */
+  const savedIdsRef = useRef<Set<string>>(new Set())
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -317,7 +351,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
    * changes, it is about the wrong child, so it goes, along with any draft
    * still on its way. Reset during render (React's pattern for "reset state
    * when an input changes"), so no frame shows A's summary under B. */
-  const draftTarget = `${mode}:${mode === 'athlete' ? athleteId : groupId}`
+  const draftTarget = `${mode}:${mode === 'athlete' ? athleteId : mode === 'group' ? groupId : [...athleteIds].sort().join(',')}`
   const [draftFor, setDraftFor] = useState(draftTarget)
   if (draftFor !== draftTarget) {
     setDraftFor(draftTarget)
@@ -326,6 +360,47 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
     setNextDraft('')
     setSummaryError('')
     setSummarising(false)
+    // A split is written for one set of athletes; a different set is a
+    // different split (a shared first name, for one, changes who may be
+    // written for at all).
+    setSplitDrafts({})
+    setSplitError('')
+    setSplitting(false)
+  }
+
+  /* Ask the server to split the transcript between the chosen athletes.
+   *
+   * Same rules as draftSummary: only the newest request may write, and never
+   * over words the coach has typed into a card while it was out. */
+  const draftSplit = async (text: string, forAthleteIds: string[]) => {
+    const req = ++draftReqRef.current
+    setSplitting(true)
+    setSplitError('')
+    try {
+      const out = await apiJson<{ sections: SplitSection[] }>('/api/sessions/split-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: text, athlete_ids: forAthleteIds, sport: coachSport || null }),
+      })
+      if (req !== draftReqRef.current) return
+      setSplitDrafts((prev) => {
+        const next: Record<string, SplitDraft> = { ...prev }
+        for (const sec of out.sections ?? []) {
+          if (!forAthleteIds.includes(sec.athlete_id)) continue
+          const typed = prev[sec.athlete_id]
+          next[sec.athlete_id] = {
+            summary: typed?.summary.trim() ? typed.summary : sec.summary ?? '',
+            next: typed?.next.trim() ? typed.next : sec.next ?? '',
+            reason: sec.reason,
+          }
+        }
+        return next
+      })
+    } catch (e: unknown) {
+      if (req === draftReqRef.current) setSplitError(errorMessage(e, 'Could not split the recording. You can write each summary below.'))
+    } finally {
+      if (req === draftReqRef.current) setSplitting(false)
+    }
   }
 
   const stopAndTranscribe = async () => {

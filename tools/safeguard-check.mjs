@@ -291,11 +291,59 @@ const RULES = [
 
   {
     id: 'SG6',
-    title: 'The athlete client never selects a session transcript',
-    why: 'A group recording writes the coach\'s whole squad talk to one row per member, and it names other children. The athlete app used to select that column and render it, so every member could read what the coach said about every other member. Withholding it in the UI is not a fix — a column the browser can query is a column it has. Transcripts now come only from the detail route, which withholds squad ones server-side.',
-    cite: 'supabase/migrations/023_sessions_group_id.sql; the note on SessionRow.group_id in app/athlete/page.tsx',
+    title: 'The athlete client never selects a session transcript, and the detail route withholds squad and shared-recording ones',
+    why: 'A group recording writes the coach\'s whole squad talk to one row per member, and it names other children. The athlete app used to select that column and render it, so every member could read what the coach said about every other member. Withholding it in the UI is not a fix — a column the browser can query is a column it has. Transcripts now come only from the detail route, which withholds squad ones server-side. A recording about several athletes (shared_recording_id, migration 029) is the same shape — one transcript naming every athlete in it — and is withheld by the same expression.',
+    cite: 'supabase/migrations/023_sessions_group_id.sql; supabase/migrations/029_shared_recording.sql; the note on SessionRow.group_id in app/athlete/page.tsx',
     check(files) {
       const found = []
+
+      /* The other end: the one route that serves a transcript to an athlete.
+       *
+       * Its rule is one expression, and it is the whole of the protection for
+       * two kinds of recording that name other children — a squad talk
+       * (group_id, migration 023) and one recording split between several
+       * athletes (shared_recording_id, migration 029). Drop either condition
+       * and the route type-checks, builds, and serves the combined transcript
+       * to every athlete in it. So the expression must name both, and the
+       * shared-recording flag must actually be read from the column. */
+      const DETAIL = 'app/api/sessions/[id]/detail/route.ts'
+      const detail = files.find((f) => f.rel === DETAIL)
+      if (!detail) {
+        found.push({ file: DETAIL, line: 0, msg: 'the session detail route is missing — nothing withholds squad or shared-recording transcripts' })
+      } else {
+        const src = code(detail)
+        const expr = src.match(/\btranscript\s*:\s*([^\n]*\bsession\.transcript\b[^\n]*)/)
+        const line = lineOf(detail, /\btranscript\s*:.*\bsession\.transcript\b/)
+        if (!expr) {
+          found.push({ file: DETAIL, line, msg: 'cannot find the expression that decides whether the transcript is sent' })
+        } else {
+          if (!/\bgroup_id\b/.test(expr[1])) {
+            found.push({ file: DETAIL, line, msg: 'transcript is not withheld from athletes for squad sessions (no group_id condition)' })
+          }
+          // Either the column itself, or a local whose value is read from it.
+          const sharedVar = expr[1].match(/!\s*([A-Za-z_$][\w$]*)/g)?.map((m) => m.replace(/^!\s*/, '')) ?? []
+          const selectsColumn = (text) => /\.select\(\s*['"`][^'"`]*\bshared_recording_id\b/.test(text)
+          // The local must be assigned from the column: either a select of it
+          // on the same line, or a call to a function whose body selects it.
+          // `const sharedRecording = false` satisfies the expression and
+          // protects nobody, and was the first mutation this rule let through.
+          const derivedFromColumn = (v) => {
+            const rhs = src.match(new RegExp(`\\b${v}\\s*=(?!=)([^\\n]*)`))?.[1] ?? ''
+            if (selectsColumn(rhs)) return true
+            return [...rhs.matchAll(/([A-Za-z_$][\w$]*)\s*\(/g)].some(([, fn]) => {
+              const body = src.match(new RegExp(`function\\s+${fn}\\s*\\([\\s\\S]*?\\n\\}`))?.[0] ?? ''
+              return selectsColumn(body)
+            })
+          }
+          const conditioned =
+            (/\bshared_recording_id\b/.test(expr[1]) && selectsColumn(src)) ||
+            sharedVar.some((v) => derivedFromColumn(v))
+          if (!conditioned) {
+            found.push({ file: DETAIL, line, msg: 'transcript is not withheld from athletes for shared recordings (no shared_recording_id condition)' })
+          }
+        }
+      }
+
       for (const f of files) {
         if (!/^app\/athlete\//.test(f.rel)) continue
         const src = code(f)
@@ -487,6 +535,51 @@ const RULES = [
       return found
     },
   },
+  {
+    id: 'SG10',
+    title: 'The access log records only the athlete, is written only by the server, and is never shown to the athlete',
+    why: 'Max asked to see when an athlete opens what they were sent (2026-09-26). A log about a child is only worth anything if it is true: a route that wrote a row without first proving the caller IS the athlete on that session would record a coach\'s own view — or anyone\'s — as the child\'s. A client that could write the table could forge or back-date it. And the log is a coaching aid disclosed to athletes in words; showing a teenager a feed of their own opens turns it into surveillance they are made to watch.',
+    cite: 'lib/access-log.ts; supabase/migrations/030_access_log.sql — no client insert policy',
+    check(files) {
+      const found = []
+      const ATHLETE_CHECK = /\.eq\(\s*['"]athlete_user_id['"]\s*,\s*user\.id\s*\)|athlete_user_id\s*===\s*user\.id/
+      for (const f of files) {
+        const src = code(f)
+
+        // (a) Every handler that logs must prove the caller is the athlete,
+        //     in that handler. Per handler, for the reason handlerBlocks gives.
+        if (f.isRoute) {
+          for (const h of handlerBlocks(src)) {
+            if (/\brecordAccess\s*\(/.test(h.src) && !ATHLETE_CHECK.test(h.src)) {
+              found.push({
+                file: f.rel,
+                line: lineOf(f, /recordAccess\s*\(/),
+                msg: `${h.name} writes to the access log without checking athlete_user_id against user.id`,
+              })
+            }
+          }
+        }
+
+        // (b) One writer. A direct insert anywhere else skips the duplicate
+        //     window and the never-throw guarantee, and is not seen by (a).
+        if (f.rel !== 'lib/access-log.ts' && /\.from\(\s*['"]access_log['"]\s*\)[\s\S]{0,300}?\.(insert|upsert|update|delete)\s*\(/.test(src)) {
+          found.push({ file: f.rel, line: lineOf(f, /access_log/), msg: 'writes access_log directly instead of through recordAccess()' })
+        }
+
+        // (c) No browser code touches the table at all.
+        if (f.isClient && /\.from\(\s*['"]access_log['"]/.test(src)) {
+          found.push({ file: f.rel, line: lineOf(f, /access_log/), msg: 'client code queries access_log directly' })
+        }
+
+        // (d) Athlete surfaces never read the log.
+        const READS = /components\/AccessLog|\/api\/coach\/access-log|['"]access_log['"]/
+        if (/^app\/athlete\//.test(f.rel) && READS.test(src)) {
+          found.push({ file: f.rel, line: lineOf(f, READS), msg: 'athlete surface reads the coach\'s access log' })
+        }
+      }
+      return found
+    },
+  },
 ]
 
 /**
@@ -495,11 +588,13 @@ const RULES = [
  * it does not have.
  */
 const KNOWN_GAPS = [
+  'Whether the AUDIO of a squad or shared recording reaches an athlete. It is the transcript, spoken. The detail route withholds shared-recording audio from an athlete viewer, but SG6 only reads the transcript expression, and `app/api/sessions/[id]/audio-url/route.ts` signs audio for any athlete the session is shared with — squad and shared recordings included.',
   'Whether the transcript withholding is correct for sessions saved BEFORE `sessions.group_id` existed. Those rows are null, so they are not identifiable as squad sessions. They are covered from the other end — the athlete client no longer selects transcripts at all — but SG6 is what enforces that, and a future direct fetch could reintroduce the leak for historic rows without tripping the group check.',
   'Whether a route\'s ownership check is *correct* — SG1 proves a route authenticates, not that it then scopes the query to the right coach.',
   'Whether row-level security policies in Supabase actually match what the routes assume. The policies live in migrations and are enforced by the database, not by anything this scanner reads.',
   'Whether the offline recording queue actually works in a browser. It is IndexedDB, the `online` event and a resumable three-stage upload, none of which a static scanner or a Node rig can exercise. The boot harness drives real Chromium but only asserts on the cold-start timeline. This is the largest untested surface in the app and it is the one holding the only copy of a recording.',
   'What the Focus Card image actually contains. It is built to carry the coaching sentence, the date and the wordmark and nothing else — no name, no photo, no URL, no session id — because it is designed to leave the app. That constraint lives in canvas drawing code and cannot be checked by reading source shape, so it has to be re-read by a human whenever app/components/FocusCard.tsx changes.',
+  'Whether an access-log call sits on the athlete branch of its handler. SG10 proves a handler that logs also checks athlete_user_id against the caller, not that the log call is guarded by the result — the detail route serves the coach too, and only its `if (isAthlete)` keeps a coach\'s view out of the log.',
   'What the AI summariser writes about a child. `tools/prompt-rig.mjs` covers the prompt; nothing covers a model\'s output on an unseen transcript.',
 ]
 
