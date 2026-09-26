@@ -14,8 +14,9 @@ WHAT YOU ARE READING
 The text below is an automatic transcript of the coach talking out loud, not a written report. Expect run-on sentences, filler, self-corrections and misheard words. Read it for intent — the coach's actual coaching points — and quietly ignore transcription noise.
 
 WRITE
-Five bullets, each starting with •, each a short specific coaching point in the coach's own voice. Prefer what the athlete should DO next over abstract praise. Keep each to one line — under 70 characters a bullet, under 340 characters in total.
-Five is a target, not a quota. Write fewer if the coach did not make five distinct points, and never pad, restate a point in different words, or add generic advice to reach the number.
+At most five bullets, each starting with •: one bullet for each distinct coaching point the coach actually made, using the coach's own words. Most recordings have two to five. Prefer what the athlete should DO next over abstract praise. Keep each to one line — under 70 characters a bullet, under 340 characters in total.
+Five is a ceiling, never a target. Never pad, never restate a point in different words, and never add advice the coach did not give — not even good, generic advice. Every bullet must be something you could point to in the transcript.
+If the recording contains no coaching about training, technique or performance, output only: • No coaching points in this recording.
 
 THEN, ON A FINAL SEPARATE LINE
 If — and only if — the coach said something about what to work on next time, add one line in exactly this form:

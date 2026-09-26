@@ -108,6 +108,12 @@ const { buildSummaryPrompt, transcriptNames, mayPersonalise, parseSummaryRespons
 const { buildSplitSummaryPrompt, parseSplitSummaryResponse, splitEligibility, assembleSplit, SplitParseError, MAX_SPLIT_ATHLETES } =
   await import(pathToFileURL(path.join(ROOT, 'lib/split-summary.ts')).href)
 
+const { guardSummary, isGrounded, transcriptStems, capBullets, MAX_BULLETS, NO_COACHING_LINE } =
+  await import(pathToFileURL(path.join(ROOT, 'lib/summary-guard.ts')).href)
+
+const { keywordGate, moderationDecision } =
+  await import(pathToFileURL(path.join(ROOT, 'lib/content-gate.ts')).href)
+
 const { sessionBodies, narrowAfterPartialSave } =
   await import(pathToFileURL(path.join(ROOT, 'lib/recording-sync.ts')).href)
 
@@ -606,19 +612,26 @@ for (const c of fixtures.cases) {
       invariantFails.push(`${tag}: wrong sport branch`)
     }
 
-    // How many bullets the summary asks for. It said "2-5" and, against a
-    // 300-character budget, produced three or four; Max asked for five, so the
-    // range is gone and the number is stated. A range invites the cheap end.
-    if (!check(/^Five bullets, each starting with/m.test(prompt), 'the prompt asks for five bullets', tag)) {
-      invariantFails.push(`${tag}: the prompt no longer asks for five bullets`)
+    // How many bullets the summary asks for. It said "2-5" and produced three;
+    // then it said "Five bullets" and, on 2026-09-26, filled five on a
+    // recording with no coaching in it — every one invented. Max: "cap it at
+    // five so the athlete doesn't get overwhelmed". Five is the most, not the
+    // number. (The cap itself is enforced in code — see "Summary guard" below —
+    // this only pins what the model is asked for.)
+    if (!check(/^At most five bullets, each starting with/m.test(prompt), 'the prompt asks for at most five bullets', tag)) {
+      invariantFails.push(`${tag}: the prompt no longer caps bullets at five`)
     }
     // The sentence that stops five becoming a quota. Without it a firm number
     // is an instruction to invent a fifth point on a two-minute recording, and
     // a fabricated coaching instruction addressed to a named child is the worst
     // output this product can produce. It is not decoration; do not drop it
     // while tuning the count.
-    if (!check(prompt.includes('Five is a target, not a quota'), 'five is a target and not a quota', tag)) {
+    if (!check(prompt.includes('Five is a ceiling, never a target'), 'five is a ceiling, never a target', tag)) {
       invariantFails.push(`${tag}: the anti-padding sentence is gone`)
+    }
+    // A recording with no coaching in it has a way out that is not invention.
+    if (!check(prompt.includes('No coaching points in this recording'), 'the no-coaching way out is offered', tag)) {
+      invariantFails.push(`${tag}: the prompt no longer offers "No coaching points" for a recording without coaching`)
     }
 
     // The rules that keep the output safe must survive every edit.
@@ -660,6 +673,163 @@ for (const r of fixtures.replies) {
 // safety property, not a formatting one.
 check(MAX_NEXT_LENGTH <= 200, 'the NEXT ceiling stays short enough to act on', String(MAX_NEXT_LENGTH))
 check(TARGET_BULLETS === 5, 'the bullet target is five', String(TARGET_BULLETS))
+
+// ── 4a · the summary guard ────────────────────────────────────────────────
+//
+// Max, 2026-09-26: "the summary was just a randomly generated one. It didn't
+// actually take the notes from what I said … I want to cap it at five." The
+// prompt asks; lib/summary-guard.ts enforces. Every transcript below is made up
+// for the rig — never paste an athlete's recording in here.
+
+console.log(`\n   ${BOLD}Summary guard${OFF} ${DIM}— at most five, and only what was said${OFF}`)
+
+{
+  const guardFails = []
+  const g = (ok, name, detail = '') => { if (!check(ok, name, detail)) guardFails.push(`${name}${detail ? ` — ${detail}` : ''}`) }
+
+  const coaching =
+    'Right, good session. Your first touch was heavy today, cushion the ball more when it comes in. ' +
+    'When you shoot, lock the ankle and strike through the middle. Scan over your shoulder before you receive. ' +
+    'Your pressing was late, close the full back down quicker. Communication was quiet, talk to the back line. ' +
+    'And the cool down, stretch the hamstrings properly. Next time I want you working on the weak foot passing.'
+  const stems = transcriptStems(coaching)
+
+  // Points the coach made, reworded the way the model rewords them.
+  for (const line of [
+    '• Cushion the ball on your first touch',
+    '• Lock your ankle and strike through the middle when shooting',
+    '• Scan over your shoulder before you receive',
+    '• Close the full back down quicker when pressing',
+  ]) g(isGrounded(line, stems), 'a point the coach made is kept', line)
+
+  // Points the coach never made. Each is plausible, generic, good advice —
+  // exactly what the model adds to reach a number.
+  for (const line of [
+    '• Keep your platform steady',
+    '• Stay hydrated and get plenty of sleep',
+    '• Work on your mental resilience under pressure',
+    '• Great work today, keep it up!',
+    '• Focus on your technique',
+  ]) g(!isGrounded(line, stems), 'an invented point is dropped', line)
+
+  // The bullet Max complained about: a real half carrying an invented half.
+  // Graded whole, this line is 3 of 5 words said and would pass; graded by
+  // clause, the second half is 0 of 2 and it fails, as it should.
+  g(!isGrounded('• Scan over your shoulder before you receive; keep your platform steady', stems),
+    'each clause must stand on its own, not borrow from a real one')
+
+  // Seven real points: five survive, in the model's order.
+  const seven = [
+    '• Cushion the ball on your first touch',
+    '• Lock the ankle when you shoot',
+    '• Scan over your shoulder before you receive',
+    '• Close the full back down quicker',
+    '• Talk to the back line',
+    '• Stretch the hamstrings properly',
+    '• Strike through the middle of the ball',
+  ].join('\n')
+  const capped = guardSummary({ summary: seven, next: null }, coaching)
+  g(MAX_BULLETS === 5, 'the cap is five', String(MAX_BULLETS))
+  g(capped.summary?.split('\n').length === 5, 'seven grounded points become five', String(capped.summary?.split('\n').length))
+  g(capped.summary?.startsWith('• Cushion') === true, 'the cap keeps the first five, in order')
+  g(capBullets(seven).split('\n').length === 5, 'capBullets holds a coach-written summary to five too')
+  g(capBullets('• one\n• two').split('\n').length === 2, 'capBullets never pads')
+
+  // Grounding runs before the cap, so an invented point never takes the place
+  // of a real fifth.
+  const mixed = guardSummary({
+    summary: [
+      '• Stay hydrated and get plenty of sleep',
+      '• Cushion the ball on your first touch',
+      '• Lock the ankle when you shoot',
+      '• Work on your mental resilience',
+      '• Scan over your shoulder before you receive',
+      '• Close the full back down quicker',
+      '• Talk to the back line',
+    ].join('\n'),
+    next: 'Work on the weak foot passing',
+  }, coaching)
+  g(mixed.droppedUngrounded === 2 && mixed.summary?.split('\n').length === 5 && !/hydrated|resilience/i.test(mixed.summary ?? ''),
+    'invented points are dropped before the cap is applied', JSON.stringify(mixed))
+  g(mixed.next === 'Work on the weak foot passing', 'a takeaway the coach gave is kept', String(mixed.next))
+
+  // A takeaway the coach never gave is dropped: it reads as an instruction.
+  g(guardSummary({ summary: '• Talk to the back line', next: 'Practise your serve toss height' }, coaching).next === null,
+    'an invented takeaway is dropped')
+
+  // A recording with no coaching in it — reproduced in words, not quoted.
+  const chat = 'Hi, nice to meet you. How was the drive over? Traffic was awful. Anyway, see you Thursday, bring a drink.'
+  const invented = guardSummary({
+    summary: '• Focus on your volleyball technique; keep your platform steady\n• Communicate with your teammates\n• Stay positive and keep working hard',
+    next: 'Keep your special techniques ready',
+  }, chat)
+  g(invented.summary === null && invented.next === null, 'a recording with no coaching gets no summary and no takeaway', JSON.stringify(invented))
+
+  // The prompt's way out is honoured, not shown to the athlete.
+  const none = guardSummary({ summary: NO_COACHING_LINE, next: 'Bring a drink' }, chat)
+  g(none.summary === null && none.next === null && none.noCoaching === true,
+    '"No coaching points" becomes no summary, not a bullet', JSON.stringify(none))
+
+  if (guardFails.length === 0) console.log(`   ${GREEN}PASS${OFF}  grounding, the cap and the no-coaching line all hold`)
+  else for (const f of guardFails) console.log(`   ${RED}FAIL${OFF}  ${f}`)
+}
+
+// ── 4a' · the content gate ────────────────────────────────────────────────
+//
+// Nothing sexual, hateful or threatening is summarised for or shared with an
+// athlete. The keyword backstop must catch the unambiguous and must never
+// catch sport — a gate that blocks "strip the ball" stops coaches sharing and
+// gets switched off.
+
+console.log(`\n   ${BOLD}Content gate${OFF} ${DIM}— some recordings must never reach a child${OFF}`)
+
+{
+  const gateFails = []
+  const g = (ok, name, detail = '') => { if (!check(ok, name, detail)) gateFails.push(`${name}${detail ? ` — ${detail}` : ''}`) }
+
+  for (const t of ['he sent her a nude', 'Sexy.', 'talking about sex after training', 'NAKED']) {
+    g(keywordGate(t).blocked, 'an unambiguous word blocks', t)
+  }
+  for (const t of [
+    'strip the ball off him in the tackle',
+    'bring the consent form for the tournament',
+    'body position over the ball, chest up',
+    'touch it off and turn',
+  ]) {
+    g(!keywordGate(t).blocked, 'sport language is not blocked', t)
+  }
+  for (const t of ['Sussex county trials on Saturday', 'Essex away', 'sextet of passes', 'unisex bibs']) {
+    g(!keywordGate(t).blocked, 'a word containing a blocked word is not blocked', t)
+  }
+  g(moderationDecision({ sexual: true }).blocked, 'moderation: sexual blocks')
+  g(moderationDecision({ 'sexual/minors': true }).blocked, 'moderation: sexual/minors blocks')
+  g(!moderationDecision({ harassment: true }).blocked, 'moderation: plain harassment alone does not block (a coach can be blunt)')
+  g(!moderationDecision({ violence: true }).blocked, 'moderation: plain violence alone does not block (contact sport)')
+  g(!moderationDecision(null).blocked && !moderationDecision(undefined).blocked, 'moderation: no answer is not a block')
+
+  if (gateFails.length === 0) console.log(`   ${GREEN}PASS${OFF}  blocks what it must, and nothing a coach says about sport`)
+  else for (const f of gateFails) console.log(`   ${RED}FAIL${OFF}  ${f}`)
+}
+
+// Every path that produces or shares a NEW summary goes through both. A route
+// that forgets is invisible to tsc — the join between files, again.
+//
+// Editing or re-sharing a session that is already saved (PATCH
+// /api/sessions/[id]) is deliberately left as it was. Max, 2026-09-26: "don't
+// change anything that's currently deployed, just change future events."
+{
+  const src = (f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')
+  const wired = [
+    ['lib/quick-summary.ts', /guardSummary\(/, /checkContent\(/, 'the single summary is guarded and gated'],
+    ['app/api/sessions/split-summary/route.ts', /guardSummary\(/, /checkContent\(/, 'each split section is guarded and the recording gated'],
+    ['app/api/sessions/route.ts', /capBullets\(/, /checkContent\(/, 'the save route caps and gates a shared session'],
+  ]
+  for (const [file, guard, gate, name] of wired) {
+    const code = src(file)
+    if (check(guard.test(code) && gate.test(code), name, file)) console.log(`   ${GREEN}PASS${OFF}  ${name}`)
+    else console.log(`   ${RED}FAIL${OFF}  ${name} ${DIM}— ${file}${OFF}`)
+  }
+}
 
 /* ── The coach's edit survives the save ───────────────────────────────────
  *

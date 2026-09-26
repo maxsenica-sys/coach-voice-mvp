@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { routeIdentity } from '@/lib/route-identity'
 import { makeQuickSummary } from '@/lib/quick-summary'
+import { BLOCKED_MESSAGE } from '@/lib/content-gate'
 import type { CookieToSet } from '@/lib/supabase-route'
 
 export const runtime = 'nodejs'
@@ -71,9 +72,9 @@ export async function POST(req: NextRequest) {
     if (firstName) rosterFirstNames.push(firstName)
   }
 
-  const { summary, next } = await makeQuickSummary(transcript, sport, firstName, rosterFirstNames)
+  const { summary, next, blocked } = await makeQuickSummary(transcript, sport, firstName, rosterFirstNames)
 
-  const res = NextResponse.json({ summary, next })
+  const res = NextResponse.json(blocked ? { summary: null, next: null, blocked: true, message: BLOCKED_MESSAGE } : { summary, next })
   cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
   return res
 }
