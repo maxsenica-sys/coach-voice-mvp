@@ -1014,15 +1014,19 @@ function DashboardPageInner() {
     } catch {}
   }
 
-  const fetchGroups = async () => {
-    setLoadingGroups(true)
-    setGroupsError(null)
+  /* `quiet` refreshes without the loading state. The loading state swaps the
+   * whole squad list for a spinner, which unmounts an open squad's add list —
+   * and with it which athletes did not go in, the one thing a partial failure
+   * has to keep on screen. A quiet refresh that fails leaves the list as is. */
+  const fetchGroups = async ({ quiet = false }: { quiet?: boolean } = {}) => {
+    if (!quiet) { setLoadingGroups(true); setGroupsError(null) }
     try {
       const json = await apiJson<{ groups?: Group[] }>('/api/groups', { cache: 'no-store' })
       setGroups(json.groups ?? [])
     } catch (e) {
-      setGroupsError(e instanceof Error ? e.message : 'Could not load your squads.')
-    } finally { setLoadingGroups(false) }
+      if (quiet) showToast(errorMessage(e, 'Could not refresh your squads.'), 'error')
+      else setGroupsError(errorMessage(e, 'Could not load your squads.'))
+    } finally { if (!quiet) setLoadingGroups(false) }
   }
 
   /* One page of /api/sessions/all. `hasMore` is the route's own answer (it
@@ -1351,7 +1355,7 @@ function DashboardPageInner() {
     } else {
       showToast(`Added ${added} of ${athleteIds.length} to ${group.name}. ${failed.length} could not be added: ${errorMessage(firstReason, 'try again.')}`, 'error')
     }
-    if (added > 0) await fetchGroups()
+    if (added > 0) await fetchGroups({ quiet: true })
     return failed
   }
 
@@ -1362,7 +1366,7 @@ function DashboardPageInner() {
       showToast(errorMessage(e, 'Could not remove that athlete'), 'error')
       return
     }
-    await fetchGroups()
+    await fetchGroups({ quiet: true })
   }
 
   const saveEvent = async () => {
@@ -1452,7 +1456,7 @@ function DashboardPageInner() {
     showToast(`Deleted ${target.first_name} ${target.last_name}`)
     // Their sessions and squad places went with them; Home and Squads were
     // still counting them.
-    await Promise.all([fetchAthletes(), fetchGroups(), refreshSessions(), fetchCoverage()])
+    await Promise.all([fetchAthletes(), fetchGroups({ quiet: true }), refreshSessions(), fetchCoverage()])
   }
 
   const closeDeleteConfirm = () => { setDeleteConfirmAthlete(null); setDeleteError(null) }
@@ -2334,7 +2338,7 @@ function DashboardPageInner() {
                       isEmpty={groups.length === 0}
                       emptyTitle="No squads yet."
                       emptyHint="Create one to record a single session for a whole squad at once."
-                      onRetry={fetchGroups}
+                      onRetry={() => fetchGroups()}
                     />
                   ) : groups.map(g => {
                     const isExp = expandedGroup === g.id

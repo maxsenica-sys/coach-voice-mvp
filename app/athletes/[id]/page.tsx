@@ -413,7 +413,7 @@ export default function AthleteDetailPage() {
       const url = new URL(window.location.href)
       if (tab === 'overview') url.searchParams.delete('tab')
       else url.searchParams.set('tab', tab)
-      window.history.replaceState(window.history.state, '', url)
+      window.history.replaceState(null, '', url)
     } catch { /* the tab still changes; only the URL does not remember it */ }
   }
   useEffect(() => {

@@ -62,7 +62,12 @@ function StatusChip({ status }: { status: InjuryStatus }) {
  * shown as stored rather than dropped. */
 function fmtInjuryDate(iso: string): string {
   const d = parseISODate(iso)
-  return d ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : iso
+  if (!d) return iso
+  // Assembled from parts: en-GB's own short form is "Sun, 20 Sept" in current
+  // ICU, and the comma and fourth letter are exactly what does not fit a chip.
+  const weekday = d.toLocaleDateString('en-GB', { weekday: 'short' })
+  const month = d.toLocaleDateString('en-US', { month: 'short' })
+  return `${weekday} ${d.getDate()} ${month}`
 }
 
 export default function InjuryPanel({ athleteId, athleteName }: { athleteId: string; athleteName: string }) {

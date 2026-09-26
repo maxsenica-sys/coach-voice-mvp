@@ -411,7 +411,7 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
 
   // ─── Filtered athletes ─────────────────────────────────────────────────────
   // Name match is the shared word-start rule (lib/athlete-filter.ts), so "ana"
-  // finds Ana and not Anastasia or Diana. The email is searched by the same
+  // finds Ana and Anastasia but not Diana. The email is searched by the same
   // rule over its parts ("kai@", "club.example"); a plain substring match here
   // brought Diana back for "ana" through diana@….
   // Unread threads first (most unread at the top), then by name.

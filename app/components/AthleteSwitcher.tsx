@@ -217,13 +217,14 @@ export default function AthleteSwitcher({ currentId, currentName, onPick, onClos
                   </button>
                 </div>
               )}
-              {/* `value` is empty on purpose: AthletePicker folds to a single
-                  "Change" row when it has a value, and here the list IS the
-                  point. The current athlete is named in the header instead. */}
+              {/* foldOnPick off: here the list IS the point, so the current
+                  athlete stays in it, highlighted, rather than folding the
+                  picker into a single "Change" row. */}
               <AthletePicker
                 athletes={athletes}
                 squads={squads}
-                value=""
+                value={currentId}
+                foldOnPick={false}
                 onChange={(id) => { if (id === currentId) onClose(); else onPick(id) }}
               />
             </>
