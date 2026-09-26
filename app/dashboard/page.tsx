@@ -2549,7 +2549,8 @@ function DashboardPageInner() {
                             <AthletePicker
                               athletes={athletes}
                               squads={groups.map(g => ({ id: g.id, name: g.name, member_ids: g.member_ids }))}
-                              value=""
+                              value={calMode === 'athlete' ? calTargetId : ''}
+                              foldOnPick={false}
                               onChange={id => pickCalendar('athlete', id)}
                             />
                           </>
