@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import FocusCard from '@/app/components/FocusCard'
+import { SessionSeen } from '@/app/components/AccessLog'
 import { errorMessage } from '@/lib/errors'
 import { metricColor, metricTint, scoreLabel, type MetricKey } from '@/lib/wellness-config'
 import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/session-response'
@@ -717,6 +718,11 @@ export default function SessionDetailPage() {
                     </span>
                   </button>
                 </div>
+              )}
+
+              {/* Audit log: has the athlete opened it? Coach only, shared only. */}
+              {isCoach && session.shared_with_athlete && (
+                <SessionSeen sessionId={session.id} firstName={athleteFirst} />
               )}
             </div>
           </div>

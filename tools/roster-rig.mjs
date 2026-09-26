@@ -51,6 +51,7 @@ import { dirname, join, relative } from 'node:path'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { athleteStatus, activeCount, activationFields } from '../lib/athlete-status.ts'
 import { filterAthletes, matchesName } from '../lib/athlete-filter.ts'
+import { ACCESS_KINDS, isSessionAccessKind, shouldRecordAccess, formatAccessTime, DUPLICATE_WINDOW_MS } from '../lib/access-log.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const GREEN = '\x1b[32m', RED = '\x1b[31m', YELLOW = '\x1b[33m'
@@ -253,6 +254,70 @@ check(
     if (matchesName(roster[0], '   ') !== true) p.push('whitespace-only query should match everyone')
     const copy = roster.slice(); filterAthletes(roster, 'a')
     if (roster.some((a, i) => a !== copy[i])) p.push('filterAthletes reordered its input')
+    return p
+  },
+)
+
+// ── Part 3: the access log — "has the athlete seen it?" ───────────────────
+//
+// The roster's other question. lib/access-log.ts decides whether an athlete's
+// open is written and how it is said to the coach; these run the real module.
+// Proven by breaking it: R6 went red when the ten-minute window was changed to
+// `>` 60_000, and when 'report_viewed' was dropped from ACCESS_KINDS (the
+// migration's list no longer matched); R7 went red when `days < 7` became
+// `days <= 7`.
+
+check(
+  'R6',
+  'An athlete opening the same thing twice in ten minutes is one visit, and every kind the app writes is one the database accepts',
+  'recordAccess swallows every failure by design, so a kind the check constraint in migration 030 does not list would fail on every insert and nobody would ever see it — the coach would just read "Not opened yet" for ever. And without the duplicate window a card toggled five times fills the coach\'s feed with one child.',
+  () => {
+    const p = []
+    const now = new Date('2026-09-26T16:00:00Z')
+    const ago = (ms) => new Date(now.getTime() - ms).toISOString()
+    const want = (label, got, expect) => { if (got !== expect) p.push(`${label}: got ${got}, want ${expect}`) }
+    want('never logged', shouldRecordAccess(null, now), true)
+    want('9m59s ago', shouldRecordAccess(ago(DUPLICATE_WINDOW_MS - 1000), now), false)
+    want('1 minute ago', shouldRecordAccess(ago(60_000), now), false)
+    want('exactly 10m ago', shouldRecordAccess(ago(DUPLICATE_WINDOW_MS), now), true)
+    want('11m ago', shouldRecordAccess(ago(11 * 60_000), now), true)
+    want('a future timestamp (clock skew)', shouldRecordAccess(ago(-60_000), now), false)
+    want('an unreadable timestamp', shouldRecordAccess('not a date', now), true)
+    if (DUPLICATE_WINDOW_MS !== 10 * 60_000) p.push(`window is ${DUPLICATE_WINDOW_MS}ms, the product decision is ten minutes`)
+
+    want('session route accepts session_opened', isSessionAccessKind('session_opened'), true)
+    want('session route accepts audio_played', isSessionAccessKind('audio_played'), true)
+    want('session route refuses report_viewed (a report is not a session)', isSessionAccessKind('report_viewed'), false)
+    want('session route refuses a near-miss', isSessionAccessKind('SESSION_OPENED'), false)
+    want('session route refuses nothing', isSessionAccessKind(undefined), false)
+
+    // The join between files: lib's list against the migration's constraint.
+    const sql = readFileSync(join(ROOT, 'supabase/migrations/030_access_log.sql'), 'utf8')
+    const m = sql.match(/check\s*\(\s*kind\s+in\s*\(([^)]*)\)\s*\)/i)
+    if (!m) { p.push('could not find the kind check constraint in 030_access_log.sql'); return p }
+    const dbKinds = [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]).sort().join(',')
+    const libKinds = [...ACCESS_KINDS].sort().join(',')
+    if (dbKinds !== libKinds) p.push(`lib/access-log.ts kinds [${libKinds}] differ from the migration's [${dbKinds}]`)
+    return p
+  },
+)
+
+check(
+  'R7',
+  'The coach reads when it was seen in plain words, never a weekday that could mean last week',
+  '"Seen by Mathilde · Fri" eight days after a Friday reads as this week\'s Friday. A weekday is only unambiguous inside the last six days, and days are counted by local midnights, not by dividing milliseconds.',
+  () => {
+    const p = []
+    const now = new Date(2026, 8, 26, 17, 0) // Saturday 26 September, 5pm local
+    const want = (d, expect) => { const got = formatAccessTime(d.toISOString(), now); if (got !== expect) p.push(`${d.toString().slice(0, 21)} gave "${got}", want "${expect}"`) }
+    want(new Date(2026, 8, 26, 16, 12), 'Today 4:12pm')
+    want(new Date(2026, 8, 26, 0, 5), 'Today 12:05am')
+    want(new Date(2026, 8, 25, 23, 40), 'Yesterday 11:40pm')
+    want(new Date(2026, 8, 21, 12, 0), 'Mon 12:00pm')
+    want(new Date(2026, 8, 20, 9, 3), 'Sun 9:03am')        // six days: still a weekday
+    want(new Date(2026, 8, 19, 9, 3), '19 Sep 9:03am')      // seven days: a date, not "Sat"
+    want(new Date(2025, 11, 31, 21, 30), '31 Dec 2025 9:30pm')
+    if (formatAccessTime('garbage', now) !== '') p.push('an unreadable timestamp should render as nothing, not "Invalid Date"')
     return p
   },
 )

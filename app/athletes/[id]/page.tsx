@@ -11,6 +11,8 @@ import WellnessGraph from '@/app/components/WellnessGraph'
 import QuickSessionModal from '@/app/components/QuickSessionModal'
 import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import InjuryPanel from '@/app/components/InjuryPanel'
+import CoachInsights from '@/app/components/CoachInsights'
+import AccessLog from '@/app/components/AccessLog'
 import AthleteSwitcher from '@/app/components/AthleteSwitcher'
 import ListState from '@/app/components/ListState'
 import { apiMutate, apiJson } from '@/lib/api-client'
@@ -1599,6 +1601,15 @@ export default function AthleteDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Coach-only mirrors: what you keep repeating to them, and how
+                   they have been replying. Computed in lib/insights.ts. ── */}
+            <CoachInsights athleteId={athleteId} athleteName={athlete.first_name ?? ''} />
+
+            {/* ── Activity: when this athlete opened what you shared
+                   (lib/access-log.ts). Coach-only; your own views are not
+                   recorded. ── */}
+            <AccessLog athleteId={athleteId} firstName={athlete.first_name ?? ''} />
 
             {/* ── Goals ── */}
             {athlete.goals && (

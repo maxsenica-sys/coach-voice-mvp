@@ -10,11 +10,12 @@
  *
  * Readable by the owning coach, or by the athlete once the session is shared.
  */
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { sessionISODate } from '@/lib/session-date'
+import { recordAccess } from '@/lib/access-log'
 
 export const runtime = 'nodejs'
 
@@ -92,6 +93,27 @@ async function loadSessionCheckin(
   return (data as SessionCheckin | null) ?? null
 }
 
+/**
+ * Was this session saved from one recording about several athletes?
+ *
+ * Migration 029 gives the sibling rows of such a recording one shared
+ * `shared_recording_id`. Their transcript and audio are the coach talking about
+ * every athlete in it, so, like a squad transcript, neither reaches an athlete.
+ *
+ * Read on its own rather than added to the select above so that select does not
+ * start failing — every session 404ing — if this ships before 029 is applied.
+ * An undefined-column error means the column does not exist yet, so no row can
+ * be a shared recording. Any other failure fails closed: withhold.
+ */
+async function isSharedRecording(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  sessionId: string,
+): Promise<boolean> {
+  const { data, error } = await admin.from('sessions').select('shared_recording_id').eq('id', sessionId).maybeSingle()
+  if (error) return !['42703', 'PGRST204'].includes(error.code ?? '')
+  return Boolean((data as { shared_recording_id?: string | null } | null)?.shared_recording_id)
+}
+
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
@@ -122,6 +144,23 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return attach(NextResponse.json({ error: 'Forbidden' }, { status: 403 }), cookiesToSet)
   }
 
+  // Audit log: the athlete opened their coach's session. Only when the viewer
+  // IS the athlete (the `athlete_user_id` check above) — a coach's own view is
+  // never logged. Runs after the response is sent and swallows every failure,
+  // so it can neither slow the page nor break it. See lib/access-log.ts.
+  if (isAthlete) {
+    after(() => recordAccess(admin, {
+      coachId: session.coach_id,
+      athleteId: session.athlete_id,
+      athleteUserId: user.id,
+      sessionId: session.id,
+      kind: 'session_opened',
+    }))
+  }
+
+  // Only ever asked for an athlete viewer; the coach always gets everything.
+  const sharedRecording = isCoach ? false : await isSharedRecording(admin, id)
+
   const [{ data: athlete }, { data: videos }, { data: attachments }, checkin] = await Promise.all([
     admin.from('athletes').select('id, first_name, last_name, sport, photo_url').eq('id', session.athlete_id).maybeSingle(),
     admin.from('session_videos').select('id, storage_path, file_name, mime_type, annotations, shared_with_athlete, created_at').eq('session_id', id).order('created_at'),
@@ -148,7 +187,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   ])
 
   let audioUrl: string | null = null
-  if (session.audio_path) {
+  // The recording itself is the combined transcript, spoken — same rule.
+  if (session.audio_path && !sharedRecording) {
     const { data } = await admin.storage.from(AUDIO_BUCKET).createSignedUrl(session.audio_path, SIGNED_TTL)
     audioUrl = data?.signedUrl ?? null
   }
@@ -171,7 +211,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         //
         // Withheld on the wire, not hidden in the UI: a field the client is
         // sent is a field the client has.
-        transcript: isCoach || !session.group_id ? session.transcript : null,
+        //
+        // The same holds for one recording about several athletes (migration
+        // 029, shared_recording_id): each athlete gets their own split
+        // summary, and the transcript under it is about all of them.
+        transcript: isCoach || (!session.group_id && !sharedRecording) ? session.transcript : null,
         // Lets the athlete's page explain the absence instead of just showing
         // nothing where a control used to be.
         is_group_session: Boolean(session.group_id),

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo, useId, Suspense, Fragment } from 'react'
 import { byName, matchesName } from '@/lib/athlete-filter'
+import CoverageInsight from '@/app/components/CoverageInsight'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
@@ -17,6 +18,8 @@ import ListState from '@/app/components/ListState'
 import PendingRecordings from '@/app/components/PendingRecordings'
 import { gapLabel, isQuiet, QUIET_AFTER_DAYS, type CoverageRow } from '@/lib/attention'
 import DayWheel, { wheelMonths, toDateStr, type WheelEvent } from '@/app/components/DayWheel'
+import PreSessionBrief, { UpcomingBrief, type BriefEvent } from '@/app/components/PreSessionBrief'
+import InviteQR from '@/app/components/InviteQR'
 import { readCachedProfile, writeCachedProfile, clearCachedProfile, displayName, initialsFor } from '@/lib/profile-cache'
 import { activeCount } from '@/lib/athlete-status'
 import { formatSessionDate, sessionDate, sessionISODate, todayISODate } from '@/lib/session-date'
@@ -584,8 +587,10 @@ function JoinToast({ data, onDismiss }: { data: JoinToastData; onDismiss: () => 
 }
 
 // ── Settings Tab ─────────────────────────────────────────────────
-function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditing, codeDraft, codeSaving, codeMsg, setCodeDraft, setCodeEditing, setCodeMsg, saveCode, onNameChange, logout }: {
+function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditing, codeDraft, codeSaving, codeMsg, setCodeDraft, setCodeEditing, setCodeMsg, saveCode, onNameChange, logout, onShowQR }: {
   coachName: string; coachSport: string; coachEmail: string; inviteCode: string | null
+  /** Opens the invite code as a QR code. */
+  onShowQR: () => void
   codeEditing: boolean; codeDraft: string; codeSaving: boolean; codeMsg: string
   setCodeDraft: (v: string) => void; setCodeEditing: (v: boolean) => void; setCodeMsg: (v: string) => void
   saveCode: () => void; onNameChange: (f: string, l: string, s: string, e?: string) => void; logout: () => void
@@ -668,6 +673,7 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
             <div style={{ flex: '1 1 160px', minWidth: 0, overflowWrap: 'anywhere', padding: '12px 15px', background: PANEL_2, border: HAIR_2, borderRadius: 14, ...MONO, fontWeight: 700, fontSize: 22, letterSpacing: '.12em', color: 'var(--text)', lineHeight: 1.2 }}>{inviteCode}</div>
             <button onClick={() => { setCodeDraft(inviteCode); setCodeEditing(true); setCodeMsg('') }} style={ICON_BTN} title="Edit" aria-label="Edit invite code"><Icon name="edit" size={15} /></button>
             <button onClick={() => { navigator.clipboard.writeText(inviteCode); setCodeMsg('Copied!') }} style={ICON_BTN} title="Copy" aria-label="Copy invite code"><Icon name="copy" size={15} /></button>
+            <button type="button" onClick={onShowQR} className="btn btn-ghost" style={{ minHeight: 44, flex: '1 1 150px' }}>Show QR code</button>
           </div>
         ) : (
           <div style={{ marginBottom: 14 }}>
@@ -846,6 +852,9 @@ function DashboardPageInner() {
   }
 
   const [quickSessionOpen, setQuickSessionOpen] = useState(false)
+  /** A session's brief opened from Today, before its twenty-minute window. */
+  const [briefEvent, setBriefEvent] = useState<BriefEvent | null>(null)
+  const [showInviteQR, setShowInviteQR] = useState(false)
   const [quickSessionAthleteId, setQuickSessionAthleteId] = useState<string | undefined>()
   const [quickSessionGroupId, setQuickSessionGroupId] = useState<string | undefined>()
 
@@ -1596,6 +1605,22 @@ function DashboardPageInner() {
   const openRecorder = (athleteId?: string, groupId?: string) => {
     setQuickSessionAthleteId(athleteId); setQuickSessionGroupId(groupId); setQuickSessionOpen(true)
   }
+
+  /* /dashboard?record=1 — the home-screen shortcut straight to the recorder.
+   * Opens it once, then takes the param out of the URL so a reload, or coming
+   * back to this tab, does not open it again. Whatever else is in the URL (a
+   * ?tab=) is kept. */
+  const recordParamHandled = useRef(false)
+  const wantsRecord = searchParams.get('record') === '1'
+  useEffect(() => {
+    if (!wantsRecord || recordParamHandled.current) return
+    recordParamHandled.current = true
+    setQuickSessionAthleteId(undefined); setQuickSessionGroupId(undefined); setQuickSessionOpen(true)
+    const rest = new URLSearchParams(window.location.search)
+    rest.delete('record')
+    const q = rest.toString()
+    router.replace(q ? `/dashboard?${q}` : '/dashboard', { scroll: false })
+  }, [wantsRecord, router])
   const closeAddAthlete = () => { setShowAddAthlete(false); setAddMsg(''); setLastInvite(null) }
 
   /** Floating nav geometry, shared with the Messages panel's height so the two
@@ -1859,6 +1884,10 @@ function DashboardPageInner() {
                 </div>
               </div>
 
+              {/* The session about to start, from twenty minutes before until
+                  just after. Renders nothing the rest of the time. */}
+              <UpcomingBrief events={homeWeekEvents} />
+
               {/* Record — the floodlight is spent here. */}
               <button onClick={() => openRecorder()} style={{
                 position: 'relative', minHeight: 64, borderRadius: 18, overflow: 'hidden', background: 'var(--flood)',
@@ -1945,8 +1974,12 @@ function DashboardPageInner() {
                       const mins = m ? m[2] : null
                       const ampm = hrs !== null ? (hrs >= 12 ? 'pm' : 'am') : null
                       const dh = hrs !== null ? (hrs > 12 ? hrs - 12 : hrs === 0 ? 12 : hrs) : null
+                      // Any session with an athlete on it has a brief, not only
+                      // the one inside the twenty-minute window.
+                      const briefable = ev.event_type === 'session' && !!ev.athlete_id
                       return (
-                        <Link key={ev.id} href={ev.athlete_id ? `/athletes/${ev.athlete_id}` : '#'} style={{ display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr) auto', alignItems: 'center', gap: 12, minHeight: 44, padding: '11px 0', borderTop: i === 0 ? HAIR_2 : HAIR, textDecoration: 'none', color: 'inherit', cursor: ev.athlete_id ? 'pointer' : 'default' }}>
+                        <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, borderTop: i === 0 ? HAIR_2 : HAIR, minWidth: 0 }}>
+                        <Link href={ev.athlete_id ? `/athletes/${ev.athlete_id}` : '#'} style={{ flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr) auto', alignItems: 'center', gap: 12, minHeight: 44, padding: '11px 0', textDecoration: 'none', color: 'inherit', cursor: ev.athlete_id ? 'pointer' : 'default' }}>
                           <div>
                             {dh !== null ? (
                               <>
@@ -1961,6 +1994,17 @@ function DashboardPageInner() {
                           </div>
                           <span style={{ color: 'var(--text-2)' }}><Icon name="arrow" size={14} strokeWidth={1.8} /></span>
                         </Link>
+                        {briefable && (
+                          <button
+                            type="button"
+                            onClick={() => setBriefEvent({ id: ev.id, title: ev.title, event_date: ev.event_date, event_time: ev.event_time ?? null })}
+                            aria-label={`Pre-session brief for ${ev.title}`}
+                            style={{ flex: 'none', minHeight: 44, padding: '0 14px', borderRadius: 12, border: HAIR_2, background: tint('var(--text)', 4), color: 'var(--primary)', ...cast(13, 700, '.14em'), cursor: 'pointer' }}
+                          >
+                            Brief
+                          </button>
+                        )}
+                        </div>
                       )
                     })}
                   </div>
@@ -2032,6 +2076,11 @@ function DashboardPageInner() {
                   </div>
                 </section>
               )}
+
+              {/* Who has had least of your attention this month (lib/insights).
+                  Coach-only, never on an athlete screen (verify:safeguard SG4).
+                  Only worth showing once there is a roster to compare. */}
+              {athletes.length >= 2 && <CoverageInsight />}
 
               {/* Onboarding flow (empty state) */}
               {athletes.length === 0 && !loadingAthletes && (() => {
@@ -2118,6 +2167,13 @@ function DashboardPageInner() {
                             style={{ minHeight: 44, padding: '0 16px', borderRadius: 12, border: HAIR_2, background: tint('var(--text)', 4), color: 'var(--text-2)', ...cast(13, 700, '.16em'), display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}
                           >
                             <Icon name="copy" size={14} /> Copy code
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowInviteQR(true)}
+                            style={{ minHeight: 44, padding: '0 16px', borderRadius: 12, border: HAIR_2, background: tint('var(--text)', 4), color: 'var(--text)', ...cast(13, 700, '.16em'), display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}
+                          >
+                            Show QR code
                           </button>
                           <span style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)' }}>Or go to Athletes tab to invite by email</span>
                         </div>
@@ -2651,6 +2707,7 @@ function DashboardPageInner() {
                 if (email) setCoachEmail(email)
               }}
               logout={logout}
+              onShowQR={() => setShowInviteQR(true)}
             />
           )}
         </div>
@@ -2838,6 +2895,13 @@ function DashboardPageInner() {
                   >
                     <Icon name="copy" size={14} /> Copy
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowInviteQR(true)}
+                    style={{ flex: '1 1 150px', minHeight: 44, borderRadius: 12, border: HAIR_2, background: tint('var(--text)', 4), color: 'var(--text)', ...cast(13, 700, '.16em'), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, cursor: 'pointer' }}
+                  >
+                    Show QR code
+                  </button>
                   {codeMsg && <span role="status" style={{ fontSize: 'var(--fs-2)', fontWeight: 600, color: codeMsg.includes('Copied') || codeMsg.includes('updated') ? 'var(--success)' : 'var(--danger)' }}>{codeMsg}</span>}
                 </div>
               </div>
@@ -2972,6 +3036,16 @@ function DashboardPageInner() {
             />
           ))}
         </div>
+      )}
+
+      {briefEvent && (
+        <PreSessionBrief event={briefEvent} variant="sheet" onClose={() => setBriefEvent(null)} />
+      )}
+
+      {/* Above the Add athlete sheet it is opened from, so closing it lands
+          back where the coach was. */}
+      {showInviteQR && inviteCode && (
+        <InviteQR code={inviteCode} onClose={() => setShowInviteQR(false)} />
       )}
 
       {quickSessionOpen && (

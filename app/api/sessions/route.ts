@@ -111,7 +111,30 @@ export async function POST(req: NextRequest) {
    * writing prose rather than one instruction a fifteen-year-old can act on,
    * and the athlete's card has no room for it either. */
   const suppliedNext = suppliedNextRaw.slice(0, MAX_NEXT_LENGTH)
-  const coachSupplied = suppliedSummary.length > 0 || suppliedNext.length > 0
+
+  /* One recording about several athletes, saved as one row per athlete.
+   *
+   * The same id on every sibling row. It does one job: it tells the detail
+   * route that this transcript is the coach talking about several children,
+   * so it is never served to the athlete (see migration 029). Setting it can
+   * only ever withhold, so it needs no ownership check — but it must look
+   * like the uuid the column holds, or the insert fails with a raw error.
+   *
+   * It also means the summary is never regenerated here. The generic
+   * summariser reads the WHOLE transcript, which is about every athlete in
+   * the recording; a session that arrived without a summary would get one
+   * that repeats what the coach said about the others. The split route
+   * already drafted this athlete's part and the coach reviewed it, so what
+   * was sent is what is saved — including nothing, when there was nothing
+   * specific for them. */
+  const sharedRaw = typeof body?.shared_recording_id === 'string' ? body.shared_recording_id.trim() : ''
+  if (sharedRaw && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sharedRaw)) {
+    const res = NextResponse.json({ error: 'That shared recording id is not valid.' }, { status: 400 })
+    return attachCookies(res, cookiesToSet)
+  }
+  const shared_recording_id = sharedRaw || null
+
+  const coachSupplied = Boolean(shared_recording_id) || suppliedSummary.length > 0 || suppliedNext.length > 0
   const session_date = typeof body?.session_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.session_date)
     ? body.session_date
     : null
@@ -253,6 +276,10 @@ export async function POST(req: NextRequest) {
       audio_path,
       audio_mime,
       group_id,
+      // Only when set, so an ordinary save does not depend on migration 029
+      // having been applied. A shared save before it is applied fails the
+      // insert outright — the safe direction: never saved without the flag.
+      ...(shared_recording_id ? { shared_recording_id } : {}),
     })
     .select('id, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime')
     .single()

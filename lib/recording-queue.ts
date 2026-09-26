@@ -58,10 +58,31 @@ export interface PendingRecording {
   blob: Blob
   mimeType: string
 
-  // Who it is for, captured when the recording stopped.
-  mode: 'athlete' | 'group'
+  // Who it is for. Captured when the recording stopped, and captured AGAIN at
+  // save: the coach may record first and choose who it is for afterwards, so
+  // at stop these can still be empty. A row only becomes `ready` with them set.
+  mode: 'athlete' | 'group' | 'several'
   athleteId: string | null
   groupId: string | null
+  /**
+   * `several` only: the 2–5 athletes one recording is split between. Narrowed
+   * to the ones still unsaved after a partial save, like `memberIds`.
+   * Optional because rows queued before this mode existed do not have it.
+   */
+  athleteIds?: string[]
+  /**
+   * The summary and takeaway the coach reviewed, per athlete id. `several`
+   * always has one per athlete (possibly empty — "leave it" is an answer);
+   * `athlete` has one when a draft existed. A replay sends exactly these, so a
+   * coach's edit is never replaced by a second call to the model.
+   */
+  drafts?: Record<string, { summary: string; next: string }>
+  /**
+   * `several` only: the id every sibling session carries (migration 029). It
+   * is what withholds the combined transcript from each athlete, so a
+   * `several` row without one is never saved.
+   */
+  sharedRecordingId?: string | null
   /** Snapshotted so a queued group recording survives the squad being renamed. */
   groupName: string | null
   memberIds: string[]
@@ -168,6 +189,23 @@ export async function deleteRecording(id: string): Promise<void> {
   } catch {
     /* see the note above */
   }
+}
+
+/**
+ * A uuid for `sessions.shared_recording_id`. crypto.randomUUID exists only in
+ * secure contexts, which production is; the fallback is a v4-shaped uuid built
+ * from getRandomValues so a plain-http LAN test does not break saving.
+ */
+export function newSharedRecordingId(): string {
+  const c = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  const b = new Uint8Array(16)
+  if (c && typeof c.getRandomValues === 'function') c.getRandomValues(b)
+  else for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256)
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
 
 export function newRecordingId(): string {

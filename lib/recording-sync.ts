@@ -73,7 +73,32 @@ async function transcribe(rec: PendingRecording, audioPath: string | null): Prom
   return typeof json.text === 'string' ? json.text : ''
 }
 
-async function saveSession(rec: PendingRecording, transcript: string, audioPath: string | null) {
+/** One POST /api/sessions body. */
+export interface SessionBody {
+  athlete_id: string | null
+  transcript: string
+  shared_with_athlete: boolean
+  session_date: string
+  sport_context: string | null
+  audio_path: string | null
+  audio_mime: string | null
+  session_name: string | null
+  group_id?: string | null
+  shared_recording_id?: string
+  summary?: string | null
+  next?: string | null
+}
+
+/**
+ * The sessions a queued recording saves as, one body per athlete.
+ *
+ * Pure, and exported so tools/prompt-rig.mjs can hold the property the
+ * `several` mode depends on: every sibling carries the same
+ * shared_recording_id and ONLY its own athlete's summary. Throws rather than
+ * returning a body that would save a combined transcript without the flag
+ * that withholds it.
+ */
+export function sessionBodies(rec: PendingRecording, transcript: string, audioPath: string | null): SessionBody[] {
   const base = {
     transcript: transcript.trim(),
     shared_with_athlete: rec.shareWithAthlete,
@@ -83,17 +108,64 @@ async function saveSession(rec: PendingRecording, transcript: string, audioPath:
     audio_mime: audioPath ? rec.mimeType : null,
   }
 
-  const targets =
-    rec.mode === 'group'
-      ? rec.memberIds.map((aid) => ({
-          ...base,
-          athlete_id: aid,
-          group_id: rec.groupId,
-          session_name: rec.sessionName.trim()
-            ? `[${rec.groupName ?? 'Squad'}] ${rec.sessionName.trim()}`
-            : `[${rec.groupName ?? 'Squad'}] Session`,
-        }))
-      : [{ ...base, athlete_id: rec.athleteId, session_name: rec.sessionName.trim() || null }]
+  if (rec.mode === 'group') {
+    return rec.memberIds.map((aid) => ({
+      ...base,
+      athlete_id: aid,
+      group_id: rec.groupId,
+      session_name: rec.sessionName.trim()
+        ? `[${rec.groupName ?? 'Squad'}] ${rec.sessionName.trim()}`
+        : `[${rec.groupName ?? 'Squad'}] Session`,
+    }))
+  }
+
+  if (rec.mode === 'several') {
+    const ids = rec.athleteIds ?? []
+    if (ids.length === 0) throw new Error('This recording has no athletes chosen yet.')
+    if (!rec.sharedRecordingId) {
+      throw new Error('This recording is missing its shared id, so it cannot be saved privately. Open it and save again.')
+    }
+    return ids.map((aid) => {
+      const d = rec.drafts?.[aid]
+      return {
+        ...base,
+        athlete_id: aid,
+        session_name: rec.sessionName.trim() || null,
+        shared_recording_id: rec.sharedRecordingId as string,
+        // Sent even when empty: with a shared id the server saves what it is
+        // given and never regenerates from the combined transcript.
+        summary: d?.summary.trim() || null,
+        next: d?.next.trim() || null,
+      }
+    })
+  }
+
+  const d = rec.athleteId ? rec.drafts?.[rec.athleteId] : undefined
+  return [{
+    ...base,
+    athlete_id: rec.athleteId,
+    session_name: rec.sessionName.trim() || null,
+    // Only when the coach reviewed one; otherwise the server drafts as before.
+    ...(d && (d.summary.trim() || d.next.trim())
+      ? { summary: d.summary.trim() || null, next: d.next.trim() || null }
+      : {}),
+  }]
+}
+
+/**
+ * After a partial save, what the queued row must be narrowed to so a retry
+ * writes only the sessions that are still missing. Null when nothing needs
+ * narrowing. A retry that re-POSTed everyone would give every athlete whose
+ * session DID save a duplicate they can see and nobody can delete.
+ */
+export function narrowAfterPartialSave(rec: PendingRecording, results: readonly boolean[]): Partial<PendingRecording> | null {
+  if (rec.mode === 'group') return { memberIds: rec.memberIds.filter((_, i) => !results[i]) }
+  if (rec.mode === 'several') return { athleteIds: (rec.athleteIds ?? []).filter((_, i) => !results[i]) }
+  return null
+}
+
+async function saveSession(rec: PendingRecording, transcript: string, audioPath: string | null) {
+  const targets = sessionBodies(rec, transcript, audioPath)
 
   const results = await Promise.all(
     targets.map(async (body) => {
@@ -114,10 +186,8 @@ async function saveSession(rec: PendingRecording, transcript: string, audioPath:
     // ready, so the next drain POSTed the whole squad again and every athlete
     // whose session HAD saved got a duplicate they can see and nobody can
     // delete. Now a retry only ever writes the missing sessions.
-    if (rec.mode === 'group') {
-      const failed = rec.memberIds.filter((_, i) => !results[i])
-      await patchRecording(rec.id, { memberIds: failed })
-    }
+    const patch = narrowAfterPartialSave(rec, results)
+    if (patch) await patchRecording(rec.id, patch)
     throw new Error(`Saved for ${saved} of ${results.length} athletes.`)
   }
 }
