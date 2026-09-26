@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo, useId, Suspense, Fragment } from 'react'
 import { byName, matchesName } from '@/lib/athlete-filter'
+import CoverageInsight from '@/app/components/CoverageInsight'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
@@ -2075,6 +2076,11 @@ function DashboardPageInner() {
                   </div>
                 </section>
               )}
+
+              {/* Who has had least of your attention this month (lib/insights).
+                  Coach-only, never on an athlete screen (verify:safeguard SG4).
+                  Only worth showing once there is a roster to compare. */}
+              {athletes.length >= 2 && <CoverageInsight />}
 
               {/* Onboarding flow (empty state) */}
               {athletes.length === 0 && !loadingAthletes && (() => {

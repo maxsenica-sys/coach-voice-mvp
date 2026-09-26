@@ -135,7 +135,7 @@ The text below is an automatic transcript of the coach talking out loud, not a w
 WHAT GOES IN EACH ATHLETE'S SECTION
 Only what the coach said to that athlete or about that athlete, plus anything the coach clearly said to all of them together ("both of you", "all of you", "everyone").
 A point the coach made about one athlete belongs to that athlete alone. Never copy it into another athlete's section, not even reworded.
-Never mention any other athlete by name in a section — not in a bullet, not in the NEXT line. Never compare one athlete with another. If a point involves another athlete, write it without their name ("your partner", "the group").
+Never mention any other athlete by name in a section — not in a bullet, not in "next". Never compare one athlete with another. If a point involves another athlete, write it without their name ("your partner", "the group").
 If the coach said nothing specific to or about an athlete, give that athlete an empty summary and an empty next. Do not invent a point, do not pad it with the points meant for everyone, and do not write "nothing to report".
 
 WRITE, FOR EACH ATHLETE

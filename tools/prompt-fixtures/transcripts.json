@@ -177,5 +177,257 @@
         "next": null
       }
     }
-  ]
+  ],
+  "splits": {
+    "_comment": "One recording about several athletes, split into one summary each (lib/split-summary.ts). `cases` hold the name gate that decides who the model may write for at all; `replies` are recorded model replies, parsed against `requested`. Add either by appending — no code change needed.",
+    "cases": [
+      {
+        "id": "two-named-one-silent",
+        "why": "The shape Max asked for: talk about two athletes by name in one breath. Leo was chosen but never spoken to, so the model must never be asked to write for him.",
+        "transcript": "Okay so quick one on the two of you. Kai, your approach was rushed again, you're jumping off two feet too early, slow the last two steps down. Mia, really good tempo on the quick set today, keep your hands high. Both of you, call the ball earlier, I want to hear it. Next time Kai we're doing approach footwork first thing.",
+        "sport": "Volleyball",
+        "athletes": [
+          {
+            "id": "a-kai",
+            "first_name": "Kai",
+            "last_name": "Tanaka"
+          },
+          {
+            "id": "a-mia",
+            "first_name": "Mia",
+            "last_name": "Okonkwo-Lindqvist"
+          },
+          {
+            "id": "a-leo",
+            "first_name": "Leo",
+            "last_name": "Brandt"
+          }
+        ],
+        "expectEligible": [
+          "a-kai",
+          "a-mia"
+        ],
+        "expectSkipped": {
+          "a-leo": "not-named"
+        }
+      },
+      {
+        "id": "two-sams-and-priya",
+        "why": "Two athletes called Sam in one recording. 'Sam, your arm swing' cannot be attributed, so neither Sam is written for and both are told why.",
+        "transcript": "Sam, your arm swing is dropping at the end. Priya, lovely footwork, keep that. Sam you need to stay lower on defence.",
+        "sport": "Volleyball",
+        "athletes": [
+          {
+            "id": "a-sam1",
+            "first_name": "Sam",
+            "last_name": "Reid"
+          },
+          {
+            "id": "a-sam2",
+            "first_name": "Sam",
+            "last_name": "Okafor"
+          },
+          {
+            "id": "a-priya",
+            "first_name": "Priya",
+            "last_name": "Shah"
+          }
+        ],
+        "expectEligible": [
+          "a-priya"
+        ],
+        "expectSkipped": {
+          "a-sam1": "ambiguous-name",
+          "a-sam2": "ambiguous-name"
+        }
+      }
+    ],
+    "replies": [
+      {
+        "id": "well-formed",
+        "why": "Both athletes, each with their own points.",
+        "requested": [
+          {
+            "id": "a-kai",
+            "first_name": "Kai",
+            "last_name": "Tanaka"
+          },
+          {
+            "id": "a-mia",
+            "first_name": "Mia",
+            "last_name": "Okonkwo-Lindqvist"
+          }
+        ],
+        "content": "{\"athletes\": [{\"id\": \"a-kai\", \"summary\": \"\\u2022 Slow the last two steps of your approach.\\n\\u2022 Call the ball earlier.\", \"next\": \"Approach footwork first thing.\"}, {\"id\": \"a-mia\", \"summary\": \"\\u2022 Good tempo on the quick set \\u2014 keep your hands high.\\n\\u2022 Call the ball earlier.\", \"next\": \"\"}]}",
+        "expect": {
+          "a-kai": {
+            "reason": "drafted",
+            "hasSummary": true,
+            "next": "Approach footwork first thing."
+          },
+          "a-mia": {
+            "reason": "drafted",
+            "hasSummary": true,
+            "next": null
+          }
+        }
+      },
+      {
+        "id": "missing-athlete",
+        "why": "The model left Mia out. She still gets a section — an empty one, said to be empty — never someone else's.",
+        "requested": [
+          {
+            "id": "a-kai",
+            "first_name": "Kai",
+            "last_name": "Tanaka"
+          },
+          {
+            "id": "a-mia",
+            "first_name": "Mia",
+            "last_name": "Okonkwo-Lindqvist"
+          }
+        ],
+        "content": "{\"athletes\": [{\"id\": \"a-kai\", \"summary\": \"\\u2022 Slow the last two steps of your approach.\", \"next\": \"\"}]}",
+        "expect": {
+          "a-kai": {
+            "reason": "drafted",
+            "hasSummary": true,
+            "next": null
+          },
+          "a-mia": {
+            "reason": "nothing-specific",
+            "hasSummary": false,
+            "next": null
+          }
+        }
+      },
+      {
+        "id": "extra-unknown-athlete",
+        "why": "A section for an id nobody asked for — a hallucinated athlete, and Leo, who was chosen but not named — is dropped whatever it says.",
+        "requested": [
+          {
+            "id": "a-kai",
+            "first_name": "Kai",
+            "last_name": "Tanaka"
+          },
+          {
+            "id": "a-mia",
+            "first_name": "Mia",
+            "last_name": "Okonkwo-Lindqvist"
+          }
+        ],
+        "content": "{\"athletes\": [{\"id\": \"a-kai\", \"summary\": \"\\u2022 Slow the last two steps.\", \"next\": \"\"}, {\"id\": \"a-stranger\", \"summary\": \"\\u2022 STRANGER-TEXT must never surface.\", \"next\": \"STRANGER-NEXT\"}, {\"id\": \"a-leo\", \"summary\": \"\\u2022 LEO-TEXT must never surface.\", \"next\": \"\"}, {\"id\": \"a-mia\", \"summary\": \"\\u2022 Keep your hands high.\", \"next\": \"\"}]}",
+        "forbidden": [
+          "STRANGER",
+          "LEO-TEXT"
+        ],
+        "expect": {
+          "a-kai": {
+            "reason": "drafted",
+            "hasSummary": true,
+            "next": null
+          },
+          "a-mia": {
+            "reason": "drafted",
+            "hasSummary": true,
+            "next": null
+          }
+        }
+      },
+      {
+        "id": "names-another",
+        "why": "Kai's section names Mia. The prompt forbids it; the parser withholds it rather than showing Kai a sentence about Mia.",
+        "requested": [
+          {
+            "id": "a-kai",
+            "first_name": "Kai",
+            "last_name": "Tanaka"
+          },
+          {
+            "id": "a-mia",
+            "first_name": "Mia",
+            "last_name": "Okonkwo-Lindqvist"
+          }
+        ],
+        "content": "{\"athletes\": [{\"id\": \"a-kai\", \"summary\": \"\\u2022 Slow your approach, like Mia does.\", \"next\": \"\"}, {\"id\": \"a-mia\", \"summary\": \"\\u2022 Keep your hands high.\", \"next\": \"\"}]}",
+        "expect": {
+          "a-kai": {
+            "reason": "named-another",
+            "hasSummary": false,
+            "next": null
+          },
+          "a-mia": {
+            "reason": "drafted",
+            "hasSummary": true,
+            "next": null
+          }
+        }
+      },
+      {
+        "id": "placeholder-and-fence",
+        "why": "A code fence around the JSON is tolerated; a 'None' placeholder is nothing, not a summary; an over-long next is dropped.",
+        "requested": [
+          {
+            "id": "a-kai",
+            "first_name": "Kai",
+            "last_name": "Tanaka"
+          },
+          {
+            "id": "a-mia",
+            "first_name": "Mia",
+            "last_name": "Okonkwo-Lindqvist"
+          }
+        ],
+        "content": "```json\n{\"athletes\": [{\"id\": \"a-kai\", \"summary\": \"None\", \"next\": \"N/A\"}, {\"id\": \"a-mia\", \"summary\": \"\\u2022 Keep your hands high.\", \"next\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}]}\n```",
+        "expect": {
+          "a-kai": {
+            "reason": "nothing-specific",
+            "hasSummary": false,
+            "next": null
+          },
+          "a-mia": {
+            "reason": "drafted",
+            "hasSummary": true,
+            "next": null
+          }
+        }
+      },
+      {
+        "id": "malformed",
+        "why": "Prose instead of JSON. Reported as an error to the coach, never guessed at.",
+        "requested": [
+          {
+            "id": "a-kai",
+            "first_name": "Kai",
+            "last_name": "Tanaka"
+          },
+          {
+            "id": "a-mia",
+            "first_name": "Mia",
+            "last_name": "Okonkwo-Lindqvist"
+          }
+        ],
+        "content": "Kai: slow the approach.\nMia: keep your hands high.",
+        "expectError": true
+      },
+      {
+        "id": "no-athletes-list",
+        "why": "JSON, but not the shape asked for.",
+        "requested": [
+          {
+            "id": "a-kai",
+            "first_name": "Kai",
+            "last_name": "Tanaka"
+          },
+          {
+            "id": "a-mia",
+            "first_name": "Mia",
+            "last_name": "Okonkwo-Lindqvist"
+          }
+        ],
+        "content": "{\"summaries\": {\"a-kai\": \"\\u2022 Slow down.\"}}",
+        "expectError": true
+      }
+    ]
+  }
 }

@@ -348,6 +348,21 @@ const RULES = [
         }
       }
 
+      // The audio of a squad or shared recording is the transcript spoken. The
+      // signed-URL route decides athlete access on its own, so it must refuse
+      // both kinds: select both columns and gate the athlete branch on them.
+      const AUDIO = 'app/api/sessions/[id]/audio-url/route.ts'
+      const audio = files.find((f) => f.rel === AUDIO)
+      if (audio) {
+        const asrc = code(audio)
+        const sel = asrc.match(/\.select\(\s*['"`]([^'"`]*)['"`]/)?.[1] ?? ''
+        const gate = asrc.match(/const\s+(\w+)\s*=\s*Boolean\(\s*session\.group_id\s*\|\|\s*session\.shared_recording_id\s*\)/)
+        const used = gate && new RegExp(`shared_with_athlete\\s*&&\\s*!${gate[1]}\\b`).test(asrc)
+        if (!/\bgroup_id\b/.test(sel) || !/\bshared_recording_id\b/.test(sel) || !used) {
+          found.push({ file: AUDIO, line: lineOf(audio, /shared_with_athlete/), msg: 'signs audio for an athlete on a squad or shared recording (athlete branch not gated on group_id and shared_recording_id)' })
+        }
+      }
+
       for (const f of files) {
         if (!/^app\/athlete\//.test(f.rel)) continue
         const src = code(f)
@@ -592,7 +607,7 @@ const RULES = [
  * it does not have.
  */
 const KNOWN_GAPS = [
-  'Whether the AUDIO of a squad or shared recording reaches an athlete. It is the transcript, spoken. The detail route withholds shared-recording audio from an athlete viewer, but SG6 only reads the transcript expression, and `app/api/sessions/[id]/audio-url/route.ts` signs audio for any athlete the session is shared with — squad and shared recordings included.',
+  'The audio-url gate (SG6) is read as source: it proves the route selects group_id and shared_recording_id and gates the athlete branch on them, not that no other route signs the same bucket for an athlete.',
   'Whether the transcript withholding is correct for sessions saved BEFORE `sessions.group_id` existed. Those rows are null, so they are not identifiable as squad sessions. They are covered from the other end — the athlete client no longer selects transcripts at all — but SG6 is what enforces that, and a future direct fetch could reintroduce the leak for historic rows without tripping the group check.',
   'Whether a route\'s ownership check is *correct* — SG1 proves a route authenticates, not that it then scopes the query to the right coach.',
   'Whether row-level security policies in Supabase actually match what the routes assume. The policies live in migrations and are enforced by the database, not by anything this scanner reads.',

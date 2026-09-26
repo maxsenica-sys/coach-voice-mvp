@@ -310,9 +310,11 @@ function AthleteRow({ a, first, nudge, nudgeError, onNudge }: {
           <div style={{ minWidth: 0 }}>
             <span style={{ ...cast(13, 700, '.14em'), color: 'var(--text-2)' }}>Last takeaway</span>{' '}
             <span style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 'var(--t-body)', color: 'var(--text)', overflowWrap: 'anywhere' }}>“{a.last_focus.point}”</span>{' '}
-            {response
-              ? <Pill color={response.color} bg={response.tint}>{response.coachLabel}</Pill>
-              : <span style={{ ...MONO, fontSize: 13, color: 'var(--text-2)' }}>No reply yet</span>}
+            <div style={{ marginTop: 5 }}>
+              {response
+                ? <Pill color={response.color} bg={response.tint}>{response.coachLabel}</Pill>
+                : <span style={{ ...MONO, fontSize: 13, color: 'var(--text-2)' }}>No reply yet</span>}
+            </div>
           </div>
         ) : (
           <div>No takeaway set yet.</div>

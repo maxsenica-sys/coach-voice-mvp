@@ -55,7 +55,7 @@ export async function GET(
 
   const { data: session } = await admin
     .from('sessions')
-    .select('id, coach_id, athlete_id, shared_with_athlete, audio_path, audio_mime')
+    .select('id, coach_id, athlete_id, shared_with_athlete, audio_path, audio_mime, group_id, shared_recording_id')
     .eq('id', sessionId)
     .maybeSingle()
 
@@ -65,8 +65,12 @@ export async function GET(
 
   let hasAccess = session.coach_id === user.id
 
-  // An athlete may listen only to a session that was actually shared with them.
-  if (!hasAccess && session.shared_with_athlete) {
+  // An athlete may listen only to a session that was actually shared with them,
+  // and never to a squad or shared recording: that audio is the coach talking
+  // about every athlete in it, which is exactly what the detail route already
+  // withholds as a transcript (SG6). The audio said the same thing out loud.
+  const multiAthleteRecording = Boolean(session.group_id || session.shared_recording_id)
+  if (!hasAccess && session.shared_with_athlete && !multiAthleteRecording) {
     const { data: athlete } = await admin
       .from('athletes')
       .select('id')

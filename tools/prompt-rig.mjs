@@ -105,6 +105,12 @@ const { ALL_SPORTS, SPORT_TERMINOLOGY, getSportTerminologyHint } =
 const { buildSummaryPrompt, transcriptNames, mayPersonalise, parseSummaryResponse, MAX_NEXT_LENGTH, TARGET_BULLETS } =
   await import(pathToFileURL(path.join(ROOT, 'lib/summary-prompt.ts')).href)
 
+const { buildSplitSummaryPrompt, parseSplitSummaryResponse, splitEligibility, assembleSplit, SplitParseError, MAX_SPLIT_ATHLETES } =
+  await import(pathToFileURL(path.join(ROOT, 'lib/split-summary.ts')).href)
+
+const { sessionBodies, narrowAfterPartialSave } =
+  await import(pathToFileURL(path.join(ROOT, 'lib/recording-sync.ts')).href)
+
 const fixtures = JSON.parse(readFileSync(FIXTURES, 'utf8'))
 
 const failures = []
@@ -145,6 +151,38 @@ for (const g of GOLDENS) {
   } else {
     console.log(`   ${RED}FAIL${OFF}  ${g.label} has changed`)
     const a = recorded.split('\n')
+    const b = built.split('\n')
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      if (a[i] !== b[i]) {
+        console.log(`         ${DIM}line ${i + 1}${OFF}`)
+        console.log(`         ${RED}- ${a[i] ?? '(end of file)'}${OFF}`)
+        console.log(`         ${GREEN}+ ${b[i] ?? '(end of file)'}${OFF}`)
+      }
+    }
+    console.log(`         ${DIM}If deliberate: node tools/prompt-rig.mjs --update-golden${OFF}`)
+  }
+}
+
+/* The split prompt is pinned too. It is the text that decides whether Kai
+ * reads what the coach said about Mia, and "never copy it into another
+ * athlete's section" is exactly the kind of sentence an edit can weaken
+ * without anything else noticing. Built over the eligible athletes only,
+ * which is what the route sends. */
+const SPLIT_GOLDEN = path.join(ROOT, 'tools/prompt-fixtures/golden-prompt-split.txt')
+{
+  const c = fixtures.splits.cases.find((x) => x.id === 'two-named-one-silent')
+  const built = buildSplitSummaryPrompt(c.transcript, c.sport, splitEligibility(c.transcript, c.athletes).eligible)
+  if (updating) {
+    writeFileSync(SPLIT_GOLDEN, built)
+    console.log(`   ${YELLOW}rewritten${OFF}  ${path.basename(SPLIT_GOLDEN)} ${DIM}— review the diff before committing${OFF}`)
+  } else if (!existsSync(SPLIT_GOLDEN)) {
+    failures.push({ name: 'golden missing: golden-prompt-split.txt', detail: 'run --update-golden' })
+    console.log(`   ${RED}FAIL${OFF}  golden-prompt-split.txt does not exist — run --update-golden`)
+  } else if (check(readFileSync(SPLIT_GOLDEN, 'utf8') === built, 'golden prompt unchanged: split between several athletes')) {
+    console.log(`   ${GREEN}PASS${OFF}  split between several athletes ${DIM}· ${built.length} characters${OFF}`)
+  } else {
+    console.log(`   ${RED}FAIL${OFF}  split between several athletes has changed`)
+    const a = readFileSync(SPLIT_GOLDEN, 'utf8').split('\n')
     const b = built.split('\n')
     for (let i = 0; i < Math.max(a.length, b.length); i++) {
       if (a[i] !== b[i]) {
@@ -655,6 +693,147 @@ check(
   /coach_id/.test(draftRoute) && /who\.userId/.test(draftRoute),
   'the draft route scopes the athlete to the caller\'s own roster',
 )
+
+
+// ── 4b · one recording, several athletes ──────────────────────────────────
+//
+// Max, 2026-09-26: "Splitting the summary just has to be careful." Careful
+// means Kai never reads what the coach said about Mia. Three guards, all run
+// here: the name gate decides who the model may write for at all, the prompt
+// says what may go in a section, and the parser checks what comes back.
+
+console.log(`\n   ${BOLD}Splitting one recording${OFF} ${DIM}— each athlete gets only their own part${OFF}`)
+
+{
+  const pass = (ok, name, detail = '') => {
+    checks++
+    if (ok) console.log(`   ${GREEN}PASS${OFF}  ${name}`)
+    else {
+      failures.push({ name: `split · ${name}`, detail })
+      console.log(`   ${RED}FAIL${OFF}  ${name}   ${RED}${detail}${OFF}`)
+    }
+  }
+
+  // The gate: who the model is even asked about.
+  for (const c of fixtures.splits.cases) {
+    const { eligible, skipped } = splitEligibility(c.transcript, c.athletes)
+    const gotEligible = eligible.map((a) => a.id)
+    const gotSkipped = Object.fromEntries(skipped.map((s) => [s.athlete_id, s.reason]))
+    pass(
+      JSON.stringify(gotEligible) === JSON.stringify(c.expectEligible) &&
+        JSON.stringify(gotSkipped) === JSON.stringify(c.expectSkipped),
+      `gate · ${c.id}`,
+      `eligible=${JSON.stringify(gotEligible)} skipped=${JSON.stringify(gotSkipped)}`,
+    )
+    // An athlete the gate skipped is never named in the prompt, so the model
+    // is never invited to write for someone the coach did not speak to.
+    const prompt = buildSplitSummaryPrompt(c.transcript, c.sport, eligible)
+    const athletesBlock = prompt.slice(prompt.indexOf('THE ATHLETES'), prompt.indexOf('SPORT:'))
+    const leaked = c.athletes.filter((a) => !gotEligible.includes(a.id) && athletesBlock.includes(a.id))
+    pass(leaked.length === 0, `prompt · ${c.id} lists only the athletes the coach named`, leaked.map((a) => a.id).join(', '))
+    const sections = assembleSplit(c.athletes, skipped, [])
+    pass(
+      sections.length === c.athletes.length && sections.every((s, i) => s.athlete_id === c.athletes[i].id && s.summary === null),
+      `assemble · ${c.id} gives every athlete a section, empty when skipped`,
+      JSON.stringify(sections),
+    )
+  }
+
+  // What the prompt must always say.
+  const c0 = fixtures.splits.cases[0]
+  const eligible0 = splitEligibility(c0.transcript, c0.athletes).eligible
+  const p0 = buildSplitSummaryPrompt(c0.transcript, c0.sport, eligible0)
+  for (const [needle, name] of [
+    ['Never copy it into another athlete\'s section', 'forbids copying one athlete\'s point to another'],
+    ['Never mention any other athlete by name', 'forbids naming another athlete'],
+    ['Never compare one athlete with another', 'forbids comparisons'],
+    ['give that athlete an empty summary', 'asks for an empty summary rather than an invented one'],
+    ['Never state anything the coach did not say', 'forbids invention'],
+  ]) pass(p0.includes(needle), `prompt ${name}`)
+  pass(p0.trim().endsWith(c0.transcript.trim()), 'prompt ends with the transcript')
+  pass(eligible0.every((a) => p0.includes(`id "${a.id}"`)), 'prompt lists every eligible athlete by id')
+
+  // Parity with the single summariser, so the two cannot drift apart on the
+  // parts that protect a child: the body rule, and the sport handling.
+  const single = buildSummaryPrompt(c0.transcript, c0.sport, null)
+  const block = (t, from, to) => t.slice(t.indexOf(from), t.indexOf(to, t.indexOf(from)))
+  pass(block(p0, 'ABOUT THEIR BODY', '\n\n') === block(single, 'ABOUT THEIR BODY', '\n\n') && p0.includes('ABOUT THEIR BODY'),
+    'body rule is word for word the single summariser\'s')
+  for (const sport of [c0.sport, null]) {
+    const a = buildSplitSummaryPrompt(c0.transcript, sport, eligible0)
+    const b = buildSummaryPrompt(c0.transcript, sport, null)
+    pass(block(a, 'SPORT:', 'WHAT YOU ARE READING') === block(b, 'SPORT:', 'WHAT YOU ARE READING'),
+      `sport block matches the single summariser's (${sport ?? 'no sport'})`)
+  }
+  pass(MAX_SPLIT_ATHLETES === 5, 'a split is capped at five athletes', String(MAX_SPLIT_ATHLETES))
+
+  // The parser, over recorded replies.
+  for (const r of fixtures.splits.replies) {
+    let got = null
+    let err = null
+    try { got = parseSplitSummaryResponse(r.content, r.requested) } catch (e) { err = e }
+    if (r.expectError) {
+      pass(err instanceof SplitParseError, `parse · ${r.id}`, err ? String(err) : `parsed: ${JSON.stringify(got)}`)
+      continue
+    }
+    if (err) { pass(false, `parse · ${r.id}`, String(err)); continue }
+    const wrong = []
+    for (const [id, want] of Object.entries(r.expect)) {
+      const s = got.find((x) => x.athlete_id === id)
+      if (!s) { wrong.push(`${id}: missing`); continue }
+      if (s.reason !== want.reason) wrong.push(`${id}: reason ${s.reason}, wanted ${want.reason}`)
+      if (Boolean(s.summary) !== want.hasSummary) wrong.push(`${id}: summary ${JSON.stringify(s.summary)}`)
+      if (s.next !== want.next) wrong.push(`${id}: next ${JSON.stringify(s.next)}, wanted ${JSON.stringify(want.next)}`)
+    }
+    pass(wrong.length === 0, `parse · ${r.id}`, wrong.join('; '))
+
+    // The property, on every reply: exactly the requested athletes come back,
+    // in request order, and nothing written for anyone else survives.
+    const ids = got.map((s) => s.athlete_id)
+    const requested = r.requested.map((a) => a.id)
+    const text = JSON.stringify(got)
+    const surfaced = (r.forbidden ?? []).filter((f) => text.includes(f))
+    pass(
+      JSON.stringify(ids) === JSON.stringify(requested) && surfaced.length === 0,
+      `parse · ${r.id} returns only the requested athletes`,
+      `ids=${JSON.stringify(ids)} surfaced=${JSON.stringify(surfaced)}`,
+    )
+  }
+
+  // The save, offline path: one session per athlete, the same shared id on
+  // every one, and only that athlete's own summary on it.
+  const rec = {
+    id: 'r1', mode: 'several', athleteIds: ['a-kai', 'a-mia'], athleteId: null, groupId: null, groupName: null,
+    memberIds: [], sharedRecordingId: '1b4e28ba-2fa1-41d2-883f-0016d3cca427',
+    drafts: { 'a-kai': { summary: '• KAI-ONLY', next: 'kai next' }, 'a-mia': { summary: '', next: '' } },
+    sessionName: 'Hitting', sessionDate: '2026-09-26', coachSport: 'Volleyball', shareWithAthlete: true, mimeType: 'audio/mp4',
+  }
+  const bodies = sessionBodies(rec, 'the whole transcript', 'coach/x.mp4')
+  pass(
+    bodies.length === 2 &&
+      bodies.every((b) => b.shared_recording_id === rec.sharedRecordingId && !b.group_id) &&
+      bodies[0].athlete_id === 'a-kai' && bodies[0].summary === '• KAI-ONLY' &&
+      bodies[1].athlete_id === 'a-mia' && bodies[1].summary === null && !JSON.stringify(bodies[1]).includes('KAI-ONLY'),
+    'queued save: one body per athlete, same shared id, each with only their own summary',
+    JSON.stringify(bodies),
+  )
+  let threw = false
+  try { sessionBodies({ ...rec, sharedRecordingId: null }, 't', null) } catch { threw = true }
+  pass(threw, 'queued save refuses a several-athlete recording with no shared id')
+  const narrowed = narrowAfterPartialSave(rec, [true, false])
+  pass(JSON.stringify(narrowed) === JSON.stringify({ athleteIds: ['a-mia'] }), 'a partial save narrows the queue to whoever is missing', JSON.stringify(narrowed))
+
+  // The joins between files that each look fine alone.
+  const saveSrc = readFileSync(new URL('../app/api/sessions/route.ts', import.meta.url), 'utf8')
+  pass(/coachSupplied\s*=\s*Boolean\(shared_recording_id\)\s*\|\|/.test(saveSrc),
+    'the save route never regenerates a shared recording\'s summary from the combined transcript')
+  const splitRoute = readFileSync(new URL('../app/api/sessions/split-summary/route.ts', import.meta.url), 'utf8')
+  pass(/\.in\(\s*'id',\s*ids\s*\)/.test(splitRoute) && /\.eq\(\s*'coach_id',\s*who\.userId\s*\)/.test(splitRoute) &&
+    /ids\.some\(\(id\)\s*=>\s*!found\.has\(id\)\)/.test(splitRoute),
+    'the split route scopes every athlete id to the caller\'s roster and rejects any it cannot find')
+  pass(/splitEligibility\(/.test(splitRoute) && /buildSplitSummaryPrompt\(transcript,\s*sport,\s*eligible\)/.test(splitRoute),
+    'the split route prompts for the gated athletes only')
+}
 
 // ── 5 · live mode ─────────────────────────────────────────────────────────
 
