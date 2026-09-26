@@ -50,6 +50,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join, relative } from 'node:path'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { athleteStatus, activeCount, activationFields } from '../lib/athlete-status.ts'
+import { filterAthletes, matchesName } from '../lib/athlete-filter.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const GREEN = '\x1b[32m', RED = '\x1b[31m', YELLOW = '\x1b[33m'
@@ -228,6 +229,33 @@ check(
 )
 
 // ── run ───────────────────────────────────────────────────────────────────
+
+check(
+  'R5',
+  'Finding an athlete by name matches word starts, never the middle of a name',
+  'A coach with twenty athletes types two letters to find one. A substring test once matched "Ana" inside "Anastasia"; a picker that does that records a session against the wrong child.',
+  () => {
+    const p = []
+    const A = (id, f, l) => ({ id, first_name: f, last_name: l })
+    const roster = [A('1', 'Ana', 'Liang'), A('2', 'Anastasia', 'Petrov'), A('3', 'Diana', 'Ross'), A('4', 'Mathilde', 'Ross'), A('5', 'Zoë', 'Grabovac-Hill'), A('6', 'sophie', 'Grabovac')]
+    const ids = (q, m) => filterAthletes(roster, q, m).map((a) => a.id).join(',')
+    const want = (q, expect, m) => { const got = ids(q, m); if (got !== expect) p.push(`"${q}"${m ? ' in ' + m.join('/') : ''} gave [${got}], want [${expect}]`) }
+    want('ana', '1,2')          // Ana and Anastasia both START with "ana"; Diana does not
+    want('ana l', '1')          // two words narrow to one
+    want('iana', '')            // never the middle of a name
+    want('ross', '3,4')
+    want('zoe', '5')            // accents ignored
+    want('hill', '5')           // hyphenated surname is two words
+    want('SO GR', '6')          // case ignored, both words must match
+    want('', '1,2,3,4,6,5')     // empty query: everyone, alphabetical by first name
+    want('', '3,4', ['4', '3']) // squad filter, still alphabetical
+    want('m', '4', ['4', '3'])
+    if (matchesName(roster[0], '   ') !== true) p.push('whitespace-only query should match everyone')
+    const copy = roster.slice(); filterAthletes(roster, 'a')
+    if (roster.some((a, i) => a !== copy[i])) p.push('filterAthletes reordered its input')
+    return p
+  },
+)
 
 console.log(`\n  ${DIM}Roster rig — does the roster tell the truth about who has arrived?${OFF}\n`)
 

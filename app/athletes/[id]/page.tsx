@@ -1113,7 +1113,7 @@ export default function AthleteDetailPage() {
         borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100,
       }}>
         <div style={{ maxWidth: maxW, margin: '0 auto', padding: `8px ${p}`, minHeight: 60, display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 12, rowGap: 8 }}>
-          <Link href="/dashboard" aria-label="Back to dashboard" style={{
+          <Link href="/dashboard?tab=athletes" aria-label="Back to your athletes" style={{
             ...CAST, fontSize: 'var(--t-furniture)', ...HIT,
             color: 'var(--text-2)', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             flexShrink: 0, padding: isMobile ? 0 : '0 14px 0 10px', borderRadius: 12, border: '1px solid var(--border)',

@@ -9,6 +9,7 @@ import { responseOption } from '@/lib/session-response'
 import type { LastFocus } from '@/app/api/athletes/[id]/last-focus/route'
 import { SUPPORTED_RECORDING_TYPES, transcribeFile } from '@/lib/audio-mime'
 import { newRecordingId, patchRecording, putRecording, deleteRecording, type PendingRecording } from '@/lib/recording-queue'
+import AthletePicker from '@/app/components/AthletePicker'
 
 interface Athlete {
   id: string
@@ -280,7 +281,13 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
    * checks res.ok is the bug the pre-commit checklist exists for. Failure here
    * is surfaced quietly and never blocks the save: the coach can write it.
    */
+  // Only the newest draft request may write, and never over words the coach
+  // has typed while it was out. Both used to happen: a draft landing late
+  // replaced what the coach had written, and a draft for one athlete could
+  // arrive after the coach had moved on to another.
+  const draftReqRef = useRef(0)
   const draftSummary = async (text: string, forAthleteId: string) => {
+    const req = ++draftReqRef.current
     setSummarising(true)
     setSummaryError('')
     try {
@@ -296,13 +303,29 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           }),
         },
       )
-      setSummaryDraft(out.summary ?? '')
-      setNextDraft(out.next ?? '')
+      if (req !== draftReqRef.current) return
+      setSummaryDraft((typed) => (typed.trim() ? typed : out.summary ?? ''))
+      setNextDraft((typed) => (typed.trim() ? typed : out.next ?? ''))
     } catch (e: unknown) {
-      setSummaryError(errorMessage(e, 'Could not draft a summary. You can write one below.'))
+      if (req === draftReqRef.current) setSummaryError(errorMessage(e, 'Could not draft a summary. You can write one below.'))
     } finally {
-      setSummarising(false)
+      if (req === draftReqRef.current) setSummarising(false)
     }
+  }
+
+  /* A drafted summary names the athlete it was written for. If the target
+   * changes, it is about the wrong child, so it goes, along with any draft
+   * still on its way. Reset during render (React's pattern for "reset state
+   * when an input changes"), so no frame shows A's summary under B. */
+  const draftTarget = `${mode}:${mode === 'athlete' ? athleteId : groupId}`
+  const [draftFor, setDraftFor] = useState(draftTarget)
+  if (draftFor !== draftTarget) {
+    setDraftFor(draftTarget)
+    draftReqRef.current++
+    setSummaryDraft('')
+    setNextDraft('')
+    setSummaryError('')
+    setSummarising(false)
   }
 
   const stopAndTranscribe = async () => {
@@ -787,16 +810,10 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                       No athletes yet — add one first before recording a session.
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 10, maxHeight: 132, overflowY: 'auto' }}>
-                      {athletes.map((a) => {
-                        const on = athleteId === a.id
-                        return (
-                          <button key={a.id} onClick={() => setAthleteId(on ? '' : a.id)} aria-pressed={on} style={chip(on)}>
-                            {a.first_name} {a.last_name}
-                          </button>
-                        )
-                      })}
-                    </div>
+                    // Search, squad filter and a list that scrolls with the
+                    // sheet: the 132px chip box it replaces showed three rows
+                    // of a twenty-athlete roster. See AthletePicker.
+                    <AthletePicker athletes={athletes} squads={groups} value={athleteId} onChange={setAthleteId} />
                   )
                 ) : (
                   <div>
@@ -805,7 +822,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                         No squads yet — create one first, or record for an individual athlete.
                       </div>
                     )}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 10, maxHeight: 132, overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
                       {groups.map((g) => {
                         const on = groupId === g.id
                         return (
@@ -1021,6 +1038,15 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                       setTranscript('')
                       setAudioPath(null)
                       setAudioMime(null)
+                      // The summary was written from the recording being
+                      // discarded, so it is discarded with it. It used to
+                      // survive, and could be saved on the next session.
+                      draftReqRef.current++
+                      setSummaryDraft('')
+                      setNextDraft('')
+                      setSummaryError('')
+                      setSummarising(false)
+                      setTranscriptWarning('')
                     }}
                   >
                     ← Re-record

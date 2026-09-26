@@ -115,17 +115,25 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   }, [preselectedAthleteId])
 
   // Load messages when athlete selected
+  //
+  // Only the newest request may write. Switching A → B quickly used to let A's
+  // slower response land last and fill B's thread with A's messages, under
+  // B's name.
+  const msgReqRef = useRef(0)
   const loadMessages = useCallback(async (athleteId: string) => {
+    const req = ++msgReqRef.current
     setLoadingMsgs(true)
     setMsgError(null)
     try {
       const res = await fetch(`/api/messages?athlete_id=${athleteId}`)
+      if (req !== msgReqRef.current) return
       // FIX 6: handle non-ok responses instead of silently showing empty chat
       if (!res.ok) {
         setMsgError('Could not load messages. Try again.')
         return
       }
       const json = await res.json()
+      if (req !== msgReqRef.current) return
       setMessages(json.messages ?? [])
       // Clear unread for this athlete
       setLocalUnread((prev) => {
@@ -134,11 +142,30 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
         return next
       })
     } catch {
-      setMsgError('Could not load messages. Try again.')
+      if (req === msgReqRef.current) setMsgError('Could not load messages. Try again.')
     } finally {
-      setLoadingMsgs(false)
+      if (req === msgReqRef.current) setLoadingMsgs(false)
     }
   }, [])
+
+  // Each conversation keeps its own draft. The text box and a recorded voice
+  // note used to survive a switch, so a message written to one athlete was
+  // sent to whichever athlete was open when Send was pressed.
+  const draftsRef = useRef<Record<string, string>>({})
+  const textRef = useRef(text)
+  useEffect(() => { textRef.current = text }, [text])
+  const [shownFor, setShownFor] = useState(selectedId)
+  if (shownFor !== selectedId) {
+    // Adjusting state while rendering, React's documented pattern for "reset
+    // when a prop changes", so there is no frame with A's draft under B.
+    if (shownFor) draftsRef.current[shownFor] = textRef.current
+    setShownFor(selectedId)
+    setText(selectedId ? draftsRef.current[selectedId] ?? '' : '')
+    setSendError(null)
+    setMessages([])
+    setAudioBlob(null)
+    setAudioUrl(null)
+  }
 
   useEffect(() => {
     if (!selectedId) return

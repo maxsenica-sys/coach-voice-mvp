@@ -32,6 +32,7 @@ import BodyMap from '@/app/components/BodyMap'
 import { regionLabel } from '@/lib/body-map'
 import { READINESS_OPTIONS, type Readiness } from '@/lib/readiness'
 import { apiMutate } from '@/lib/api-client'
+import { todayISODate } from '@/lib/session-date'
 
 export interface OpenInjury {
   id: string
@@ -87,6 +88,9 @@ export default function CheckIn({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           athlete_id: athleteId,
+          // The phone's own date, so the check-in lands on the athlete's day,
+          // not the server's UTC one. See app/api/wellness/route.ts.
+          check_date: todayISODate(),
           readiness,
           // Sent explicitly, including when empty: [] means "nothing hurts",
           // which is an answer, not an absence of one.
