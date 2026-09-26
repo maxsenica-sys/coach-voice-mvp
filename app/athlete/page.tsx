@@ -733,18 +733,17 @@ export default function AthletePage() {
       setSport(profile?.sport ?? '')
 
       const [sessResult, notesResult] = await Promise.all([
+        // Through the server, not a direct select. Migration 033 stops the
+        // browser reading squad and shared-recording rows at all, because the
+        // row carries a transcript that names other children; the route
+        // returns the same list with no transcript column in it. Ordered by
+        // session_date there, as it was here. Settled rather than thrown so a
+        // sessions failure does not take the notes down with it.
         athRecord
-          ? supabase.from('sessions')
-              .select('id, session_name, title, summary, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime, group_id, athlete_response')
-              .eq('athlete_id', athRecord.id)
-              .eq('shared_with_athlete', true)
-              // By when the session happened, not when the row was written —
-              // matching the coach side. Ordering by created_at alone put a
-              // backdated session at the top of the athlete's list as though
-              // it had happened tonight.
-              .order('session_date', { ascending: false, nullsFirst: false })
-              .order('created_at', { ascending: false })
-          : Promise.resolve({ data: [] as SessionRow[], error: null }),
+          ? apiJson<{ sessions?: SessionRow[] }>('/api/athlete/sessions', { cache: 'no-store' })
+              .then((j) => ({ data: j.sessions ?? [], error: null as string | null }))
+              .catch((e: unknown) => ({ data: [] as SessionRow[], error: errorMessage(e, 'Could not load your sessions.') }))
+          : Promise.resolve({ data: [] as SessionRow[], error: null as string | null }),
         // apiJson, not raw fetch: a non-2xx here used to parse to `{}` and
         // render as "No notes yet". Settled rather than thrown so a notes
         // failure does not take the sessions down with it.

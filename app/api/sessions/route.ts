@@ -151,6 +151,20 @@ export async function POST(req: NextRequest) {
   }
   const sport_context = typeof body?.sport_context === 'string' ? body.sport_context.trim() || null : null
   const audio_path = typeof body?.audio_path === 'string' ? body.audio_path.trim() || null : null
+  /* The recording must be one this coach uploaded.
+   *
+   * audio_path is a string from the client, and it is signed later with the
+   * service-role key — by /api/sessions/[id]/audio-url and by the detail route
+   * — for anyone who can see this session. Stored unchecked, a coach who
+   * guessed or was shown another coach's path could save it on a session of
+   * their own and play that recording back. audio-upload-url only ever mints
+   * `coach/${user.id}/…`, and /api/transcribe already refuses anything else;
+   * this is the same rule at the point the path becomes permanent. Migration
+   * 033 holds the database to it as well. */
+  if (audio_path && (!audio_path.startsWith(`coach/${user.id}/`) || audio_path.includes('..'))) {
+    const res = NextResponse.json({ error: 'That recording does not belong to you.' }, { status: 403 })
+    return attachCookies(res, cookiesToSet)
+  }
   const audio_mime = typeof body?.audio_mime === 'string' ? body.audio_mime.trim() || null : null
   // The squad this recording was for, when it was a group save. It is what
   // lets the athlete side tell a squad talk from a one-to-one, and therefore

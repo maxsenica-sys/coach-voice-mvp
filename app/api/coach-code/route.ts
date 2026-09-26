@@ -72,6 +72,23 @@ export async function PUT(req: NextRequest) {
 
   const admin = createSupabaseAdminClient()
 
+  // Coaches only, as GET already says. This writes with the service-role key,
+  // which migration 033's profiles trigger lets through by design — so the
+  // role check has to live here. An athlete holding an invite code is inert
+  // today (join and complete-signup match codes with role = 'coach'), but it
+  // is a coach's credential and nothing else should be able to mint one.
+  const { data: caller, error: callerErr } = await admin
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (callerErr) {
+    return attachCookies(NextResponse.json({ error: callerErr.message }, { status: 500 }), cookiesToSet)
+  }
+  if (caller?.role !== 'coach') {
+    return attachCookies(NextResponse.json({ error: 'Only coaches have invite codes.' }, { status: 403 }), cookiesToSet)
+  }
+
   // Check uniqueness (excluding self)
   const { data: existing } = await admin
     .from('profiles')
