@@ -9,6 +9,7 @@ import { responseOption } from '@/lib/session-response'
 import type { LastFocus } from '@/app/api/athletes/[id]/last-focus/route'
 import { SUPPORTED_RECORDING_TYPES, transcribeFile } from '@/lib/audio-mime'
 import { newRecordingId, patchRecording, putRecording, deleteRecording, type PendingRecording } from '@/lib/recording-queue'
+import AthletePicker from '@/app/components/AthletePicker'
 
 interface Athlete {
   id: string
@@ -787,16 +788,10 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                       No athletes yet — add one first before recording a session.
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 10, maxHeight: 132, overflowY: 'auto' }}>
-                      {athletes.map((a) => {
-                        const on = athleteId === a.id
-                        return (
-                          <button key={a.id} onClick={() => setAthleteId(on ? '' : a.id)} aria-pressed={on} style={chip(on)}>
-                            {a.first_name} {a.last_name}
-                          </button>
-                        )
-                      })}
-                    </div>
+                    // Search, squad filter and a list that scrolls with the
+                    // sheet: the 132px chip box it replaces showed three rows
+                    // of a twenty-athlete roster. See AthletePicker.
+                    <AthletePicker athletes={athletes} squads={groups} value={athleteId} onChange={setAthleteId} />
                   )
                 ) : (
                   <div>
@@ -805,7 +800,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                         No squads yet — create one first, or record for an individual athlete.
                       </div>
                     )}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 10, maxHeight: 132, overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
                       {groups.map((g) => {
                         const on = groupId === g.id
                         return (
