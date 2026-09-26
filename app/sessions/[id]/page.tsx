@@ -1427,9 +1427,15 @@ export default function SessionDetailPage() {
                     <div key={v.id} style={{ ...panel, padding: 10, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
                       {v.signedUrl ? (
                         <VideoAnnotator
+                          /* Remounted when the full list replaces /detail's:
+                             the annotator seeds its strokes once, and a coach
+                             drawing on the seed-less copy would save over the
+                             drawings already there. Editable only on the full
+                             list, which is the one that carries them. */
+                          key={`${v.id}-${videoList ? 'full' : 'detail'}`}
                           videoUrl={v.signedUrl}
                           initialAnnotations={v.annotations ?? []}
-                          readOnly={!isCoach}
+                          readOnly={!isCoach || !videoList}
                           onAnnotationsChange={isCoach ? (strokes) => saveVideoAnnotations(v.id, strokes) : undefined}
                           onVideoElement={(el) => { videoEls.current[v.id] = el }}
                           sessionId={sessionId}
@@ -1480,22 +1486,23 @@ export default function SessionDetailPage() {
                             const attached = c.focus_point && session.focus_points.includes(c.focus_point)
                             return (
                               <div key={c.id} style={{ minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                   <button onClick={() => setOpenMoment(openMoment === `video:${c.id}` ? null : `video:${c.id}`)} aria-expanded={openMoment === `video:${c.id}`}
                                     style={{ ...VIDEO_BTN, color: 'var(--text)' }}>
                                     <Icon name="video" size={13} />
                                     <span style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.02em', textTransform: 'none', fontWeight: 500 }}>{momentRange(c)}</span>
                                   </button>
-                                  <span style={{ flex: '1 1 140px', minWidth: 0, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
-                                    {c.label ?? ''}{c.label ? ' · ' : ''}
-                                    {attached ? `beside “${c.focus_point}”` : c.focus_point ? `was beside “${c.focus_point}”` : 'not attached to a takeaway'}
-                                  </span>
+                                  <span style={{ flex: 1 }} />
                                   {isCoach && (
                                     <button onClick={() => void deleteMoment(c.id)} aria-label="Remove moment"
                                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-2)', width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                       <Icon name="x" size={14} />
                                     </button>
                                   )}
+                                </div>
+                                <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--text-2)', overflowWrap: 'anywhere', padding: '2px 0 6px' }}>
+                                  {c.label ?? ''}{c.label ? ' · ' : ''}
+                                  {attached ? `beside “${c.focus_point}”` : c.focus_point ? `was beside “${c.focus_point}”` : 'not attached to a takeaway'}
                                 </div>
                                 {openMoment === `video:${c.id}` && (
                                   <MomentPlayer clip={c} video={clipVideos[c.video_id]} onClose={() => setOpenMoment(null)} />

@@ -204,6 +204,10 @@ export default function VideoCompare({ videos, initialA, initialB }: Props) {
                 /* B is muted: two soundtracks a second apart are noise. */
                 muted={tag === 'B'}
                 onLoadedMetadata={tag === 'A' ? (e) => setADur(e.currentTarget.duration) : () => alignB()}
+                /* A WebM from a browser recorder reports Infinity until the
+                   browser has read to its end; take the real length when it
+                   arrives rather than leaving the scrubber unbounded. */
+                onDurationChange={tag === 'A' ? (e) => setADur(e.currentTarget.duration) : undefined}
                 onClick={() => (playing ? pause() : void play())}
                 style={{ width: '100%', display: 'block', maxHeight: 360, background: STAGE_FLOOR }}
               />
@@ -240,9 +244,9 @@ export default function VideoCompare({ videos, initialA, initialB }: Props) {
         <input
           type="range"
           min={0}
-          max={aDur > 0 ? aDur : 0}
+          max={Number.isFinite(aDur) && aDur > 0 ? aDur : 0}
           step={0.1}
-          value={Math.min(aTime, aDur || 0)}
+          value={Number.isFinite(aDur) && aDur > 0 ? Math.min(aTime, aDur) : 0}
           onChange={(e) => seekA(Number(e.target.value))}
           aria-label="Position in video A"
           style={{ width: '100%', minWidth: 0, minHeight: 44, accentColor: 'var(--coach-on-light)' }}

@@ -86,6 +86,25 @@ export async function POST(
       await admin.from('session_videos').delete().in('session_id', sessionIds)
     }
 
+    // Clips the athlete sent "for my coach" (migration 032) have no session,
+    // so the session sweep above never sees them. Their rows would go by the
+    // athletes cascade; their files would not, so collect those paths too.
+    {
+      const { data: clipRows } = await admin
+        .from('session_videos')
+        .select('storage_path')
+        .eq('athlete_id', athleteId)
+        .is('session_id', null)
+      const clipPaths = (clipRows ?? [])
+        .map((v: { storage_path: string | null }) => v.storage_path)
+        .filter((p): p is string => typeof p === 'string' && p.length > 0)
+      if (clipPaths.length > 0) {
+        const { error } = await admin.storage.from('session-videos').remove(clipPaths)
+        if (error) console.error('hard-delete: athlete clip remove failed', error.message, clipPaths.length)
+      }
+      await admin.from('session_videos').delete().eq('athlete_id', athleteId).is('session_id', null)
+    }
+
     // 2. Sessions
     await admin.from('sessions').delete().eq('athlete_id', athleteId)
 

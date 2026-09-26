@@ -599,6 +599,56 @@ const RULES = [
       return found
     },
   },
+  {
+    id: 'SG11',
+    title: 'A route that hands out video URLs proves the caller, and gates an athlete through the shared rule',
+    why: 'Athletes can now send their coach clips, and moments of a coach\'s video open beside a takeaway. That puts video on the athlete side of more routes than ever, and the leak is one missing clause: a route that signs every video on a session, or every clip of an athlete row, shows one child another child\'s video — a squad clip showing ten other children, or a clip a teammate sent their coach. SG8 only reads routes under app/api/sessions and app/api/share; the new routes live under app/api/athlete and app/api/athletes. A handler that signs a video URL must compare the caller to the session\'s coach or the athlete row\'s athlete_user_id, and if it can serve an athlete it must apply athleteMayViewVideo (lib/video-clip.ts, held by tools/video-rig.mjs V7) or test the video\'s own shared_with_athlete flag.',
+    cite: 'lib/video-clip.ts athleteMayViewVideo; supabase/migrations/032_video_clips.sql',
+    check(files) {
+      const found = []
+      // In scope: a file that reads the video tables or names the bucket they
+      // live in. The upload-URL minters never touch the tables — they sign a
+      // path — and they are exactly where a path in someone else's folder
+      // would be handed out.
+      const TABLE = /\.from\(\s*['"](?:session_videos|video_clips)['"]\s*\)|['"]session-videos['"]/
+      const SIGNS = /createSigned(?:Upload)?Urls?\s*\(/
+      const OWNS = /\.eq\(\s*['"](?:coach_id|athlete_user_id)['"]\s*,\s*user(?:Id|\.id)\s*\)|(?:coach_id|athlete_user_id)\s*===\s*user(?:Id|\.id)/
+      const ATHLETE_BRANCH = /athlete_user_id/
+      // The shared rule, or the legacy per-video flag read as a property —
+      // `v.shared_with_athlete`, `.eq('shared_with_athlete', true)` — never the
+      // column name sitting in a select string, which proves nothing.
+      // As a GATE: inside a filter, or an if. A `shared_with_athlete: v.shared_with_athlete`
+      // in an output mapping reads the flag and gates nothing — the first
+      // version of this rule accepted that and passed with the filter deleted.
+      //
+      // And on the VIDEO, not the session: `if (session.shared_with_athlete)`
+      // in an authorize() helper is a real check, but a shared session is not
+      // a shared video, and counting it let the videos route pass with its
+      // per-video filter deleted.
+      const GATED = /\bathleteMayViewVideo\s*\(|\.filter\(\s*\(?\w+\)?\s*=>[^\n]*\b(?!session\b)\w+\.shared_with_athlete\b|\bif\s*\(\s*!?\s*(?!session\b)\w+\.shared_with_athlete\b|\.eq\(\s*['"]shared_with_athlete['"]\s*,\s*true\s*\)/
+      for (const f of files) {
+        if (!f.isRoute) continue
+        const src = code(f)
+        if (!TABLE.test(src)) continue
+        const moduleScope = src.split(/export\s+async\s+function\s+(?:GET|POST|PUT|PATCH|DELETE)\b/)[0]
+        const helpers = [...moduleScope.matchAll(/(?:async\s+)?function\s+(\w+)[\s\S]{0,1400}?\n\}/g)]
+        for (const h of handlerBlocks(src)) {
+          // The handler plus every module-level helper it calls: authorize(),
+          // generateSignedUrls() and friends do the work on its behalf.
+          const called = helpers.filter((m) => new RegExp(`\\b${m[1]}\\s*\\(`).test(h.src)).map((m) => m[0])
+          const body = [h.src, ...called].join('\n')
+          if (!SIGNS.test(body)) continue
+          const line = lineOf(f, new RegExp(`export\\s+async\\s+function\\s+${h.name}\\b`))
+          if (!OWNS.test(body)) {
+            found.push({ file: f.rel, line, msg: `${h.name} signs video URLs without comparing coach_id or athlete_user_id to the caller` })
+          } else if (ATHLETE_BRANCH.test(body) && !GATED.test(body)) {
+            found.push({ file: f.rel, line, msg: `${h.name} can serve an athlete but never applies athleteMayViewVideo or the video's shared_with_athlete flag` })
+          }
+        }
+      }
+      return found
+    },
+  },
 ]
 
 /**
@@ -615,6 +665,8 @@ const KNOWN_GAPS = [
   'What the Focus Card image actually contains. It is built to carry the coaching sentence, the date and the wordmark and nothing else — no name, no photo, no URL, no session id — because it is designed to leave the app. That constraint lives in canvas drawing code and cannot be checked by reading source shape, so it has to be re-read by a human whenever app/components/FocusCard.tsx changes.',
   'Whether an access-log call sits on the athlete branch of its handler. SG10 proves a handler that logs also checks athlete_user_id against the caller, not that the log call is guarded by the result — the detail route serves the coach too, and only its `if (isAthlete)` keeps a coach\'s view out of the log.',
   'What the AI summariser writes about a child. `tools/prompt-rig.mjs` covers the prompt; nothing covers a model\'s output on an unseen transcript.',
+  'Whether an athlete\'s clip is really 60 seconds or less. The server cannot decode video; it checks the duration the athlete\'s browser measured (lib/video-clip.ts athleteDurationOk). A modified client can lie about it — the 500MB bucket limit is the hard ceiling, not the 60 seconds.',
+  'Whether migration 032\'s RLS policies match athleteMayViewVideo. Every route here uses the service role and the shared rule; the policies only matter to a direct client query, and nothing reads them but the database.',
 ]
 
 // ── run ───────────────────────────────────────────────────────────────────

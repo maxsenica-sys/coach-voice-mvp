@@ -206,6 +206,10 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
     const seek = () => {
       if (done) return
       const d = video.duration
+      // A WebM written by a browser recorder reports Infinity until read to
+      // the end. There is nothing to clamp against, so seek as asked — a
+      // moment opened on one of those must still open at its start.
+      if (d === Infinity) { video.currentTime = startTime; done = true; return }
       if (!Number.isFinite(d) || d <= 0) return
       video.currentTime = Math.min(startTime, Math.max(0, d - 0.1))
       done = true

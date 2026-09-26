@@ -23,6 +23,8 @@ import { buildSpine, SPINE_MIN_SESSIONS, SPINE_WEEKS } from '@/lib/training-spin
 import { READINESS_OPTIONS } from '@/lib/readiness'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { drainCheckins } from '@/lib/checkin-queue'
+import PushOptIn from '@/app/components/PushOptIn'
+import { forgetPushOnSignOut } from '@/lib/push-client'
 import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile } from '@/lib/profile-cache'
 import { formatSessionDate, parseISODate, sessionISODate, todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
@@ -523,7 +525,14 @@ export default function AthletePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const [tab, setTab] = useState<Tab>('home')
+  // ?tab= opens a tab directly: a push notification for a new message links
+  // to /athlete?tab=messages. Read once, client-side (this page's server HTML
+  // is a Suspense bail-out, so there is no server render to disagree with).
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window === 'undefined') return 'home'
+    const t = new URLSearchParams(window.location.search).get('tab')
+    return t === 'sessions' || t === 'calendar' || t === 'notes' || t === 'messages' || t === 'wellness' ? t : 'home'
+  })
   const mainRef = useRef<HTMLElement>(null)
 
   // Scroll to top whenever tab changes.
@@ -1310,6 +1319,8 @@ export default function AthletePage() {
 
   const logout = async () => {
     clearCachedProfile()
+    // Stop this phone receiving the signed-out athlete's notifications.
+    await forgetPushOnSignOut()
     await supabase.auth.signOut()
     router.push('/')
   }
@@ -2335,6 +2346,8 @@ export default function AthletePage() {
               <h2 className="nm">Your coach</h2>
               <div className="sub">All messages between you and your coach stay private here.</div>
             </div>
+            {/* Renders nothing until push keys are configured. */}
+            <div style={{ margin: '12px 0' }}><PushOptIn audience="athlete" /></div>
 
             {/* Message list */}
             <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 14, minHeight: 120 }}>
