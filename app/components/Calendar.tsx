@@ -335,12 +335,7 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
                   "no events" while they are in flight is a confident claim
                   about data we do not have, and it flashed on every single
                   month change. */}
-              {loading ? 'Loading…' : (
-                <>
-                  No events on this day.
-                  {onAddEvent && <span> Click <strong style={{ color: 'var(--text)' }}>+ Add event</strong> to add one.</span>}
-                </>
-              )}
+              {loading ? 'Loading…' : 'No events on this day.'}
             </div>
           ) : (
             <div>
@@ -371,7 +366,9 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                         <Tag tone={session ? 'sage' : 'plain'}>{EVENT_TYPE_LABEL[ev.event_type]}</Tag>
                         {ev.created_by_role === 'coach' && <Tag tone="coach">From coach</Tag>}
-                        {ev.created_by_role === 'athlete' && <Tag tone="plain">My event</Tag>}
+                        {/* "My event" only to the athlete who made it — a coach reading
+                            their calendar is looking at someone else's. */}
+                        {ev.created_by_role === 'athlete' && <Tag tone="plain">{role === 'athlete' ? 'My event' : "Athlete's event"}</Tag>}
                       </div>
                     </div>
                     {onDeleteEvent && ev.created_by_role === role ? (
