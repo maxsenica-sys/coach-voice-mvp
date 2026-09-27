@@ -46,6 +46,13 @@ jobs:
       - name: Safeguarding rules
         run: npm run verify:safeguard
 
+      # Who is on whose coaching team (lib/coach-scope.ts) and who may accept
+      # an assistant-coach invite (lib/staff-invite.ts). A revoked assistant
+      # resolving onto the team would pass every route that uses the service
+      # role; the database policies would still refuse, the routes would not.
+      - name: Staff rig
+        run: npm run verify:staff
+
       # Runs the app's real date logic under nine timezones. Note that this job
       # runs in UTC, which is exactly why it is needed: the DST bucketing bug
       # this rig was written for passed in UTC and failed in six other zones.
