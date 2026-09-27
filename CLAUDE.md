@@ -295,6 +295,12 @@ March in London, and every string type-checks.
 | `npm run verify:sprite` | The cold-start montage against the artwork it is generated from | The opening animation quietly showing something other than what the app ships, or the silhouette colour drifting off the flash-safe value |
 | `npm run verify:type` | Every font size in `app/` and `lib/`, including through tokens and SVG attributes | Type below 13px — which tsc, eslint and next build all see as just a number |
 | `npm run verify:bodymap` | Every body-map region's rendered size, from the real geometry and the real rendered width | A region too small to tap, which marks the wrong body part rather than failing |
+| `npm run verify:rls` | Production's schema (`supabase/tests/baseline-033.sql`) plus every later migration, in a throwaway Postgres, then `supabase/tests/*.test.sql` acting as real users | A policy that lets one coach, an assistant, or an athlete read or write another's rows — decided inside Postgres, where every other tool sees only strings. Needs a Postgres (CI runs a service); set `PGHOST`/`PGUSER` locally |
+
+**A new migration gets a test file.** Write `supabase/tests/NNN_name.test.sql`
+with fixtures for every kind of user it affects, and run it through
+`verify:rls` before applying the migration to production. Prove the cases by
+breaking the migration on purpose, as the other rigs do.
 
 ### The rules that keep them honest
 
