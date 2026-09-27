@@ -18,6 +18,7 @@
  */
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
 
@@ -35,6 +36,10 @@ export async function GET(req: Request) {
     const supabase = await createRouteClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // The audit of what athletes opened is the head coach's.
+    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+    }
 
     const params = new URL(req.url).searchParams
     const athleteId = params.get('athlete_id')

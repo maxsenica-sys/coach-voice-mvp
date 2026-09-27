@@ -30,6 +30,7 @@
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
+import { resolveCoachScope } from '@/lib/coach-scope'
 import { errorMessage } from '@/lib/errors'
 import { calendarDaysBetween, sessionDate } from '@/lib/session-date'
 import type { CoverageRow } from '@/lib/attention'
@@ -58,19 +59,21 @@ export async function GET() {
   const who = await routeIdentity(supabase)
   const user = who.ok ? { id: who.userId } : null
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // An assistant sees the team's coverage: who has gone longest without a session.
+    const scope = await resolveCoachScope(supabase, user.id)
 
     const [athletesRes, sessionsRes] = await Promise.all([
       supabase
         .from('athletes')
         .select('id, first_name, last_name, invited_at')
-        .eq('coach_id', user.id),
+        .eq('coach_id', scope.headId),
       // Deliberately no limit and only three columns. This is the whole point
       // of the route: the client's 50-row window is what makes the existing
       // per-athlete numbers wrong.
       supabase
         .from('sessions')
         .select('athlete_id, session_date, created_at')
-        .eq('coach_id', user.id),
+        .eq('coach_id', scope.headId),
     ])
 
     if (athletesRes.error) {

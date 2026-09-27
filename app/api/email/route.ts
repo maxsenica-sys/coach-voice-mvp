@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { sendEmail } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -29,6 +30,10 @@ export async function POST(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Reports to parents go out in the head coach's name.
+  if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+    return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+  }
 
   const body = await req.json().catch(() => ({}))
   const { athlete_id, to, subject, html, from_name } = body ?? {}

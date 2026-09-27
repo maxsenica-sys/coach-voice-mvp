@@ -149,6 +149,25 @@ scroll sideways."*
   body map's tap targets at 24px for this reason.
 - Tap targets are 44px.
 
+## ⚠️ Assistant coaches: every coach route goes through `lib/coach-scope.ts`
+
+Max, 2026-09-27: an assistant coach sees all of the head coach's athletes and
+everything the head sees in check-ins, and is invited by email link
+(migration 034, `/api/staff`, `/api/staff/accept`).
+
+- **Never write `coach_id = user.id` in a coach route again.** Resolve
+  `const scope = await resolveCoachScope(supabase, user.id)` and use
+  `scope.headId` — for a head coach that *is* `user.id`, for an assistant it is
+  their head. Rows are owned by the head; the person who did it goes in the
+  provenance column (`recorded_by`, `sender_id`, `uploaded_by`, `created_by`).
+- **Head-only actions** (adding/editing/deleting an athlete, caretakers, parent
+  emails, squads, notes, editing or clearing an injury, the head's insights,
+  the access log, the athlete invite code) refuse `!scope.isHead`. The list is
+  in SG14; a new head-only route goes on it.
+- **Membership is read live from `coach_staff`** for the verified caller —
+  never from profiles, metadata, the JWT or the request. SG14 fails otherwise.
+- The database agrees independently: `supabase/tests/034_coach_staff.test.sql`.
+
 ## General rules
 
 - Never modify `app/api/` files when working on UI features
@@ -295,6 +314,7 @@ March in London, and every string type-checks.
 | `npm run verify:sprite` | The cold-start montage against the artwork it is generated from | The opening animation quietly showing something other than what the app ships, or the silhouette colour drifting off the flash-safe value |
 | `npm run verify:type` | Every font size in `app/` and `lib/`, including through tokens and SVG attributes | Type below 13px — which tsc, eslint and next build all see as just a number |
 | `npm run verify:bodymap` | Every body-map region's rendered size, from the real geometry and the real rendered width | A region too small to tap, which marks the wrong body part rather than failing |
+| `npm run verify:staff` | `lib/coach-scope.ts` and `lib/staff-invite.ts`: whose team a coach is on, and who may accept an invite | A revoked or merely invited assistant resolving onto a team; an invite accepted by the wrong address or an athlete account; a token stored as itself |
 | `npm run verify:rls` | Production's schema (`supabase/tests/baseline-033.sql`) plus every later migration, in a throwaway Postgres, then `supabase/tests/*.test.sql` acting as real users | A policy that lets one coach, an assistant, or an athlete read or write another's rows — decided inside Postgres, where every other tool sees only strings. Needs a Postgres (CI runs a service); set `PGHOST`/`PGUSER` locally |
 
 **A new migration gets a test file.** Write `supabase/tests/NNN_name.test.sql`

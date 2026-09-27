@@ -12,6 +12,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { notifyCalendarEventCreated } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
+import { resolveCoachScope, teamCoachIds } from '@/lib/coach-scope'
 
 
 function createSupabase(req: NextRequest) {
@@ -87,13 +88,20 @@ export async function GET(req: NextRequest) {
 
   // ── COACH ROLE ──────────────────────────────────────────────
 
+  /* A coach's calendar is the team's: events the head or any assistant put on
+   * a team athlete's calendar. Events with no athlete — a coach's own
+   * appointments — stay with whoever made them. With no assistants the team is
+   * just the caller, which is exactly the query this used to run. */
+  const scope = await resolveCoachScope(supabase, user.id)
+  const team = await teamCoachIds(admin, scope)
+
   // Personal calendar — shows all coach-created events (personal + session-linked).
   // Joins the athlete so the home day wheel can name who a session was with
   // without a second lookup. Personal events have no athlete_id and come back
   // with athletes = null.
   if (mode === 'personal') {
     let q = admin.from('calendar_events').select(`${baseSelect}, athletes(first_name, last_name)`)
-      .eq('created_by_user_id', user.id)
+      .or(`and(athlete_id.is.null,created_by_user_id.eq.${user.id}),and(athlete_id.not.is.null,created_by_user_id.in.(${team.join(',')}))`)
       .eq('created_by_role', 'coach')
       .order('event_date', { ascending: true })
     if (range) q = q.gte('event_date', range.from).lte('event_date', range.to)
@@ -106,7 +114,7 @@ export async function GET(req: NextRequest) {
   // Group calendar (all athletes in group)
   if (groupIdP) {
     // Verify group belongs to coach
-    const { data: group } = await admin.from('groups').select('id').eq('id', groupIdP).eq('coach_id', user.id).maybeSingle()
+    const { data: group } = await admin.from('groups').select('id').eq('id', groupIdP).eq('coach_id', scope.headId).maybeSingle()
     if (!group) return attach(NextResponse.json({ error: 'Group not found' }, { status: 404 }), cookiesToSet)
 
     const { data: members } = await admin.from('group_members').select('athlete_id').eq('group_id', groupIdP)
@@ -116,7 +124,7 @@ export async function GET(req: NextRequest) {
 
     let q = admin.from('calendar_events').select(`${baseSelect}, athletes(first_name, last_name)`)
       .in('athlete_id', athleteIds)
-      .eq('created_by_user_id', user.id)
+      .in('created_by_user_id', team)
       .eq('created_by_role', 'coach')
       .order('event_date', { ascending: true })
     if (range) q = q.gte('event_date', range.from).lte('event_date', range.to)
@@ -130,7 +138,7 @@ export async function GET(req: NextRequest) {
   if (athleteIdP) {
     let q = admin.from('calendar_events').select(baseSelect)
       .eq('athlete_id', athleteIdP)
-      .eq('created_by_user_id', user.id)
+      .in('created_by_user_id', team)
       .eq('created_by_role', 'coach')
       .order('event_date', { ascending: true })
     if (range) q = q.gte('event_date', range.from).lte('event_date', range.to)
@@ -210,9 +218,12 @@ export async function POST(req: NextRequest) {
     return attach(NextResponse.json({ event: data }, { status: 201 }), cookiesToSet)
   }
 
+  // The team's athletes and squads: an assistant schedules for their head's.
+  const scope = await resolveCoachScope(supabase, user.id)
+
   // ── COACH: group event (one event per member) ──
   if (group_id) {
-    const { data: groupCheck } = await admin.from('groups').select('id').eq('id', group_id).eq('coach_id', user.id).maybeSingle()
+    const { data: groupCheck } = await admin.from('groups').select('id').eq('id', group_id).eq('coach_id', scope.headId).maybeSingle()
     if (!groupCheck) return attach(NextResponse.json({ error: 'Group not found' }, { status: 404 }), cookiesToSet)
 
     const { data: members } = await admin.from('group_members').select('athlete_id').eq('group_id', group_id)
@@ -249,7 +260,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── COACH: single athlete event ──
-  const { data: ath } = await admin.from('athletes').select('id').eq('id', athlete_id).eq('coach_id', user.id).maybeSingle()
+  const { data: ath } = await admin.from('athletes').select('id').eq('id', athlete_id).eq('coach_id', scope.headId).maybeSingle()
   if (!ath) return attach(NextResponse.json({ error: 'Athlete not found in your roster.' }, { status: 403 }), cookiesToSet)
 
   const { data, error } = await admin.from('calendar_events').insert({
@@ -294,7 +305,22 @@ export async function DELETE(req: NextRequest) {
   if (!id) return attach(NextResponse.json({ error: 'id required' }, { status: 400 }), cookiesToSet)
 
   const admin = createSupabaseAdminClient()
-  const { error } = await admin.from('calendar_events').delete().eq('id', id).eq('created_by_user_id', user.id)
+
+  /* Whoever made an event may delete it. The head coach may also delete an
+   * event an assistant put on one of the head's athletes' calendars — never an
+   * assistant's own appointments (no athlete), and never another team's. */
+  const { data: ev } = await admin
+    .from('calendar_events')
+    .select('id, created_by_user_id, athlete_id, athletes(coach_id)')
+    .eq('id', id)
+    .maybeSingle()
+  if (!ev) return attach(NextResponse.json({ error: 'Event not found.' }, { status: 404 }), cookiesToSet)
+  const ownerOfAthlete = (ev.athletes as { coach_id?: string } | null)?.coach_id ?? null
+  const mayDelete = ev.created_by_user_id === user.id
+    || (ev.athlete_id !== null && ownerOfAthlete === user.id && (await resolveCoachScope(supabase, user.id)).isHead)
+  if (!mayDelete) return attach(NextResponse.json({ error: 'Event not found.' }, { status: 404 }), cookiesToSet)
+
+  const { error } = await admin.from('calendar_events').delete().eq('id', ev.id)
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
   return attach(NextResponse.json({ ok: true }), cookiesToSet)

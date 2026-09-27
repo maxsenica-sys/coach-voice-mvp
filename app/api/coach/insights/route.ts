@@ -28,6 +28,7 @@
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 import { errorMessage } from '@/lib/errors'
 import {
   COVERAGE_WINDOW_DAYS,
@@ -51,6 +52,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'This is only available to coaches.' }, { status: 403 })
     }
     const userId = who.userId
+    // "What you repeat" and "replies as a signal" are about the head coach's own
+    // coaching. An assistant's view of them would be someone else's words.
+    if (!(await resolveCoachScope(supabase, userId)).isHead) {
+      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+    }
 
     const url = new URL(req.url)
     const todayParam = url.searchParams.get('today')

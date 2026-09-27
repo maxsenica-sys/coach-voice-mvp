@@ -185,6 +185,32 @@ function handlerBlocks(src) {
     .map((b) => ({ name: (b.match(/function\s+(\w+)/) || [])[1] ?? '?', src: b }))
 }
 
+/**
+ * "The caller", as an ownership check may name it.
+ *
+ * Their own id, always. And — only in a HANDLER that itself resolves the
+ * caller's coach scope from the verified caller (lib/coach-scope.ts; SG14
+ * holds how) — the head coach whose team they are on: `scope.headId`, a
+ * `headId` handed down from it, or `(await resolveCoachScope(…, user.id)).headId`
+ * inline. An assistant coach works on their head's roster, so for them "the
+ * session is the caller's" means "the session is the caller's head's".
+ *
+ * Judged per handler, not per file, for the reason SG8's history gives: one
+ * handler's proper scope must not stand in for a sibling's missing one. A
+ * handler that never resolves a scope gets no new ways to pass — a `headId`
+ * that came from a request is exactly the bug. Proven: GET in
+ * app/api/athletes/[id]/videos with its scope read from a query string went
+ * red while PATCH in the same file still resolved properly.
+ */
+function callerId(src) {
+  const self = String.raw`user(?:Id|\.id)|who\.userId`
+  const scoped = String.raw`scope\.headId|\(await resolveCoachScope\([^()]*\)\)\.headId|\bheadId\b`
+  return resolvesScopeFromCaller(src) ? `(?:${self}|${scoped})` : `(?:${self})`
+}
+function resolvesScopeFromCaller(src) {
+  return /resolveCoachScope\(\s*\w+\s*,\s*(?:user\.id|who\.userId|userId)\s*\)/.test(src)
+}
+
 // ── the rules ─────────────────────────────────────────────────────────────
 
 /**
@@ -525,7 +551,9 @@ const RULES = [
         // Helpers defined at module scope that sign on a handler's behalf.
         // `generateSignedUrls(admin, …)` is the one here: the handler that
         // calls it hands out URLs without the word `createSignedUrl` in it.
-        const OWNS = /\.eq\(\s*['"](?:coach_id|athlete_user_id)['"]\s*,\s*user(Id)?\.?(id)?\s*\)|(?:coach_id|athlete_user_id)\s*===\s*user(Id)?\.?(id)?/
+        const ownsWith = (C) => new RegExp(String.raw`\.eq\(\s*['"](?:coach_id|athlete_user_id)['"]\s*,\s*${C}\s*\)|(?:coach_id|athlete_user_id)\s*===\s*${C}`)
+        const OWNS_SELF = ownsWith(callerId(''))
+        const OWNS_SCOPED = ownsWith(callerId('resolveCoachScope(x, user.id)'))
 
         const moduleFns = [...src.matchAll(/(?:async\s+)?function\s+(\w+)[\s\S]{0,900}?\n\}/g)]
 
@@ -538,7 +566,15 @@ const RULES = [
         // a handler. Recognised by what they CONTAIN, not by what they are
         // called — `requireOwnedSession` and `authorize` are the same idea with
         // different names, and a rule keyed on names would fail the next one.
-        const authorizingHelpers = moduleFns.filter((m) => OWNS.test(m[0])).map((m) => m[1])
+        // A helper that compares to the caller's own id authorises on its own;
+        // one that compares to a head id handed to it counts only when the
+        // handler calling it resolved that head from the caller.
+        // A helper that resolves the scope from the caller itself, and compares
+        // to it (requireOwnedSession), is as good as one comparing to user.id.
+        const authorizingHelpers = moduleFns
+          .filter((m) => OWNS_SELF.test(m[0]) || (resolvesScopeFromCaller(m[0]) && OWNS_SCOPED.test(m[0])))
+          .map((m) => m[1])
+        const scopedHelpers = moduleFns.filter((m) => !authorizingHelpers.includes(m[1]) && OWNS_SCOPED.test(m[0])).map((m) => m[1])
 
         for (const { name: handler, src: block } of handlerBlocks(src)) {
           const callsHelper = signingHelpers.some((h) => new RegExp(`\\b${h}\\s*\\(`).test(block))
@@ -553,7 +589,8 @@ const RULES = [
         // correctly some other way will trip this and should then either be
         // written in the house shape or given a named exemption here — an
         // unexplained third way of proving ownership is itself the risk.
-          const comparesCoach = /\.eq\(\s*['"]coach_id['"]\s*,\s*user\.id\s*\)|\.coach_id\s*===\s*user(Id)?\.?(id)?/.test(block)
+          const C = callerId(block)
+          const comparesCoach = new RegExp(String.raw`\.eq\(\s*['"]coach_id['"]\s*,\s*${C}\s*\)|\.coach_id\s*===\s*${C}`).test(block)
           const comparesAthlete = /\.eq\(\s*['"]athlete_user_id['"]\s*,\s*user(Id)?\.?(id)?\s*\)|athlete_user_id\s*===\s*user(Id)?\.?(id)?/.test(block)
 
           // A third shape, and the strongest of the three: the object's path is
@@ -569,6 +606,7 @@ const RULES = [
           // the comparison itself. Those helpers are identified above by their
           // contents rather than their names.
           const delegates = authorizingHelpers.some((h) => new RegExp(`\\b${h}\\s*\\(`).test(block))
+            || (resolvesScopeFromCaller(block) && scopedHelpers.some((h) => new RegExp(`\\b${h}\\s*\\(`).test(block)))
 
           // A fifth: the handler validates that a client-supplied path sits
           // under the caller's own prefix. This is how both POST handlers that
@@ -838,7 +876,10 @@ const RULES = [
       // would be handed out.
       const TABLE = /\.from\(\s*['"](?:session_videos|video_clips)['"]\s*\)|['"]session-videos['"]/
       const SIGNS = /createSigned(?:Upload)?Urls?\s*\(/
-      const OWNS = /\.eq\(\s*['"](?:coach_id|athlete_user_id)['"]\s*,\s*user(?:Id|\.id)\s*\)|(?:coach_id|athlete_user_id)\s*===\s*user(?:Id|\.id)/
+      const ownsIn = (src) => {
+        const C = callerId(src)
+        return new RegExp(String.raw`\.eq\(\s*['"](?:coach_id|athlete_user_id)['"]\s*,\s*${C}\s*\)|(?:coach_id|athlete_user_id)\s*===\s*${C}`)
+      }
       const ATHLETE_BRANCH = /athlete_user_id/
       // The shared rule, or the legacy per-video flag read as a property —
       // `v.shared_with_athlete`, `.eq('shared_with_athlete', true)` — never the
@@ -865,10 +906,69 @@ const RULES = [
           const body = [h.src, ...called].join('\n')
           if (!SIGNS.test(body)) continue
           const line = lineOf(f, new RegExp(`export\\s+async\\s+function\\s+${h.name}\\b`))
-          if (!OWNS.test(body)) {
+          // Scoped forms count only when this handler — or a helper it calls —
+          // resolved the scope from the caller. Never a sibling handler.
+          if (!ownsIn(resolvesScopeFromCaller(body) ? body : '').test(body)) {
             found.push({ file: f.rel, line, msg: `${h.name} signs video URLs without comparing coach_id or athlete_user_id to the caller` })
           } else if (ATHLETE_BRANCH.test(body) && !GATED.test(body)) {
             found.push({ file: f.rel, line, msg: `${h.name} can serve an athlete but never applies athleteMayViewVideo or the video's shared_with_athlete flag` })
+          }
+        }
+      }
+      return found
+    },
+  },
+  {
+    id: 'SG14',
+    title: 'An assistant coach works on their head\'s team — and only on what the head allows',
+    why: 'Assistant coaches (migration 034) see and record for their head coach\'s athletes. The whole model rests on three facts no type checker can see. The team is decided from the verified caller, read live from coach_staff — a coach id taken from a request would let anyone name any team. The head-only actions stay head-only — adding or deleting a child, their caretakers, squads, parent emails, the access log, the head\'s own insights, editing or clearing an injury — because an assistant is a second adult in a child\'s account, not a second owner of it. And membership is written only by the staff routes, never by a component or a client. Each of these is one deleted line away from a leak, and each deletion type-checks.',
+    cite: 'lib/coach-scope.ts; supabase/migrations/034_coach_staff.sql; supabase/tests/034_coach_staff.test.sql',
+    check(files) {
+      const found = []
+      for (const f of files) {
+        if (!/^app\//.test(f.rel)) continue
+        const src = code(f)
+        // (a) The scope is resolved from the verified caller, never from input.
+        for (const m of src.matchAll(/resolveCoachScope\(\s*\w+\s*,\s*([^)]+?)\s*\)/g)) {
+          if (!/^(?:user\.id|who\.userId|userId)$/.test(m[1])) {
+            found.push({ file: f.rel, line: lineOf(f, /resolveCoachScope\(/), msg: `resolves the coach scope from "${m[1]}" — only the verified caller (user.id / who.userId) may decide whose team this is` })
+          }
+        }
+        // (b) No route takes a coach or team id from the request.
+        if (f.isRoute && /(?:body\??\.|searchParams\.get\(\s*['"])(?:coach_id|head_coach_id|headId|head_id)\b/.test(src)) {
+          found.push({ file: f.rel, line: lineOf(f, /(?:coach_id|head_coach_id|headId|head_id)/), msg: 'reads a coach or team id from the request — the team comes from coach_staff, read for the caller' })
+        }
+        // (c) Membership is written only by the staff routes.
+        if (/\.from\(\s*['"]coach_staff(?:_events)?['"]\s*\)[\s\S]{0,120}?\.(?:insert|update|upsert|delete)\s*\(/.test(src) && !/^app\/api\/staff\//.test(f.rel)) {
+          found.push({ file: f.rel, line: lineOf(f, /coach_staff/), msg: 'writes coach_staff outside app/api/staff/ — team membership has one writer' })
+        }
+      }
+      // (d) The head-only actions refuse an assistant in the handler itself.
+      const HEAD_ONLY = {
+        'app/api/athletes/route.ts': ['POST'],
+        'app/api/athletes/[id]/route.ts': ['PATCH'],
+        'app/api/athletes/[id]/hard-delete/route.ts': ['POST'],
+        'app/api/athletes/[id]/photo/route.ts': ['POST'],
+        'app/api/caretakers/route.ts': ['GET', 'POST', 'DELETE'],
+        'app/api/email/route.ts': ['POST'],
+        'app/api/wellness/alert/route.ts': ['POST'],
+        'app/api/groups/route.ts': ['POST', 'DELETE'],
+        'app/api/groups/[id]/members/route.ts': ['POST', 'DELETE'],
+        'app/api/notes/route.ts': ['POST'],
+        'app/api/injuries/route.ts': ['PATCH', 'DELETE'],
+        'app/api/coach/insights/route.ts': ['GET'],
+        'app/api/coach/access-log/route.ts': ['GET'],
+        'app/api/coach-code/route.ts': ['PUT'],
+      }
+      for (const [rel, verbs] of Object.entries(HEAD_ONLY)) {
+        const f = files.find((x) => x.rel === rel)
+        if (!f) { found.push({ file: rel, line: 1, msg: 'is on the head-only list but no longer exists — was that meant?' }); continue }
+        const blocks = handlerBlocks(code(f))
+        for (const verb of verbs) {
+          const b = blocks.find((h) => h.name === verb)
+          if (!b) { found.push({ file: rel, line: 1, msg: `${verb} is on the head-only list but the handler is gone` }); continue }
+          if (!/resolveCoachScope\([^)]*\)\)?\.isHead\b/.test(b.src)) {
+            found.push({ file: rel, line: lineOf(f, new RegExp(`export\\s+async\\s+function\\s+${verb}\\b`)), msg: `${verb} is head-only but does not refuse an assistant (no resolveCoachScope(…).isHead check)` })
           }
         }
       }
@@ -883,6 +983,7 @@ const RULES = [
  * it does not have.
  */
 const KNOWN_GAPS = [
+  'Whether every route an assistant can reach scopes to the head\'s team and not wider. SG14 proves the scope comes from the caller and that the head-only list refuses assistants; it cannot prove a route it is not told about uses scope.headId rather than something broader. supabase/tests/034_coach_staff.test.sql proves the database side, and only against the policies, not the service-role routes.',
   'The audio-url gate (SG6) is read as source: it proves the route selects group_id and shared_recording_id and gates the athlete branch on them, not that no other route signs the same bucket for an athlete.',
   'Whether the transcript withholding is correct for sessions saved BEFORE `sessions.group_id` existed. Those rows are null, so they are not identifiable as squad sessions. They are covered from the other end — the athlete client no longer selects transcripts at all — but SG6 is what enforces that, and a future direct fetch could reintroduce the leak for historic rows without tripping the group check.',
   'Whether a route\'s ownership check is *correct* — SG1 proves a route authenticates, not that it then scopes the query to the right coach.',

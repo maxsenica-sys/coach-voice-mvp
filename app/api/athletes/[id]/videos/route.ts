@@ -13,6 +13,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
+import { resolveCoachScope } from '@/lib/coach-scope'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
 import { notifyNewMessage } from '@/lib/notify'
@@ -33,12 +34,13 @@ export async function GET(
 
     const { id: athleteId } = await ctx.params
     const admin = createSupabaseAdminClient()
+    const scope = await resolveCoachScope(supabase, user.id)
 
     const { data: ath } = await admin
       .from('athletes')
       .select('id, first_name')
       .eq('id', athleteId)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
       .maybeSingle()
     if (!ath) return NextResponse.json({ error: 'Athlete not found or not yours.' }, { status: 403 })
 
@@ -48,7 +50,7 @@ export async function GET(
       .from('sessions')
       .select('id, session_name, title, session_date, created_at')
       .eq('athlete_id', ath.id)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
     if (sErr) return NextResponse.json({ error: sErr.message }, { status: 500 })
     const sessionById = new Map((sessions ?? []).map((s) => [s.id, s]))
     const sessionIds = [...sessionById.keys()]
@@ -113,11 +115,12 @@ export async function PATCH(
     const body = await req.json().catch(() => ({}))
 
     const admin = createSupabaseAdminClient()
+    const scope = await resolveCoachScope(supabase, user.id)
     const { data: ath } = await admin
       .from('athletes')
       .select('id, coach_id')
       .eq('id', athleteId)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
       .maybeSingle()
     if (!ath) return NextResponse.json({ error: 'Athlete not found or not yours.' }, { status: 403 })
 
@@ -143,7 +146,7 @@ export async function PATCH(
       const content = 'I’ve marked up the clip you sent me. It is in Sessions, under “Clips for your coach”.'
       const { data: msg } = await admin
         .from('messages')
-        .insert({ coach_id: user.id, athlete_id: ath.id, sender_id: user.id, sender_role: 'coach', content, msg_type: 'text' })
+        .insert({ coach_id: ath.coach_id, athlete_id: ath.id, sender_id: user.id, sender_role: 'coach', content, msg_type: 'text' })
         .select('id')
         .single()
       if (msg?.id) {

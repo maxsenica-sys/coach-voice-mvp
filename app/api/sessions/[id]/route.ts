@@ -3,6 +3,8 @@ import { createServerClient } from '@supabase/ssr'
 import { syncSessionCalendarEvent } from '@/lib/session-calendar-sync'
 import { notifySessionShared } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { resolveCoachScope } from '@/lib/coach-scope'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 
 function createSupabase(req: NextRequest) {
@@ -67,11 +69,17 @@ export async function PATCH(
     return attach(NextResponse.json({ error: 'No valid fields to update.' }, { status: 400 }), cookiesToSet)
   }
 
-  const { data, error } = await supabase
+  /* The head coach may edit any session of theirs, including one an assistant
+   * recorded. An assistant may edit only what they recorded themselves — the
+   * same rule migration 034's "staff edit own recordings" policy enforces. */
+  const scope = await resolveCoachScope(supabase, user.id)
+  let edit = supabase
     .from('sessions')
     .update(updates)
     .eq('id', id)
-    .eq('coach_id', user.id)
+    .eq('coach_id', scope.headId)
+  if (!scope.isHead) edit = edit.eq('recorded_by', user.id)
+  const { data, error } = await edit
     .select('id, athlete_id, session_name, title, summary, shared_with_athlete, sport_context, session_date, created_at')
     .single()
 
@@ -86,10 +94,12 @@ export async function PATCH(
     // saved the first time sharing is toggled on.
     const dateStr = data.session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date(data.created_at))
     const sync = await syncSessionCalendarEvent({
-      supabase,
+      // The head's calendar row; an assistant writes it with the service role
+      // (see POST /api/sessions), having just proven the session is theirs.
+      supabase: scope.isHead ? supabase : createSupabaseAdminClient(),
       sessionId: data.id,
       athleteId: data.athlete_id,
-      coachUserId: user.id,
+      coachUserId: scope.headId,
       title: data.session_name || data.title,
       summary: data.summary,
       eventDate: dateStr,

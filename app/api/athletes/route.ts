@@ -6,6 +6,7 @@ import { athleteStatus } from '@/lib/athlete-status'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { sendEmail, renderBrandedEmail } from '@/lib/notify'
 import { errorMessage } from '@/lib/errors'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 
 // GET /api/athletes
 export async function GET() {
@@ -26,12 +27,14 @@ export async function GET() {
     }
 
     const admin = createSupabaseAdminClient()
+    // An assistant coach lists their head coach's roster (lib/coach-scope.ts).
+    const scope = await resolveCoachScope(supabase, user.id)
 
     // NOTE: Do NOT select athletes.last_sign_in_at (it doesn't exist in your DB).
     const { data, error } = await admin
       .from('athletes')
       .select('id, first_name, last_name, email, athlete_user_id, invited_at, first_login_at')
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -85,6 +88,10 @@ export async function POST(request: Request) {
     }
     if (caller?.role !== 'coach') {
       return NextResponse.json({ error: 'Only coaches can add athletes.' }, { status: 403 })
+    }
+    // Adding someone to the roster is the head coach's decision, not an assistant's.
+    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
     }
 
     const body = await request.json().catch(() => ({} as Record<string, unknown>))

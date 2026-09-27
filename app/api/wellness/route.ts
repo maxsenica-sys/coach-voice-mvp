@@ -6,6 +6,7 @@ import { readinessToMetrics } from '@/lib/readiness'
 import { notifyWellnessAlert } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
+import { resolveCoachScope } from '@/lib/coach-scope'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -47,7 +48,12 @@ export async function GET(req: NextRequest) {
     .gte('check_date', since.toISOString().split('T')[0])
     .order('check_date', { ascending: true })
 
-  query = athleteId ? query.eq('athlete_id', athleteId) : query.eq('coach_id', user.id)
+  // Without an athlete, "all my athletes' check-ins": for an assistant, the
+  // team's. RLS decides what either query may return (migration 034 lets an
+  // assistant read the head's check-ins only while can_view_wellness is on).
+  query = athleteId
+    ? query.eq('athlete_id', athleteId)
+    : query.eq('coach_id', (await resolveCoachScope(supabase, user.id)).headId)
 
   const { data, error } = await query
 

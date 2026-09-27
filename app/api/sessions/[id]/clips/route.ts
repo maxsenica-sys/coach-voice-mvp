@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
+import { resolveCoachScope } from '@/lib/coach-scope'
 import { athleteMayViewVideo, validateClipRange } from '@/lib/video-clip'
 
 export const runtime = 'nodejs'
@@ -40,7 +41,7 @@ export async function GET(
       .maybeSingle()
     if (!session) return NextResponse.json({ error: 'Session not found.' }, { status: 404 })
 
-    const isCoach = session.coach_id === user.id
+    const isCoach = session.coach_id === (await resolveCoachScope(supabase, user.id)).headId
     let athleteIds: string[] = []
     if (!isCoach) {
       const { data: ath } = await admin
@@ -113,7 +114,7 @@ export async function POST(
       .from('sessions')
       .select('id, focus_points')
       .eq('id', sessionId)
-      .eq('coach_id', user.id)
+      .eq('coach_id', (await resolveCoachScope(supabase, user.id)).headId)
       .maybeSingle()
     if (!session) return NextResponse.json({ error: 'Session not found or not yours.' }, { status: 403 })
 
@@ -170,15 +171,19 @@ export async function DELETE(
     if (!clipId) return NextResponse.json({ error: 'clip_id required' }, { status: 400 })
 
     const admin = createSupabaseAdminClient()
+    const scope = await resolveCoachScope(supabase, user.id)
     const { data: session } = await admin
       .from('sessions')
       .select('id')
       .eq('id', sessionId)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
       .maybeSingle()
     if (!session) return NextResponse.json({ error: 'Session not found or not yours.' }, { status: 403 })
 
-    const { error } = await admin.from('video_clips').delete().eq('id', clipId).eq('session_id', sessionId)
+    // The head coach may remove any moment; an assistant only the ones they marked.
+    let removal = admin.from('video_clips').delete().eq('id', clipId).eq('session_id', sessionId)
+    if (!scope.isHead) removal = removal.eq('created_by', user.id)
+    const { error } = await removal
     if (error) return NextResponse.json({ error: errorMessage(error, 'Could not remove that moment.') }, { status: 500 })
     return NextResponse.json({ ok: true })
   } catch (e: unknown) {

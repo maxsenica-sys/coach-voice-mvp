@@ -998,7 +998,11 @@ console.log(`\n   ${BOLD}Splitting one recording${OFF} ${DIM}— each athlete ge
   pass(/coachSupplied\s*=\s*Boolean\(shared_recording_id\)\s*\|\|/.test(saveSrc),
     'the save route never regenerates a shared recording\'s summary from the combined transcript')
   const splitRoute = readFileSync(new URL('../app/api/sessions/split-summary/route.ts', import.meta.url), 'utf8')
-  pass(/\.in\(\s*'id',\s*ids\s*\)/.test(splitRoute) && /\.eq\(\s*'coach_id',\s*who\.userId\s*\)/.test(splitRoute) &&
+  // The caller's roster is their team's (lib/coach-scope.ts): the head id,
+  // resolved from the verified caller — never an id from the request.
+  const scopedToCaller = /\.eq\(\s*'coach_id',\s*who\.userId\s*\)/.test(splitRoute)
+    || (/resolveCoachScope\(\s*supabase\s*,\s*who\.userId\s*\)/.test(splitRoute) && /\.eq\(\s*'coach_id',\s*scope\.headId\s*\)/.test(splitRoute))
+  pass(/\.in\(\s*'id',\s*ids\s*\)/.test(splitRoute) && scopedToCaller &&
     /ids\.some\(\(id\)\s*=>\s*!found\.has\(id\)\)/.test(splitRoute),
     'the split route scopes every athlete id to the caller\'s roster and rejects any it cannot find')
   pass(/splitEligibility\(/.test(splitRoute) && /buildSplitSummaryPrompt\(transcript,\s*sport,\s*eligible\)/.test(splitRoute),

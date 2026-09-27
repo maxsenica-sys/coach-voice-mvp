@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 
 // GET /api/notes?athlete_id=...
 export async function GET(req: Request) {
@@ -21,13 +22,14 @@ export async function GET(req: Request) {
     }
 
     const admin = createSupabaseAdminClient()
+    const scope = await resolveCoachScope(supabase, user.id)
 
-    // Ensure athlete belongs to coach
+    // Ensure athlete belongs to coach (or, for an assistant, to their head coach)
     const { data: athleteRow, error: athleteErr } = await admin
       .from('athletes')
       .select('id')
       .eq('id', athleteId)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
       .single()
 
     if (athleteErr || !athleteRow) {
@@ -58,6 +60,10 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser()
 
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+    }
 
     const body = await req.json().catch(() => ({} as Record<string, unknown>))
     const athlete_id = String(body?.athlete_id ?? '').trim()

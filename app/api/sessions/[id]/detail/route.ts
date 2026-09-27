@@ -16,6 +16,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { sessionISODate } from '@/lib/session-date'
 import { recordAccess } from '@/lib/access-log'
+import { resolveCoachScope } from '@/lib/coach-scope'
 
 export const runtime = 'nodejs'
 
@@ -132,7 +133,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return attach(NextResponse.json({ error: 'Session not found.' }, { status: 404 }), cookiesToSet)
   }
 
-  const isCoach = session.coach_id === user.id
+  // The session's coach, or an assistant on that coach's team (lib/coach-scope.ts).
+  const scope = await resolveCoachScope(supabase, user.id)
+  const isCoach = session.coach_id === scope.headId
   let isAthlete = false
   if (!isCoach && session.shared_with_athlete) {
     const { data: ath } = await admin
@@ -165,7 +168,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     admin.from('athletes').select('id, first_name, last_name, sport, photo_url').eq('id', session.athlete_id).maybeSingle(),
     admin.from('session_videos').select('id, storage_path, file_name, mime_type, annotations, shared_with_athlete, created_at').eq('session_id', id).order('created_at'),
     admin.from('session_attachments').select('id, storage_path, file_name, mime_type, caption, created_at').eq('session_id', id).order('created_at'),
-    loadSessionCheckin(admin, session.athlete_id, isCoach ? sessionISODate(session) : null),
+    loadSessionCheckin(admin, session.athlete_id, isCoach && scope.can.wellness ? sessionISODate(session) : null),
   ])
 
   // The athlete only sees videos explicitly shared with them; the coach sees all.

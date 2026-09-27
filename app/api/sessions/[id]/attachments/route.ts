@@ -15,6 +15,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { errorMessage } from '@/lib/errors'
+import { resolveCoachScope } from '@/lib/coach-scope'
 
 export const runtime = 'nodejs'
 
@@ -42,7 +43,7 @@ function attach(res: NextResponse, cookies: CookieToSet[]) {
   return res
 }
 
-/** Resolves the caller and proves they own the session. */
+/** Resolves the caller and proves the session is their team's (lib/coach-scope.ts). */
 async function requireOwnedSession(req: NextRequest, sessionId: string) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
@@ -51,15 +52,16 @@ async function requireOwnedSession(req: NextRequest, sessionId: string) {
   }
 
   const admin = createSupabaseAdminClient()
+  const scope = await resolveCoachScope(supabase, user.id)
   const { data: session } = await admin
     .from('sessions').select('id, coach_id')
-    .eq('id', sessionId).eq('coach_id', user.id).maybeSingle()
+    .eq('id', sessionId).eq('coach_id', scope.headId).maybeSingle()
 
   if (!session) {
     return { error: attach(NextResponse.json({ error: 'Session not found or not yours.' }, { status: 403 }), cookiesToSet) } as const
   }
 
-  return { user, admin, cookiesToSet } as const
+  return { user, admin, cookiesToSet, scope } as const
 }
 
 function extFor(fileName: string, mime: string): string {
@@ -113,7 +115,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params
   const ctxAuth = await requireOwnedSession(req, id)
   if ('error' in ctxAuth) return ctxAuth.error
-  const { user, admin, cookiesToSet } = ctxAuth
+  const { user, admin, cookiesToSet, scope } = ctxAuth
 
   const body = await req.json().catch(() => ({}))
   const storage_path = typeof body?.storage_path === 'string' ? body.storage_path.trim() : ''
@@ -129,7 +131,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     .from('session_attachments')
     .insert({
       session_id: id,
-      coach_id: user.id,
+      // Owned by the session's coach (the head); uploaded by whoever added it.
+      coach_id: scope.headId,
+      uploaded_by: user.id,
       storage_path,
       file_name: typeof body?.file_name === 'string' ? body.file_name.slice(0, 200) : null,
       mime_type: typeof body?.mime_type === 'string' ? body.mime_type.slice(0, 100) : null,
@@ -151,7 +155,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const { id } = await ctx.params
   const ctxAuth = await requireOwnedSession(req, id)
   if ('error' in ctxAuth) return ctxAuth.error
-  const { user, admin, cookiesToSet } = ctxAuth
+  const { user, admin, cookiesToSet, scope } = ctxAuth
 
   const attachmentId = req.nextUrl.searchParams.get('attachment_id')
   if (!attachmentId) {
@@ -161,12 +165,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const body = await req.json().catch(() => ({}))
   const caption = typeof body?.caption === 'string' ? body.caption.slice(0, 300) : null
 
-  const { error } = await admin
+  // The head coach may edit any caption; an assistant only their own uploads.
+  let edit = admin
     .from('session_attachments')
     .update({ caption })
     .eq('id', attachmentId)
     .eq('session_id', id)
-    .eq('coach_id', user.id)
+    .eq('coach_id', scope.headId)
+  if (!scope.isHead) edit = edit.eq('uploaded_by', user.id)
+  const { error } = await edit
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
   return attach(NextResponse.json({ ok: true }), cookiesToSet)
@@ -177,16 +184,19 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   const { id } = await ctx.params
   const ctxAuth = await requireOwnedSession(req, id)
   if ('error' in ctxAuth) return ctxAuth.error
-  const { user, admin, cookiesToSet } = ctxAuth
+  const { user, admin, cookiesToSet, scope } = ctxAuth
 
   const attachmentId = req.nextUrl.searchParams.get('attachment_id')
   if (!attachmentId) {
     return attach(NextResponse.json({ error: 'attachment_id is required.' }, { status: 400 }), cookiesToSet)
   }
 
-  const { data: row } = await admin
+  // The head coach may delete any attachment; an assistant only their own.
+  let find = admin
     .from('session_attachments').select('id, storage_path')
-    .eq('id', attachmentId).eq('session_id', id).eq('coach_id', user.id).maybeSingle()
+    .eq('id', attachmentId).eq('session_id', id).eq('coach_id', scope.headId)
+  if (!scope.isHead) find = find.eq('uploaded_by', user.id)
+  const { data: row } = await find.maybeSingle()
 
   if (!row) return attach(NextResponse.json({ error: 'Not found.' }, { status: 404 }), cookiesToSet)
 
