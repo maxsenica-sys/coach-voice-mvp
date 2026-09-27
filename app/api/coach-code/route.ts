@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 
 
 function createSupabase(req: NextRequest) {
@@ -55,6 +56,12 @@ export async function PUT(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return attachCookies(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
+  }
+
+  // The athlete invite code puts children on a roster. An assistant has no
+  // roster of their own — giving them a code would give them one.
+  if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+    return attachCookies(NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 }), cookiesToSet)
   }
 
   const body = await req.json().catch(() => ({}))

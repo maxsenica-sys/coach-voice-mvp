@@ -958,6 +958,7 @@ const RULES = [
         'app/api/injuries/route.ts': ['PATCH', 'DELETE'],
         'app/api/coach/insights/route.ts': ['GET'],
         'app/api/coach/access-log/route.ts': ['GET'],
+        'app/api/coach-code/route.ts': ['PUT'],
       }
       for (const [rel, verbs] of Object.entries(HEAD_ONLY)) {
         const f = files.find((x) => x.rel === rel)
