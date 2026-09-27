@@ -18,6 +18,7 @@ import {
   syncPushSubscription, unsubscribeFromPush,
 } from '@/lib/push-client'
 import { errorMessage } from '@/lib/errors'
+import { apiMutate } from '@/lib/api-client'
 
 type View =
   | 'hidden' | 'checking'
@@ -46,6 +47,8 @@ export default function PushOptIn({ audience }: { audience: 'athlete' | 'coach' 
   const [view, setView] = useState<View>('checking')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [testNote, setTestNote] = useState<string | null>(null)
 
   const evaluate = useCallback(async (): Promise<View> => {
     if (!pushPublicKey()) return 'hidden'
@@ -97,6 +100,18 @@ export default function PushOptIn({ audience }: { audience: 'athlete' | 'coach' 
     } finally { setBusy(false) }
   }
 
+  // Proves the whole path — server, push service, this phone — without anyone
+  // else having to send a message. It only ever reaches the caller's devices.
+  const sendTest = async () => {
+    setTesting(true); setError(null); setTestNote(null)
+    try {
+      await apiMutate('/api/push/test', { method: 'POST' })
+      setTestNote('Test sent. It should arrive in a few seconds. If it doesn’t, check Focus mode and this app’s notification settings.')
+    } catch (e: unknown) {
+      setError(errorMessage(e, 'The test could not be sent. Try again.'))
+    } finally { setTesting(false) }
+  }
+
   if (view === 'hidden' || view === 'checking') return null
 
   const copy = COPY[audience]
@@ -128,7 +143,10 @@ export default function PushOptIn({ audience }: { audience: 'athlete' | 'coach' 
               <span role="status" style={{ flex: '1 1 140px', minWidth: 0, fontSize: 'var(--fs-3)', color: 'var(--success)', fontWeight: 600 }}>
                 On for this device.
               </span>
-              <button type="button" className="btn btn-ghost" onClick={turnOff} disabled={busy} style={{ minHeight: 44, minWidth: 44 }}>
+              <button type="button" className="btn btn-ghost" onClick={sendTest} disabled={busy || testing} style={{ minHeight: 44, minWidth: 44 }}>
+                {testing ? 'Sending…' : 'Send a test'}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={turnOff} disabled={busy || testing} style={{ minHeight: 44, minWidth: 44 }}>
                 {busy ? 'Turning off…' : 'Turn off'}
               </button>
             </>
@@ -143,6 +161,12 @@ export default function PushOptIn({ audience }: { audience: 'athlete' | 'coach' 
             </>
           )}
         </div>
+      )}
+
+      {testNote && !error && (
+        <p role="status" style={{ margin: '10px 0 0', fontSize: 'var(--fs-3)', lineHeight: 1.45, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+          {testNote}
+        </p>
       )}
 
       {error && (

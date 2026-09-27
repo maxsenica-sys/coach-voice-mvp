@@ -44,7 +44,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 // ── the payload ────────────────────────────────────────────────────────────
 
 /** The closed list. A new kind is a product decision, not a code change. */
-export const PUSH_KINDS = ['message-to-athlete', 'message-to-coach', 'session-shared'] as const
+export const PUSH_KINDS = ['message-to-athlete', 'message-to-coach', 'session-shared', 'test'] as const
 export type PushKind = (typeof PUSH_KINDS)[number]
 
 /** Everything a notification is allowed to carry. There is no body. */
@@ -61,6 +61,8 @@ export type PushInput =
   | { kind: 'message-to-athlete'; senderFirstName: string | null | undefined; athleteId: string }
   | { kind: 'message-to-coach'; senderFirstName: string | null | undefined; athleteId: string }
   | { kind: 'session-shared'; coachFirstName: string | null | undefined; athleteId: string }
+  /** Someone pressed "Send a test" on their own device. Only ever sent to them. */
+  | { kind: 'test'; audience: 'coach' | 'athlete' }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -90,7 +92,7 @@ export function pushDisplayName(raw: string | null | undefined, fallback: string
  * summaries and a `body`, and fails if any of it comes out the other side.
  */
 export function buildPushPayload(input: PushInput): PushPayload {
-  const athleteId = UUID.test(input.athleteId) ? input.athleteId.toLowerCase() : null
+  const athleteId = 'athleteId' in input && UUID.test(input.athleteId) ? input.athleteId.toLowerCase() : null
   switch (input.kind) {
     case 'message-to-athlete':
       return Object.freeze({
@@ -109,6 +111,12 @@ export function buildPushPayload(input: PushInput): PushPayload {
         title: `${pushDisplayName(input.coachFirstName, 'Your coach')} shared a new session`,
         url: '/athlete',
         tag: 'cv-session',
+      })
+    case 'test':
+      return Object.freeze({
+        title: 'Test: CoachVoice notifications are working',
+        url: input.audience === 'athlete' ? '/athlete' : '/dashboard',
+        tag: 'cv-test',
       })
   }
 }
@@ -177,14 +185,17 @@ export function pushConfig(env: Record<string, string | undefined> = process.env
 
 type SubRow = { endpoint: string; p256dh: string; auth: string }
 
+/** What happened to one fan-out. Only the test route reads it. */
+export type PushOutcome = { devices: number; sent: number; failed: number }
+
 /** Push one payload to every device a user has turned notifications on for. */
-async function sendPushToUser(userId: string, payload: PushPayload, cfg: PushConfig): Promise<void> {
+async function sendPushToUser(userId: string, payload: PushPayload, cfg: PushConfig): Promise<PushOutcome> {
   const admin = createSupabaseAdminClient()
   const { data: subs, error } = await admin
     .from('push_subscriptions')
     .select('endpoint, p256dh, auth')
     .eq('user_id', userId)
-  if (error || !subs?.length) return
+  if (error || !subs?.length) return { devices: 0, sent: 0, failed: 0 }
 
   const body = serializePushPayload(payload)
   const gone: string[] = []
@@ -221,6 +232,7 @@ async function sendPushToUser(userId: string, payload: PushPayload, cfg: PushCon
   if (delivered.length) {
     await admin.from('push_subscriptions').update({ last_used_at: new Date().toISOString() }).in('endpoint', delivered)
   }
+  return { devices: subs.length, sent: delivered.length, failed: subs.length - delivered.length }
 }
 
 /**
@@ -285,4 +297,21 @@ export async function notifyPushSessionShared(args: { athleteId: string; coachUs
   } catch (e: unknown) {
     console.error('[push] session notify failed', e instanceof Error ? e.message : 'unknown')
   }
+}
+
+/**
+ * "Send a test" on the notifications card. Goes to the caller's own devices
+ * and nobody else's: the user id comes from the verified session in the route,
+ * never from the request body, and the payload names no one.
+ *
+ * Unlike the other notifiers this one is awaited and reports back, because the
+ * whole point is to tell the person pressing the button whether it worked.
+ */
+export async function notifyPushTest(args: {
+  userId: string
+  audience: 'coach' | 'athlete'
+}): Promise<PushOutcome | null> {
+  const cfg = pushConfig()
+  if (!cfg) return null
+  return sendPushToUser(args.userId, buildPushPayload({ kind: 'test', audience: args.audience }), cfg)
 }

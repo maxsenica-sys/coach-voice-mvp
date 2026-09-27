@@ -149,7 +149,8 @@ await check('PU4', 'A name cannot forge a second line, and a real name is never 
 // ── PU5 ─────────────────────────────────────────────────────────────────────
 await check('PU5', 'Only messages and shared sessions are pushed — never the digest or the takeaway reminder', () => {
   const bad = []
-  const want = ['message-to-athlete', 'message-to-coach', 'session-shared']
+  // 'test' is the "Send a test" button: the caller's own devices only (see PU6).
+  const want = ['message-to-athlete', 'message-to-coach', 'session-shared', 'test']
   if ([...PUSH_KINDS].sort().join(',') !== want.sort().join(',')) bad.push(`kinds are [${PUSH_KINDS.join(', ')}]`)
   for (const k of PUSH_KINDS) {
     if (/digest|takeaway|reminder|wellness|injur|check-?in/i.test(k)) bad.push(`"${k}" is in-app only`)
@@ -173,7 +174,11 @@ const stripComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(
 const NOTIFIER_CALLERS = {
   'app/api/messages/route.ts': 'notifyPushNewMessage',
   'app/api/sessions/route.ts': 'notifyPushSessionShared',
+  'app/api/push/test/route.ts': 'notifyPushTest',
 }
+/** Awaited on purpose: the button reports whether it worked, and nothing else
+ *  in the request depends on it. Every other notifier must stay in after(). */
+const AWAITED_BY_DESIGN = new Set(['app/api/push/test/route.ts'])
 
 function scanCallers(files) {
   const bad = []
@@ -191,7 +196,7 @@ function scanCallers(files) {
     const calls = [...src.matchAll(new RegExp(`\\b${allowed}\\s*\\(`, 'g'))].length
     const deferred = [...src.matchAll(new RegExp(`after\\(\\s*\\(\\)\\s*=>\\s*${allowed}\\s*\\(`, 'g'))].length
     if (calls !== 1) bad.push(`${rel}: ${allowed} is called ${calls} times, expected once`)
-    if (deferred !== calls) bad.push(`${rel}: ${allowed} is not inside after(() => …) — a push failure would hold up or fail the request`)
+    if (!AWAITED_BY_DESIGN.has(rel) && deferred !== calls) bad.push(`${rel}: ${allowed} is not inside after(() => …) — a push failure would hold up or fail the request`)
     const argText = (src.match(new RegExp(`${allowed}\\s*\\(([^)]*)\\)`)) ?? [])[1] ?? ''
     if (/content|summary|transcript|session_name|media/i.test(argText)) bad.push(`${rel}: ${allowed} is handed content (${argText.trim()})`)
   }
@@ -349,6 +354,23 @@ await check('PU11', 'A tap opens the app at the right page, and never another si
     w = loadWorker()
     await w.fire('notificationclick', { notification: { close() {}, data: { url: evil } } })
     if (w.opened.join() !== '/') bad.push(`click url "${evil}" opened [${w.opened}]`)
+  }
+  return bad
+})
+
+// ── PU12 ────────────────────────────────────────────────────────────────────
+await check('PU12', '"Send a test" reaches only the person who pressed it, and names no one', () => {
+  const bad = []
+  const src = stripComments(readFileSync(join(ROOT, 'app/api/push/test/route.ts'), 'utf8'))
+  // The recipient is the verified caller. A body, a query string or a header
+  // that could name someone else is not read at all.
+  if (!/notifyPushTest\(\s*\{\s*userId:\s*who\.userId\b/.test(src)) bad.push('the test route does not send to who.userId')
+  if (/req\.(json|text|formData)\s*\(|searchParams|req\.headers/.test(src)) bad.push('the test route reads the request — nothing in it may choose the recipient')
+  if (!/routeIdentity\(/.test(src) || !/if\s*\(\s*!who\.ok\s*\)/.test(src)) bad.push('the test route does not check who is calling')
+  for (const audience of ['coach', 'athlete']) {
+    const p = buildPushPayload({ kind: 'test', audience })
+    if (!/^Test: /.test(p.title)) bad.push(`test title "${p.title}" does not say it is a test`)
+    if (p.url !== (audience === 'athlete' ? '/athlete' : '/dashboard')) bad.push(`test url for ${audience} is ${p.url}`)
   }
   return bad
 })
