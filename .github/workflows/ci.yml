@@ -53,6 +53,12 @@ jobs:
       - name: Staff rig
         run: npm run verify:staff
 
+      # Sends hostile text through every real email builder (lib/notify.ts)
+      # against a stub network. An athlete's message, a check-in note or a name
+      # rendered as markup in someone's inbox is what this exists for.
+      - name: Email rig
+        run: npm run verify:email
+
       # Runs the app's real date logic under nine timezones. Note that this job
       # runs in UTC, which is exactly why it is needed: the DST bucketing bug
       # this rig was written for passed in UTC and failed in six other zones.
