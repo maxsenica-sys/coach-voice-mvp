@@ -165,3 +165,32 @@ jobs:
       # Reuses the .next produced by the Build step rather than rebuilding.
       - name: Boot smoke test
         run: npm run verify:boot
+
+  # The database's access rules, run as real users against real Postgres.
+  # Separate from `check` because it needs a database and nothing else does.
+  # Every other rig reads source; none of them can tell whether a policy lets
+  # an assistant coach read another coach's athlete, because that is decided
+  # inside Postgres by rules that are only strings to every other tool here.
+  rls:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: RLS rig
+        run: npm run verify:rls
