@@ -30,6 +30,7 @@ import { currentMonth, parseMonth, sameMonth, shiftMonth, toMonthStr } from '@/l
 import { todayISODate } from '@/lib/session-date'
 import { fmtShortDate } from '@/lib/date-utils'
 import { errorMessage } from '@/lib/errors'
+import { getTeam, type Team } from '@/lib/team-client'
 import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 
 interface Athlete {
@@ -365,6 +366,17 @@ export default function AthleteDetailPage() {
   const [autoMonthlyReport, setAutoMonthlyReport] = useState(false)
   const [showCaretakers, setShowCaretakers] = useState(false)
   const [caretakers, setCaretakers] = useState<Caretaker[]>([])
+  /* Head coach, or an assistant on the head's team (lib/team-client.ts). An
+   * assistant sees this athlete but not the head-only parts: the profile and
+   * caretakers, reports to parents, the head's insights and the access log.
+   * The routes refuse them regardless; this keeps the screen honest. */
+  const [team, setTeam] = useState<Team>({ role: 'head' })
+  useEffect(() => {
+    let live = true
+    void getTeam().then((t) => { if (live) setTeam(t) })
+    return () => { live = false }
+  }, [])
+  const isAssistant = team.role === 'assistant'
   const [caretakerForm, setCaretakerForm] = useState({ name: '', email: '', relationship: 'parent', notify_session_reports: true, notify_monthly_reports: true, notify_wellness_alerts: true })
   const [caretakerSaving, setCaretakerSaving] = useState(false)
   const [caretakerMsg, setCaretakerMsg] = useState('')
@@ -1115,14 +1127,14 @@ export default function AthleteDetailPage() {
   const visibleSessions = sessionsShowAll ? sessions : sessions.slice(0, 3)
 
   // Tab definitions
-  const TABS: { key: AthleteTab; label: string }[] = [
+  const TABS: { key: AthleteTab; label: string }[] = ([
     { key: 'overview',  label: 'Overview' },
     { key: 'sessions',  label: `Sessions${sessions.length > 0 ? ` (${sessions.length})` : ''}` },
     { key: 'wellness',  label: 'Wellness' },
     { key: 'calendar',  label: 'Calendar' },
     { key: 'profile',   label: 'Profile' },
     { key: 'notes',     label: 'Notes' },
-  ]
+  ] as { key: AthleteTab; label: string }[]).filter((t) => !(isAssistant && t.key === 'profile'))
 
   // The coach's spine, drawn inside the scoreboard. The arithmetic is
   // lib/training-spine.ts — the same function the athlete's own spine uses.
@@ -1604,12 +1616,12 @@ export default function AthleteDetailPage() {
 
             {/* ── Coach-only mirrors: what you keep repeating to them, and how
                    they have been replying. Computed in lib/insights.ts. ── */}
-            <CoachInsights athleteId={athleteId} athleteName={athlete.first_name ?? ''} />
+            {!isAssistant && <CoachInsights athleteId={athleteId} athleteName={athlete.first_name ?? ''} />}
 
             {/* ── Activity: when this athlete opened what you shared
                    (lib/access-log.ts). Coach-only; your own views are not
                    recorded. ── */}
-            <AccessLog athleteId={athleteId} firstName={athlete.first_name ?? ''} />
+            {!isAssistant && <AccessLog athleteId={athleteId} firstName={athlete.first_name ?? ''} />}
 
             {/* ── Goals ── */}
             {athlete.goals && (
@@ -1819,8 +1831,13 @@ export default function AthleteDetailPage() {
                   {wellnessAlert.reason === 'today' && `Today's overall score is ${wellnessAlert.todayScore}/5.`}
                   {wellnessAlert.reason === 'average' && `${athlete.first_name}'s 7-day average score is ${wellnessAlert.avgScore}/5.`}
                   {wellnessAlert.reason === 'both' && `Today's score (${wellnessAlert.todayScore}/5) and 7-day average (${wellnessAlert.avgScore}/5) are both low.`}
-                  {' '}You can loop in a parent or caretaker below.
+                  {isAssistant ? '' : ' You can loop in a parent or caretaker below.'}
                 </div>
+                {isAssistant ? (
+                  <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text)' }}>
+                    Contacting a parent or caretaker is for {team.role === 'assistant' ? team.headName : 'the head coach'}. Let them know.
+                  </div>
+                ) : (<>
                 {caretakersUnavailable && (
                   <div role="alert" style={{ fontSize: 'var(--t-min)', color: 'var(--text)', marginBottom: 8, lineHeight: 1.5 }}>
                     ⚠ Could not load this athlete&rsquo;s saved caretakers. The list below is
@@ -1860,6 +1877,7 @@ export default function AthleteDetailPage() {
                     {alertMsg}
                   </div>
                 )}
+                </>)}
               </div>
             )}
             <WellnessGraph athleteId={athleteId} />
@@ -2029,7 +2047,7 @@ export default function AthleteDetailPage() {
         {/* ══════════════════════════════════════
             TAB: PROFILE
         ══════════════════════════════════════ */}
-        {activeTab === 'profile' && athlete && (
+        {activeTab === 'profile' && athlete && !isAssistant && (
           <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
             <h2 style={{ ...EYEBROW, fontSize: 17, letterSpacing: '0.14em', color: 'var(--text)', marginBottom: 16 }}>Athlete Profile</h2>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '120px minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>

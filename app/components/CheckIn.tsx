@@ -240,8 +240,12 @@ export default function CheckIn({
    * no current screen collects. Telling a child their words may go to their
    * parents when they cannot would put them off writing the one thing their
    * coach needs to read. If this screen ever collects text that can reach a
-   * report, this line must change in the same commit. */
-  const coachSees = `Only your coach sees this — they will read it before ${sessionLabel ? `“${sessionLabel}”` : 'your next session'}.`
+   * report, this line must change in the same commit.
+   *
+   * "Your coaching team", not "your coach": an assistant coach on the head's
+   * team sees every check-in too (migration 034, Max 2026-09-27). With no
+   * assistant it is still just their coach, and it is still true. */
+  const coachSees = `Only your coaching team sees this — they will read it before ${sessionLabel ? `“${sessionLabel}”` : 'your next session'}.`
 
   const EYEBROW: React.CSSProperties = {
     fontFamily: 'var(--font-cast)', fontSize: 'var(--t-furniture)', fontWeight: 700,
