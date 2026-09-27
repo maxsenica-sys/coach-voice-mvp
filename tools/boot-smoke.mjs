@@ -256,6 +256,21 @@ function findChromium(playwrightChromium) {
   return null
 }
 
+/* The @font-face family behind each design token. next/font/local names a face
+ * after the constant it is assigned to in app/layout.tsx — `const jakartaSans =
+ * localFont(…)` emits `font-family:jakartaSans` — so renaming a constant there
+ * renames the family, and this table has to follow. (Under next/font/google
+ * these were the Google names: Plus Jakarta Sans, Newsreader, JetBrains Mono,
+ * Big Shoulders. Those survive in globals.css only as literal fallbacks.) */
+const FAMILY = { sans: 'jakartaSans', display: 'newsreader', mono: 'jetbrainsMono', cast: 'bigShoulders' }
+
+/* How many @font-face rules each family has in the build: one per subset per
+ * style, exactly what next/font/google used to emit. latin comes from
+ * next/font/local in layout.tsx, the rest from app/fonts/subsets.css. A family
+ * that loses a subset renders the letters in that range — the ć in a surname —
+ * in a fallback face, which nothing else here would notice. */
+const FACES = { jakartaSans: 4, newsreader: 6, bigShoulders: 3, jetbrainsMono: 6 }
+
 /* ── 1. build output ───────────────────────────────────────────────────────
  *
  * Checks that can only be made against the compiled bundle. A stylesheet rule
@@ -324,6 +339,19 @@ function assertBuildOutput() {
     )
   }
 
+  // No font is fetched from a third party at build time. next/font/google
+  // downloads Google's stylesheet during `next build` and parses it; on
+  // 2026-09-27 Google answered one CI runner with a URL shape the loader could
+  // not parse and a PR that touched no font failed to build. Vercel's
+  // production build makes the same request, so a deploy could fail on how
+  // Google felt that minute. The files live in app/fonts/ now.
+  {
+    const src = walk(join(ROOT, 'app')).filter((f) => /\.(tsx?|jsx?)$/.test(f))
+    const google = src.filter((f) => /from\s+['"]next\/font\/google['"]/.test(readFileSync(f, 'utf8')))
+    check('no font is fetched from Google at build time (next/font/local only)', google.length === 0,
+      google.map((f) => f.replace(ROOT + '/', '')).join(', '))
+  }
+
   heading('Build output')
 
   const cssFiles = walk(join(NEXT_DIR, 'static')).filter((f) => f.endsWith('.css'))
@@ -332,13 +360,18 @@ function assertBuildOutput() {
 
   // Every family the design tokens name must be in the build as a real
   // @font-face. Naming one in globals.css is not evidence that it loads.
-  // Big Shoulders is the fourth. Google renamed the family from "Big Shoulders
-  // Display", and next/font follows the new name — the export is
-  // `Big_Shoulders` and the @font-face it emits says `font-family:Big
-  // Shoulders`. The old name survives in globals.css only as a literal fallback
-  // for a machine that happens to have it installed locally.
-  for (const fam of ['Plus Jakarta Sans', 'Newsreader', 'JetBrains Mono', 'Big Shoulders']) {
-    check(`${fam} is self-hosted in the build`, css.includes(`font-family:${fam}`))
+  // next/font/local names each face after its constant in layout.tsx, which is
+  // why these are jakartaSans and not "Plus Jakarta Sans" — see FAMILY above.
+  for (const [token, fam] of Object.entries(FAMILY)) {
+    check(`${fam} (--font-${token}) is self-hosted in the build`, css.includes(`font-family:${fam}`))
+    const faces = (css.match(/@font-face\{[^}]*\}/g) || []).filter((f) => new RegExp(`font-family:["']?${fam}["']?[;}]`).test(f))
+    const ranges = faces.map((f) => (f.match(/unicode-range:([^;}]+)/) || [, 'no unicode-range'])[1].split(',')[0].trim())
+    // …and every one says which characters it is for. A face without a
+    // unicode-range claims every character, so the browser would stop looking
+    // for the subset that actually has the glyph.
+    check(`${fam} carries all ${FACES[fam]} of its subsets, each with a unicode-range`,
+      faces.length === FACES[fam] && !ranges.includes('no unicode-range'),
+      `${faces.length} @font-face rule(s), first ranges: ${ranges.join(' | ')}`)
   }
 
   // Nothing render-blocking may come from a third party. An @import nested in
@@ -476,7 +509,7 @@ function assertBuildOutput() {
      * source, never that the source was right. A check that cannot fail on the
      * regression it names is worse than no check, because it reads like cover.
      */
-    const PRELOADED_FAMILIES = ['Plus Jakarta Sans']
+    const PRELOADED_FAMILIES = [FAMILY.sans]
     const preloadedFamilies = [...new Set(fontPreloads.map((href) => {
       const face = (css.match(new RegExp(`@font-face\\{[^}]*${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^}]*\\}`)) || [''])[0]
       return (face.match(/font-family:([^;}]+)/) || [, `unknown (${href})`])[1].trim()
@@ -765,6 +798,45 @@ async function assertBoot(base) {
         castFaceStatus = faces.length ? (faces.some((f) => f.status === 'loaded') ? 'loaded' : faces.map((f) => f.status).join('/')) : 'no @font-face in the document'
       }
 
+      /* The same question for every token: does the first family it names have
+       * a real @font-face in the document, and does that face load? This is
+       * what catches the face and the variable disagreeing about a name — a
+       * next/font/local `declarations` font-family override does exactly that,
+       * and every substring check above still passes on it. */
+      const faceStatus = async (name, weight) => {
+        const first = (token(name).split(',')[0] || '').trim().replace(/^["']|["']$/g, '')
+        if (!first) return { first, status: 'no family named' }
+        try { await document.fonts.load(`${weight} 20px "${first}"`) } catch { /* reported below */ }
+        const faces = [...document.fonts].filter((f) => f.family.replace(/^["']|["']$/g, '') === first)
+        return { first, status: faces.length ? (faces.some((f) => f.status === 'loaded') ? 'loaded' : faces.map((f) => f.status).join('/')) : 'no @font-face in the document' }
+      }
+      const faces = {
+        '--font-sans': await faceStatus('--font-sans', 400),
+        '--font-display': await faceStatus('--font-display', 400),
+        '--font-mono': await faceStatus('--font-mono', 400),
+      }
+
+      /* A surname outside latin-1 is set in the family it was styled in, not
+       * half in a fallback. Loading the text makes the browser fetch whichever
+       * subsets it needs; then a face of this family must be loaded whose
+       * unicode-range covers each of these letters. */
+      const covers = (range, cp) => range.split(',').some((part) => {
+        const body = part.trim().replace(/^U\+/i, '')
+        // U+?? is the minified form of U+0000-00FF: ? is a wildcard hex digit
+        const [lo, hi] = body.includes('?')
+          ? [parseInt(body.replace(/\?/g, '0'), 16), parseInt(body.replace(/\?/g, 'F'), 16)]
+          : body.split('-').map((h) => parseInt(h, 16))
+        return cp >= lo && cp <= (Number.isFinite(hi) ? hi : lo)
+      })
+      const NAMES = 'Kovačević Nguyễn'
+      const extended = {}
+      for (const [name, weight] of [['--font-sans', 400], ['--font-display', 400], ['--font-mono', 400], ['--font-cast', 700]]) {
+        const fam = (token(name).split(',')[0] || '').trim().replace(/^["']|["']$/g, '')
+        try { await document.fonts.load(`${weight} 20px "${fam}"`, NAMES) } catch { /* reported below */ }
+        const loaded = [...document.fonts].filter((f) => f.family.replace(/^["']|["']$/g, '') === fam && f.status === 'loaded')
+        extended[name] = { fam, missing: [...new Set(NAMES.replace(/\s/g, ''))].filter((ch) => !loaded.some((f) => covers(f.unicodeRange, ch.codePointAt(0)))) }
+      }
+
       /* Width of one string set in several families. A family that is not
        * present renders in the browser's default font, so two families that
        * measure the same are the same used font — which is how "it resolves"
@@ -792,14 +864,24 @@ async function assertBoot(base) {
           ? { cast: widthIn('var(--font-cast)'), named: widthIn(`"${castFirst}"`), genericTail: widthIn('sans-serif'), body: widthIn('var(--font-sans)') }
           : null,
         loaded: [...new Set([...document.fonts].map((f) => f.family))],
+        faces,
+        extended,
       }
     })
     // A var() that is unresolved where the token is declared invalidates the
     // whole declaration and takes the literal fallbacks with it — the screen
     // silently drops to the browser default serif. Ask the browser, not the CSS.
-    check('--font-display resolves to Newsreader', fonts.display.includes('Newsreader'), fonts.display)
-    check('--font-sans resolves to Plus Jakarta Sans', fonts.sans.includes('Plus Jakarta Sans'), fonts.sans)
-    check('--font-mono resolves to JetBrains Mono', fonts.mono.includes('JetBrains Mono'), fonts.mono)
+    check(`--font-display resolves to ${FAMILY.display}`, fonts.display.includes(FAMILY.display), fonts.display)
+    check(`--font-sans resolves to ${FAMILY.sans}`, fonts.sans.includes(FAMILY.sans), fonts.sans)
+    check(`--font-mono resolves to ${FAMILY.mono}`, fonts.mono.includes(FAMILY.mono), fonts.mono)
+    for (const [name, f] of Object.entries(fonts.faces)) {
+      check(`the family ${name} names ("${f.first}") is a loaded @font-face`, f.status === 'loaded',
+        `status: ${f.status}. Loaded faces: ${fonts.loaded.join(', ')}`)
+    }
+    for (const [name, e] of Object.entries(fonts.extended)) {
+      check(`${name}: "Kovačević Nguyễn" is set entirely in ${e.fam}`, e.missing.length === 0,
+        `no loaded ${e.fam} face covers: ${e.missing.join(' ')}`)
+    }
     check('no token collapsed to the default serif', !/^(serif|Times)/.test(fonts.display.trim()))
 
     /* ── The fourth family, asked four different ways ──────────────────────
@@ -837,7 +919,7 @@ async function assertBoot(base) {
         ? `--font-cast = ${fonts.castToken}`
         : '--font-cast computed to the empty string — its var() resolved to nothing, so every font-family using it is invalid at computed value time and silently inherits',
     )
-    check('--font-cast resolves to Big Shoulders', fonts.cast.includes('Big Shoulders'), fonts.cast)
+    check(`--font-cast resolves to ${FAMILY.cast}`, fonts.cast.includes(FAMILY.cast), fonts.cast)
     check(
       `the family --font-cast names ("${fonts.castFirst}") is a loaded @font-face`,
       fonts.castFaceStatus === 'loaded',

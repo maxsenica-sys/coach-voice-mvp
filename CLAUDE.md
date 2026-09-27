@@ -281,6 +281,16 @@ Two rules that came out of these bugs and are easy to re-break:
 
 - **Never put an `@import url(https://…)` in a CSS file.** Fonts go through
   `next/font` in `app/layout.tsx`, which self-hosts them onto our own origin.
+- **Fonts are files in `app/fonts/`, loaded with `next/font/local` — never
+  `next/font/google`.** The Google loader fetches and parses Google's stylesheet
+  during every `next build`; on 2026-09-27 an unparseable answer failed a CI
+  build on a PR that touched no font, and Vercel's production build makes the
+  same request. The @font-face family is the constant's name (`jakartaSans`),
+  not the Google name. Do not override it with `declarations` — the variable
+  keeps the constant's name and every font silently falls back. Only latin goes
+  through `localFont`; latin-ext, vietnamese, cyrillic and greek are plain
+  `@font-face` rules in `app/fonts/subsets.css` under the same family names, so
+  a surname like Nguyễn is set in one font. `verify:boot` fails on any of it.
 - **`next/font` variable classes go on `<html>`, not `<body>`.** `globals.css`
   resolves `--font-display/-sans/-mono` in a `:root` block, and a `var()` that is
   unresolved there is invalid at computed value time — it takes the literal

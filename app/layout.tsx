@@ -3,8 +3,9 @@ import {
   SPORT_COUNT, DRAW_MS, COLLAPSE_AT, MARK_AT, WORD_AT, SEQUENCE_MS,
   montageKeyframesCss, at, PEAKS,
 } from '@/lib/montage-schedule'
-import { Plus_Jakarta_Sans, Newsreader, JetBrains_Mono, Big_Shoulders } from 'next/font/google'
+import localFont from 'next/font/local'
 import './globals.css'
+import './fonts/subsets.css'
 
 /* ── Type ──────────────────────────────────────────────────────────────────
  *
@@ -49,53 +50,74 @@ import './globals.css'
  * handful of 10-11px labels and never deserved a request competing with the
  * bundle. tools/boot-smoke.mjs holds the critical-path font budget at 40KB.
  */
-const jakartaSans = Plus_Jakarta_Sans({
+/* Every family is a file in app/fonts/, not a request to Google at build time.
+ *
+ * next/font/google fetched the stylesheet from fonts.googleapis.com on every
+ * build and parsed it. On 2026-09-27 Google answered one CI runner with a
+ * different URL shape (fonts.gstatic.com/l/font?kit=…) that the loader could
+ * not parse, and the build failed on a PR that did not touch a font — while
+ * main, minutes apart, built fine. Vercel's production build makes the same
+ * request. A deploy that can fail because of how a third party answered one
+ * HTTP request is not a deploy we control, so the files are ours now: the same
+ * files Google served next/font's own loader, byte for byte — latin here, and
+ * latin-ext, vietnamese, cyrillic and greek in ./fonts/subsets.css, which the
+ * Google build also carried (`subsets` only ever chose what was preloaded) —
+ * under their SIL Open Font Licences in app/fonts/OFL-*.txt.
+ *
+ * next/font/local names each @font-face after the constant below, so the
+ * families are jakartaSans, newsreader, bigShoulders and jetbrainsMono — and
+ * tools/boot-smoke.mjs asserts on exactly those names. Do not add a
+ * `declarations` override for font-family: the variable keeps the constant's
+ * name, so the two would disagree and every font would silently fall back.
+ * (That was tried first. The boot harness went red on it.)
+ *
+ * Each file is variable-weight, so one file covers every weight the app uses.
+ * The latin faces carry Google's unicode-range so the browser composes them
+ * with the other subsets exactly as it did before. */
+const jakartaSans = localFont({
+  src: './fonts/PlusJakartaSans-latin-var.woff2',
   variable: '--font-jakarta',
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
+  // latin only; every other subset is in ./fonts/subsets.css (next/font needs a literal here)
+  declarations: [{ prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' }],
+  weight: '400 800',
+  style: 'normal',
   display: 'swap',
 })
 
-const newsreader = Newsreader({
+const newsreader = localFont({
+  src: [
+    { path: './fonts/Newsreader-latin-var.woff2', weight: '400 500', style: 'normal' },
+    // headings use both styles; see --font-display
+    { path: './fonts/Newsreader-Italic-latin-var.woff2', weight: '400 500', style: 'italic' },
+  ],
   variable: '--font-newsreader',
-  subsets: ['latin'],
-  weight: ['400', '500'],
-  style: ['normal', 'italic'], // headings use both; see --font-display
+  // latin only; every other subset is in ./fonts/subsets.css (next/font needs a literal here)
+  declarations: [{ prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' }],
   display: 'swap',
-  // Not preloaded. Newsreader ships normal *and* italic — 123KB — at the same
-  // priority as the document's own CSS and ahead of the app bundle, and the
-  // first painted frame reads neither: #cv-boot .w hardcodes the system stack
-  // on purpose. `display: swap` means the cost is a late swap on headings, not
-  // invisible text. Blocking these on a slow-3G profile moved first paint
-  // 1252ms -> 840ms. Plus Jakarta Sans, which carries the body copy, stays
-  // preloaded at 27KB. tools/boot-smoke.mjs enforces the 40KB budget.
+  // Not preloaded: the first painted frame is the boot shell, which hardcodes
+  // the system stack. See the note above on the critical path.
   preload: false,
 })
 
-const bigShoulders = Big_Shoulders({
+const bigShoulders = localFont({
+  src: './fonts/BigShoulders-latin-var.woff2',
   variable: '--font-bigshoulders',
-  subsets: ['latin'],
-  weight: ['600', '700', '800'],
+  // latin only; every other subset is in ./fonts/subsets.css (next/font needs a literal here)
+  declarations: [{ prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' }],
+  weight: '600 800',
+  style: 'normal',
   display: 'swap',
-  // The scoreboard voice: every uppercase eyebrow, ticker, surname and nav
-  // label. Not preloaded, for the same reason Newsreader is not — the first
-  // painted frame is the boot shell, which hardcodes the system stack on
-  // purpose, so preloading this would compete with the document's own CSS for
-  // a frame that never renders it. `display: swap` makes the cost a late swap
-  // on furniture rather than invisible text.
-  //
-  // It goes through next/font, never an @import, so it is self-hosted on our
-  // own origin — an @import url(https://fonts.googleapis.com/...) in a CSS
-  // file is the specific mistake that dropped this app into the default serif
-  // once already, because the Tailwind build strips the import before any
-  // check of the built output can see it.
+  // The scoreboard voice. Not preloaded, for the same reason Newsreader is not.
   preload: false,
 })
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: './fonts/JetBrainsMono-latin-var.woff2',
   variable: '--font-jetbrains',
-  subsets: ['latin'],
-  weight: ['400', '500'],
+  // latin only; every other subset is in ./fonts/subsets.css (next/font needs a literal here)
+  declarations: [{ prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' }],
+  weight: '400 500',
+  style: 'normal',
   display: 'swap',
   preload: false,
 })
