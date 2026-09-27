@@ -5,6 +5,7 @@ import { routeIdentity } from '@/lib/route-identity'
 import { athleteStatus } from '@/lib/athlete-status'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { sendEmail, renderBrandedEmail } from '@/lib/notify'
+import { escapeHtml } from '@/lib/escape-html'
 import { errorMessage } from '@/lib/errors'
 import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 
@@ -147,7 +148,7 @@ export async function POST(request: Request) {
     } else if (inviteLink) {
       const html = renderBrandedEmail({
         heading: "You've been invited",
-        bodyHtml: `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 24px"><strong>${coachName}</strong> has added you to their CoachVoice roster. Set your password to access your session notes, feedback, and training calendar.</p>`,
+        bodyHtml: `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 24px"><strong>${escapeHtml(coachName)}</strong> has added you to their CoachVoice roster. Set your password to access your session notes, feedback, and training calendar.</p>`,
         ctaText: 'Set Your Password',
         ctaHref: inviteLink,
         footerNote: "This link expires in 24 hours. If you weren't expecting this, you can ignore this email.",

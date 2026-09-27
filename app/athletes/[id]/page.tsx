@@ -32,6 +32,7 @@ import { fmtShortDate } from '@/lib/date-utils'
 import { errorMessage } from '@/lib/errors'
 import { getTeam, type Team } from '@/lib/team-client'
 import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
+import { escapeHtml } from '@/lib/escape-html'
 
 interface Athlete {
   id: string; first_name: string; last_name: string
@@ -151,12 +152,14 @@ function SecHead({ title, children }: { title: string; children?: React.ReactNod
 
 // ── Caretaker Panel ──────────────────────────────────────────────
 function buildSessionEmailHtml(sessionName: string, summary: string, athleteName: string, coachName: string, date: string) {
+  // Every argument is text a person typed; the email client renders markup.
+  const [session, body, athlete, coach, when] = [sessionName, summary, athleteName, coachName, date].map(escapeHtml)
   return `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#1a1a2e">
-<h2 style="color:#2563eb">Session Report – ${athleteName}</h2>
-<p><strong>Session:</strong> ${sessionName}</p><p><strong>Date:</strong> ${date}</p><p><strong>Coach:</strong> ${coachName}</p>
+<h2 style="color:#2563eb">Session Report – ${athlete}</h2>
+<p><strong>Session:</strong> ${session}</p><p><strong>Date:</strong> ${when}</p><p><strong>Coach:</strong> ${coach}</p>
 <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0">
 <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:#2563eb">AI Session Summary</h3>
-<div style="background:#eff6ff;border-left:4px solid #2563eb;padding:14px 16px;border-radius:4px;font-size:15px;line-height:1.7;white-space:pre-wrap">${summary}</div>
+<div style="background:#eff6ff;border-left:4px solid #2563eb;padding:14px 16px;border-radius:4px;font-size:15px;line-height:1.7;white-space:pre-wrap">${body}</div>
 <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0">
 <p style="font-size:13px;color:#94a3b8">Sent via CoachVoice — the AI coaching platform</p>
 </body></html>`

@@ -19,6 +19,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { WELLNESS_METRICS, metricColor, scoreLabel, type WellnessCheckin, type WellnessAlertReason } from '@/lib/wellness-config'
 import { errorMessage } from '@/lib/errors'
+import { escapeHtml, fromHeader } from '@/lib/escape-html'
 
 type SendEmailArgs = {
   to: string | string[]
@@ -39,7 +40,7 @@ export async function sendEmail({ to, subject, html, fromName, fromEmail, replyT
   const resendKey = process.env.RESEND_API_KEY
   if (!resendKey) return { ok: false, error: 'RESEND_API_KEY is not configured' }
 
-  const from = `${fromName ?? 'CoachVoice'} <${fromEmail ?? process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev'}>`
+  const from = fromHeader(fromName, fromEmail ?? process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev')
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
@@ -76,7 +77,15 @@ export async function sendEmail({ to, subject, html, fromName, fromEmail, replyT
   }
 }
 
-/** The CoachVoice branded email shell every notification uses. */
+/**
+ * The CoachVoice branded email shell every notification uses.
+ *
+ * `heading`, `ctaText` and `ctaHref` are TEXT and are escaped here, so a name
+ * in a heading is safe whoever builds it. `bodyHtml` and `footerNote` are
+ * MARKUP: the caller builds them, and must pass every typed value through
+ * escapeHtml as it does. tools/email-rig.mjs sends hostile text through every
+ * notification to hold that.
+ */
 export function renderBrandedEmail({
   heading,
   bodyHtml,
@@ -97,10 +106,10 @@ export function renderBrandedEmail({
   </div>
   <div style="font-weight:900;font-size:20px;letter-spacing:-0.5px;color:#1F2421">CoachVoice</div>
 </div>
-<h1 style="font-size:22px;font-weight:800;margin:0 0 8px;letter-spacing:-0.3px">${heading}</h1>
+<h1 style="font-size:22px;font-weight:800;margin:0 0 8px;letter-spacing:-0.3px">${escapeHtml(heading)}</h1>
 ${bodyHtml}
 ${ctaText && ctaHref ? `<div style="text-align:center;margin:32px 0">
-  <a href="${ctaHref}" style="display:inline-block;background:#6F8E6B;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:8px;text-decoration:none;letter-spacing:0.01em">${ctaText}</a>
+  <a href="${escapeHtml(ctaHref)}" style="display:inline-block;background:#6F8E6B;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:8px;text-decoration:none;letter-spacing:0.01em">${escapeHtml(ctaText)}</a>
 </div>` : ''}
 ${footerNote ? `<p style="color:#5A6B87;font-size:13px;line-height:1.6;margin:24px 0 0">${footerNote}</p>` : ''}
 <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
@@ -171,8 +180,8 @@ export async function notifySessionShared({
     const html = renderBrandedEmail({
       heading: 'New feedback from your coach',
       bodyHtml: `
-<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px"><strong>${coachName}</strong> just shared notes on <strong>${title}</strong> with you.</p>
-${summary ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px;font-style:italic">&ldquo;${summary.slice(0, 200)}${summary.length > 200 ? '…' : ''}&rdquo;</p>` : ''}`,
+<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px"><strong>${escapeHtml(coachName)}</strong> just shared notes on <strong>${escapeHtml(title)}</strong> with you.</p>
+${summary ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px;font-style:italic">&ldquo;${escapeHtml(summary.slice(0, 200))}${summary.length > 200 ? '…' : ''}&rdquo;</p>` : ''}`,
       ctaText: 'View your feedback',
       ctaHref: `${appUrl}/athlete`,
       footerNote: "You're receiving this because your coach shared a session with you on CoachVoice.",
@@ -227,7 +236,8 @@ export async function notifyNewMessage({
     if ((count ?? 0) > 0) return // recipient already has an un-notified backlog from this sender
 
     const appUrl = getAppBaseUrl(req)
-    const preview = content?.trim() ? content.trim().slice(0, 200) : '📎 Sent an attachment'
+    // Escaped once, here: both branches below put it straight into markup.
+    const preview = escapeHtml(content?.trim() ? content.trim().slice(0, 200) : '📎 Sent an attachment')
 
     if (senderRole === 'coach') {
       const [{ data: athlete }, coachName] = await Promise.all([
@@ -342,14 +352,14 @@ export async function notifyCalendarEventCreated({
     // is what made the reminder in migration 028 a claim rather than a
     // feature. Addressed to a young athlete: what to do, why, and no alarm.
     const askHtml = checkinRequested
-      ? `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px">Before you train, please open CoachVoice and do your check-in — it takes about twenty seconds. It tells ${coachName} how your body is feeling so they can plan the session around you.</p>`
+      ? `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px">Before you train, please open CoachVoice and do your check-in — it takes about twenty seconds. It tells ${escapeHtml(coachName)} how your body is feeling so they can plan the session around you.</p>`
       : ''
 
     const html = renderBrandedEmail({
       heading: checkinRequested ? 'Check in before your session' : `New ${typeLabel} on your calendar`,
       bodyHtml: `
-<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px"><strong>${coachName}</strong> added <strong>${eventTitle}</strong> to your calendar for ${eventDate}.</p>
-${askHtml}${description ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px">${description}</p>` : ''}`,
+<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px"><strong>${escapeHtml(coachName)}</strong> added <strong>${escapeHtml(eventTitle)}</strong> to your calendar for ${escapeHtml(eventDate)}.</p>
+${askHtml}${description ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px">${escapeHtml(description)}</p>` : ''}`,
       ctaText: checkinRequested ? 'Do my check-in' : 'View calendar',
       ctaHref: `${appUrl}/athlete`,
     })
@@ -410,7 +420,7 @@ export function buildWellnessAlertHtml({
     heading: `⚠️ Wellness alert — ${athleteName}`,
     bodyHtml: `
 <p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px">
-  <strong>${athleteName}</strong>'s wellness has dropped based on ${ALERT_REASON_TEXT[reason]}.
+  <strong>${escapeHtml(athleteName)}</strong>'s wellness has dropped based on ${ALERT_REASON_TEXT[reason]}.
 </p>
 <div style="display:flex;gap:16px;margin:0 0 16px">
   ${todayScore !== null ? `<div style="background:#fef2f2;border-radius:8px;padding:8px 14px"><div style="font-size:20px;font-weight:800;color:#ef4444">${todayScore}/5</div><div style="font-size:13px;color:#5A6B87;text-transform:uppercase;font-weight:700">Today</div></div>` : ''}
@@ -430,7 +440,7 @@ ${
    * inbox because a number crossed a threshold. The scores still go: they are
    * what the alert is for. The words do not. */
   audience === 'coach' && checkin.notes
-    ? `<p style="color:#4a5568;font-size:13px;line-height:1.6;margin:0 0 12px"><strong>Note from check-in:</strong> ${checkin.notes}</p>`
+    ? `<p style="color:#4a5568;font-size:13px;line-height:1.6;margin:0 0 12px"><strong>Note from check-in:</strong> ${escapeHtml(checkin.notes)}</p>`
     : ''
 }`,
     ctaText: audience === 'coach' ? 'View athlete' : undefined,

@@ -54,15 +54,8 @@ export function inviteExpiry(now: Date = new Date()): string {
   return new Date(now.getTime() + INVITE_TTL_DAYS * 86_400_000).toISOString()
 }
 
-/** Text for HTML email bodies. Names are typed by people. */
-export function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
+/** Text for HTML email bodies. Names are typed by people. One definition, in lib/escape-html.ts. */
+export { escapeHtml } from '@/lib/escape-html'
 
 export type AcceptBlock =
   | 'not-found'       // no invite with that token (never existed, or already used)

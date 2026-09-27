@@ -86,7 +86,9 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const coachName = from_name ?? [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ?? 'Your Coach'
+  // `||`, not `??`: join() returns '' rather than null, so `?? 'Your Coach'`
+  // could never fire and a coach with no name on file sent as " via CoachVoice".
+  const coachName = (typeof from_name === 'string' ? from_name.trim() : '') || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'Your Coach'
 
   const result = await sendEmail({
     to: recipient,
