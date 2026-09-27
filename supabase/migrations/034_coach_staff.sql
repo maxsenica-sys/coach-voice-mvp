@@ -162,6 +162,20 @@ update public.injuries set created_by = coach_id where created_by is null;
 alter table public.session_attachments add column if not exists uploaded_by uuid references auth.users(id) on delete set null;
 update public.session_attachments set uploaded_by = coach_id where uploaded_by is null;
 
+-- A recording lives in the folder of whoever recorded it: the upload URL is
+-- minted as coach/<recorder>/…. 033 required the OWNER's folder, which is the
+-- same person until an assistant records for their head — then every one of
+-- their sessions would have been refused. So the rule becomes "the owner's or
+-- the recorder's folder", and still never anyone else's, and still no "..".
+alter table public.sessions drop constraint if exists sessions_audio_path_owned;
+alter table public.sessions
+  add constraint sessions_audio_path_owned check (
+    audio_path is null
+    or ((audio_path like 'coach/' || coach_id::text || '/%'
+         or (recorded_by is not null and audio_path like 'coach/' || recorded_by::text || '/%'))
+        and position('..' in audio_path) = 0)
+  );
+
 -- ═══ 4. staff policies ══════════════════════════════════════════════════════
 --
 -- "coach_id <> auth.uid()" on every staff WRITE keeps the staff branch from
@@ -187,7 +201,8 @@ create policy "sessions: staff record" on public.sessions
     and recorded_by = (select auth.uid())
     and athlete_id in (select private.my_athlete_ids())
     and (group_id is null or group_id in (select g.id from public.groups g where g.coach_id = sessions.coach_id))
-    and (audio_path is null or audio_path like 'coach/' || coach_id::text || '/%')
+    -- the assistant's own recording, in the assistant's own folder
+    and (audio_path is null or audio_path like 'coach/' || (select auth.uid())::text || '/%')
   );
 
 drop policy if exists "sessions: staff edit own recordings" on public.sessions;

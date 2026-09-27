@@ -90,6 +90,15 @@ insert into t_result values
   ('A1 can record for H1''s athlete',
      not pg_temp.refused($q$insert into public.sessions (coach_id, athlete_id, recorded_by, transcript)
        values ('00000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a2', 'a1 said')$q$)),
+  ('A1 can record with audio in their own folder',
+     not pg_temp.refused($q$insert into public.sessions (coach_id, athlete_id, recorded_by, transcript, audio_path)
+       values ('00000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a2', 'a1 audio', 'coach/00000000-0000-0000-0000-0000000000a2/1.mp4')$q$)),
+  ('A1 cannot attach audio from the head''s folder',
+     pg_temp.refused($q$insert into public.sessions (coach_id, athlete_id, recorded_by, transcript, audio_path)
+       values ('00000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a2', 'x', 'coach/00000000-0000-0000-0000-0000000000a1/1.mp4')$q$)),
+  ('A1 cannot attach audio from another coach''s folder',
+     pg_temp.refused($q$insert into public.sessions (coach_id, athlete_id, recorded_by, transcript, audio_path)
+       values ('00000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a2', 'x', 'coach/00000000-0000-0000-0000-0000000000b1/1.mp4')$q$)),
   ('A1 cannot record as someone else',
      pg_temp.refused($q$insert into public.sessions (coach_id, athlete_id, recorded_by, transcript)
        values ('00000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a1', 'forged')$q$)),
@@ -179,6 +188,12 @@ insert into t_result values
   ('service role cannot file a message under the wrong coach',
      pg_temp.refused($q$insert into public.messages (coach_id, athlete_id, sender_id, sender_role, content)
        values ('00000000-0000-0000-0000-0000000000b1', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000b1', 'coach', 'x')$q$)),
+  ('service role cannot store a path in a third coach''s folder',
+     pg_temp.refused($q$insert into public.sessions (coach_id, athlete_id, recorded_by, transcript, audio_path)
+       values ('00000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a2', 'x', 'coach/00000000-0000-0000-0000-0000000000b1/1.mp4')$q$)),
+  ('service role cannot store a path that climbs out',
+     pg_temp.refused($q$insert into public.sessions (coach_id, athlete_id, recorded_by, transcript, audio_path)
+       values ('00000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a2', 'x', 'coach/00000000-0000-0000-0000-0000000000a2/../b1/1.mp4')$q$)),
   ('service role can still write normally',
      not pg_temp.refused($q$insert into public.sessions (coach_id, athlete_id, recorded_by, transcript)
        values ('00000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a2', 'via route')$q$));
