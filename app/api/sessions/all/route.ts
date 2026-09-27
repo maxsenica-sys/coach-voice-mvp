@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
+import { resolveCoachScope } from '@/lib/coach-scope'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -43,6 +44,8 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get('search') ?? ''
   const athleteId = req.nextUrl.searchParams.get('athlete_id') ?? ''
 
+  // The team's sessions: an assistant sees the head's, including the head's own.
+  const scope = await resolveCoachScope(supabase, user.id)
   let query = supabase
     .from('sessions')
     .select(`
@@ -57,7 +60,7 @@ export async function GET(req: NextRequest) {
       audio_path,
       athletes!inner(id, first_name, last_name, email)
     `)
-    .eq('coach_id', user.id)
+    .eq('coach_id', scope.headId)
     .order('session_date', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)

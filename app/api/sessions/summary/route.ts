@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { routeIdentity } from '@/lib/route-identity'
+import { resolveCoachScope } from '@/lib/coach-scope'
 import { makeQuickSummary } from '@/lib/quick-summary'
 import { BLOCKED_MESSAGE } from '@/lib/content-gate'
 import type { CookieToSet } from '@/lib/supabase-route'
@@ -58,11 +59,12 @@ export async function POST(req: NextRequest) {
   let firstName: string | null = null
   const rosterFirstNames: string[] = []
   if (athleteId) {
+    const scope = await resolveCoachScope(supabase, who.userId)
     const { data: athlete } = await supabase
       .from('athletes')
       .select('first_name')
       .eq('id', athleteId)
-      .eq('coach_id', who.userId)
+      .eq('coach_id', scope.headId)
       .maybeSingle()
 
     if (!athlete) {

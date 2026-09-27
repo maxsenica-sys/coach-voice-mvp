@@ -28,6 +28,7 @@ import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 import { isBodyRegion } from '@/lib/body-map'
 import { isInjuryStatus } from '@/lib/injury'
 
@@ -68,7 +69,8 @@ export async function GET(req: Request) {
       .maybeSingle()
 
     if (!athlete) return NextResponse.json({ error: 'Athlete not found' }, { status: 404 })
-    if (athlete.coach_id !== user.id && athlete.athlete_user_id !== user.id) {
+    const scope = await resolveCoachScope(supabase, user.id)
+    if (athlete.coach_id !== scope.headId && athlete.athlete_user_id !== user.id) {
       return NextResponse.json({ error: 'Athlete not found' }, { status: 404 })
     }
 
@@ -116,7 +118,9 @@ export async function POST(req: Request) {
     }
 
     const admin = createSupabaseAdminClient()
-    if (!(await assertCoachOwns(admin, athlete_id, user.id))) {
+    // An assistant may log an injury they saw; it belongs to the head's record.
+    const scope = await resolveCoachScope(supabase, user.id)
+    if (!(await assertCoachOwns(admin, athlete_id, scope.headId))) {
       return NextResponse.json({ error: 'Athlete not found' }, { status: 404 })
     }
 
@@ -126,7 +130,8 @@ export async function POST(req: Request) {
       .from('injuries')
       .insert({
         athlete_id,
-        coach_id: user.id,
+        coach_id: scope.headId,
+        created_by: user.id,
         body_area,
         status,
         severity: severity(body?.severity),
@@ -150,6 +155,11 @@ export async function PATCH(req: Request) {
     const supabase = await createRouteClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // Changing or clearing an injury is the head coach's call.
+    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+    }
 
     const id = new URL(req.url).searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -200,6 +210,11 @@ export async function DELETE(req: Request) {
     const supabase = await createRouteClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // Changing or clearing an injury is the head coach's call.
+    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+    }
 
     const id = new URL(req.url).searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })

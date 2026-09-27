@@ -8,6 +8,8 @@ import { checkContent, BLOCKED_MESSAGE } from '@/lib/content-gate'
 import { notifySessionShared } from '@/lib/notify'
 import { notifyPushSessionShared } from '@/lib/push'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { resolveCoachScope } from '@/lib/coach-scope'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 
 function createSupabase(req: NextRequest) {
@@ -57,13 +59,14 @@ export async function GET(req: NextRequest) {
     return attachCookies(res, cookiesToSet)
   }
 
+  const scope = await resolveCoachScope(supabase, user.id)
   const { data, error } = await supabase
     .from('sessions')
     // athlete_response is the athlete's one-tap reply to the takeaway. The
     // coach already sees it on the session page; the athlete profile's session
     // list shows it too, and could not while this select left it out.
     .select('id, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime, athlete_response')
-    .eq('coach_id', user.id)
+    .eq('coach_id', scope.headId)
     .eq('athlete_id', athlete_id)
     // Newest session first by the date it happened, not the date it was typed
     // up — a session backdated to last Tuesday belongs under last Tuesday.
@@ -88,6 +91,15 @@ export async function POST(req: NextRequest) {
 
   if (!user) {
     const res = NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return attachCookies(res, cookiesToSet)
+  }
+
+  /* Who this session belongs to. An assistant records for their head coach's
+   * athletes: the row is owned by the head (coach_id) and says who recorded it
+   * (recorded_by). See lib/coach-scope.ts. */
+  const scope = await resolveCoachScope(supabase, user.id)
+  if (!scope.can.record) {
+    const res = NextResponse.json({ error: 'Recording is not turned on for you in this team.' }, { status: 403 })
     return attachCookies(res, cookiesToSet)
   }
 
@@ -199,7 +211,7 @@ export async function POST(req: NextRequest) {
       .from('athletes')
       .select('id')
       .eq('id', athlete_id)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
       .maybeSingle()
     if (!owned) {
       const res = NextResponse.json({ error: 'That athlete was not found, or is not yours.' }, { status: 403 })
@@ -230,7 +242,7 @@ export async function POST(req: NextRequest) {
     // which fails safe in the wrong direction on purpose: an unflagged group
     // session leaks, so a rejected id must not silently become "individual".
     group_id
-      ? supabase.from('groups').select('id').eq('id', group_id).eq('coach_id', user.id).maybeSingle()
+      ? supabase.from('groups').select('id').eq('id', group_id).eq('coach_id', scope.headId).maybeSingle()
       : Promise.resolve({ data: null }),
     /* Who else this recording is being written for.
      *
@@ -291,7 +303,8 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase
     .from('sessions')
     .insert({
-      coach_id: user.id,
+      coach_id: scope.headId,
+      recorded_by: user.id,
       athlete_id,
       session_name: session_name?.trim() ? session_name.trim() : null,
       transcript: transcript.trim(),
@@ -329,10 +342,14 @@ export async function POST(req: NextRequest) {
   if (data?.id) {
     const dateStr = data.session_date ?? new Intl.DateTimeFormat('en-CA').format(new Date())
     const sync = await syncSessionCalendarEvent({
-      supabase,
+      // The event is the head coach's, like the session. An assistant cannot
+      // write the head's calendar row under RLS (and the failure would be
+      // silent), so theirs is written with the service role — after the
+      // athlete and permission checks above.
+      supabase: scope.isHead ? supabase : createSupabaseAdminClient(),
       sessionId: data.id,
       athleteId: athlete_id,
-      coachUserId: user.id,
+      coachUserId: scope.headId,
       title: session_name,
       summary,
       eventDate: dateStr,
@@ -361,7 +378,7 @@ export async function POST(req: NextRequest) {
       // "Max shared a new session" on the athlete's devices, after the
       // response: a push failure must never fail the save. No title, summary
       // or transcript goes in the payload — see lib/push.ts.
-      after(() => notifyPushSessionShared({ athleteId: athlete_id, coachUserId: user.id }))
+      after(() => notifyPushSessionShared({ athleteId: athlete_id, coachUserId: user.id, headId: scope.headId }))
     }
   }
 

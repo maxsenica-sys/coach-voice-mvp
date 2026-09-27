@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -17,6 +18,10 @@ export async function GET(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Caretakers — who a child's reports go to — are managed by the head coach.
+  if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+    return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+  }
 
   const athleteId = new URL(req.url).searchParams.get('athlete_id')
   if (!athleteId) return NextResponse.json({ error: 'athlete_id required' }, { status: 400 })
@@ -39,6 +44,10 @@ export async function POST(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Caretakers — who a child's reports go to — are managed by the head coach.
+  if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+    return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+  }
 
   const { athlete_id, caretaker_name, caretaker_email, relationship, notify_session_reports, notify_monthly_reports } = await req.json()
   if (!athlete_id || !caretaker_name || !caretaker_email) {
@@ -86,6 +95,10 @@ export async function DELETE(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Caretakers — who a child's reports go to — are managed by the head coach.
+  if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+    return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+  }
 
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })

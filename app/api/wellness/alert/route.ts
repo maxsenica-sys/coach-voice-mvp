@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { computeWellnessAlert, type WellnessCheckin } from '@/lib/wellness-config'
 import { buildWellnessAlertHtml, sendEmail } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -21,6 +22,10 @@ export async function POST(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Alerts to caretakers are sent by the head coach.
+  if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+    return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+  }
 
   const { athlete_id, to } = await req.json().catch(() => ({}))
   if (!athlete_id) return NextResponse.json({ error: 'athlete_id is required' }, { status: 400 })

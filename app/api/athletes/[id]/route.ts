@@ -1,6 +1,7 @@
 // app/api/athletes/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 import { athleteStatus } from '@/lib/athlete-status'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
@@ -17,12 +18,13 @@ export async function GET(
 
     const { id } = await ctx.params
     const admin = createSupabaseAdminClient()
+    const scope = await resolveCoachScope(supabase, user.id)
 
     const { data, error } = await admin
       .from('athletes')
       .select('id, first_name, last_name, email, athlete_user_id, invited_at, created_at, first_login_at, photo_url, position, height_cm, height, sport, sport_metrics, goals, custom_fields, auto_monthly_report')
       .eq('id', id)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
       .single()
 
     if (error || !data) {
@@ -73,6 +75,11 @@ export async function PATCH(
     const supabase = await createRouteClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // An athlete's profile is edited by the head coach, not an assistant.
+    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+    }
 
     const { id } = await ctx.params
     const body = await req.json().catch(() => ({}))

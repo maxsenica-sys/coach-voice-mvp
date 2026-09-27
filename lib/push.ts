@@ -232,6 +232,9 @@ export async function notifyPushNewMessage(args: {
   athleteId: string
   senderUserId: string
   senderRole: 'coach' | 'athlete'
+  /** The head coach who owns the thread, as the route resolved it from
+   *  lib/coach-scope.ts. An assistant's message is on the head's athlete. */
+  coachId?: string
 }): Promise<void> {
   try {
     const cfg = pushConfig()
@@ -241,7 +244,7 @@ export async function notifyPushNewMessage(args: {
     if (args.senderRole === 'coach') {
       const [{ data: athlete }, { data: coach }] = await Promise.all([
         admin.from('athletes').select('athlete_user_id')
-          .eq('id', args.athleteId).eq('coach_id', args.senderUserId).maybeSingle(),
+          .eq('id', args.athleteId).eq('coach_id', args.coachId ?? args.senderUserId).maybeSingle(),
         admin.from('profiles').select('first_name').eq('id', args.senderUserId).maybeSingle(),
       ])
       if (!athlete?.athlete_user_id) return
@@ -266,14 +269,20 @@ export async function notifyPushNewMessage(args: {
 }
 
 /** A coach shared a session with an athlete of theirs. */
-export async function notifyPushSessionShared(args: { athleteId: string; coachUserId: string }): Promise<void> {
+export async function notifyPushSessionShared(args: {
+  athleteId: string
+  /** Who shared it — named on the notification. */
+  coachUserId: string
+  /** The head coach who owns the athlete, when an assistant shared it. */
+  headId?: string
+}): Promise<void> {
   try {
     const cfg = pushConfig()
     if (!cfg) return
     const admin = createSupabaseAdminClient()
     const [{ data: athlete }, { data: coach }] = await Promise.all([
       admin.from('athletes').select('athlete_user_id')
-        .eq('id', args.athleteId).eq('coach_id', args.coachUserId).maybeSingle(),
+        .eq('id', args.athleteId).eq('coach_id', args.headId ?? args.coachUserId).maybeSingle(),
       admin.from('profiles').select('first_name').eq('id', args.coachUserId).maybeSingle(),
     ])
     if (!athlete?.athlete_user_id) return

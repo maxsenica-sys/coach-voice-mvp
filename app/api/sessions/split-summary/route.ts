@@ -23,6 +23,7 @@ import { checkContent, BLOCKED_MESSAGE } from '@/lib/content-gate'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { routeIdentity } from '@/lib/route-identity'
+import { resolveCoachScope } from '@/lib/coach-scope'
 import type { CookieToSet } from '@/lib/supabase-route'
 import {
   MAX_SPLIT_ATHLETES,
@@ -74,11 +75,12 @@ export async function POST(req: NextRequest) {
    * as the single draft route: the first name decides who the model writes
    * to, so an id from another coach's roster would have it address another
    * coach's child by name. */
+  const scope = await resolveCoachScope(supabase, who.userId)
   const { data: rows, error } = await supabase
     .from('athletes')
     .select('id, first_name, last_name')
     .in('id', ids)
-    .eq('coach_id', who.userId)
+    .eq('coach_id', scope.headId)
   if (error) return reply({ error: 'Could not read your roster' }, 500)
   const found = new Map((rows ?? []).map((r) => [r.id as string, r]))
   if (ids.some((id) => !found.has(id))) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -36,11 +37,13 @@ export async function GET(req: NextRequest) {
   const who = await routeIdentity(supabase)
   const user = who.ok ? { id: who.userId } : null
   if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
+  // An assistant sees the team's squads (read-only).
+  const scope = await resolveCoachScope(supabase, user.id)
 
   const { data, error } = await supabase
     .from('groups')
     .select('id, name, color, description, created_at, group_members(athlete_id)')
-    .eq('coach_id', user.id)
+    .eq('coach_id', scope.headId)
     .order('created_at', { ascending: false })
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
@@ -63,6 +66,10 @@ export async function POST(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
+  // Squads are the head coach's to arrange.
+  if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+    return attach(NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 }), cookiesToSet)
+  }
 
   const body = await req.json().catch(() => ({}))
   const name = String(body?.name ?? '').trim()
@@ -87,6 +94,10 @@ export async function DELETE(req: NextRequest) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
+  // Squads are the head coach's to arrange.
+  if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+    return attach(NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 }), cookiesToSet)
+  }
 
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return attach(NextResponse.json({ error: 'id is required' }, { status: 400 }), cookiesToSet)

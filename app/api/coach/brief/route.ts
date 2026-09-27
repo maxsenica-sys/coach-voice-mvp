@@ -25,6 +25,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
+import { resolveCoachScope } from '@/lib/coach-scope'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
 import { isBodyRegion } from '@/lib/body-map'
 import { overallWellnessScore, type WellnessCheckin } from '@/lib/wellness-config'
@@ -42,25 +44,33 @@ export async function GET(req: NextRequest) {
     if (!who.ok) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     if (who.role === 'athlete') return NextResponse.json({ error: 'Coaches only.' }, { status: 403 })
     const user = { id: who.userId }
+    /* An assistant opens briefs for the team's sessions: the ones their head
+     * coach put in the calendar as well as their own. Calendar rows are read
+     * with the service role for that (there is no staff calendar policy); the
+     * athlete, check-in and session reads below stay on the caller's client,
+     * scoped to the head, where migration 034's staff policies apply. */
+    const scope = await resolveCoachScope(supabase, user.id)
+    const calendar = scope.isHead ? supabase : createSupabaseAdminClient()
+    const creators = scope.isHead ? [user.id] : [user.id, scope.headId]
 
     const eventId = req.nextUrl.searchParams.get('event_id') ?? ''
     if (!UUID_RE.test(eventId)) return NextResponse.json({ error: 'event_id required' }, { status: 400 })
 
-    const { data: ev, error: evErr } = await supabase
+    const { data: ev, error: evErr } = await calendar
       .from('calendar_events')
       .select('id, title, event_date, event_time, event_type')
       .eq('id', eventId)
-      .eq('created_by_user_id', user.id)
+      .in('created_by_user_id', creators)
       .eq('created_by_role', 'coach')
       .maybeSingle()
     if (evErr) return NextResponse.json({ error: evErr.message }, { status: 500 })
     if (!ev) return NextResponse.json({ error: 'Session not found.' }, { status: 404 })
 
     // The session's other rows: one per athlete on it.
-    let siblings = supabase
+    let siblings = calendar
       .from('calendar_events')
       .select('athlete_id')
-      .eq('created_by_user_id', user.id)
+      .in('created_by_user_id', creators)
       .eq('created_by_role', 'coach')
       .eq('event_date', ev.event_date)
       .eq('title', ev.title)
@@ -80,7 +90,7 @@ export async function GET(req: NextRequest) {
       .from('athletes')
       .select('id, first_name, last_name')
       .in('id', ids)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
     if (rosterErr) return NextResponse.json({ error: rosterErr.message }, { status: 500 })
     const athletes = (roster ?? []) as { id: string; first_name: string | null; last_name: string | null }[]
     const rosterIds = athletes.map((a) => a.id)
@@ -92,13 +102,13 @@ export async function GET(req: NextRequest) {
       supabase
         .from('wellness_checkins')
         .select('athlete_id, check_date, readiness, sore_areas, soreness_areas, energy, mood, sleep_q, soreness, stress')
-        .eq('coach_id', user.id)
+        .eq('coach_id', scope.headId)
         .in('athlete_id', rosterIds)
         .eq('check_date', ev.event_date),
       supabase
         .from('injuries')
         .select('id, athlete_id, body_area, status, severity, expected_return, started_on')
-        .eq('coach_id', user.id)
+        .eq('coach_id', scope.headId)
         .in('athlete_id', rosterIds)
         .neq('status', 'cleared')
         .order('started_on', { ascending: false }),
@@ -110,7 +120,7 @@ export async function GET(req: NextRequest) {
           .from('sessions')
           .select('id, focus_points, session_date, created_at, athlete_response')
           .eq('athlete_id', id)
-          .eq('coach_id', user.id)
+          .eq('coach_id', scope.headId)
           .order('session_date', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false })
           .limit(10),

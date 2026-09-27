@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
 
@@ -17,6 +18,10 @@ export async function POST(
     // Verify profile role
     const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).single()
     if (profile?.role !== 'coach') return NextResponse.json({ error: 'Not a coach' }, { status: 403 })
+    // Deleting a child's records is the head coach's decision alone.
+    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+    }
 
     const { id: athleteId } = await params
 

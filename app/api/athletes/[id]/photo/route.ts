@@ -2,6 +2,7 @@
 // Returns a signed upload URL for athlete profile photo storage.
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
 
@@ -13,6 +14,9 @@ export async function POST(
     const supabase = await createRouteClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
+    }
 
     const { id } = await ctx.params
     const { fileType } = await req.json().catch(() => ({ fileType: 'image/jpeg' }))

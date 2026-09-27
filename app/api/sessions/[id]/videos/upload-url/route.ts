@@ -8,6 +8,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { errorMessage } from '@/lib/errors'
+import { resolveCoachScope } from '@/lib/coach-scope'
 
 export const runtime = 'nodejs'
 
@@ -48,12 +49,14 @@ export async function GET(
 
   const admin = createSupabaseAdminClient()
 
-  // Verify coach owns this session
+  // Verify the session is this coach's team's (their own, or their head coach's).
+  // The upload still lands in the uploader's own folder below.
+  const scope = await resolveCoachScope(supabase, user.id)
   const { data: session } = await admin
     .from('sessions')
     .select('id, coach_id')
     .eq('id', sessionId)
-    .eq('coach_id', user.id)
+    .eq('coach_id', scope.headId)
     .maybeSingle()
 
   if (!session) {

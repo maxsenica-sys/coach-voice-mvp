@@ -14,6 +14,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { errorMessage } from '@/lib/errors'
+import { resolveCoachScope } from '@/lib/coach-scope'
 
 export const runtime = 'nodejs'
 
@@ -63,7 +64,8 @@ export async function GET(
     return attach(NextResponse.json({ error: 'Session not found.' }, { status: 404 }), cookiesToSet)
   }
 
-  let hasAccess = session.coach_id === user.id
+  // The session's coach, or an assistant on that coach's team.
+  let hasAccess = session.coach_id === (await resolveCoachScope(supabase, user.id)).headId
 
   // An athlete may listen only to a session that was actually shared with them,
   // and never to a squad or shared recording: that audio is the coach talking

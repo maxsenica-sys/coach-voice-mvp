@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieToSet } from '@/lib/supabase-route'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -29,6 +30,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
+  // Squads are the head coach's to arrange.
+  if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+    return attach(NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 }), cookiesToSet)
+  }
 
   const { id: group_id } = await params
   const body = await req.json().catch(() => ({}))
@@ -69,6 +74,10 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
+  // Squads are the head coach's to arrange.
+  if (!(await resolveCoachScope(supabase, user.id)).isHead) {
+    return attach(NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 }), cookiesToSet)
+  }
 
   const { id: group_id } = await params
   const athlete_id = req.nextUrl.searchParams.get('athlete_id')

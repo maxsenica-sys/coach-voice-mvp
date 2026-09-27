@@ -4,6 +4,8 @@ import { notifyNewMessage } from '@/lib/notify'
 import { notifyPushNewMessage } from '@/lib/push'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
+import { resolveCoachScope } from '@/lib/coach-scope'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 export const runtime = 'nodejs'
 
@@ -37,14 +39,18 @@ type MessageRow = {
  * links are long dead; there is nothing to recover, and no backfill is possible
  * because a signed URL does not contain enough to reconstruct its own path.
  */
-async function withSignedMedia(
-  supabase: ReturnType<typeof createSupabase>['supabase'],
-  rows: MessageRow[],
-): Promise<MessageRow[]> {
+async function withSignedMedia(rows: MessageRow[]): Promise<MessageRow[]> {
   const needSigning = rows.filter((m) => typeof m.media_path === 'string' && m.media_path)
   if (needSigning.length === 0) return rows
 
-  const { data: signed } = await supabase.storage
+  /* Signed with the service role. The storage policy lets a user read only
+   * their OWN folder, so under the caller's client the recipient of a photo —
+   * the athlete, the head coach, an assistant — could never open it: every
+   * signature for someone else's upload came back empty and the bubble showed
+   * nothing. Safe because every row here was returned by the caller's own
+   * RLS-scoped query (or just inserted by them): the service role only signs
+   * paths the caller was already allowed to see the message for. */
+  const { data: signed } = await createSupabaseAdminClient().storage
     .from(MEDIA_BUCKET)
     .createSignedUrls(needSigning.map((m) => m.media_path as string), MEDIA_TTL_SECONDS)
 
@@ -103,7 +109,7 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const data = await withSignedMedia(supabase, (recent ?? []).slice().reverse() as MessageRow[])
+  const data = await withSignedMedia((recent ?? []).slice().reverse() as MessageRow[])
 
   // Mark incoming messages as read. The role comes from the verified token
   // where the access-token hook is enabled, so this no longer costs a
@@ -148,10 +154,25 @@ export async function POST(req: NextRequest) {
   // a coach, which matches the `profile?.role ?? 'coach'` default this replaces.
   const senderRole: 'coach' | 'athlete' = who.role === 'athlete' ? 'athlete' : 'coach'
 
+  /* The thread belongs to the athlete's coach — the head coach — whoever
+   * writes in it. A coach (head or assistant) may write only to an athlete on
+   * their team, and an assistant only while messaging is allowed for them.
+   * The athlete row is read through the caller's client, so RLS decides who
+   * the caller can see before this code does. */
   let coachId = user.id
   if (senderRole === 'athlete') {
     const { data: ath } = await supabase.from('athletes').select('coach_id').eq('id', athlete_id).single()
     if (ath?.coach_id) coachId = ath.coach_id
+  } else {
+    const scope = await resolveCoachScope(supabase, user.id)
+    const { data: ath } = await supabase.from('athletes').select('coach_id').eq('id', athlete_id).maybeSingle()
+    if (!ath || ath.coach_id !== scope.headId) {
+      return NextResponse.json({ error: 'Athlete not found.' }, { status: 404 })
+    }
+    if (!scope.can.message) {
+      return NextResponse.json({ error: 'Messaging is not turned on for you in this team.' }, { status: 403 })
+    }
+    coachId = scope.headId
   }
 
   const { data, error } = await supabase
@@ -164,7 +185,7 @@ export async function POST(req: NextRequest) {
 
   // Hand the new row back with a usable URL, so the sender's own bubble renders
   // the media immediately rather than waiting for the next refetch.
-  const [withMedia] = await withSignedMedia(supabase, [data as MessageRow])
+  const [withMedia] = await withSignedMedia([data as MessageRow])
 
   if (data?.id) {
     await notifyNewMessage({
@@ -172,7 +193,9 @@ export async function POST(req: NextRequest) {
       req,
       messageId: data.id,
       athleteId: athlete_id,
-      coachUserId: coachId,
+      // Coach → athlete: the email names who actually wrote (an assistant, too).
+      // Athlete → coach: it goes to the head coach, who owns the thread.
+      coachUserId: senderRole === 'coach' ? user.id : coachId,
       senderRole,
       content,
     })
@@ -182,7 +205,7 @@ export async function POST(req: NextRequest) {
   // service that is slow or down must never be why a message failed to send.
   // The payload names the sender and nothing else — never `content`.
   if (data?.id) {
-    after(() => notifyPushNewMessage({ athleteId: athlete_id, senderUserId: user.id, senderRole }))
+    after(() => notifyPushNewMessage({ athleteId: athlete_id, senderUserId: user.id, senderRole, coachId }))
   }
 
   const res = NextResponse.json({ message: withMedia ?? data }, { status: 201 })

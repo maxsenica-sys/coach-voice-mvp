@@ -31,6 +31,7 @@
  */
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
+import { resolveCoachScope } from '@/lib/coach-scope'
 import { errorMessage } from '@/lib/errors'
 import { sessionDate } from '@/lib/session-date'
 
@@ -51,6 +52,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await ctx.params
+    const scope = await resolveCoachScope(supabase, user.id)
 
     // Scoped by coach_id as well as athlete_id: an athlete id is guessable,
     // and this returns a sentence a coach said about a child.
@@ -58,7 +60,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       .from('sessions')
       .select('id, focus_points, session_date, created_at, athlete_response')
       .eq('athlete_id', id)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
       .order('session_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
       .limit(10)
