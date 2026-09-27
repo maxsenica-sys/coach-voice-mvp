@@ -189,7 +189,7 @@ export default function AthleteClipUpload({ athleteId, sessionId = null, listSco
             {checking ? 'Checking the clip…' : sessionId ? 'Send your coach a clip from this session' : 'Send your coach a clip'}
           </button>
           <span style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-2)', lineHeight: 1.4 }}>
-            Up to {MAX_ATHLETE_CLIP_SECONDS} seconds. Only your coach sees it.
+            Up to {MAX_ATHLETE_CLIP_SECONDS} seconds. Only your coaching team sees it.
           </span>
         </div>
       )}

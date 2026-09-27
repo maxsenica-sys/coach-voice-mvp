@@ -28,6 +28,8 @@ import { formatSessionDate, sessionDate, sessionISODate, todayISODate } from '@/
 import { buildSpine, completeSpineWeeks, SPINE_WEEKS, SPINE_MIN_SESSIONS } from '@/lib/training-spine'
 import { GROUP_COLORS, DEFAULT_GROUP_COLOR } from '@/lib/group-colors'
 import { errorMessage } from '@/lib/errors'
+import { getTeam, PENDING_INVITE_KEY, type Team } from '@/lib/team-client'
+import CoachingStaff from '@/app/components/CoachingStaff'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -589,8 +591,10 @@ function JoinToast({ data, onDismiss }: { data: JoinToastData; onDismiss: () => 
 }
 
 // ── Settings Tab ─────────────────────────────────────────────────
-function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditing, codeDraft, codeSaving, codeMsg, setCodeDraft, setCodeEditing, setCodeMsg, saveCode, onNameChange, logout, onShowQR }: {
+function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditing, codeDraft, codeSaving, codeMsg, setCodeDraft, setCodeEditing, setCodeMsg, saveCode, onNameChange, logout, onShowQR, isAssistant }: {
   coachName: string; coachSport: string; coachEmail: string; inviteCode: string | null
+  /** An assistant coach has no roster of their own, so no athlete invite code. */
+  isAssistant: boolean
   /** Opens the invite code as a QR code. */
   onShowQR: () => void
   codeEditing: boolean; codeDraft: string; codeSaving: boolean; codeMsg: string
@@ -629,6 +633,9 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
       {/* Renders nothing until the VAPID keys are set in the environment. */}
       <PushOptIn audience="coach" />
 
+      {/* ── Coaching staff: assistants (lib/coach-scope.ts, migration 034) ── */}
+      <CoachingStaff />
+
       {/* ── Profile ── */}
       <div className="card" style={{ padding: 22 }}>
         <SecHead title="Your profile" />
@@ -666,8 +673,8 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
         </div>
       </div>
 
-      {/* ── Invite Code ── */}
-      <div className="card" style={{ padding: 22 }}>
+      {/* ── Invite Code ── (head coaches only: an assistant's athletes are the head's) */}
+      {!isAssistant && <div className="card" style={{ padding: 22 }}>
         <SecHead title="Athlete invite code" />
         <div className="section-sub" style={{ marginBottom: 16, color: 'var(--text-2)' }}>Share this so athletes can join your roster during sign-up.</div>
         {inviteCode && !codeEditing ? (
@@ -701,7 +708,7 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* ── Account ── */}
       <div className="card" style={{ padding: 18 }}>
@@ -756,6 +763,27 @@ function DashboardPageInner() {
   const [coachSport, setCoachSport] = useState(cachedProfile?.sport ?? '')
   const [coachEmail, setCoachEmail] = useState(cachedProfile?.email ?? '')
   const [inviteCode, setInviteCode] = useState<string | null>(null)
+  /* Head coach, or an assistant on someone else's team (lib/team-client.ts).
+   * Starts as head — the screen every coach had before assistants existed —
+   * and only hides things once the server has said otherwise. Hiding is a
+   * courtesy: the routes refuse an assistant whatever this says. */
+  const [team, setTeam] = useState<Team>({ role: 'head' })
+  useEffect(() => {
+    let live = true
+    void getTeam().then((t) => { if (live) setTeam(t) })
+    return () => { live = false }
+  }, [])
+  const isAssistant = team.role === 'assistant'
+
+  // Someone who opened an assistant-coach invite, then had to create an
+  // account, lands here after sign-up. Take them back to finish joining.
+  useEffect(() => {
+    let pending = ''
+    try { pending = window.localStorage.getItem(PENDING_INVITE_KEY) ?? '' } catch { /* storage unavailable */ }
+    if (!/^[A-Za-z0-9_-]{43}$/.test(pending)) return
+    try { window.localStorage.removeItem(PENDING_INVITE_KEY) } catch { /* nothing to clear */ }
+    window.location.assign(`/staff/join?token=${pending}`)
+  }, [])
   const [codeEditing, setCodeEditing] = useState(false)
   const [codeDraft, setCodeDraft] = useState('')
   const [codeMsg, setCodeMsg] = useState('')
@@ -1915,8 +1943,16 @@ function DashboardPageInner() {
                 </span>
               </button>
 
+              {/* Coaching with … — an assistant works on their head coach's team */}
+              {team.role === 'assistant' && (
+                <div role="status" style={{ background: PANEL_2, border: HAIR_2, borderRadius: 20, padding: '12px 15px', fontSize: 'var(--fs-3)', lineHeight: 1.45, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                  <span style={{ ...cast(13, 700, '.2em'), color: 'var(--text)' }}>Assistant coach</span>
+                  {' · '}You are coaching with <strong style={{ color: 'var(--text)' }}>{team.headName}</strong>. These are their athletes.
+                </div>
+              )}
+
               {/* Invite code banner */}
-              {!inviteCode && (
+              {!inviteCode && !isAssistant && (
                 <div style={{ background: PANEL_2, border: HAIR_2, borderRadius: 20, padding: '14px 15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 180px', minWidth: 0 }}>
                     <div style={{ ...cast(17, 700, '.06em'), color: 'var(--text)' }}>Set your invite code</div>
@@ -2072,12 +2108,12 @@ function DashboardPageInner() {
                         </button>
                       )
                     })}
-                    <button onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ minWidth: 0, background: 'transparent', borderRadius: 14, border: '1px dashed var(--border)', padding: '12px 6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: 'var(--text-2)', cursor: 'pointer', font: 'inherit' }}>
+                    {!isAssistant && <button onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ minWidth: 0, background: 'transparent', borderRadius: 14, border: '1px dashed var(--border)', padding: '12px 6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: 'var(--text-2)', cursor: 'pointer', font: 'inherit' }}>
                       <div style={{ width: 40, height: 40, borderRadius: '50%', border: '1px dashed var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Icon name="plus" size={18} />
                       </div>
                       <div style={{ ...cast(13, 700, '.12em') }}>Invite</div>
-                    </button>
+                    </button>}
                   </div>
                 </section>
               )}
@@ -2085,10 +2121,15 @@ function DashboardPageInner() {
               {/* Who has had least of your attention this month (lib/insights).
                   Coach-only, never on an athlete screen (verify:safeguard SG4).
                   Only worth showing once there is a roster to compare. */}
-              {athletes.length >= 2 && <CoverageInsight />}
+              {athletes.length >= 2 && !isAssistant && <CoverageInsight />}
 
               {/* Onboarding flow (empty state) */}
-              {athletes.length === 0 && !loadingAthletes && (() => {
+              {athletes.length === 0 && !loadingAthletes && isAssistant && (
+                <p style={{ margin: 0, fontSize: 'var(--fs-3)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                  {team.role === 'assistant' ? team.headName : 'Your head coach'} has not added any athletes yet. They will appear here when they do.
+                </p>
+              )}
+              {athletes.length === 0 && !loadingAthletes && !isAssistant && (() => {
                 const completedCount = onboardStep.code ? 1 : 0
                 const stepNum = (done: boolean, n: number) => (
                   <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', ...cast(15, 800, '0'), lineHeight: 1, ...(done ? { background: 'var(--primary)', color: 'var(--on-primary)' } : { border: HAIR_2, color: 'var(--text-2)' }) }}>
@@ -2269,9 +2310,9 @@ function DashboardPageInner() {
                         <button onClick={() => { setTab('calendar'); showCalendarFor('athlete', a.id) }} style={ICON_BTN} title="Calendar" aria-label={`${a.first_name}'s calendar`}>
                           <Icon name="calendar" size={16} />
                         </button>
-                        <button onClick={() => { setDeleteError(null); setDeleteConfirmAthlete(a) }} style={{ ...ICON_BTN, color: 'var(--danger)', borderColor: tint('var(--danger)', 35) }} title="Remove athlete" aria-label={`Remove ${name}`}>
+                        {!isAssistant && <button onClick={() => { setDeleteError(null); setDeleteConfirmAthlete(a) }} style={{ ...ICON_BTN, color: 'var(--danger)', borderColor: tint('var(--danger)', 35) }} title="Remove athlete" aria-label={`Remove ${name}`}>
                           <Icon name="trash" size={15} />
-                        </button>
+                        </button>}
                       </div>
                     </div>
                   )
@@ -2286,9 +2327,9 @@ function DashboardPageInner() {
                 <section>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <Eyebrow>Every athlete</Eyebrow>
-                    <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6, marginLeft: 'auto', minHeight: 44 }}>
+                    {!isAssistant && <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6, marginLeft: 'auto', minHeight: 44 }}>
                       <Icon name="plus" size={14} /> Add Athlete
-                    </button>
+                    </button>}
                   </div>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 12, rowGap: 6, marginTop: 10, paddingBottom: 9 }}>
                     <div aria-hidden style={{ position: 'absolute', inset: '-9px 30px 0 -14px', zIndex: 0, pointerEvents: 'none', background: `linear-gradient(100deg, ${tint('var(--text)', 5)}, transparent 58%)`, transform: 'skewX(-11deg)', borderLeft: `1px solid ${tint('var(--primary)', 32)}` }} />
@@ -2431,9 +2472,9 @@ function DashboardPageInner() {
                             <button onClick={() => setExpandedGroup(isExp ? null : g.id)} style={ICON_BTN} aria-expanded={isExp} aria-label={isExp ? `Hide ${g.name} members` : `Show ${g.name} members`}>
                               {isExp ? '▲' : '▼'}
                             </button>
-                            <button onClick={() => deleteGroup(g.id)} style={{ ...ICON_BTN, color: 'var(--danger)', borderColor: tint('var(--danger)', 35) }} title="Delete squad" aria-label={`Delete ${g.name}`}>
+                            {!isAssistant && <button onClick={() => deleteGroup(g.id)} style={{ ...ICON_BTN, color: 'var(--danger)', borderColor: tint('var(--danger)', 35) }} title="Delete squad" aria-label={`Delete ${g.name}`}>
                               <Icon name="trash" size={14} />
-                            </button>
+                            </button>}
                           </div>
                         </div>
                         {isExp && (
@@ -2446,13 +2487,13 @@ function DashboardPageInner() {
                                   {members.map((a, i) => (
                                     <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 44, borderTop: i === 0 ? HAIR_2 : HAIR }}>
                                       <span style={{ fontSize: 'var(--fs-3)', minWidth: 0, overflowWrap: 'anywhere', color: 'var(--text)' }}>{a.first_name} {a.last_name}</span>
-                                      <button onClick={() => removeMemberFromGroup(g.id, a.id)} aria-label={`Remove ${a.first_name} ${a.last_name} from ${g.name}`} style={{ width: 44, height: 44, background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 20, lineHeight: 1, flexShrink: 0 }}>×</button>
+                                      {!isAssistant && <button onClick={() => removeMemberFromGroup(g.id, a.id)} aria-label={`Remove ${a.first_name} ${a.last_name} from ${g.name}`} style={{ width: 44, height: 44, background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 20, lineHeight: 1, flexShrink: 0 }}>×</button>}
                                     </div>
                                   ))}
                                 </div>
                               )
                             }
-                            {nonMembers.length > 0
+                            {isAssistant ? null : nonMembers.length > 0
                               ? <SquadAdder squadName={g.name} candidates={nonMembers} onAdd={(ids) => addMembersToGroup(g, ids)} />
                               : athletes.length > 0 && <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)' }}>Everyone on your roster is in this squad.</div>}
                           </div>
@@ -2462,7 +2503,7 @@ function DashboardPageInner() {
                   })}
                 </div>
 
-                <div className="card" style={{ padding: 20 }}>
+                {!isAssistant && <div className="card" style={{ padding: 20 }}>
                   <SecHead title="Create squad" />
                   <div className="section-sub" style={{ marginBottom: 16, color: 'var(--text-2)' }}>Record one session for all members at once.</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -2492,7 +2533,7 @@ function DashboardPageInner() {
                       {groupSaving ? 'Creating…' : 'Create Group'}
                     </button>
                   </div>
-                </div>
+                </div>}
               </div>
             </div>
           )}
@@ -2698,6 +2739,7 @@ function DashboardPageInner() {
               coachSport={coachSport}
               coachEmail={coachEmail}
               inviteCode={inviteCode}
+              isAssistant={isAssistant}
               codeEditing={codeEditing}
               codeDraft={codeDraft}
               codeSaving={codeSaving}

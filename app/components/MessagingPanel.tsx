@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { apiJson } from '@/lib/api-client'
+import { getTeam } from '@/lib/team-client'
 import { SUPPORTED_RECORDING_TYPES } from '@/lib/audio-mime'
 import { fmtDateDivider } from '@/lib/date-utils'
 import { matchesName, byName, nameWords } from '@/lib/athlete-filter'
@@ -98,11 +99,17 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
   const onUnreadChangeRef = useRef(onUnreadChange)
   useEffect(() => { onUnreadChangeRef.current = onUnreadChange }, [onUnreadChange])
 
-  // Fetch coach identity once on mount
+  // Whose threads these are: the caller's own, or — for an assistant coach —
+  // their head coach's (lib/team-client.ts). The unread channel below filters
+  // on the thread owner, so an assistant listening on their own id would never
+  // see a badge move.
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setCoachId(user.id)
+    let live = true
+    Promise.all([supabase.auth.getUser(), getTeam()]).then(([{ data: { user } }, team]) => {
+      if (!live || !user) return
+      setCoachId(team.role === 'assistant' ? team.headId : user.id)
     })
+    return () => { live = false }
   }, [supabase])
 
   const selectedAthlete = athletes.find((a) => a.id === selectedId) ?? null
