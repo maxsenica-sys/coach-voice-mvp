@@ -8,7 +8,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { errorMessage } from '@/lib/errors'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, coachesRow } from '@/lib/coach-scope'
 
 export const runtime = 'nodejs'
 
@@ -54,12 +54,13 @@ export async function GET(
   const scope = await resolveCoachScope(supabase, user.id)
   const { data: session } = await admin
     .from('sessions')
-    .select('id, coach_id')
+    .select('id, coach_id, athlete_id')
     .eq('id', sessionId)
     .eq('coach_id', scope.headId)
     .maybeSingle()
 
-  if (!session) {
+  // For an assistant, only a session of an athlete they were given (035).
+  if (!session || !coachesRow(scope, session)) {
     return attach(NextResponse.json({ error: 'Session not found or access denied.' }, { status: 403 }), cookiesToSet)
   }
 

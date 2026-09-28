@@ -51,6 +51,8 @@ interface Athlete {
 interface Session {
   id: string; session_name: string | null; summary: string | null
   transcript: string | null; shared_with_athlete: boolean
+  /** An assistant's copy of a recording about athletes not given to them (migration 035). */
+  transcript_withheld?: boolean
   session_date?: string | null
   created_at: string | null; sport_context?: string | null; audio_path?: string | null; audio_mime?: string | null
   /** What the athlete said back — lib/session-response.ts. Optional because
@@ -1755,6 +1757,11 @@ export default function AthleteDetailPage() {
                                 <div style={{ ...EYEBROW, marginBottom: 8 }}>AI Summary</div>
                                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--t-body)', lineHeight: 1.65, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: 'var(--text)', borderLeft: '2px solid var(--border)', padding: '2px 0 2px 14px' }}>{s.summary}</div>
                               </div>
+                            )}
+                            {s.transcript_withheld && (
+                              <p style={{ margin: '12px 0 0', fontSize: 'var(--t-body-tight)', lineHeight: 1.6, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                                The full transcript is not shown: this recording is about athletes who have not been given to you.
+                              </p>
                             )}
                             {s.transcript && (
                               <details style={{ marginTop: 12 }}>

@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { routeIdentity } from '@/lib/route-identity'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete } from '@/lib/coach-scope'
 import { makeQuickSummary } from '@/lib/quick-summary'
 import { BLOCKED_MESSAGE } from '@/lib/content-gate'
 import type { CookieToSet } from '@/lib/supabase-route'
@@ -67,7 +67,9 @@ export async function POST(req: NextRequest) {
       .eq('coach_id', scope.headId)
       .maybeSingle()
 
-    if (!athlete) {
+    // An assistant drafts only for an athlete they were given (035's policy
+    // already hides the rest from this read).
+    if (!athlete || !canSeeAthlete(scope, athleteId)) {
       return NextResponse.json({ error: 'Athlete not found on your roster' }, { status: 404 })
     }
     firstName = athlete.first_name ?? null

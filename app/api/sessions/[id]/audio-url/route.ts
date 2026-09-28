@@ -14,7 +14,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { errorMessage } from '@/lib/errors'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete, mayHearRecording, recordingAthleteIds } from '@/lib/coach-scope'
 
 export const runtime = 'nodejs'
 
@@ -56,7 +56,7 @@ export async function GET(
 
   const { data: session } = await admin
     .from('sessions')
-    .select('id, coach_id, athlete_id, shared_with_athlete, audio_path, audio_mime, group_id, shared_recording_id')
+    .select('id, coach_id, athlete_id, shared_with_athlete, audio_path, audio_mime, group_id, shared_recording_id, recorded_by')
     .eq('id', sessionId)
     .maybeSingle()
 
@@ -64,8 +64,18 @@ export async function GET(
     return attach(NextResponse.json({ error: 'Session not found.' }, { status: 404 }), cookiesToSet)
   }
 
-  // The session's coach, or an assistant on that coach's team.
-  let hasAccess = session.coach_id === (await resolveCoachScope(supabase, user.id)).headId
+  // The session's coach, or an assistant on that coach's team who was given
+  // this athlete and may hear the whole recording (migration 035): a squad
+  // talk is about every child in the squad, not only the ones they were given.
+  const scope = await resolveCoachScope(supabase, user.id)
+  let hasAccess = false
+  if (session.coach_id === scope.headId && canSeeAthlete(scope, session.athlete_id)) {
+    try {
+      hasAccess = scope.isHead || mayHearRecording(scope, session, await recordingAthleteIds(admin, session))
+    } catch {
+      hasAccess = false
+    }
+  }
 
   // An athlete may listen only to a session that was actually shared with them,
   // and never to a squad or shared recording: that audio is the coach talking

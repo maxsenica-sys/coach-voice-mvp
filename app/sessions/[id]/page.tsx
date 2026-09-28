@@ -73,6 +73,8 @@ type SessionDetail = {
   title: string | null
   summary: string | null
   transcript: string | null
+  /** Set for an assistant coach when the recording is about athletes not given to them (migration 035). */
+  transcript_withheld?: boolean
   coach_notes: string | null
   focus_points: FocusPoint[]
   shared_with_athlete: boolean
@@ -1601,6 +1603,12 @@ export default function SessionDetailPage() {
             </Section>
           )
         })()}
+
+        {session.transcript_withheld && (
+          <p style={{ marginTop: 26, fontSize: 'var(--t-body-tight)', lineHeight: 1.6, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+            The full transcript and recording are not shown: this recording is about athletes who have not been given to you.
+          </p>
+        )}
 
         {/* ── Transcript, last: reference material, not the headline ──
             One hairline row, the way the mockup ends the page; it opens in place. */}

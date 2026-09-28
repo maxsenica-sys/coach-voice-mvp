@@ -30,7 +30,8 @@
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, athleteFilter } from '@/lib/coach-scope'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
 import { calendarDaysBetween, sessionDate } from '@/lib/session-date'
 import type { CoverageRow } from '@/lib/attention'
@@ -59,22 +60,30 @@ export async function GET() {
   const who = await routeIdentity(supabase)
   const user = who.ok ? { id: who.userId } : null
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    // An assistant sees the team's coverage: who has gone longest without a session.
+    // An assistant sees coverage for the athletes they were given: who has
+    // gone longest without a session. On the service role, narrowed to that
+    // list — 035 hides from an assistant the row of a squad talk they were not
+    // given all of, and a session that happened must still count as one.
     const scope = await resolveCoachScope(supabase, user.id)
+    const only = athleteFilter(scope)
+    const db = only ? createSupabaseAdminClient() : supabase
 
-    const [athletesRes, sessionsRes] = await Promise.all([
-      supabase
-        .from('athletes')
-        .select('id, first_name, last_name, invited_at')
-        .eq('coach_id', scope.headId),
-      // Deliberately no limit and only three columns. This is the whole point
-      // of the route: the client's 50-row window is what makes the existing
-      // per-athlete numbers wrong.
-      supabase
-        .from('sessions')
-        .select('athlete_id, session_date, created_at')
-        .eq('coach_id', scope.headId),
-    ])
+    let athletesQ = db
+      .from('athletes')
+      .select('id, first_name, last_name, invited_at')
+      .eq('coach_id', scope.headId)
+    // Deliberately no limit and only three columns. This is the whole point
+    // of the route: the client's 50-row window is what makes the existing
+    // per-athlete numbers wrong.
+    let sessionsQ = db
+      .from('sessions')
+      .select('athlete_id, session_date, created_at')
+      .eq('coach_id', scope.headId)
+    if (only) {
+      athletesQ = athletesQ.in('id', only)
+      sessionsQ = sessionsQ.in('athlete_id', only)
+    }
+    const [athletesRes, sessionsRes] = await Promise.all([athletesQ, sessionsQ])
 
     if (athletesRes.error) {
       return NextResponse.json({ error: athletesRes.error.message }, { status: 500 })

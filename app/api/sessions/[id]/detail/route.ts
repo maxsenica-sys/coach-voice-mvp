@@ -16,7 +16,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { sessionISODate } from '@/lib/session-date'
 import { recordAccess } from '@/lib/access-log'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete, mayHearRecording, recordingAthleteIds, type CoachScope } from '@/lib/coach-scope'
 
 export const runtime = 'nodejs'
 
@@ -115,6 +115,34 @@ async function isSharedRecording(
   return Boolean((data as { shared_recording_id?: string | null } | null)?.shared_recording_id)
 }
 
+/**
+ * May this coach viewer hear the whole recording — transcript and audio?
+ * A head always. An assistant when every athlete it is about was given to
+ * them, or they recorded it (lib/coach-scope.ts mayHearRecording; migration
+ * 035 applies the same rule to direct reads). A failed read withholds.
+ */
+async function coachMayHear(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  scope: CoachScope,
+  session: { id: string; athlete_id: string; group_id: string | null },
+): Promise<boolean> {
+  if (scope.isHead) return true
+  const { data: facts, error } = await admin
+    .from('sessions').select('shared_recording_id, recorded_by').eq('id', session.id).maybeSingle()
+  if (error || !facts) return false
+  const row = {
+    athlete_id: session.athlete_id,
+    group_id: session.group_id,
+    shared_recording_id: (facts as { shared_recording_id: string | null }).shared_recording_id,
+    recorded_by: (facts as { recorded_by: string | null }).recorded_by,
+  }
+  try {
+    return mayHearRecording(scope, row, await recordingAthleteIds(admin, row))
+  } catch {
+    return false
+  }
+}
+
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
@@ -133,9 +161,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return attach(NextResponse.json({ error: 'Session not found.' }, { status: 404 }), cookiesToSet)
   }
 
-  // The session's coach, or an assistant on that coach's team (lib/coach-scope.ts).
+  // The session's coach, or an assistant on that coach's team who was given
+  // this athlete (lib/coach-scope.ts, migration 035).
   const scope = await resolveCoachScope(supabase, user.id)
-  const isCoach = session.coach_id === scope.headId
+  const isCoach = session.coach_id === scope.headId && canSeeAthlete(scope, session.athlete_id)
+  // An assistant given only some of a squad reads their athlete's summary here
+  // but not the talk about the rest of the squad.
+  const coachHears = isCoach && await coachMayHear(admin, scope, session)
   let isAthlete = false
   if (!isCoach && session.shared_with_athlete) {
     const { data: ath } = await admin
@@ -196,7 +228,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   // signed URL for the whole squad talk while its transcript was withheld —
   // the audio-url route refused them the same file.
   const athleteMayHearIt = !session.group_id && !sharedRecording
-  if (session.audio_path && (isCoach || athleteMayHearIt)) {
+  if (session.audio_path && (isCoach ? coachHears : athleteMayHearIt)) {
     const { data } = await admin.storage.from(AUDIO_BUCKET).createSignedUrl(session.audio_path, SIGNED_TTL)
     audioUrl = data?.signedUrl ?? null
   }
@@ -223,7 +255,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         // The same holds for one recording about several athletes (migration
         // 029, shared_recording_id): each athlete gets their own split
         // summary, and the transcript under it is about all of them.
-        transcript: isCoach || (!session.group_id && !sharedRecording) ? session.transcript : null,
+        transcript: (isCoach ? coachHears : (!session.group_id && !sharedRecording)) ? session.transcript : null,
+        // Lets an assistant's page say why the transcript is not there.
+        transcript_withheld: isCoach && !coachHears && Boolean(session.transcript),
         // Lets the athlete's page explain the absence instead of just showing
         // nothing where a control used to be.
         is_group_session: Boolean(session.group_id),

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
-import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE, canSeeAthlete } from '@/lib/coach-scope'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -37,7 +37,9 @@ export async function GET(req: NextRequest) {
   const who = await routeIdentity(supabase)
   const user = who.ok ? { id: who.userId } : null
   if (!user) return attach(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), cookiesToSet)
-  // An assistant sees the team's squads (read-only).
+  // An assistant sees, read-only, the squads their athletes are in — and in
+  // each, only the members they were given (035's policies narrow the read;
+  // the filter below says so where the route decides).
   const scope = await resolveCoachScope(supabase, user.id)
 
   const { data, error } = await supabase
@@ -48,15 +50,22 @@ export async function GET(req: NextRequest) {
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 
-  const groups = (data ?? []).map((g) => ({
-    id: g.id,
-    name: g.name,
-    color: g.color,
-    description: g.description,
-    created_at: g.created_at,
-    member_count: (g.group_members ?? []).length,
-    member_ids: (g.group_members ?? []).map((m: { athlete_id: string }) => m.athlete_id),
-  }))
+  const groups = (data ?? [])
+    .map((g) => {
+      const members = (g.group_members ?? [])
+        .map((m: { athlete_id: string }) => m.athlete_id)
+        .filter((id: string) => canSeeAthlete(scope, id))
+      return {
+        id: g.id,
+        name: g.name,
+        color: g.color,
+        description: g.description,
+        created_at: g.created_at,
+        member_count: members.length,
+        member_ids: members,
+      }
+    })
+    .filter((g) => scope.isHead || g.member_count > 0)
 
   return attach(NextResponse.json({ groups }), cookiesToSet)
 }

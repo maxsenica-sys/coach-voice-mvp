@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, athleteFilter } from '@/lib/coach-scope'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -29,14 +29,18 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Only relevant for coaches. Unread is per thread, and a thread is the head
-  // coach's: an assistant sees the same unread counts the head does.
+  // coach's: an assistant sees the same unread counts the head does, for the
+  // athletes they were given.
   const scope = await resolveCoachScope(supabase, user.id)
-  const { data, error } = await supabase
+  const only = athleteFilter(scope)
+  let q = supabase
     .from('messages')
     .select('athlete_id')
     .eq('coach_id', scope.headId)
     .eq('sender_role', 'athlete')
     .is('read_at', null)
+  if (only) q = q.in('athlete_id', only)
+  const { data, error } = await q
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

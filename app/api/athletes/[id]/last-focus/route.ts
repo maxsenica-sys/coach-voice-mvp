@@ -31,7 +31,8 @@
  */
 import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete } from '@/lib/coach-scope'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
 import { sessionDate } from '@/lib/session-date'
 
@@ -53,10 +54,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
     const { id } = await ctx.params
     const scope = await resolveCoachScope(supabase, user.id)
+    if (!canSeeAthlete(scope, id)) return NextResponse.json({ error: 'Athlete not found' }, { status: 404 })
 
     // Scoped by coach_id as well as athlete_id: an athlete id is guessable,
     // and this returns a sentence a coach said about a child.
-    const { data, error } = await supabase
+    //
+    // An assistant reads on the service role, having been checked above: the
+    // focus point is written for this athlete alone, but 035 hides from an
+    // assistant the whole row of a squad talk they were not given all of —
+    // which would skip the athlete's latest point without saying so.
+    const db = scope.isHead ? supabase : createSupabaseAdminClient()
+    const { data, error } = await db
       .from('sessions')
       .select('id, focus_points, session_date, created_at, athlete_response')
       .eq('athlete_id', id)
