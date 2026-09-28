@@ -35,7 +35,7 @@ export async function GET(
     // Verify user has access: either coach who owns the session, or athlete linked to it
     const { data: session } = await admin
       .from('sessions')
-      .select('coach_id, athlete_id, shared_with_athlete')
+      .select('coach_id, athlete_id, shared_with_athlete, session_name, title')
       .eq('id', sessionId)
       .single()
 
@@ -44,7 +44,8 @@ export async function GET(
     // Coach access: session.coach_id === user.id
     // Athlete access: athlete_user_id on athletes table where athlete_id matches
     // For an assistant, only a clip of an athlete they were given (035).
-    let hasAccess = coachesRow(await resolveCoachScope(supabase, user.id), session)
+    const isCoach = coachesRow(await resolveCoachScope(supabase, user.id), session)
+    let hasAccess = isCoach
     if (!hasAccess && session.athlete_id) {
       // An athlete reaches a clip only once the coach has shared that clip.
       //
@@ -81,7 +82,11 @@ export async function GET(
       video: {
         id: video.id,
         session_id: video.session_id,
-        file_name: video.file_name,
+        // The file name is the coach's label, and on a squad session it can be
+        // another child's name ("ellie_bad_serve.mp4"). An athlete gets the
+        // session's title instead — the product review's DESIGN-015 finding.
+        file_name: isCoach ? video.file_name : null,
+        session_title: session.session_name || session.title || null,
         annotations: video.annotations ?? [],
         created_at: video.created_at,
         signedUrl: signed?.signedUrl ?? null,
