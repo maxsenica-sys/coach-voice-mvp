@@ -26,6 +26,7 @@
     "build:splash": "node tools/build-montage-sprite.mjs && node tools/build-launch-images.mjs",
     "verify:rls": "node tools/rls-rig.mjs",
     "verify:staff": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/staff-rig.mjs",
+    "verify:wellness": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/wellness-rig.mjs",
     "verify:email": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/email-rig.mjs"
   },
   "dependencies": {
