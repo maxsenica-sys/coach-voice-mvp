@@ -839,6 +839,11 @@ const RULES = [
         if (!/\bshared_with_athlete\b/.test(sel) || !/!\s*session\.shared_with_athlete/.test(csrc)) {
           found.push({ file: CLIP, line: lineOf(clip, /shared_with_athlete/), msg: 'serves a clip to an athlete without checking the session itself is shared' })
         }
+        // …and never sends an athlete the file name: it is the coach's label,
+        // and on a squad session it can be another child's name (DESIGN-015).
+        if (!/file_name:\s*isCoach\s*\?\s*video\.file_name\s*:\s*null/.test(csrc)) {
+          found.push({ file: CLIP, line: lineOf(clip, /file_name/), msg: 'sends the clip\'s file name to an athlete — it can name another child; send it to the coach only' })
+        }
       }
 
       // (e) The session PDF prints a transcript, so it is the coach's own only.

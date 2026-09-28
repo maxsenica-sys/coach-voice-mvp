@@ -10,7 +10,9 @@ import { apiJson } from '@/lib/api-client'
 interface ClipVideo {
   signedUrl: string | null
   annotations: AnnotationStroke[]
+  /** Only for the coach; an athlete is never sent it (see the route). */
   file_name: string | null
+  session_title: string | null
 }
 
 /* ── Stadium Night, for the one page a link lands on ─────────────────────
@@ -19,8 +21,8 @@ interface ClipVideo {
  * cream text as the rest of the product. No floodlight: nothing on this page
  * is live, unread or "now", and the design spends it on nothing else.
  *
- * What the page shows is unchanged — the clip, the coach's drawing on it, its
- * file name and the timecode it was shared at. It is not a public page: the
+ * What the page shows: the clip, the coach's drawing on it, the session's
+ * title (and, for the coach only, the file name) and the timecode it was shared at. It is not a public page: the
  * route returns 401 without a session and serves only the coach who owns the
  * session or the athlete it was shared with, and the one line of copy added
  * here says exactly that and nothing more.
@@ -144,15 +146,22 @@ export default function ShareClipPage() {
           <Wordmark />
         </header>
 
-        {/* The clip's own title: its file name, as it always was */}
+        {/* The session's title. The file name is the coach's own label and can
+            name another child, so only the coach is sent it — and only the
+            coach sees it, under the title. */}
         <div style={{ position: 'relative', padding: '15px 0 0' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: CAST, fontWeight: 700, fontSize: 13, letterSpacing: '.26em', color: 'var(--text-2)' }}>
             <i aria-hidden style={{ width: 7, height: 7, background: 'var(--text-muted)', flex: 'none', transform: 'skewX(-14deg)' }} />
             SHARED CLIP
           </div>
           <h1 style={{ fontFamily: CAST, fontWeight: 800, fontSize: 27, letterSpacing: '.035em', lineHeight: 1.04, color: 'var(--text)', margin: '9px 0 0', textTransform: 'uppercase', overflowWrap: 'anywhere' }}>
-            {video.file_name ?? 'Shared Clip'}
+            {video.session_title ?? 'Shared Clip'}
           </h1>
+          {video.file_name && (
+            <div style={{ fontFamily: MONO, fontWeight: 500, fontSize: 13, letterSpacing: '.02em', color: 'var(--text-2)', marginTop: 8, overflowWrap: 'anywhere' }}>
+              {video.file_name}
+            </div>
+          )}
           {startTime > 0 && (
             <div style={{ fontFamily: MONO, fontWeight: 500, fontSize: 13, letterSpacing: '.06em', color: 'var(--text-2)', marginTop: 8 }}>
               AT {formatTime(startTime)}
