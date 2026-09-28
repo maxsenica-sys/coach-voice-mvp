@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { getTeam } from '@/lib/team-client'
+import { apiJson } from '@/lib/api-client'
+import { errorMessage } from '@/lib/errors'
 import { formatSessionDate } from '@/lib/session-date'
 
 interface SessionData {
@@ -17,6 +19,8 @@ interface SessionData {
   sport_context: string | null
   /** Arrives with `select('*')`. A list of short strings; checked before use. */
   focus_points?: unknown
+  /** Set for an assistant when the recording is about athletes not given to them. */
+  transcript_withheld?: boolean
   athletes?: {
     first_name: string
     last_name: string
@@ -299,17 +303,35 @@ export default function SessionPDFPage() {
        * transcript per viewer. Pinned here as well as in migration 033 so the
        * page is correct whichever of the two is live.
        *
-       * "Own" is the team's: sessions belong to the head coach whoever recorded
-       * them (migration 034), so an assistant filters on their head's id. That
-       * id only narrows the query — whether the row is readable at all is the
-       * staff policy's decision, read live from coach_staff. */
+       * An assistant has only the athletes their head gave them (035), and a
+       * squad talk they were not given all of is not a row they can read at
+       * all — its transcript is about other children. So an assistant's report
+       * comes from the detail route, which serves their athlete's summary and
+       * withholds the transcript on the server (lib/coach-scope.ts). */
       const team = await getTeam()
-      const ownerId = team.role === 'assistant' ? team.headId : user.id
+      if (team.role === 'assistant') {
+        try {
+          type Detail = {
+            session: Omit<SessionData, 'athletes'> & { title?: string | null }
+            athlete: { first_name: string | null; last_name: string | null } | null
+          }
+          const d = await apiJson<Detail>(`/api/sessions/${encodeURIComponent(id)}/detail`, { cache: 'no-store' })
+          setSession({
+            ...d.session,
+            session_name: d.session.session_name ?? d.session.title ?? null,
+            athletes: d.athlete ? { first_name: d.athlete.first_name ?? '', last_name: d.athlete.last_name ?? '', email: '' } : null,
+          })
+        } catch (e: unknown) {
+          setError(errorMessage(e, 'Session not found. Only the coaching team a session belongs to can print its report.'))
+        }
+        setLoading(false)
+        return
+      }
       const { data: s, error: sErr } = await supabase
         .from('sessions')
         .select('*, athletes(first_name, last_name, email)')
         .eq('id', id)
-        .eq('coach_id', ownerId)
+        .eq('coach_id', user.id)
         .maybeSingle()
 
       if (sErr) { setError(`Could not load this session: ${sErr.message}`); setLoading(false); return }
@@ -466,6 +488,9 @@ export default function SessionPDFPage() {
           )}
 
           {/* Transcript */}
+          {session.transcript_withheld && (
+            <p className="tp">The full transcript is not in this report: the recording is about athletes who have not been given to you.</p>
+          )}
           {paragraphs.length > 0 && (
             <table className="section" role="presentation">
               <thead className="sechead">

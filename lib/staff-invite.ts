@@ -116,3 +116,43 @@ export function maskEmail(email: string): string {
   const shown = local.length <= 2 ? local.slice(0, 1) : local.slice(0, 2)
   return `${shown}${'•'.repeat(Math.max(1, Math.min(6, local.length - shown.length)))}@${domain}`
 }
+
+// ── Which athletes an assistant is given (migration 035) ─────────────────
+//
+// Max, 2026-09-28: the head ticks each athlete; a new athlete is never given
+// to anyone automatically; an athlete is told when an assistant is given
+// access to them.
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** Most athletes one request may name — far above any roster, below abuse. */
+export const MAX_ASSIGN = 500
+
+/**
+ * The athlete ids a request asked for: an array of uuids, deduplicated, in
+ * order. Null when it is not one — a malformed list is refused, never
+ * trimmed down to the valid part, so a typo cannot silently give someone
+ * access to fewer (or different) athletes than the head saw ticked.
+ */
+export function parseAthleteIds(raw: unknown): string[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_ASSIGN) return null
+  if (!raw.every((x) => typeof x === 'string' && UUID.test(x))) return null
+  return [...new Set((raw as string[]).map((x) => x.toLowerCase()))]
+}
+
+/** What changes when an assistant's list goes from `current` to `next`. Pure. */
+export function assignmentDiff(current: readonly string[], next: readonly string[]): { add: string[]; remove: string[] } {
+  const cur = new Set(current.map((x) => x.toLowerCase()))
+  const nxt = new Set(next.map((x) => x.toLowerCase()))
+  return {
+    add: [...nxt].filter((id) => !cur.has(id)),
+    remove: [...cur].filter((id) => !nxt.has(id)),
+  }
+}
+
+/**
+ * The message an athlete gets, in their thread, when an assistant is given
+ * access to them. Plain: who, whose team, and what they can see.
+ */
+export function assignedNoticeText(assistantName: string, headName: string): string {
+  return `${assistantName} is an assistant coach on ${headName}’s coaching team on CoachVoice, and can now see your sessions, messages and check-ins, and message you here.`
+}

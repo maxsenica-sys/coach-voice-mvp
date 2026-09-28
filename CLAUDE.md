@@ -168,6 +168,25 @@ everything the head sees in check-ins, and is invited by email link
   never from profiles, metadata, the JWT or the request. SG14 fails otherwise.
 - The database agrees independently: `supabase/tests/034_coach_staff.test.sql`.
 
+**Updated 2026-09-28 (migration 035).** Max: *"selecting the athletes the coach
+gets access to, but with all the submission tools available."* An assistant has
+only the athletes the head ticks (`coach_staff_athletes`, written only by
+`/api/staff`). A new athlete is never given to anyone automatically; parents and
+caretakers stay head-only; each athlete is told in their thread when an
+assistant is given access to them.
+
+- `scope.athleteIds` is the list (null for a head). **Every handler an assistant
+  can reach narrows to it** — `canSeeAthlete`, `athleteFilter`, `coachesRow`,
+  `recordingsWithheld`. SG14(e) fails a handler that resolves a scope and never
+  narrows, unless `NARROWED_BY_THE_DATABASE` names the policy that does.
+- **A recording about several athletes** (a squad talk, or one split per
+  athlete) carries the whole transcript on every row. An assistant hears it only
+  when every athlete in it is theirs, or they recorded it (`mayHearRecording`,
+  and `private.staff_may_hear` in 035 for direct reads). Otherwise they get
+  their athlete's summary and `transcript_withheld: true`.
+- Assistants now add notes and log, update and clear injuries for their
+  athletes; they delete only an injury they logged themselves.
+
 ## General rules
 
 - Never modify `app/api/` files when working on UI features

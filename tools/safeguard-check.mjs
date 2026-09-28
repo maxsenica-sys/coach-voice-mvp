@@ -841,26 +841,16 @@ const RULES = [
         }
       }
 
-      // (e) The session PDF prints a transcript, so it is the coaching team's
-      //     own only. Either the caller's id, or — since assistant coaches
-      //     (migration 034) — the team owner resolved from the caller: a
-      //     variable assigned `team.role === 'assistant' ? team.headId :
-      //     user.id` from `await getTeam()`. getTeam asks /api/staff, which
-      //     reads coach_staff for the verified caller and resolves an athlete
-      //     to "head of nothing", so an athlete still matches only their own id.
+      // (e) The session PDF prints a transcript, so it is the coach's own only.
+      //     An assistant's report comes from the detail route instead, which
+      //     decides the transcript per viewer on the server (migration 035).
       const PDF = 'app/pdf/session/[id]/page.tsx'
       const pdf = files.find((f) => f.rel === PDF)
       if (pdf) {
         const psrc = code(pdf)
         const q = psrc.match(/\.from\(\s*['"]sessions['"]\s*\)[\s\S]{0,300}?\.(?:single|maybeSingle)\(\)/)?.[0] ?? ''
-        const byCaller = /\.eq\(\s*['"]coach_id['"]\s*,\s*user\.id\s*\)/.test(q)
-        const ownerVar = q.match(/\.eq\(\s*['"]coach_id['"]\s*,\s*([A-Za-z_$][\w$]*)\s*\)/)?.[1]
-        const teamVar = psrc.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+getTeam\(\s*\)/)?.[1]
-        const byTeam = Boolean(ownerVar && teamVar && new RegExp(
-          `const\\s+${ownerVar}\\s*=\\s*${teamVar}\\.role\\s*===\\s*['"]assistant['"]\\s*\\?\\s*${teamVar}\\.headId\\s*:\\s*user\\.id\\b`,
-        ).test(psrc))
-        if (!byCaller && !byTeam) {
-          found.push({ file: PDF, line: lineOf(pdf, /\.from\(\s*['"]sessions['"]/), msg: 'loads the session to print without pinning coach_id to the caller or their team\'s head (from getTeam) — an athlete can print a squad transcript' })
+        if (!/\.eq\(\s*['"]coach_id['"]\s*,\s*user\.id\s*\)/.test(q)) {
+          found.push({ file: PDF, line: lineOf(pdf, /\.from\(\s*['"]sessions['"]/), msg: 'loads the session to print without .eq(\'coach_id\', user.id) — an athlete can print a squad transcript' })
         }
       }
 
@@ -932,9 +922,9 @@ const RULES = [
   },
   {
     id: 'SG14',
-    title: 'An assistant coach works on their head\'s team — and only on what the head allows',
-    why: 'Assistant coaches (migration 034) see and record for their head coach\'s athletes. The whole model rests on three facts no type checker can see. The team is decided from the verified caller, read live from coach_staff — a coach id taken from a request would let anyone name any team. The head-only actions stay head-only — adding or deleting a child, their caretakers, squads, parent emails, the access log, the head\'s own insights, editing or clearing an injury — because an assistant is a second adult in a child\'s account, not a second owner of it. And membership is written only by the staff routes, never by a component or a client. Each of these is one deleted line away from a leak, and each deletion type-checks.',
-    cite: 'lib/coach-scope.ts; supabase/migrations/034_coach_staff.sql; supabase/tests/034_coach_staff.test.sql',
+    title: 'An assistant coach works on the athletes their head gave them — and only on what the head allows',
+    why: 'Assistant coaches (migration 034) see and record for their head coach\'s athletes. The whole model rests on three facts no type checker can see. The team is decided from the verified caller, read live from coach_staff — a coach id taken from a request would let anyone name any team. The head-only actions stay head-only — adding or deleting a child, their caretakers, squads, parent emails, the access log, the head\'s own insights, editing or clearing an injury — because an assistant is a second adult in a child\'s account, not a second owner of it. And membership is written only by the staff routes, never by a component or a client. Each of these is one deleted line away from a leak, and each deletion type-checks. Since 035 (Max, 2026-09-28) an assistant has only the athletes the head ticked, so a fourth fact: every handler an assistant can reach narrows to that list — or names, in NARROWED_BY_THE_DATABASE, the policy that does it instead. A route that checked only coach_id = headId would hand an assistant every child on the roster, and it would read exactly like the correct code.',
+    cite: 'lib/coach-scope.ts; supabase/migrations/034_coach_staff.sql, 035_staff_athletes.sql; supabase/tests/034_coach_staff.test.sql, 035_staff_athletes.test.sql',
     check(files) {
       const found = []
       for (const f of files) {
@@ -950,9 +940,9 @@ const RULES = [
         if (f.isRoute && /(?:body\??\.|searchParams\.get\(\s*['"])(?:coach_id|head_coach_id|headId|head_id)\b/.test(src)) {
           found.push({ file: f.rel, line: lineOf(f, /(?:coach_id|head_coach_id|headId|head_id)/), msg: 'reads a coach or team id from the request — the team comes from coach_staff, read for the caller' })
         }
-        // (c) Membership is written only by the staff routes.
-        if (/\.from\(\s*['"]coach_staff(?:_events)?['"]\s*\)[\s\S]{0,120}?\.(?:insert|update|upsert|delete)\s*\(/.test(src) && !/^app\/api\/staff\//.test(f.rel)) {
-          found.push({ file: f.rel, line: lineOf(f, /coach_staff/), msg: 'writes coach_staff outside app/api/staff/ — team membership has one writer' })
+        // (c) Membership, and who has which athlete, is written only by the staff routes.
+        if (/\.from\(\s*['"]coach_staff(?:_events|_athletes)?['"]\s*\)[\s\S]{0,120}?\.(?:insert|update|upsert|delete)\s*\(/.test(src) && !/^app\/api\/staff\//.test(f.rel)) {
+          found.push({ file: f.rel, line: lineOf(f, /coach_staff/), msg: 'writes coach_staff outside app/api/staff/ — team membership, and who coaches whom, has one writer' })
         }
       }
       // (d) The head-only actions refuse an assistant in the handler itself.
@@ -966,8 +956,10 @@ const RULES = [
         'app/api/wellness/alert/route.ts': ['POST'],
         'app/api/groups/route.ts': ['POST', 'DELETE'],
         'app/api/groups/[id]/members/route.ts': ['POST', 'DELETE'],
-        'app/api/notes/route.ts': ['POST'],
-        'app/api/injuries/route.ts': ['PATCH', 'DELETE'],
+        // Notes and injury edits left this list on 2026-09-28: Max gave
+        // assistants "all the submission tools" for their own athletes. Who
+        // coaches whom stayed — the head decides it.
+        'app/api/staff/route.ts': ['POST', 'PUT'],
         'app/api/coach/insights/route.ts': ['GET'],
         'app/api/coach/access-log/route.ts': ['GET'],
         'app/api/coach-code/route.ts': ['PUT'],
@@ -984,6 +976,40 @@ const RULES = [
           }
         }
       }
+      // (e) Every other handler that resolves a coach scope narrows to the
+      //     athletes the assistant was given — in the handler, or in a helper
+      //     of the same file that it calls — or is named below with the
+      //     policy that narrows it instead.
+      const NARROWS = /\b(?:canSeeAthlete|athleteFilter|coachesRow|recordingsWithheld|mayHearRecording)\s*\(/
+      const NARROWED_BY_THE_DATABASE = {
+        'app/api/sessions/[id]/route.ts PATCH': 'Updates through the caller\'s own client. 035\'s "sessions: staff edit own recordings" requires the athlete be one the assistant was given; a refused update matches no row and returns an error.',
+        'app/api/staff/route.ts GET': 'Returns the team itself — who is on it and which athletes each has — never an athlete\'s data.',
+        'app/api/staff/route.ts DELETE': 'Revokes a membership or leaves a team; touches no athlete.',
+        'app/api/calendar/route.ts DELETE': 'An assistant deletes only an event they created themselves (created_by_user_id = the caller); the head\'s wider path requires isHead.',
+      }
+      for (const f of files) {
+        if (!f.isRoute) continue
+        const src = code(f)
+        if (!/resolveCoachScope\(/.test(src)) continue
+        const headOnly = HEAD_ONLY[f.rel] ?? []
+        const locals = [...src.matchAll(/(?:async\s+)?function\s+(\w+)\s*\([\s\S]*?\n\}/g)]
+          .filter((m) => !/^(?:GET|POST|PUT|PATCH|DELETE)$/.test(m[1]))
+        const narrowingHelpers = locals.filter((m) => NARROWS.test(m[0])).map((m) => m[1])
+        // A handler resolves a scope itself, or through a helper that does —
+        // attachments' requireOwnedSession is one. Found by breaking that
+        // helper's narrowing: the handlers calling it were not looked at.
+        const scopeHelpers = locals.filter((m) => /resolveCoachScope\(/.test(m[0])).map((m) => m[1])
+        const calls = (text, names) => names.some((h) => new RegExp(`\\b${h}\\s*\\(`).test(text))
+        for (const b of handlerBlocks(src)) {
+          const own0 = b.src.split(/\n(?=(?:async\s+)?function\s)/)[0]
+          if (!/resolveCoachScope\(/.test(own0) && !calls(own0, scopeHelpers) && !calls(own0, narrowingHelpers)) continue
+          if (headOnly.includes(b.name)) continue
+          if (NARROWED_BY_THE_DATABASE[`${f.rel} ${b.name}`]) continue
+          if (!NARROWS.test(own0) && !calls(own0, narrowingHelpers)) {
+            found.push({ file: f.rel, line: lineOf(f, new RegExp(`export\\s+async\\s+function\\s+${b.name}\\b`)), msg: `${b.name} resolves a coach scope but never narrows to the athletes an assistant was given (canSeeAthlete / athleteFilter / coachesRow / recordingsWithheld) — an assistant would reach the whole roster` })
+          }
+        }
+      }
       return found
     },
   },
@@ -995,7 +1021,7 @@ const RULES = [
  * it does not have.
  */
 const KNOWN_GAPS = [
-  'Whether every route an assistant can reach scopes to the head\'s team and not wider. SG14 proves the scope comes from the caller and that the head-only list refuses assistants; it cannot prove a route it is not told about uses scope.headId rather than something broader. supabase/tests/034_coach_staff.test.sql proves the database side, and only against the policies, not the service-role routes.',
+  'Whether every route an assistant can reach scopes to the athletes they were given and not wider. SG14(e) proves each handler that resolves a scope CALLS a narrowing helper, not that it applies the result to every query in the handler; and a route that never resolves a scope is not looked at by (e) at all. supabase/tests/035_staff_athletes.test.sql proves the database side, and only against the policies, not the service-role routes.',
   'The audio-url gate (SG6) is read as source: it proves the route selects group_id and shared_recording_id and gates the athlete branch on them, not that no other route signs the same bucket for an athlete.',
   'Whether the transcript withholding is correct for sessions saved BEFORE `sessions.group_id` existed. Those rows are null, so they are not identifiable as squad sessions. They are covered from the other end — the athlete client no longer selects transcripts at all — but SG6 is what enforces that, and a future direct fetch could reintroduce the leak for historic rows without tripping the group check.',
   'Whether a route\'s ownership check is *correct* — SG1 proves a route authenticates, not that it then scopes the query to the right coach.',

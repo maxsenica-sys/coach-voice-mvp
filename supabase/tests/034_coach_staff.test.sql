@@ -36,6 +36,12 @@ insert into public.coach_staff (head_coach_id, member_user_id, invited_email, st
   ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000a3', 'a3@test', 'revoked'),
   ('00000000-0000-0000-0000-0000000000a1', null, 'a4@test', 'invited');
 update public.coach_staff set invite_token_hash = 'secret-hash' where invited_email = 'a4@test';
+-- Since 035 a membership alone reaches no athlete: the head gives each one.
+-- A1 is given X1 here so the cases below still ask what they asked in 034;
+-- A3 and A4 are given X1 too, to prove status still wins over an assignment.
+insert into public.coach_staff_athletes (staff_id, athlete_id, head_coach_id)
+  select cs.id, '10000000-0000-0000-0000-000000000001', cs.head_coach_id
+    from public.coach_staff cs where cs.head_coach_id = '00000000-0000-0000-0000-0000000000a1';
 
 insert into public.sessions (id, coach_id, athlete_id, recorded_by, transcript, shared_with_athlete) values
   ('20000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a1', 'h1 said', true),
@@ -49,6 +55,9 @@ insert into public.wellness_checkins (athlete_id, coach_id, energy, notes) value
 insert into public.groups (id, coach_id, name) values
   ('30000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a1', 'H1 squad'),
   ('30000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000b1', 'H2 squad');
+-- 035: an assistant sees a squad through the athlete of theirs in it.
+insert into public.group_members (group_id, athlete_id) values
+  ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001');
 insert into public.injuries (athlete_id, coach_id, body_area) values
   ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000a1', 'ankle');
 

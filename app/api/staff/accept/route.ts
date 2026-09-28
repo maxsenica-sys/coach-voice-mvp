@@ -22,6 +22,7 @@ import type { CookieToSet } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { acceptBlock, ACCEPT_MESSAGES, hashInviteToken, isInviteTokenShape, maskEmail } from '@/lib/staff-invite'
 import { errorMessage } from '@/lib/errors'
+import { noticeAssignedAthletes } from '@/lib/staff-notice'
 
 export const runtime = 'nodejs'
 
@@ -137,23 +138,19 @@ export async function POST(req: NextRequest) {
     // No athlete may join a roster under an assistant.
     await admin.from('profiles').update({ invite_code: null }).eq('id', user.id)
 
-    // Tell every athlete on the team, in their own thread, from the head.
+    // Tell the athletes the head chose for them — only those (Max,
+    // 2026-09-28) — in their own threads, from the head.
     const { data: me } = await admin.from('profiles').select('first_name, last_name').eq('id', user.id).maybeSingle()
     const assistantName = [me?.first_name, me?.last_name].map((s) => (s ?? '').trim()).filter(Boolean).join(' ') || invite.invited_name || 'An assistant coach'
-    const { data: roster } = await admin.from('athletes').select('id').eq('coach_id', invite.head_coach_id)
-    const content = `${assistantName} has joined ${headName}’s coaching team on CoachVoice as an assistant coach. They can see your sessions, messages and check-ins, and can message you here.`
-    const notices = (roster ?? []).map((a) => ({
-      coach_id: invite.head_coach_id,
-      athlete_id: a.id,
-      sender_id: invite.head_coach_id,
-      sender_role: 'coach',
-      content,
-      msg_type: 'text',
-    }))
-    if (notices.length) {
-      const { error: noticeErr } = await admin.from('messages').insert(notices)
-      if (noticeErr) console.error('[staff accept] team notice failed', { staffId: invite.id, error: noticeErr.message })
-    }
+    const { data: given, error: givenErr } = await admin
+      .from('coach_staff_athletes').select('athlete_id').eq('staff_id', invite.id).eq('head_coach_id', invite.head_coach_id)
+    if (givenErr) console.error('[staff accept] assignment read failed', { staffId: invite.id, error: givenErr.message })
+    await noticeAssignedAthletes(admin, {
+      headId: invite.head_coach_id,
+      headName: headName ?? 'your coach',
+      assistantName,
+      athleteIds: ((given ?? []) as { athlete_id: string }[]).map((g) => g.athlete_id),
+    })
 
     return reply({ ok: true, headName }, 200, cookiesToSet)
   } catch (e: unknown) {

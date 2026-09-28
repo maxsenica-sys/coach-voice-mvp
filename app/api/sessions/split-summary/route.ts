@@ -23,7 +23,7 @@ import { checkContent, BLOCKED_MESSAGE } from '@/lib/content-gate'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { routeIdentity } from '@/lib/route-identity'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete } from '@/lib/coach-scope'
 import type { CookieToSet } from '@/lib/supabase-route'
 import {
   MAX_SPLIT_ATHLETES,
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     .eq('coach_id', scope.headId)
   if (error) return reply({ error: 'Could not read your roster' }, 500)
   const found = new Map((rows ?? []).map((r) => [r.id as string, r]))
-  if (ids.some((id) => !found.has(id))) {
+  if (ids.some((id) => !found.has(id) || !canSeeAthlete(scope, id))) {
     return reply({ error: 'Athlete not found on your roster' }, 404)
   }
 

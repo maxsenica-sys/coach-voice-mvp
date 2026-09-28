@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, coachesRow } from '@/lib/coach-scope'
 
 export async function GET(
   req: NextRequest,
@@ -43,7 +43,8 @@ export async function GET(
 
     // Coach access: session.coach_id === user.id
     // Athlete access: athlete_user_id on athletes table where athlete_id matches
-    let hasAccess = session.coach_id === (await resolveCoachScope(supabase, user.id)).headId
+    // For an assistant, only a clip of an athlete they were given (035).
+    let hasAccess = coachesRow(await resolveCoachScope(supabase, user.id), session)
     if (!hasAccess && session.athlete_id) {
       // An athlete reaches a clip only once the coach has shared that clip.
       //

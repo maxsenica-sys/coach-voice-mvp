@@ -25,7 +25,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete } from '@/lib/coach-scope'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
 import { isBodyRegion } from '@/lib/body-map'
@@ -47,8 +47,9 @@ export async function GET(req: NextRequest) {
     /* An assistant opens briefs for the team's sessions: the ones their head
      * coach put in the calendar as well as their own. Calendar rows are read
      * with the service role for that (there is no staff calendar policy); the
-     * athlete, check-in and session reads below stay on the caller's client,
-     * scoped to the head, where migration 034's staff policies apply. */
+     * athlete, check-in and injury reads below stay on the caller's client,
+     * scoped to the head, where the staff policies (034, narrowed to the
+     * athletes the assistant was given by 035) apply. */
     const scope = await resolveCoachScope(supabase, user.id)
     const calendar = scope.isHead ? supabase : createSupabaseAdminClient()
     const creators = scope.isHead ? [user.id] : [user.id, scope.headId]
@@ -92,7 +93,10 @@ export async function GET(req: NextRequest) {
       .in('id', ids)
       .eq('coach_id', scope.headId)
     if (rosterErr) return NextResponse.json({ error: rosterErr.message }, { status: 500 })
-    const athletes = (roster ?? []) as { id: string; first_name: string | null; last_name: string | null }[]
+    // And for an assistant, only the athletes they were given (035's policy
+    // already narrows the read; this says so where the route decides).
+    const athletes = ((roster ?? []) as { id: string; first_name: string | null; last_name: string | null }[])
+      .filter((a) => canSeeAthlete(scope, a.id))
     const rosterIds = athletes.map((a) => a.id)
     if (rosterIds.length === 0) return NextResponse.json({ event, key, athletes: [] } satisfies BriefResponse)
 
@@ -115,8 +119,11 @@ export async function GET(req: NextRequest) {
       // Per athlete, because "the latest session with a focus point" is a
       // per-athlete question: one shared LIMIT would let an athlete with many
       // sessions crowd out one with few. Ten deep, as the recorder's route.
+      // An assistant reads these on the service role (`calendar`, above): the
+      // focus point is this athlete's own, but 035 hides from them the row of
+      // a squad talk they were not given all of.
       Promise.all(rosterIds.map((id) =>
-        supabase
+        calendar
           .from('sessions')
           .select('id, focus_points, session_date, created_at, athlete_response')
           .eq('athlete_id', id)

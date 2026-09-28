@@ -8,7 +8,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { notifyNewMessage } from '@/lib/notify'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, coachesRow, type CoachScope } from '@/lib/coach-scope'
 import { athleteMayViewVideo, athleteSeesAnnotations } from '@/lib/video-clip'
 
 export const runtime = 'nodejs'
@@ -54,8 +54,8 @@ async function authorize(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   sessionId: string,
   userId: string,
-  /** The caller's head coach (themself, unless an assistant). lib/coach-scope.ts */
-  headId: string,
+  /** The caller's scope: their head coach, and for an assistant the athletes they were given. lib/coach-scope.ts */
+  scope: CoachScope,
 ) {
   const { data: session } = await admin
     .from('sessions')
@@ -65,7 +65,7 @@ async function authorize(
 
   if (!session) return { ok: false as const, status: 404, error: 'Session not found.' }
 
-  if (session.coach_id === headId) {
+  if (coachesRow(scope, session)) {
     return { ok: true as const, isCoach: true, session, athleteIds: [] as string[] }
   }
 
@@ -112,7 +112,7 @@ export async function GET(
   const { id: sessionId } = await ctx.params
   const admin = createSupabaseAdminClient()
 
-  const auth = await authorize(admin, sessionId, user.id, (await resolveCoachScope(supabase, user.id)).headId)
+  const auth = await authorize(admin, sessionId, user.id, await resolveCoachScope(supabase, user.id))
   if (!auth.ok) {
     return attach(NextResponse.json({ error: auth.error }, { status: auth.status }), cookiesToSet)
   }
@@ -178,14 +178,16 @@ export async function POST(
 
   // Verify the session is this coach's team's. The file stays in the uploader's
   // own folder and the row records who uploaded it (uploaded_by).
+  const scope = await resolveCoachScope(supabase, user.id)
   const { data: session } = await admin
     .from('sessions')
-    .select('id, coach_id')
+    .select('id, coach_id, athlete_id')
     .eq('id', sessionId)
-    .eq('coach_id', (await resolveCoachScope(supabase, user.id)).headId)
+    .eq('coach_id', scope.headId)
     .maybeSingle()
 
-  if (!session) {
+  // For an assistant, only a session of an athlete they were given (035).
+  if (!session || !coachesRow(scope, session)) {
     return attach(NextResponse.json({ error: 'Session not found or access denied.' }, { status: 403 }), cookiesToSet)
   }
 
@@ -318,14 +320,15 @@ export async function PATCH(
 
   if (!video) return attach(NextResponse.json({ error: 'Video not found.' }, { status: 404 }), cookiesToSet)
 
+  const patchScope = await resolveCoachScope(supabase, user.id)
   const { data: session } = await admin
     .from('sessions')
     .select('coach_id, athlete_id')
     .eq('id', sessionId)
-    .eq('coach_id', (await resolveCoachScope(supabase, user.id)).headId)
+    .eq('coach_id', patchScope.headId)
     .maybeSingle()
 
-  if (!session) return attach(NextResponse.json({ error: 'Access denied.' }, { status: 403 }), cookiesToSet)
+  if (!session || !coachesRow(patchScope, session)) return attach(NextResponse.json({ error: 'Access denied.' }, { status: 403 }), cookiesToSet)
 
   const updatePayload: Record<string, unknown> = {}
   if (annotations !== undefined) updatePayload.annotations = annotations
@@ -385,12 +388,12 @@ export async function DELETE(
   const scope = await resolveCoachScope(supabase, user.id)
   const { data: session } = await admin
     .from('sessions')
-    .select('coach_id')
+    .select('coach_id, athlete_id')
     .eq('id', sessionId)
     .eq('coach_id', scope.headId)
     .maybeSingle()
 
-  if (!session) return attach(NextResponse.json({ error: 'Access denied.' }, { status: 403 }), cookiesToSet)
+  if (!session || !coachesRow(scope, session)) return attach(NextResponse.json({ error: 'Access denied.' }, { status: 403 }), cookiesToSet)
   if (!scope.isHead && videoRow.uploaded_by !== user.id) {
     return attach(NextResponse.json({ error: 'Only the head coach can delete a video someone else added.' }, { status: 403 }), cookiesToSet)
   }

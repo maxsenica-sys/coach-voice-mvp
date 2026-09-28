@@ -4,7 +4,7 @@ import { notifyNewMessage } from '@/lib/notify'
 import { notifyPushNewMessage } from '@/lib/push'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete } from '@/lib/coach-scope'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 export const runtime = 'nodejs'
@@ -166,7 +166,9 @@ export async function POST(req: NextRequest) {
   } else {
     const scope = await resolveCoachScope(supabase, user.id)
     const { data: ath } = await supabase.from('athletes').select('coach_id').eq('id', athlete_id).maybeSingle()
-    if (!ath || ath.coach_id !== scope.headId) {
+    // An assistant messages only the athletes their head gave them (035's
+    // policy refuses the insert too; this is the answer they can read).
+    if (!ath || ath.coach_id !== scope.headId || !canSeeAthlete(scope, athlete_id)) {
       return NextResponse.json({ error: 'Athlete not found.' }, { status: 404 })
     }
     if (!scope.can.message) {
