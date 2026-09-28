@@ -841,14 +841,26 @@ const RULES = [
         }
       }
 
-      // (e) The session PDF prints a transcript, so it is the coach's own only.
+      // (e) The session PDF prints a transcript, so it is the coaching team's
+      //     own only. Either the caller's id, or — since assistant coaches
+      //     (migration 034) — the team owner resolved from the caller: a
+      //     variable assigned `team.role === 'assistant' ? team.headId :
+      //     user.id` from `await getTeam()`. getTeam asks /api/staff, which
+      //     reads coach_staff for the verified caller and resolves an athlete
+      //     to "head of nothing", so an athlete still matches only their own id.
       const PDF = 'app/pdf/session/[id]/page.tsx'
       const pdf = files.find((f) => f.rel === PDF)
       if (pdf) {
         const psrc = code(pdf)
         const q = psrc.match(/\.from\(\s*['"]sessions['"]\s*\)[\s\S]{0,300}?\.(?:single|maybeSingle)\(\)/)?.[0] ?? ''
-        if (!/\.eq\(\s*['"]coach_id['"]\s*,\s*user\.id\s*\)/.test(q)) {
-          found.push({ file: PDF, line: lineOf(pdf, /\.from\(\s*['"]sessions['"]/), msg: 'loads the session to print without .eq(\'coach_id\', user.id) — an athlete can print a squad transcript' })
+        const byCaller = /\.eq\(\s*['"]coach_id['"]\s*,\s*user\.id\s*\)/.test(q)
+        const ownerVar = q.match(/\.eq\(\s*['"]coach_id['"]\s*,\s*([A-Za-z_$][\w$]*)\s*\)/)?.[1]
+        const teamVar = psrc.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+getTeam\(\s*\)/)?.[1]
+        const byTeam = Boolean(ownerVar && teamVar && new RegExp(
+          `const\\s+${ownerVar}\\s*=\\s*${teamVar}\\.role\\s*===\\s*['"]assistant['"]\\s*\\?\\s*${teamVar}\\.headId\\s*:\\s*user\\.id\\b`,
+        ).test(psrc))
+        if (!byCaller && !byTeam) {
+          found.push({ file: PDF, line: lineOf(pdf, /\.from\(\s*['"]sessions['"]/), msg: 'loads the session to print without pinning coach_id to the caller or their team\'s head (from getTeam) — an athlete can print a squad transcript' })
         }
       }
 
