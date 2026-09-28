@@ -19,7 +19,7 @@ import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile } from '@/lib/profile-cache'
 import { preflightVideo } from '@/lib/video-preflight'
 import {
-  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint,
+  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint, wellnessDriver,
   type WellnessCheckin, type WellnessAlert,
 } from '@/lib/wellness-config'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
@@ -33,6 +33,7 @@ import { errorMessage } from '@/lib/errors'
 import { getTeam, type Team } from '@/lib/team-client'
 import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 import { escapeHtml } from '@/lib/escape-html'
+import { regionLabel } from '@/lib/body-map'
 
 interface Athlete {
   id: string; first_name: string; last_name: string
@@ -1515,6 +1516,17 @@ export default function AthleteDetailPage() {
                         </div>
                       )
                     })}
+                    {(() => {
+                      // In words, what the bars above say is low. A two-tap
+                      // check-in derives three of these bars from one answer,
+                      // so for it this names what the athlete actually said.
+                      const driver = wellnessDriver(wellnessLatest, regionLabel)
+                      return driver ? (
+                        <div style={{ gridColumn: '1 / -1', fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                          <span style={{ color: 'var(--text)', fontWeight: 600 }}>Low:</span> {driver.full}
+                        </div>
+                      ) : null
+                    })()}
                   </div>
                 ) : wellnessUnavailable ? (
                   <div role="alert" style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text)', lineHeight: 1.55 }}>

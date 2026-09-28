@@ -285,6 +285,13 @@ function AthleteRow({ a, first, nudge, nudgeError, onNudge }: {
           <Pill color="var(--text-2)" bg={tint('var(--text)', 7)}>Checked in{c.score !== null ? ` · ${c.score}/5` : ''}</Pill>
         )}
       </div>
+      {/* A five-question check-in says which answer was low — the pill's one
+          number cannot. A two-tap one already says it: Flat, and where it hurts. */}
+      {c && !readiness && c.driver && (
+        <div style={{ marginTop: 6, fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+          <span style={{ color: 'var(--text)', fontWeight: 600 }}>Low:</span> {c.driver}
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 7, fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-2)' }}>
         {c && (

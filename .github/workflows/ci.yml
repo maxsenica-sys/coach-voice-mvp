@@ -53,6 +53,11 @@ jobs:
       - name: Staff rig
         run: npm run verify:staff
 
+      # What pulled an athlete's wellness down, named from what they actually
+      # answered — never a derived number the two-tap check-in did not ask.
+      - name: Wellness rig
+        run: npm run verify:wellness
+
       # Sends hostile text through every real email builder (lib/notify.ts)
       # against a stub network. An athlete's message, a check-in note or a name
       # rendered as markup in someone's inbox is what this exists for.

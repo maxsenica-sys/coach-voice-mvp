@@ -163,6 +163,51 @@ export function overallWellnessScore(checkin: WellnessCheckin | null): number | 
   return +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)
 }
 
+/**
+ * What pulled a check-in's score down, in words a coach reads at a glance.
+ *
+ * The coach used to get one flattened mean — "2.6" — with no way to tell a
+ * child who slept badly from one who is very stressed or very sore, which are
+ * three different conversations. This names the cause.
+ *
+ * It is honest about what was asked. The two-tap check-in (lib/readiness.ts)
+ * asks one "how are you" question and DERIVES energy, mood and stress from it,
+ * so those three are always equal on such a row; naming "Mood 2/5" there would
+ * report a question the athlete never answered. For those rows the causes are
+ * the two things they actually said: they felt flat, or they marked where it
+ * hurts. For five-slider rows, the metrics in the low bucket, worst first.
+ *
+ * `short` fits under a roster tile ("Sleep 2", "Flat", "Sore"); `full` is the
+ * sentence for anywhere with room. Null when nothing is low. Pure.
+ */
+export interface WellnessDriver { short: string; full: string }
+
+export function wellnessDriver(
+  checkin: WellnessCheckin | null,
+  labelArea: (id: string) => string = (id) => id,
+): WellnessDriver | null {
+  if (!checkin) return null
+  if (typeof checkin.readiness === 'number') {
+    const areas = Array.isArray(checkin.sore_areas) ? checkin.sore_areas : []
+    const parts: WellnessDriver[] = []
+    if (checkin.readiness === 1) parts.push({ short: 'Flat', full: 'Felt flat' })
+    if (areas.length > 0) parts.push({ short: 'Sore', full: `Sore: ${areas.map(labelArea).join(', ')}` })
+    if (parts.length === 0) return null
+    return { short: parts.map((p) => p.short).join(' · '), full: parts.map((p) => p.full).join('; ') }
+  }
+  const low = WELLNESS_METRICS
+    .map((m, order) => ({ m, order, raw: checkin[m.key] }))
+    .filter((x): x is { m: WellnessMetric; order: number; raw: number } => typeof x.raw === 'number')
+    .map((x) => ({ ...x, val: x.m.inverted ? 6 - x.raw : x.raw }))
+    .filter((x) => x.val < 3)
+    .sort((a, b) => a.val - b.val || a.order - b.order)
+  if (low.length === 0) return null
+  return {
+    short: `${low[0].m.label} ${low[0].raw}`,
+    full: low.map((x) => `${x.m.label} ${x.raw}/5`).join(', '),
+  }
+}
+
 /** Same good/ok/low thresholds used everywhere an overall score is shown. */
 export function overallScoreColor(score: number | null): string {
   if (score === null) return 'var(--wellness-none)'

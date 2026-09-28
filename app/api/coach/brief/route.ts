@@ -28,8 +28,8 @@ import { routeIdentity } from '@/lib/route-identity'
 import { resolveCoachScope } from '@/lib/coach-scope'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
-import { isBodyRegion } from '@/lib/body-map'
-import { overallWellnessScore, type WellnessCheckin } from '@/lib/wellness-config'
+import { isBodyRegion, regionLabel } from '@/lib/body-map'
+import { overallWellnessScore, wellnessDriver, type WellnessCheckin } from '@/lib/wellness-config'
 import {
   orderBrief, pickLastFocus, sessionKey,
   type BriefAthlete, type BriefCheckin, type BriefInjury, type BriefResponse,
@@ -141,6 +141,7 @@ export async function GET(req: NextRequest) {
         readiness: r === 1 || r === 2 || r === 3 ? r : null,
         sore_areas: areas.filter(isBodyRegion),
         score: overallWellnessScore(c),
+        driver: wellnessDriver(c, regionLabel)?.full ?? null,
       })
     }
 

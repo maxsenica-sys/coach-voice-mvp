@@ -213,6 +213,8 @@ export interface BriefCheckin {
   sore_areas: string[]
   /** The 1-5 overall score, for check-ins that predate readiness. */
   score: number | null
+  /** What pulled the score down, in words (lib/wellness-config.ts wellnessDriver). Null when nothing is low. */
+  driver: string | null
 }
 
 export interface BriefInjury {

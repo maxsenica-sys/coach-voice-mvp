@@ -14,7 +14,8 @@ import { markAppReady } from '@/lib/boot-shell'
 import MessagingPanel from '@/app/components/MessagingPanel'
 import SportWheelPicker from '@/app/components/SportWheelPicker'
 import AthletePicker from '@/app/components/AthletePicker'
-import { overallWellnessScore, overallScoreColor, type WellnessCheckin } from '@/lib/wellness-config'
+import { overallWellnessScore, overallScoreColor, wellnessDriver, type WellnessCheckin } from '@/lib/wellness-config'
+import { regionLabel } from '@/lib/body-map'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import ListState from '@/app/components/ListState'
 import PendingRecordings from '@/app/components/PendingRecordings'
@@ -2082,8 +2083,13 @@ function DashboardPageInner() {
                     {athletes.map((a) => {
                       const status = statusOf(a)
                       const unread = (unreadCounts[a.id] ?? 0) as number
-                      const wellnessScore = overallWellnessScore(wellnessByAthlete.get(a.id) ?? null)
+                      const wellnessRow = wellnessByAthlete.get(a.id) ?? null
+                      const wellnessScore = overallWellnessScore(wellnessRow)
                       const wellnessColor = overallScoreColor(wellnessScore)
+                      // What pulled it down, only when it is not good: a calm
+                      // roster stays calm, and a 2.6 says "Sleep 2" instead of
+                      // leaving the coach to open the profile to find out.
+                      const driver = wellnessScore !== null && wellnessScore < 3.5 ? wellnessDriver(wellnessRow, regionLabel) : null
                       return (
                         /* A real <button>, so it is keyboard reachable and
                          * announced as a control. A coach tapping their own
@@ -2092,16 +2098,21 @@ function DashboardPageInner() {
                           key={a.id}
                           type="button"
                           onClick={() => router.push(`/athletes/${a.id}`)}
-                          aria-label={`Open ${a.first_name} ${a.last_name ?? ''}`.trim() + (unread > 0 ? `, ${unread} unread` : '')}
+                          aria-label={`Open ${a.first_name} ${a.last_name ?? ''}`.trim() + (unread > 0 ? `, ${unread} unread` : '') + (driver ? `, wellness ${wellnessScore}: ${driver.full}` : '')}
                           style={{ minWidth: 0, background: PANEL, borderRadius: 14, border: HAIR, padding: '12px 6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', cursor: 'pointer', font: 'inherit', color: 'inherit', textAlign: 'center' }}>
                           {unread > 0 && <div style={{ position: 'absolute', top: 5, right: 5, minWidth: 20, minHeight: 20, lineHeight: 1, borderRadius: 99, background: 'var(--coach-on-light)', color: 'var(--on-primary)', ...cast(13, 800, '0'), padding: '0 5px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</div>}
                           <Mono initials={initialsOf(a.first_name, a.last_name)} pending={status === 'INVITED'} size={40} />
                           <div style={{ ...cast(15, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere', maxWidth: '100%' }}>{a.first_name}{a.last_name ? ` ${a.last_name.trim()[0]}.` : ''}</div>
                           {wellnessScore !== null ? (
-                            <div title={`Wellness ${wellnessScore}/5`} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
-                              <span style={{ ...MONO, fontSize: 13, fontWeight: 700, color: wellnessColor }}>{wellnessScore}</span>
-                            </div>
+                            <>
+                              <div title={`Wellness ${wellnessScore}/5${driver ? ` — ${driver.full}` : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
+                                <span style={{ ...MONO, fontSize: 13, fontWeight: 700, color: wellnessColor }}>{wellnessScore}</span>
+                              </div>
+                              {driver && (
+                                <div style={{ fontSize: 13, lineHeight: 1.2, color: 'var(--text-2)', overflowWrap: 'anywhere', maxWidth: '100%' }}>{driver.short}</div>
+                              )}
+                            </>
                           ) : (
                             <div style={{ ...cast(13, 700, '.12em'), color: status === 'INVITED' ? 'var(--energy-dark)' : 'var(--text-2)' }}>{status === 'INVITED' ? 'Pending' : 'Active'}</div>
                           )}
