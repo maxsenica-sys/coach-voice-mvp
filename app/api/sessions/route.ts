@@ -8,7 +8,7 @@ import { checkContent, BLOCKED_MESSAGE } from '@/lib/content-gate'
 import { notifySessionShared } from '@/lib/notify'
 import { notifyPushSessionShared } from '@/lib/push'
 import type { CookieToSet } from '@/lib/supabase-route'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete, recordingsWithheld } from '@/lib/coach-scope'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 
@@ -60,12 +60,22 @@ export async function GET(req: NextRequest) {
   }
 
   const scope = await resolveCoachScope(supabase, user.id)
-  const { data, error } = await supabase
+  // An assistant lists only an athlete their head gave them (migration 035).
+  if (!canSeeAthlete(scope, athlete_id)) {
+    const res = NextResponse.json({ error: 'That athlete was not found, or is not yours.' }, { status: 404 })
+    return attachCookies(res, cookiesToSet)
+  }
+  // An assistant reads on the service role, checked above: 035 hides from them
+  // the whole row of a squad talk they were not given all of, and their
+  // athlete's own summary of it must still be listed. The transcript and audio
+  // of that row are withheld below instead.
+  const admin = scope.isHead ? null : createSupabaseAdminClient()
+  const { data, error } = await (admin ?? supabase)
     .from('sessions')
     // athlete_response is the athlete's one-tap reply to the takeaway. The
     // coach already sees it on the session page; the athlete profile's session
     // list shows it too, and could not while this select left it out.
-    .select('id, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime, athlete_response')
+    .select('id, athlete_id, group_id, shared_recording_id, recorded_by, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime, athlete_response')
     .eq('coach_id', scope.headId)
     .eq('athlete_id', athlete_id)
     // Newest session first by the date it happened, not the date it was typed
@@ -78,7 +88,11 @@ export async function GET(req: NextRequest) {
     return attachCookies(res, cookiesToSet)
   }
 
-  const res = NextResponse.json({ sessions: data ?? [] })
+  const withheld = admin ? await recordingsWithheld(admin, scope, data ?? []) : new Set<string>()
+  const sessions = (data ?? []).map((s) => withheld.has(s.id)
+    ? { ...s, transcript: null, audio_path: null, transcript_withheld: true }
+    : s)
+  const res = NextResponse.json({ sessions })
   return attachCookies(res, cookiesToSet)
 }
 
@@ -213,7 +227,9 @@ export async function POST(req: NextRequest) {
       .eq('id', athlete_id)
       .eq('coach_id', scope.headId)
       .maybeSingle()
-    if (!owned) {
+    // An assistant records only for an athlete their head gave them (035's
+    // policy refuses the insert too; this is the answer they can read).
+    if (!owned || !canSeeAthlete(scope, athlete_id)) {
       const res = NextResponse.json({ error: 'That athlete was not found, or is not yours.' }, { status: 403 })
       return attachCookies(res, cookiesToSet)
     }

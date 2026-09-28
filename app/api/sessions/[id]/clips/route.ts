@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, coachesRow } from '@/lib/coach-scope'
 import { athleteMayViewVideo, validateClipRange } from '@/lib/video-clip'
 
 export const runtime = 'nodejs'
@@ -41,7 +41,8 @@ export async function GET(
       .maybeSingle()
     if (!session) return NextResponse.json({ error: 'Session not found.' }, { status: 404 })
 
-    const isCoach = session.coach_id === (await resolveCoachScope(supabase, user.id)).headId
+    // The session's coach — for an assistant, only if the athlete was given to them.
+    const isCoach = coachesRow(await resolveCoachScope(supabase, user.id), session)
     let athleteIds: string[] = []
     if (!isCoach) {
       const { data: ath } = await admin
@@ -110,13 +111,14 @@ export async function POST(
     const body = await req.json().catch(() => ({}))
     const admin = createSupabaseAdminClient()
 
+    const scope = await resolveCoachScope(supabase, user.id)
     const { data: session } = await admin
       .from('sessions')
-      .select('id, focus_points')
+      .select('id, coach_id, athlete_id, focus_points')
       .eq('id', sessionId)
-      .eq('coach_id', (await resolveCoachScope(supabase, user.id)).headId)
+      .eq('coach_id', scope.headId)
       .maybeSingle()
-    if (!session) return NextResponse.json({ error: 'Session not found or not yours.' }, { status: 403 })
+    if (!session || !coachesRow(scope, session)) return NextResponse.json({ error: 'Session not found or not yours.' }, { status: 403 })
 
     const videoId = typeof body?.video_id === 'string' ? body.video_id : ''
     const { data: video } = await admin
@@ -174,11 +176,11 @@ export async function DELETE(
     const scope = await resolveCoachScope(supabase, user.id)
     const { data: session } = await admin
       .from('sessions')
-      .select('id')
+      .select('id, coach_id, athlete_id')
       .eq('id', sessionId)
       .eq('coach_id', scope.headId)
       .maybeSingle()
-    if (!session) return NextResponse.json({ error: 'Session not found or not yours.' }, { status: 403 })
+    if (!session || !coachesRow(scope, session)) return NextResponse.json({ error: 'Session not found or not yours.' }, { status: 403 })
 
     // The head coach may remove any moment; an assistant only the ones they marked.
     let removal = admin.from('video_clips').delete().eq('id', clipId).eq('session_id', sessionId)

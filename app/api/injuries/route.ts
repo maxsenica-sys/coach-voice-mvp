@@ -7,6 +7,10 @@
  * PATCH ?id=…          coach only: change status, dates or note.
  * DELETE ?id=…         coach only: remove a record entered by mistake.
  *
+ * An assistant coach does all of this for the athletes their head gave them
+ * (Max, 2026-09-28: "all the submission tools"), and deletes only a record
+ * they logged themselves — a mistake is removed by whoever made it.
+ *
  * ── Why the athlete can read but never write ─────────────────────────────
  *
  * An athlete must be able to see what their coach has recorded about their
@@ -28,7 +32,7 @@ import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
-import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete } from '@/lib/coach-scope'
 import { isBodyRegion } from '@/lib/body-map'
 import { isInjuryStatus } from '@/lib/injury'
 
@@ -70,7 +74,8 @@ export async function GET(req: Request) {
 
     if (!athlete) return NextResponse.json({ error: 'Athlete not found' }, { status: 404 })
     const scope = await resolveCoachScope(supabase, user.id)
-    if (athlete.coach_id !== scope.headId && athlete.athlete_user_id !== user.id) {
+    const isTheirCoach = athlete.coach_id === scope.headId && canSeeAthlete(scope, athlete.id)
+    if (!isTheirCoach && athlete.athlete_user_id !== user.id) {
       return NextResponse.json({ error: 'Athlete not found' }, { status: 404 })
     }
 
@@ -118,9 +123,10 @@ export async function POST(req: Request) {
     }
 
     const admin = createSupabaseAdminClient()
-    // An assistant may log an injury they saw; it belongs to the head's record.
+    // An assistant may log an injury they saw on an athlete they were given;
+    // it belongs to the head's record.
     const scope = await resolveCoachScope(supabase, user.id)
-    if (!(await assertCoachOwns(admin, athlete_id, scope.headId))) {
+    if (!canSeeAthlete(scope, athlete_id) || !(await assertCoachOwns(admin, athlete_id, scope.headId))) {
       return NextResponse.json({ error: 'Athlete not found' }, { status: 404 })
     }
 
@@ -156,10 +162,7 @@ export async function PATCH(req: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Changing or clearing an injury is the head coach's call.
-    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
-      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
-    }
+    const scope = await resolveCoachScope(supabase, user.id)
 
     const id = new URL(req.url).searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -167,14 +170,17 @@ export async function PATCH(req: Request) {
     const body = await req.json().catch(() => ({} as Record<string, unknown>))
     const admin = createSupabaseAdminClient()
 
-    // Scoped by coach_id, so a coach can only ever edit their own records.
+    // Scoped by coach_id, so a coach can only ever edit their own team's
+    // records — and an assistant only those of an athlete they were given.
     const { data: existing } = await admin
       .from('injuries')
-      .select('id')
+      .select('id, athlete_id')
       .eq('id', id)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
       .maybeSingle()
-    if (!existing) return NextResponse.json({ error: 'Injury not found' }, { status: 404 })
+    if (!existing || !canSeeAthlete(scope, existing.athlete_id)) {
+      return NextResponse.json({ error: 'Injury not found' }, { status: 404 })
+    }
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
 
@@ -211,20 +217,29 @@ export async function DELETE(req: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Changing or clearing an injury is the head coach's call.
-    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
-      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
-    }
+    const scope = await resolveCoachScope(supabase, user.id)
 
     const id = new URL(req.url).searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
     const admin = createSupabaseAdminClient()
+    // The head removes any record on their team. An assistant removes only one
+    // they logged themselves, on an athlete they were given.
+    const { data: existing } = await admin
+      .from('injuries')
+      .select('id, athlete_id, created_by')
+      .eq('id', id)
+      .eq('coach_id', scope.headId)
+      .maybeSingle()
+    const mayDelete = Boolean(existing) && (scope.isHead
+      || (existing!.created_by === user.id && canSeeAthlete(scope, existing!.athlete_id)))
+    if (!mayDelete) return NextResponse.json({ error: 'Injury not found' }, { status: 404 })
+
     const { error } = await admin
       .from('injuries')
       .delete()
       .eq('id', id)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })

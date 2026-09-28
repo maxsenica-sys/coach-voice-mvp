@@ -1,7 +1,7 @@
 // app/api/athletes/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
-import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
+import { resolveCoachScope, HEAD_ONLY_MESSAGE, canSeeAthlete } from '@/lib/coach-scope'
 import { athleteStatus } from '@/lib/athlete-status'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
@@ -19,6 +19,9 @@ export async function GET(
     const { id } = await ctx.params
     const admin = createSupabaseAdminClient()
     const scope = await resolveCoachScope(supabase, user.id)
+    // An assistant opens only an athlete they were given (migration 035). Same
+    // answer as a stranger's id, so it does not confirm the athlete exists.
+    if (!canSeeAthlete(scope, id)) return NextResponse.json({ error: 'Athlete not found' }, { status: 404 })
 
     const { data, error } = await admin
       .from('athletes')

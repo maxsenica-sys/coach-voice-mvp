@@ -16,14 +16,19 @@
  *   S5  acceptBlock skipping the email comparison
  *   S6  newInviteToken storing the token instead of its hash
  *   S7  escapeHtml not escaping "<"
+ *   S8  canSeeAthlete letting an assistant reach an athlete not given to them
+ *   S9  athleteFilter sending an empty list (PostgREST's `in ()`) for nobody
+ *   S10 mayHearRecording ignoring the recording's other athletes
+ *   S11 parseAthleteIds keeping the valid part of a malformed list
  *
  * Usage:  npm run verify:staff
  */
 
-import { scopeFromStaffRow, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
+import { scopeFromStaffRow, HEAD_ONLY_MESSAGE, canSeeAthlete, athleteFilter, mayHearRecording, NO_ATHLETE } from '@/lib/coach-scope'
 import {
   acceptBlock, ACCEPT_MESSAGES, newInviteToken, hashInviteToken, isInviteTokenShape,
   normaliseEmail, maskEmail, escapeHtml, INVITE_TTL_DAYS, inviteExpiry,
+  parseAthleteIds, assignmentDiff, assignedNoticeText, MAX_ASSIGN,
 } from '@/lib/staff-invite'
 
 const GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', BOLD = '\x1b[1m', OFF = '\x1b[0m'
@@ -140,6 +145,72 @@ check('S7', 'Names and addresses cannot inject into the invite email or leak in 
   }
   const m = maskEmail('samantha@club.org')
   if (m.includes('samantha') || !m.endsWith('@club.org') || !m.startsWith('sa')) bad.push(`mask "${m}" shows too much or too little`)
+  return bad
+})
+
+const X1 = '10000000-0000-0000-0000-000000000001'
+const X3 = '10000000-0000-0000-0000-000000000003'
+
+check('S8', 'An assistant reaches only the athletes the head gave them (Max, 2026-09-28)', () => {
+  const bad = []
+  const a = scopeFromStaffRow(ME, row(), [X1])
+  if (!canSeeAthlete(a, X1)) bad.push('an assistant cannot reach the athlete they were given')
+  if (canSeeAthlete(a, X3)) bad.push('an assistant reaches an athlete they were NOT given')
+  for (const nothing of [null, undefined, '']) if (canSeeAthlete(a, nothing)) bad.push(`${JSON.stringify(nothing)} counted as an athlete`)
+  const none = scopeFromStaffRow(ME, row())
+  if (none.athleteIds === null || none.athleteIds.length !== 0) bad.push('an assistant given nobody was not left with an empty list')
+  if (canSeeAthlete(none, X1)) bad.push('an assistant given nobody reaches an athlete')
+  const head = scopeFromStaffRow(ME, null, [X1])
+  if (head.athleteIds !== null) bad.push('a head coach was narrowed to a list — their roster is coach_id, not assignments')
+  if (!canSeeAthlete(head, X3)) bad.push('a head coach was refused one of their athletes')
+  const revoked = scopeFromStaffRow(ME, row({ status: 'revoked' }), [X1])
+  if (revoked.athleteIds !== null || revoked.headId !== ME) bad.push('a revoked assistant kept their assignments')
+  try { a.athleteIds.push(X3) } catch { /* frozen */ }
+  if (canSeeAthlete(a, X3)) bad.push('the assigned list could be extended after it was decided')
+  return bad
+})
+
+check('S9', 'A list query for an assistant given nobody matches nothing, and a head is not narrowed', () => {
+  const bad = []
+  if (athleteFilter(scopeFromStaffRow(ME, null)) !== null) bad.push('a head coach got a filter')
+  const empty = athleteFilter(scopeFromStaffRow(ME, row(), []))
+  if (!Array.isArray(empty) || empty.length !== 1 || empty[0] !== NO_ATHLETE) bad.push(`nobody assigned gave ${JSON.stringify(empty)} — an empty in() is not reliably "no rows"`)
+  const one = athleteFilter(scopeFromStaffRow(ME, row(), [X1, X1]))
+  if (JSON.stringify(one) !== JSON.stringify([X1])) bad.push(`assigned [X1, X1] filtered as ${JSON.stringify(one)}`)
+  return bad
+})
+
+check('S10', 'An assistant hears a recording about several athletes only when every one is theirs, or they made it', () => {
+  const bad = []
+  const a = scopeFromStaffRow(ME, row(), [X1])
+  const solo = { athlete_id: X1, group_id: null, shared_recording_id: null, recorded_by: HEAD }
+  if (!mayHearRecording(a, solo, [X1])) bad.push('refused a one-to-one with their own athlete')
+  const squad = { athlete_id: X1, group_id: 'g1', shared_recording_id: null, recorded_by: HEAD }
+  if (mayHearRecording(a, squad, [X1, X3])) bad.push('heard a squad talk that includes an athlete not given to them')
+  if (!mayHearRecording(a, squad, [X1])) bad.push('refused a squad talk whose members are all theirs')
+  const split = { athlete_id: X1, group_id: null, shared_recording_id: 'r1', recorded_by: HEAD }
+  if (mayHearRecording(a, split, [X1, X3])) bad.push('heard a split recording shared with an athlete not given to them')
+  if (!mayHearRecording(a, { ...split, recorded_by: ME }, [X1, X3])) bad.push('refused a recording they made themself')
+  if (mayHearRecording(a, { ...solo, athlete_id: X3 }, [X3])) bad.push('heard a one-to-one with an athlete not given to them')
+  if (!mayHearRecording(scopeFromStaffRow(ME, null), squad, [X1, X3])) bad.push('a head coach was refused their own squad talk')
+  return bad
+})
+
+check('S11', 'Which athletes an assistant gets is exactly what the head ticked — never a repaired guess', () => {
+  const bad = []
+  const ok = parseAthleteIds([X1, X3.toUpperCase(), X1])
+  if (JSON.stringify(ok) !== JSON.stringify([X1, X3])) bad.push(`[X1, X3 upper, X1] parsed as ${JSON.stringify(ok)} — expected deduplicated, lower-case, in order`)
+  if (JSON.stringify(parseAthleteIds([])) !== '[]') bad.push('an empty list was not an empty list')
+  for (const junk of [[X1, 'not-an-id'], [X1, 42], [X1, null], 'X1', null, undefined, { 0: X1 }]) {
+    if (parseAthleteIds(junk) !== null) bad.push(`${JSON.stringify(junk)} was accepted — a malformed list must be refused whole, not trimmed`)
+  }
+  if (parseAthleteIds(Array(MAX_ASSIGN + 1).fill(X1)) !== null) bad.push(`a list longer than ${MAX_ASSIGN} was accepted`)
+  const d = assignmentDiff([X1], [X3])
+  if (JSON.stringify(d) !== JSON.stringify({ add: [X3], remove: [X1] })) bad.push(`X1 → X3 diffed as ${JSON.stringify(d)}`)
+  const same = assignmentDiff([X1, X3], [X3.toUpperCase(), X1])
+  if (same.add.length || same.remove.length) bad.push(`an unchanged list (different case and order) diffed as ${JSON.stringify(same)} — the athlete would be told twice`)
+  const text = assignedNoticeText('Sam Reid', 'Jordan Lee')
+  if (!text.includes('Sam Reid') || !text.includes('Jordan Lee') || !/check-ins/.test(text)) bad.push(`the athlete's notice does not say who, whose team and what they see: "${text}"`)
   return bad
 })
 

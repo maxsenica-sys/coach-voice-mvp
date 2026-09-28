@@ -107,8 +107,9 @@ export default function StaffJoinPage() {
           <>
             <h1 style={TITLE}>You have been invited to join a coaching team</h1>
             <p style={BODY}>
-              Sign in, or create a coach account, with the email address the invite was sent to. As an assistant coach you will see
-              the head coach&rsquo;s athletes, their sessions, messages and wellness check-ins, and you can record sessions and message athletes.
+              Sign in, or create a coach account, with the email address the invite was sent to. As an assistant coach you will coach
+              the athletes the head coach chose for you: you will see their sessions, messages and wellness check-ins, and you can record
+              sessions, message them, and add notes, injuries and videos.
             </p>
             <Link href={nextHere(view.token)} className="btn btn-primary" style={{ minHeight: 44, justifyContent: 'center' }}>
               I have an account — sign in
@@ -129,8 +130,9 @@ export default function StaffJoinPage() {
             {view.preview.ok ? (
               <>
                 <p style={BODY}>
-                  As an assistant coach you will see {view.preview.headName ?? 'the head coach'}&rsquo;s athletes, their sessions, messages and
-                  wellness check-ins, and you can record sessions and message athletes. Their athletes will be told you have joined.
+                  As an assistant coach you will coach the athletes {view.preview.headName ?? 'the head coach'} chose for you: you will see their
+                  sessions, messages and wellness check-ins, and you can record sessions, message them, and add notes, injuries and videos.
+                  Those athletes will be told you have joined.
                 </p>
                 <button type="button" className="btn btn-primary" disabled={joining} onClick={() => void join(view.token)} style={{ minHeight: 44 }}>
                   {joining ? 'Joining…' : 'Join the team'}
@@ -145,7 +147,7 @@ export default function StaffJoinPage() {
         {view.kind === 'joined' && (
           <>
             <h1 style={TITLE}>You are on {view.headName}&rsquo;s team</h1>
-            <p style={BODY}>Their athletes are on your home screen now.</p>
+            <p style={BODY}>The athletes they chose for you are on your home screen now.</p>
             <Link href="/dashboard" className="btn btn-primary" style={{ minHeight: 44, justifyContent: 'center' }}>Go to the dashboard</Link>
           </>
         )}

@@ -13,7 +13,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete } from '@/lib/coach-scope'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
 import { notifyNewMessage } from '@/lib/notify'
@@ -35,6 +35,7 @@ export async function GET(
     const { id: athleteId } = await ctx.params
     const admin = createSupabaseAdminClient()
     const scope = await resolveCoachScope(supabase, user.id)
+    if (!canSeeAthlete(scope, athleteId)) return NextResponse.json({ error: 'Athlete not found or not yours.' }, { status: 403 })
 
     const { data: ath } = await admin
       .from('athletes')
@@ -116,6 +117,7 @@ export async function PATCH(
 
     const admin = createSupabaseAdminClient()
     const scope = await resolveCoachScope(supabase, user.id)
+    if (!canSeeAthlete(scope, athleteId)) return NextResponse.json({ error: 'Athlete not found or not yours.' }, { status: 403 })
     const { data: ath } = await admin
       .from('athletes')
       .select('id, coach_id')

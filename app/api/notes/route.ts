@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
-import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
+import { resolveCoachScope, canSeeAthlete } from '@/lib/coach-scope'
 
 // GET /api/notes?athlete_id=...
 export async function GET(req: Request) {
@@ -23,6 +23,9 @@ export async function GET(req: Request) {
 
     const admin = createSupabaseAdminClient()
     const scope = await resolveCoachScope(supabase, user.id)
+    if (!canSeeAthlete(scope, athleteId)) {
+      return NextResponse.json({ error: 'Athlete not found (or not yours)' }, { status: 404 })
+    }
 
     // Ensure athlete belongs to coach (or, for an assistant, to their head coach)
     const { data: athleteRow, error: athleteErr } = await admin
@@ -61,9 +64,10 @@ export async function POST(req: Request) {
 
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    if (!(await resolveCoachScope(supabase, user.id)).isHead) {
-      return NextResponse.json({ error: HEAD_ONLY_MESSAGE }, { status: 403 })
-    }
+    // An assistant writes notes for the athletes their head gave them (Max,
+    // 2026-09-28: "all the submission tools"). The note is the head's record,
+    // like everything else on the team; created_by says who wrote it.
+    const scope = await resolveCoachScope(supabase, user.id)
 
     const body = await req.json().catch(() => ({} as Record<string, unknown>))
     const athlete_id = String(body?.athlete_id ?? '').trim()
@@ -76,12 +80,15 @@ export async function POST(req: Request) {
 
     const admin = createSupabaseAdminClient()
 
-    // Ensure athlete belongs to coach
+    // Ensure athlete belongs to the team, and for an assistant is one of theirs
+    if (!canSeeAthlete(scope, athlete_id)) {
+      return NextResponse.json({ error: 'Athlete not found (or not yours)' }, { status: 404 })
+    }
     const { data: athleteRow, error: athleteErr } = await admin
       .from('athletes')
       .select('id')
       .eq('id', athlete_id)
-      .eq('coach_id', user.id)
+      .eq('coach_id', scope.headId)
       .single()
 
     if (athleteErr || !athleteRow) {
@@ -92,7 +99,8 @@ export async function POST(req: Request) {
       .from('notes')
       .insert({
         athlete_id,
-        coach_id: user.id,
+        coach_id: scope.headId,
+        created_by: user.id,
         summary,
         shared_with_athlete,
       })

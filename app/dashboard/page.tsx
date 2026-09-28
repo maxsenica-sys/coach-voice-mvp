@@ -2126,7 +2126,7 @@ function DashboardPageInner() {
               {/* Onboarding flow (empty state) */}
               {athletes.length === 0 && !loadingAthletes && isAssistant && (
                 <p style={{ margin: 0, fontSize: 'var(--fs-3)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
-                  {team.role === 'assistant' ? team.headName : 'Your head coach'} has not added any athletes yet. They will appear here when they do.
+                  {team.role === 'assistant' ? team.headName : 'Your head coach'} has not given you any athletes yet. They choose who you coach, and the athletes will appear here when they do.
                 </p>
               )}
               {athletes.length === 0 && !loadingAthletes && !isAssistant && (() => {

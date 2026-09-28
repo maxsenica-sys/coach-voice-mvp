@@ -15,7 +15,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { errorMessage } from '@/lib/errors'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, coachesRow } from '@/lib/coach-scope'
 
 export const runtime = 'nodejs'
 
@@ -43,7 +43,7 @@ function attach(res: NextResponse, cookies: CookieToSet[]) {
   return res
 }
 
-/** Resolves the caller and proves the session is their team's (lib/coach-scope.ts). */
+/** Resolves the caller and proves the session is their team's, and for an assistant their athlete's (lib/coach-scope.ts). */
 async function requireOwnedSession(req: NextRequest, sessionId: string) {
   const { supabase, cookiesToSet } = createSupabase(req)
   const { data: { user } } = await supabase.auth.getUser()
@@ -54,10 +54,11 @@ async function requireOwnedSession(req: NextRequest, sessionId: string) {
   const admin = createSupabaseAdminClient()
   const scope = await resolveCoachScope(supabase, user.id)
   const { data: session } = await admin
-    .from('sessions').select('id, coach_id')
+    .from('sessions').select('id, coach_id, athlete_id')
     .eq('id', sessionId).eq('coach_id', scope.headId).maybeSingle()
 
-  if (!session) {
+  // For an assistant, only a session of an athlete they were given (035).
+  if (!session || !coachesRow(scope, session)) {
     return { error: attach(NextResponse.json({ error: 'Session not found or not yours.' }, { status: 403 }), cookiesToSet) } as const
   }
 

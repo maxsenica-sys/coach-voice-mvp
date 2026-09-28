@@ -6,7 +6,7 @@ import { readinessToMetrics } from '@/lib/readiness'
 import { notifyWellnessAlert } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, athleteFilter } from '@/lib/coach-scope'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -48,12 +48,20 @@ export async function GET(req: NextRequest) {
     .gte('check_date', since.toISOString().split('T')[0])
     .order('check_date', { ascending: true })
 
-  // Without an athlete, "all my athletes' check-ins": for an assistant, the
-  // team's. RLS decides what either query may return (migration 034 lets an
-  // assistant read the head's check-ins only while can_view_wellness is on).
-  query = athleteId
-    ? query.eq('athlete_id', athleteId)
-    : query.eq('coach_id', (await resolveCoachScope(supabase, user.id)).headId)
+  // Without an athlete, "all my athletes' check-ins": for an assistant, those
+  // of the athletes their head gave them. RLS decides what either query may
+  // return (034 and 035 let an assistant read a given athlete's check-ins only
+  // while can_view_wellness is on); the list is narrowed here as well so the
+  // route says what it serves. With an athlete id, the caller may be that
+  // athlete, so RLS alone answers.
+  if (athleteId) {
+    query = query.eq('athlete_id', athleteId)
+  } else {
+    const scope = await resolveCoachScope(supabase, user.id)
+    const only = athleteFilter(scope)
+    query = query.eq('coach_id', scope.headId)
+    if (only) query = query.in('athlete_id', only)
+  }
 
   const { data, error } = await query
 

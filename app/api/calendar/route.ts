@@ -12,7 +12,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { notifyCalendarEventCreated } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
-import { resolveCoachScope, teamCoachIds } from '@/lib/coach-scope'
+import { resolveCoachScope, teamCoachIds, canSeeAthlete } from '@/lib/coach-scope'
 
 
 function createSupabase(req: NextRequest) {
@@ -108,7 +108,10 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await q
     if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
-    return attach(NextResponse.json({ events: data ?? [] }), cookiesToSet)
+    // An assistant's calendar holds the athletes they were given, and their
+    // own appointments — not the team's events for everyone else.
+    const events = (data ?? []).filter((e: { athlete_id: string | null }) => e.athlete_id === null || canSeeAthlete(scope, e.athlete_id))
+    return attach(NextResponse.json({ events }), cookiesToSet)
   }
 
   // Group calendar (all athletes in group)
@@ -118,7 +121,8 @@ export async function GET(req: NextRequest) {
     if (!group) return attach(NextResponse.json({ error: 'Group not found' }, { status: 404 }), cookiesToSet)
 
     const { data: members } = await admin.from('group_members').select('athlete_id').eq('group_id', groupIdP)
-    const athleteIds = (members ?? []).map((m: { athlete_id: string }) => m.athlete_id)
+    // For an assistant, the squad's members they were given.
+    const athleteIds = (members ?? []).map((m: { athlete_id: string }) => m.athlete_id).filter((aid: string) => canSeeAthlete(scope, aid))
 
     if (athleteIds.length === 0) return attach(NextResponse.json({ events: [] }), cookiesToSet)
 
@@ -136,6 +140,7 @@ export async function GET(req: NextRequest) {
 
   // Single athlete calendar
   if (athleteIdP) {
+    if (!canSeeAthlete(scope, athleteIdP)) return attach(NextResponse.json({ error: 'Athlete not found.' }, { status: 404 }), cookiesToSet)
     let q = admin.from('calendar_events').select(baseSelect)
       .eq('athlete_id', athleteIdP)
       .in('created_by_user_id', team)
@@ -227,9 +232,14 @@ export async function POST(req: NextRequest) {
     if (!groupCheck) return attach(NextResponse.json({ error: 'Group not found' }, { status: 404 }), cookiesToSet)
 
     const { data: members } = await admin.from('group_members').select('athlete_id').eq('group_id', group_id)
-    const athleteIds = (members ?? []).map((m: { athlete_id: string }) => m.athlete_id)
+    // An assistant schedules for the squad members they were given, and no one
+    // else: an event is a notification in a child's inbox.
+    const athleteIds = (members ?? []).map((m: { athlete_id: string }) => m.athlete_id).filter((aid: string) => canSeeAthlete(scope, aid))
 
-    if (athleteIds.length === 0) return attach(NextResponse.json({ error: 'Group has no members' }, { status: 400 }), cookiesToSet)
+    if (athleteIds.length === 0) {
+      const msg = scope.isHead ? 'Group has no members' : 'None of this squad’s athletes have been given to you.'
+      return attach(NextResponse.json({ error: msg }, { status: 400 }), cookiesToSet)
+    }
 
     const rows = athleteIds.map((aid: string) => ({
       athlete_id: aid,
@@ -260,6 +270,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── COACH: single athlete event ──
+  if (!canSeeAthlete(scope, athlete_id)) return attach(NextResponse.json({ error: 'Athlete not found in your roster.' }, { status: 403 }), cookiesToSet)
   const { data: ath } = await admin.from('athletes').select('id').eq('id', athlete_id).eq('coach_id', scope.headId).maybeSingle()
   if (!ath) return attach(NextResponse.json({ error: 'Athlete not found in your roster.' }, { status: 403 }), cookiesToSet)
 

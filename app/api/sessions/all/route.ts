@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
-import { resolveCoachScope } from '@/lib/coach-scope'
+import { resolveCoachScope, athleteFilter, canSeeAthlete, recordingsWithheld } from '@/lib/coach-scope'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -44,9 +45,18 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get('search') ?? ''
   const athleteId = req.nextUrl.searchParams.get('athlete_id') ?? ''
 
-  // The team's sessions: an assistant sees the head's, including the head's own.
+  // The team's sessions: an assistant sees those of the athletes their head
+  // gave them, including the head's own recordings of them (migration 035).
+  // On the service role, narrowed to that list: 035 hides from an assistant
+  // the whole row of a squad talk they were not given all of, and their
+  // athlete's summary of it still belongs in the feed. Its audio is withheld.
   const scope = await resolveCoachScope(supabase, user.id)
-  let query = supabase
+  const only = athleteFilter(scope)
+  if (athleteId && !canSeeAthlete(scope, athleteId)) {
+    return attach(NextResponse.json({ sessions: [], hasMore: false, offset, limit }), cookiesToSet)
+  }
+  const admin = only ? createSupabaseAdminClient() : null
+  let query = (admin ?? supabase)
     .from('sessions')
     .select(`
       id,
@@ -58,6 +68,9 @@ export async function GET(req: NextRequest) {
       created_at,
       athlete_id,
       audio_path,
+      group_id,
+      shared_recording_id,
+      recorded_by,
       athletes!inner(id, first_name, last_name, email)
     `)
     .eq('coach_id', scope.headId)
@@ -66,19 +79,25 @@ export async function GET(req: NextRequest) {
     .range(offset, offset + limit - 1)
 
   if (athleteId) query = query.eq('athlete_id', athleteId)
+  if (only) query = query.in('athlete_id', only)
 
   if (search) {
-    query = query.or(
-      `session_name.ilike.%${search}%,title.ilike.%${search}%,transcript.ilike.%${search}%,summary.ilike.%${search}%`
-    )
+    // An assistant does not search transcripts: a match would say what was
+    // said in a squad talk they may not read.
+    query = query.or(only
+      ? `session_name.ilike.%${search}%,title.ilike.%${search}%,summary.ilike.%${search}%`
+      : `session_name.ilike.%${search}%,title.ilike.%${search}%,transcript.ilike.%${search}%,summary.ilike.%${search}%`)
   }
 
   const { data, error } = await query
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 
+  const withheld = admin ? await recordingsWithheld(admin, scope, data ?? []) : new Set<string>()
+  const sessions = (data ?? []).map((s) => withheld.has(s.id) ? { ...s, audio_path: null } : s)
+
   return attach(NextResponse.json({
-    sessions: data ?? [],
+    sessions,
     hasMore: (data ?? []).length === limit,
     offset,
     limit,
