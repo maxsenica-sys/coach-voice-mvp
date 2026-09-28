@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+import { getTeam } from '@/lib/team-client'
 import { formatSessionDate } from '@/lib/session-date'
 
 interface SessionData {
@@ -289,23 +290,30 @@ export default function SessionPDFPage() {
         .single()
       setCoach(profile)
 
-      /* The coach's own sessions only. This report prints the full
+      /* The coaching team's own sessions only. This report prints the full
        * transcript, and the RLS policy an athlete reads through used to hand
        * them the whole row — so an athlete who opened this URL for a squad
        * recording, or one recording about several athletes, got a printable
        * transcript of the coach talking about other children. The athlete's
        * copy of a session is the session page, whose detail route decides the
        * transcript per viewer. Pinned here as well as in migration 033 so the
-       * page is correct whichever of the two is live. */
+       * page is correct whichever of the two is live.
+       *
+       * "Own" is the team's: sessions belong to the head coach whoever recorded
+       * them (migration 034), so an assistant filters on their head's id. That
+       * id only narrows the query — whether the row is readable at all is the
+       * staff policy's decision, read live from coach_staff. */
+      const team = await getTeam()
+      const ownerId = team.role === 'assistant' ? team.headId : user.id
       const { data: s, error: sErr } = await supabase
         .from('sessions')
         .select('*, athletes(first_name, last_name, email)')
         .eq('id', id)
-        .eq('coach_id', user.id)
+        .eq('coach_id', ownerId)
         .maybeSingle()
 
       if (sErr) { setError(`Could not load this session: ${sErr.message}`); setLoading(false); return }
-      if (!s) { setError('Session not found. Only the coach who recorded a session can print its report.'); setLoading(false); return }
+      if (!s) { setError('Session not found. Only the coaching team a session belongs to can print its report.'); setLoading(false); return }
       setSession(s)
       setLoading(false)
     }
