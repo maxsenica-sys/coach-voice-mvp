@@ -67,17 +67,36 @@ def as_note(recording, vault_name):
     )
 
 
-def describe(note, action, due, ref, vault_name):
+def source_line(note):
+    return f"Source: {note.title} ({note.on.isoformat()})"
+
+
+def recording_marker(recording_id):
+    """The recording's own id, written into every task it produces.
+
+    `ref` identifies one task; this identifies the recording. The difference
+    matters because two runs that word the same commitment differently produce
+    different refs, and then nothing stops the second run recreating all of it.
+    That happened twice: on 2026-09-12 and again on 2026-09-28, when another
+    session analysed the same Pocket call and Todoist ended up with two sets of
+    tasks for one conversation. A recording that has already produced tasks is
+    skipped whole, however its tasks happen to be phrased.
+    """
+    return f"rec: {recording_id}"
+
+
+def describe(note, action, due, ref, vault_name, recording_id):
     parts = []
     if action.context:
         parts.append(action.context)
     if due and due.phrase:
         parts.append(f'Said: "{due.phrase}" on {note.on.isoformat()}.')
 
-    provenance = [f"Source: {note.title} ({note.on.isoformat()})"]
+    provenance = [source_line(note)]
     if vault_name:
         provenance.append(
             "Obsidian: " + vault.obsidian_search_uri(vault_name, note.title))
+    provenance.append(recording_marker(recording_id))
     provenance.append(f"ref: {ref}")
     parts.append("\n".join(provenance))
     return "\n\n".join(parts)
@@ -89,14 +108,29 @@ def build(recordings, extractions, existing, projects, config):
 
     known_refs = set()
     existing_titles = []
+    existing_blob = []
     for task in existing or []:
-        known_refs |= dedupe.refs_in(task.get("description", ""))
+        description = task.get("description", "")
+        known_refs |= dedupe.refs_in(description)
         existing_titles.append(task.get("content", ""))
+        existing_blob.append(description)
+    existing_blob = "\n".join(existing_blob)
 
     create, skipped = [], []
 
     for recording in recordings:
         note = as_note(recording, vault_name)
+
+        # Has this recording already produced tasks, by any run and in any
+        # wording? The id is the reliable signal; the Source line is the bridge
+        # for tasks written before ids were stamped.
+        already = (recording_marker(recording["recording_id"]) in existing_blob
+                   or source_line(note) in existing_blob)
+        if already:
+            skipped.append({"recording": note.title,
+                            "reason": "this recording already has tasks in Todoist"})
+            continue
+
         payload = extractions.get(recording["recording_id"])
         if payload is None:
             skipped.append({"recording": note.title,
@@ -137,7 +171,8 @@ def build(recordings, extractions, existing, projects, config):
                 "ref": ref,
                 "recording_id": recording["recording_id"],
                 "content": title,
-                "description": describe(note, action, due, ref, vault_name),
+                "description": describe(note, action, due, ref, vault_name,
+                                        recording["recording_id"]),
                 "projectId": decision.project_id,
                 "project_name": decision.project_name,
                 "labels": decision.labels,

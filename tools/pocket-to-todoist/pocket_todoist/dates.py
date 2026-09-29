@@ -174,6 +174,18 @@ def resolve_due(phrase, anchor, config=None):
     offer(r"\bin (\d+|a|an|one|two|three|four|five|six|seven) (day|week|month)s?\b",
           lambda m: _relative(anchor, m.group(1), m.group(2)))
 
+    # "within the next three weeks", "in the next 2 days", "next three weeks".
+    # A deadline stated this way is a real one, and it used to resolve to
+    # nothing: the number sits between "next" and the unit, so neither the
+    # "in N weeks" pattern nor the "next week" pattern could see it. Found when
+    # a coaching call promised gym plans "within these next three weeks" and
+    # the resulting task came out with no due date at all.
+    offer(r"\b(?:with)?in (?:the |these |this )?next "
+          r"(\d+|a|an|one|two|three|four|five|six|seven) (day|week|month)s?\b",
+          lambda m: _relative(anchor, m.group(1), m.group(2)))
+    offer(r"\bnext (\d+|two|three|four|five|six|seven) (day|week|month)s\b",
+          lambda m: _relative(anchor, m.group(1), m.group(2)))
+
     offer(r"\b(?:by |before |at )?(?:the )?end of (?:the |this )?month\b",
           lambda m: _end_of_month(anchor))
 

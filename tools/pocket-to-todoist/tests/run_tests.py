@@ -102,6 +102,13 @@ DUE_CASES = [
     ("next weekend", date(2026, 9, 19), "08:00:00"),
     ("in 3 days", date(2026, 9, 12), "08:00:00"),
     ("in two weeks", date(2026, 9, 23), "08:00:00"),
+    # A number between "next" and the unit. Every one of these resolved to
+    # nothing before 2026-09-29.
+    ("within these next three weeks", date(2026, 9, 30), "08:00:00"),
+    ("within the next three weeks", date(2026, 9, 30), "08:00:00"),
+    ("in the next two days", date(2026, 9, 11), "08:00:00"),
+    ("next three weeks", date(2026, 9, 30), "08:00:00"),
+    ("in the next 2 weeks", date(2026, 9, 23), "08:00:00"),
     ("before training", date(2026, 9, 9), "08:00:00"),   # via phrase_map
     ("after training", date(2026, 9, 9), "18:00:00"),    # phrase_map + evening cue
     ("end of the month", date(2026, 9, 30), "08:00:00"),
@@ -637,7 +644,58 @@ def rig_plan():
                 for t in result["create"]]
     again = plan_module.build(list(recordings), extractions, existing, projects, config)
     equal("plan: re-planning creates nothing", len(again["create"]), 0)
-    check("plan: and says why", all("ref already" in s["reason"] for s in again["skipped"]))
+    check("plan: re-planning is stopped at the recording, before the refs",
+          all("already has tasks" in s["reason"] for s in again["skipped"]),
+          again["skipped"])
+
+    # The ref layer still has to work on its own, for a task that carries a ref
+    # but no recording id -- which is every task written before ids existed.
+    ref_only = [{"id": "r", "content": t["content"],
+                 "description": f"ref: {t['ref']}"} for t in result["create"]]
+    by_ref = plan_module.build(list(recordings), extractions, ref_only, projects, config)
+    equal("plan: refs alone still suppress every task", len(by_ref["create"]), 0)
+    check("plan: and the ref layer says so",
+          all("ref already" in s["reason"] for s in by_ref["skipped"]),
+          by_ref["skipped"])
+
+    # A whole recording already processed, in wording nothing would match.
+    # This is the layer that refs and similarity both miss: two runs describing
+    # the same call differently. It fired for real twice before it existed.
+    foreign = [{"id": "other", "content": "Draft comprehensive S&C program for Matt",
+                "description": "Written by another session.\n"
+                               "rec: rec-1\nref: pkt-0000000000"}]
+    blocked = plan_module.build(list(recordings), extractions, foreign, projects, config)
+    equal("plan: a recording that already has tasks is skipped whole",
+          len(blocked["create"]), 0)
+    check("plan: and names the recording-level reason",
+          any("already has tasks" in s["reason"] for s in blocked["skipped"]),
+          blocked["skipped"])
+
+    # The bridge for tasks written before recording ids were stamped: they carry
+    # the Source line but no rec: marker.
+    legacy_source = [{"id": "old", "content": "Something else entirely",
+                      "description": "Source: Chat about Kevin and HPA (2026-09-11)"}]
+    bridged = plan_module.build(list(recordings), extractions, legacy_source,
+                                projects, config)
+    equal("plan: the Source line alone is enough to recognise the recording",
+          len(bridged["create"]), 0)
+
+    # A DIFFERENT recording must not be swept up by either signal.
+    other_rec = [{"recording_id": "rec-2", "title": "A different call",
+                  "date": "2026-09-11", "transcript": "x"}]
+    other_ext = {"rec-2": {"action_items": [
+        {"title": "Book the court", "context": "", "owner": "me", "owner_name": "",
+         "due_phrase": "", "priority": "normal", "topic": "Coaching"}],
+        "ideas": [], "notes": [], "decisions": []}}
+    unaffected = plan_module.build(other_rec, other_ext, foreign, projects, config)
+    equal("plan: a different recording is still processed",
+          len(unaffected["create"]), 1)
+
+    # Every task must carry its recording id, or the skip above can never fire.
+    stamped = plan_module.build(list(recordings), extractions, [], projects, config)
+    check("plan: every task carries its recording id",
+          all("rec: rec-1" in t["description"] for t in stamped["create"]),
+          [t["description"][-80:] for t in stamped["create"]][:1])
 
     # The case refs cannot cover: a task written by the OLD pipeline, which has
     # no ref in its description at all.
