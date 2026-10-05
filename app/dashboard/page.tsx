@@ -199,15 +199,6 @@ function Brand({ rolecap }: { rolecap: string }) {
   )
 }
 
-function Eyebrow({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...cast(13, 700, '.26em'), color: 'var(--text-2)' }}>
-      <i aria-hidden style={{ width: 7, height: 7, background: 'var(--text-2)', flex: 'none', transform: 'skewX(-14deg)' }} />
-      {children}
-    </div>
-  )
-}
-
 /** A section rule: the title, and either a side note or a way through. */
 function SecHead({ title, side, action }: {
   title: React.ReactNode; side?: React.ReactNode; action?: { label: string; onClick: () => void }
@@ -1806,6 +1797,31 @@ function DashboardPageInner() {
 
         <div style={{ padding: tab === 'messages' ? 0 : isMobile ? `12px ${GUTTER} 0` : '28px' }}>
 
+          {/* Day wheel, first thing on the coach's home (Max, 2026-10-05: "the
+              calendar should actually sit above all that stuff"). Scrolls back
+              through what you've done and forward through what's booked, with a
+              Today control. */}
+          {tab === 'home' && (
+              <div style={{ marginBottom: 14 }}>
+                {homeEventsError && (
+                  <div role="alert" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8, padding: '6px 6px 6px 12px', borderRadius: 8, background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 'var(--fs-2)', fontWeight: 600 }}>
+                    <span style={{ flex: '1 1 160px', minWidth: 0, overflowWrap: 'anywhere' }}>{homeEventsError} Events below may be missing or out of date.</span>
+                    <button onClick={() => void refreshHomeEvents()} className="btn btn-ghost" style={{ minHeight: 44, padding: '0 14px' }}>Retry</button>
+                  </div>
+                )}
+                <DayWheel
+                  events={homeWeekEvents as WheelEvent[]}
+                  selectedDay={homeSelectedDay}
+                  onSelectDay={setHomeSelectedDay}
+                  headerAction={
+                    <button onClick={() => setTab('calendar')} style={{ ...cast(13, 700, '.12em'), color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: 0, minHeight: 44, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                      Calendar <Icon name="arrow" size={13} />
+                    </button>
+                  }
+                />
+              </div>
+          )}
+
           {tab !== 'messages' && (
             <div style={{ marginBottom: 18 }}>
               <Ticker>
@@ -1837,8 +1853,9 @@ function DashboardPageInner() {
               <section>
                 {quietAthletes.length > 0 ? (
                   <>
-                    <Eyebrow>Inactive</Eyebrow>
-                    <h1 style={{ margin: '11px 0 0', fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, lineHeight: 1.12, letterSpacing: -0.6, color: 'var(--text)' }}>
+                    {/* No "Inactive" label over it (Max, 2026-10-05): the
+                        sentence says it, and Open goes to that filter. */}
+                    <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, lineHeight: 1.12, letterSpacing: -0.6, color: 'var(--text)' }}>
                       {quietWord} athlete{quietAthletes.length === 1 ? ' hasn’t' : 's haven’t'} had a session in{' '}
                       <em style={{ fontStyle: 'italic', fontWeight: 500, background: `linear-gradient(transparent 68%, ${tint('var(--primary)', 26)} 68%)` }}>{quietSpan}</em>.
                     </h1>
@@ -2053,82 +2070,6 @@ function DashboardPageInner() {
                 </section>
               )}
 
-              {/* Day wheel — scrolls back through what you've done and
-                  forward through what's booked, with a Today control. */}
-              <div>
-                {homeEventsError && (
-                  <div role="alert" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8, padding: '6px 6px 6px 12px', borderRadius: 8, background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 'var(--fs-2)', fontWeight: 600 }}>
-                    <span style={{ flex: '1 1 160px', minWidth: 0, overflowWrap: 'anywhere' }}>{homeEventsError} Events below may be missing or out of date.</span>
-                    <button onClick={() => void refreshHomeEvents()} className="btn btn-ghost" style={{ minHeight: 44, padding: '0 14px' }}>Retry</button>
-                  </div>
-                )}
-                <DayWheel
-                  events={homeWeekEvents as WheelEvent[]}
-                  selectedDay={homeSelectedDay}
-                  onSelectDay={setHomeSelectedDay}
-                  headerAction={
-                    <button onClick={() => setTab('calendar')} style={{ ...cast(13, 700, '.12em'), color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: 0, minHeight: 44, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                      Calendar <Icon name="arrow" size={13} />
-                    </button>
-                  }
-                />
-              </div>
-
-              {/* Your athletes. A wrapping grid rather than the sideways strip
-                  it was: nothing on this page scrolls horizontally. */}
-              {athletes.length > 0 && (
-                <section>
-                  <SecHead title="Athletes" action={{ label: 'Roster', onClick: () => setTab('athletes') }} />
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))', gap: 9, marginTop: 6 }}>
-                    {athletes.map((a) => {
-                      const status = statusOf(a)
-                      const unread = (unreadCounts[a.id] ?? 0) as number
-                      const wellnessRow = wellnessByAthlete.get(a.id) ?? null
-                      const wellnessScore = overallWellnessScore(wellnessRow)
-                      const wellnessColor = overallScoreColor(wellnessScore)
-                      // What pulled it down, only when it is not good: a calm
-                      // roster stays calm, and a 2.6 says "Sleep 2" instead of
-                      // leaving the coach to open the profile to find out.
-                      const driver = wellnessScore !== null && wellnessScore < 3.5 ? wellnessDriver(wellnessRow, regionLabel) : null
-                      return (
-                        /* A real <button>, so it is keyboard reachable and
-                         * announced as a control. A coach tapping their own
-                         * athlete gets their profile. */
-                        <button
-                          key={a.id}
-                          type="button"
-                          onClick={() => router.push(`/athletes/${a.id}`)}
-                          aria-label={`Open ${a.first_name} ${a.last_name ?? ''}`.trim() + (unread > 0 ? `, ${unread} unread` : '') + (driver ? `, wellness ${wellnessScore}: ${driver.full}` : '')}
-                          style={{ minWidth: 0, background: PANEL, borderRadius: 14, border: HAIR, padding: '12px 6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative', cursor: 'pointer', font: 'inherit', color: 'inherit', textAlign: 'center' }}>
-                          {unread > 0 && <div style={{ position: 'absolute', top: 5, right: 5, minWidth: 20, minHeight: 20, lineHeight: 1, borderRadius: 99, background: 'var(--coach-on-light)', color: 'var(--on-primary)', ...cast(13, 800, '0'), padding: '0 5px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</div>}
-                          <Mono initials={initialsOf(a.first_name, a.last_name)} pending={status === 'INVITED'} size={40} />
-                          <div style={{ ...cast(15, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere', maxWidth: '100%' }}>{a.first_name}{a.last_name ? ` ${a.last_name.trim()[0]}.` : ''}</div>
-                          {wellnessScore !== null ? (
-                            <>
-                              <div title={`Wellness ${wellnessScore}/5${driver ? ` — ${driver.full}` : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
-                                <span style={{ ...MONO, fontSize: 13, fontWeight: 700, color: wellnessColor }}>{wellnessScore}</span>
-                              </div>
-                              {driver && (
-                                <div style={{ fontSize: 13, lineHeight: 1.2, color: 'var(--text-2)', overflowWrap: 'anywhere', maxWidth: '100%' }}>{driver.short}</div>
-                              )}
-                            </>
-                          ) : (
-                            <div style={{ ...cast(13, 700, '.12em'), color: status === 'INVITED' ? 'var(--energy-dark)' : 'var(--text-2)' }}>{status === 'INVITED' ? 'Pending' : 'Active'}</div>
-                          )}
-                        </button>
-                      )
-                    })}
-                    {!isAssistant && <button onClick={() => { setTab('athletes'); setShowAddAthlete(true) }} style={{ minWidth: 0, background: 'transparent', borderRadius: 14, border: '1px dashed var(--border)', padding: '12px 6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: 'var(--text-2)', cursor: 'pointer', font: 'inherit' }}>
-                      <div style={{ width: 40, height: 40, borderRadius: '50%', border: '1px dashed var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Icon name="plus" size={18} />
-                      </div>
-                      <div style={{ ...cast(13, 700, '.12em') }}>Invite</div>
-                    </button>}
-                  </div>
-                </section>
-              )}
-
               {/* Who has had least of your attention this month (lib/insights).
                   Coach-only, never on an athlete screen (verify:safeguard SG4).
                   Only worth showing once there is a roster to compare. */}
@@ -2274,10 +2215,23 @@ function DashboardPageInner() {
                   const unread = unreadCounts[a.id] ?? 0
                   const name = `${a.first_name} ${a.last_name}`
                   const invited = a.invited_at ? new Date(a.invited_at) : null
+                  // Their latest wellness rating sits under their initials —
+                  // moved here from the home screen (Max, 2026-10-05), with
+                  // what pulled it down when it is not good.
+                  const wellnessRow = wellnessByAthlete.get(a.id) ?? null
+                  const wellnessScore = overallWellnessScore(wellnessRow)
+                  const wellnessColor = overallScoreColor(wellnessScore)
+                  const driver = wellnessScore !== null && wellnessScore < 3.5 ? wellnessDriver(wellnessRow, regionLabel) : null
                   return (
-                    <div key={a.id} style={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', columnGap: 12, rowGap: 10, alignItems: 'center', padding: '12px 0', borderTop: i === 0 ? HAIR_2 : HAIR }}>
-                      <Link href={`/athletes/${a.id}`} tabIndex={-1} aria-hidden style={{ display: 'flex', textDecoration: 'none' }}>
+                    <div key={a.id} style={{ display: 'grid', gridTemplateColumns: '44px minmax(0, 1fr) auto', columnGap: 12, rowGap: 10, alignItems: 'center', padding: '12px 0', borderTop: i === 0 ? HAIR_2 : HAIR }}>
+                      <Link href={`/athletes/${a.id}`} tabIndex={-1} aria-hidden style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, textDecoration: 'none' }}>
                         <Mono initials={initialsOf(a.first_name, a.last_name)} pending={pending} />
+                        {wellnessScore !== null && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
+                            <span style={{ ...MONO, fontSize: 13, fontWeight: 700, color: wellnessColor }}>{wellnessScore}</span>
+                          </span>
+                        )}
                       </Link>
                       <div style={{ minWidth: 0 }}>
                         <div>
@@ -2285,6 +2239,11 @@ function DashboardPageInner() {
                           {unread > 0 && <span role="img" aria-label={`${unread} unread`} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--coach-on-light)', display: 'inline-block', marginLeft: 8, verticalAlign: 2 }} />}
                         </div>
                         <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere', marginTop: 4 }}><BreakableEmail email={a.email} /></div>
+                        {wellnessScore !== null && (
+                          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere', marginTop: 4 }}>
+                            Wellness <span style={{ ...MONO, color: wellnessColor, fontWeight: 700 }}>{wellnessScore}</span>/5{driver ? <> · <span style={{ color: 'var(--text)' }}>{driver.full}</span></> : null}
+                          </div>
+                        )}
                         {pending && (
                           <div style={{ ...cast(13, 600, '.1em'), color: 'var(--text-2)', marginTop: 4, lineHeight: 1.35 }}>
                             {invited && <>Invited <span style={{ ...MONO, textTransform: 'none' }}>{invited.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span> · </>}Waiting to arrive
@@ -2337,7 +2296,6 @@ function DashboardPageInner() {
                 {/* The roll call — deliberately not a score. */}
                 <section>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <Eyebrow>Every athlete</Eyebrow>
                     {!isAssistant && <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6, marginLeft: 'auto', minHeight: 44 }}>
                       <Icon name="plus" size={14} /> Add Athlete
                     </button>}

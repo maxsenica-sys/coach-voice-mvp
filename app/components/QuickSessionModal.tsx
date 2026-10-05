@@ -951,7 +951,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           // Search, squad filter and a list that scrolls with the
           // sheet: the 132px chip box it replaces showed three rows
           // of a twenty-athlete roster. See AthletePicker.
-          <AthletePicker athletes={athletes} squads={groups} value={athleteId} onChange={setAthleteId} />
+          <AthletePicker compact athletes={athletes} squads={groups} value={athleteId} onChange={setAthleteId} />
         )
       ) : mode === 'several' ? (
         <div>
@@ -960,6 +960,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           </div>
           <AthletePicker
             multiple
+            compact
             athletes={athletes}
             squads={groups}
             value={athleteIds}
@@ -1074,6 +1075,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         </div>
         <h2
           id="qs-title"
+          className="qs-title"
           style={{ ...CAST, position: 'relative', zIndex: 1, margin: 0, padding: '4px 20px 0', fontSize: 28, letterSpacing: '0.035em', lineHeight: 1, color: 'var(--text)', flexShrink: 0, overflowWrap: 'anywhere' }}
         >
           {title}
@@ -1089,7 +1091,42 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
 
           {/* ── 1 · Who and when ── */}
           {phase === 1 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* When and what, side by side and first (Max, 2026-10-05):
+                  the date, the name, who it is for and the search should be
+                  one glance, with Start recording pinned below. Wraps to two
+                  rows only if a phone is too narrow for both. The day in words
+                  ("Today") is in the data line under the title. */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {/* Fixed width: a native date input does not shrink its text,
+                    so a narrower column clipped the year ("10/05/202"). */}
+                <div style={{ flex: '0 0 164px', minWidth: 0 }}>
+                  <label htmlFor="qs-date-1" style={LBL}>Date</label>
+                  <input
+                    id="qs-date-1"
+                    className="input"
+                    type="date"
+                    value={sessionDate}
+                    max={today}
+                    onChange={(e) => setSessionDate(e.target.value)}
+                    aria-describedby="qs-date-said"
+                    style={{ ...FIELD, width: '100%', minWidth: 0 }}
+                  />
+                  <span id="qs-date-said" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>{sessionDateLabel}</span>
+                </div>
+                <div style={{ flex: '1 1 100px', minWidth: 0 }}>
+                  <label htmlFor="qs-name" style={LBL}>Name</label>
+                  <input
+                    id="qs-name"
+                    className="input"
+                    placeholder="Optional"
+                    value={sessionName}
+                    onChange={(e) => setSessionName(e.target.value)}
+                    style={{ ...FIELD, width: '100%', minWidth: 0 }}
+                  />
+                </div>
+              </div>
+
               {targetSection}
 
               {/* ── Last time you said ──
@@ -1128,45 +1165,6 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                 </div>
               )}
 
-              {/* Session name */}
-              <div>
-                <label htmlFor="qs-name" style={{ ...LBL, display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <span>Session name</span>
-                  <span style={{ flex: 1 }} />
-                  <span style={{ fontWeight: 600, letterSpacing: '0.18em' }}>Optional</span>
-                </label>
-                <input
-                  id="qs-name"
-                  className="input"
-                  placeholder="e.g. Tackling drills, Speed work"
-                  value={sessionName}
-                  onChange={(e) => setSessionName(e.target.value)}
-                  style={FIELD}
-                />
-              </div>
-
-              {/* Session date. The sport and the chosen day already sit in
-                  the data line under the title, so there is no second sport
-                  box here. Wraps rather than squeezing: a native date input
-                  has a hard minimum width, and a too-wide row is invisibly
-                  clipped rather than scrollable. */}
-              <div>
-                <label htmlFor="qs-date-1" style={LBL}>Session date</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <input
-                    id="qs-date-1"
-                    className="input"
-                    type="date"
-                    value={sessionDate}
-                    max={today}
-                    onChange={(e) => setSessionDate(e.target.value)}
-                    style={{ ...FIELD, maxWidth: 200 }}
-                  />
-                  <span style={{ ...MONO, marginTop: 8, color: 'var(--text-2)', textTransform: sessionDate ? 'uppercase' : 'none', letterSpacing: sessionDate ? '0.07em' : 0 }}>
-                    {sessionDateLabel}
-                  </span>
-                </div>
-              </div>
             </div>
           )}
 
@@ -1784,6 +1782,13 @@ function MicGlyph() {
 const QS_LAYOUT_CSS = `
 .qs-scrim { align-items: flex-end; padding: 56px 0 0; }
 .qs-sheet { height: 100%; border-radius: 28px 28px 0 0; }
+/* A short phone (an iPhone SE or 8 is 667 tall) spends less on the frame, so
+   the setup — date, name, who, search, the first athletes — stays above the
+   pinned Start recording. */
+@media (max-height: 760px) {
+  .qs-scrim { padding-top: 12px; }
+  .qs-title { font-size: 22px !important; }
+}
 @media (min-width: 640px) {
   .qs-scrim { align-items: center; padding: 24px; }
   .qs-sheet { height: min(820px, 100%); border-radius: 28px; border: 1px solid var(--border); }
