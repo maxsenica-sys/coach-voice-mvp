@@ -23,6 +23,14 @@
  * Nothing is truncated: a long name wraps inside its tile. Tiles are at least
  * 48px tall. Selected is sage, not floodlight, because in the recorder
  * chartreuse means the microphone.
+ *
+ * `compact` (the recorder's setup, Max 2026-10-05): "the athlete should come
+ * up in a small box that I can then scroll through", so that the date, the
+ * name, who it is for, the search and Start recording are all in one glance.
+ * The search box is always shown, the matches sit one per row in a bordered
+ * box of about five rows that scrolls on its own (overscroll contained, so it
+ * does not drag the sheet), and the squad filter is left to the recorder's own
+ * Squad tab. Every name is still in full and wraps; rows are 44px.
  */
 
 import { useId, useMemo, useState, type CSSProperties } from 'react'
@@ -46,6 +54,8 @@ interface SingleProps<T extends NamedAthlete> {
    *  picker is itself the whole surface, e.g. the profile's switch sheet,
    *  so the current athlete stays highlighted in the list. */
   foldOnPick?: boolean
+  /** Search always on, matches in a small scrolling box. See the header. */
+  compact?: boolean
 }
 
 /**
@@ -63,6 +73,7 @@ interface MultiProps<T extends NamedAthlete> {
   /** The most that may be chosen. Tiles beyond it are disabled, with a reason. */
   max?: number
   searchFrom?: number
+  compact?: boolean
 }
 
 type Props<T extends NamedAthlete> = SingleProps<T> | MultiProps<T>
@@ -79,7 +90,7 @@ export default function AthletePicker<T extends NamedAthlete>(props: Props<T>) {
   return props.multiple ? <MultiAthletePicker {...props} /> : <SingleAthletePicker {...props} />
 }
 
-function SingleAthletePicker<T extends NamedAthlete>({ athletes, squads = [], value, onChange, searchFrom = 7, foldOnPick = true }: SingleProps<T>) {
+function SingleAthletePicker<T extends NamedAthlete>({ athletes, squads = [], value, onChange, searchFrom = 7, foldOnPick = true, compact = false }: SingleProps<T>) {
   const [open, setOpen] = useState(!value || !foldOnPick)
   const [query, setQuery] = useState('')
   const [squadId, setSquadId] = useState('')
@@ -126,7 +137,7 @@ function SingleAthletePicker<T extends NamedAthlete>({ athletes, squads = [], va
     )
   }
 
-  const showSearch = athletes.length >= searchFrom
+  const showSearch = compact || athletes.length >= searchFrom
 
   return (
     <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -167,7 +178,7 @@ function SingleAthletePicker<T extends NamedAthlete>({ athletes, squads = [], va
         </div>
       )}
 
-      {squads.length > 0 && (
+      {!compact && squads.length > 0 && (
         <div role="group" aria-label="Filter by squad" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {[{ id: '', name: 'All', member_ids: athletes.map((a) => a.id) }, ...squads].map((s) => {
             const on = squadId === s.id
@@ -208,6 +219,8 @@ function SingleAthletePicker<T extends NamedAthlete>({ athletes, squads = [], va
             Show everyone
           </button>
         </div>
+      ) : compact ? (
+        <CompactBox shown={shown} isOn={(id) => id === value} onPick={pick} label="Athletes" />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 7 }}>
           {shown.map((a) => {
@@ -249,7 +262,7 @@ function SingleAthletePicker<T extends NamedAthlete>({ athletes, squads = [], va
   )
 }
 
-function MultiAthletePicker<T extends NamedAthlete>({ athletes, squads = [], value, onChange, max = Infinity, searchFrom = 7 }: MultiProps<T>) {
+function MultiAthletePicker<T extends NamedAthlete>({ athletes, squads = [], value, onChange, max = Infinity, searchFrom = 7, compact = false }: MultiProps<T>) {
   const [open, setOpen] = useState(value.length === 0)
   const [query, setQuery] = useState('')
   const [squadId, setSquadId] = useState('')
@@ -338,7 +351,7 @@ function MultiAthletePicker<T extends NamedAthlete>({ athletes, squads = [], val
     )
   }
 
-  const showSearch = athletes.length >= searchFrom
+  const showSearch = compact || athletes.length >= searchFrom
 
   return (
     <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -381,7 +394,7 @@ function MultiAthletePicker<T extends NamedAthlete>({ athletes, squads = [], val
         </div>
       )}
 
-      {squads.length > 0 && (
+      {!compact && squads.length > 0 && (
         <div role="group" aria-label="Filter by squad" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {[{ id: '', name: 'All', member_ids: athletes.map((a) => a.id) }, ...squads].map((s) => {
             const on = squadId === s.id
@@ -422,6 +435,14 @@ function MultiAthletePicker<T extends NamedAthlete>({ athletes, squads = [], val
             Show everyone
           </button>
         </div>
+      ) : compact ? (
+        <CompactBox
+          shown={shown}
+          isOn={(id) => value.includes(id)}
+          isBlocked={(id) => !value.includes(id) && full}
+          onPick={toggle}
+          label="Athletes"
+        />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 7 }}>
           {shown.map((a) => {
@@ -466,6 +487,57 @@ function MultiAthletePicker<T extends NamedAthlete>({ athletes, squads = [], val
           Done
         </button>
       )}
+    </div>
+  )
+}
+
+/** The compact list: one athlete per row in a box that scrolls on its own. */
+function CompactBox<T extends NamedAthlete>({ shown, isOn, isBlocked, onPick, label }: {
+  shown: T[]
+  isOn: (id: string) => boolean
+  isBlocked?: (id: string) => boolean
+  onPick: (id: string) => void
+  label: string
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      style={{
+        // About five rows, fewer on a short phone: sized to what is left
+        // above the recorder's pinned Start button, never under two and a half.
+        maxHeight: 'clamp(120px, calc(100dvh - 540px), 236px)',
+        overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
+        border: '1px solid var(--border)', borderRadius: 14, background: 'var(--card)',
+      }}
+    >
+      {shown.map((a, i) => {
+        const on = isOn(a.id)
+        const blocked = isBlocked?.(a.id) ?? false
+        return (
+          <button
+            key={a.id}
+            type="button"
+            aria-pressed={on}
+            disabled={blocked}
+            onClick={() => onPick(a.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0, minHeight: 46,
+              padding: '6px 12px', textAlign: 'left', border: 'none',
+              borderTop: i === 0 ? 'none' : '1px solid var(--border-soft)',
+              cursor: blocked ? 'not-allowed' : 'pointer', opacity: blocked ? 0.55 : 1,
+              background: on ? 'var(--primary)' : 'transparent',
+              color: on ? 'var(--on-primary)' : 'var(--text)',
+            }}
+          >
+            <span aria-hidden style={{ ...monogram(on), width: 28, height: 28 }}>{initials(a)}</span>
+            <span style={{ ...CAST, flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700, letterSpacing: '0.05em', lineHeight: 1.15, overflowWrap: 'anywhere' }}>
+              {a.first_name} {a.last_name}
+            </span>
+            {on && <span aria-hidden style={{ flexShrink: 0, fontSize: 15, fontWeight: 800 }}>✓</span>}
+          </button>
+        )
+      })}
     </div>
   )
 }
