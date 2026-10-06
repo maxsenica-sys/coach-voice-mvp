@@ -311,7 +311,7 @@ await check('PU10', 'The worker shows a title and never a body, whatever the pay
     if ('body' in n.options) bad.push('options carry a body')
     if (JSON.stringify(n).includes(SECRET)) bad.push('content from the payload reached the notification')
     if (n.options.data?.url !== '/athlete?tab=messages') bad.push(`data.url "${n.options.data?.url}"`)
-    if (n.options.icon !== '/icon-192.png') bad.push(`icon taken from the payload: ${n.options.icon}`)
+    if (n.options.icon !== '/icon-192.png?v=pindar1') bad.push(`icon taken from the payload: ${n.options.icon}`)
   }
   // A malformed push still shows something (a silent push costs the subscription).
   await w.fire('push', pushEvent(() => { throw new SyntaxError('bad json') }))

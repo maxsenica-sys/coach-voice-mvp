@@ -42,14 +42,22 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: '#1F2421',
     theme_color: '#1F2421',
     categories: ['sports', 'productivity', 'health'],
+    // The ?v= is what lets installs made before the rename pick up the laurel.
+    // Chrome on Android and desktop re-reads this manifest and updates an
+    // installed app's icon and name when they change, but the files kept their
+    // names when the art changed, so to Chrome the icons looked identical.
+    // Bump it (here, in app/layout.tsx and public/sw.js) whenever
+    // tools/build-icons.mjs is re-run. iOS never re-reads it at all; that is
+    // lib/reinstall-nudge.ts.
+    //
     // iOS ignores SVG icons on the home screen, so PNGs must be present or the
     // install falls back to a screenshot of the page. The maskable copy is
     // padded to the safe zone so Android doesn't crop the laurel.
     icons: [
-      { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-      { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+      { src: '/icon-192.png?v=pindar1', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/icon-512.png?v=pindar1', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/icon-maskable-512.png?v=pindar1', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: '/icon.svg?v=pindar1', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
     ],
     screenshots: [],
     shortcuts: [
@@ -61,7 +69,7 @@ export default function manifest(): MetadataRoute.Manifest {
         short_name: 'Record',
         url: '/dashboard?record=1',
         description: 'Start recording straight away',
-        icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
+        icons: [{ src: '/icon-192.png?v=pindar1', sizes: '192x192', type: 'image/png' }],
       },
       {
         name: 'Dashboard',

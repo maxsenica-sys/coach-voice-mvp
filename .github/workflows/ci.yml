@@ -158,6 +158,12 @@ jobs:
       # keep the second video inside its own length; and athleteMayViewVideo —
       # the one rule every video route calls — has to keep one child's video
       # away from another. All three type-check when they are wrong.
+      # The "get the new icon" prompt asks people to delete the app from their
+      # Home Screen, which deletes anything still waiting to upload. This
+      # holds it to never asking then, and to only asking old iPhone installs.
+      - name: New-icon prompt rig
+        run: npm run verify:reinstall
+
       - name: Video rig
         run: npm run verify:video
 

@@ -158,8 +158,8 @@ export const metadata: Metadata = {
   },
   formatDetection: { telephone: false },
   icons: {
-    icon: '/icon.svg',
-    apple: '/apple-icon.png',
+    icon: '/icon.svg?v=pindar1',
+    apple: '/apple-icon.png?v=pindar1',
   },
 }
 
@@ -450,6 +450,20 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
  * window.__cvBootLeave below, which is the single path all three dismissals
  * take. */
 (function () {
+  /* ── Was this installed before the rename? ────────────────────────────────
+   *
+   * Asked once, on the first launch of this version, and the answer kept: an
+   * install that has never written here is new and already has the laurel; one
+   * that has was installed as CoachVoice. It has to be decided here, before the
+   * lines below write cv_intro_v1 / cv_splash_at, because this is the only code
+   * that runs before a fresh install has written anything. The iPhone prompt
+   * that uses it is lib/reinstall-nudge.ts. */
+  try {
+    if (!localStorage.getItem('pindar_install')) {
+      var had = localStorage.getItem('cv_intro_v1') || localStorage.getItem('cv_splash_at') || localStorage.getItem('cv_profile_v1')
+      localStorage.setItem('pindar_install', had ? 'before-rename' : 'after-rename')
+    }
+  } catch (e) { /* blocked storage: never asked, which is the safe answer */ }
   try {
     var d = document.documentElement
     var forced = location.search.indexOf('splash=1') > -1
@@ -645,7 +659,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Pindar" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-icon.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-icon.png?v=pindar1" />
         {/* iOS launch images — the screen the OS paints before the app exists.
             This is the "black screen delay when I open the app" in its most
             literal form. On an installed PWA the home-screen tap is answered by
