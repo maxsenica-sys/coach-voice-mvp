@@ -37,6 +37,7 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import sharp from 'sharp'
 import { join } from 'node:path'
 import { existsSync, readdirSync } from 'node:fs'
+import { laurelSvg, BRAND } from '../lib/brand-mark.ts'
 
 const ROOT = process.cwd()
 const OUT_DIR = join(ROOT, 'public', 'splash')
@@ -117,11 +118,8 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     font-size: 13px; font-style: italic;
   }
 </style></head><body>
-  <div class="m"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round">
-    <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
-    <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/>
-  </svg></div>
-  <div class="w">CoachVoice</div>
+  <div class="m"><div style="margin-top:2px">${laurelSvg('#FBF6EA', 84)}</div></div>
+  <div class="w">${BRAND}</div>
   <div class="t">Your private training journal</div>
 </body></html>`
 

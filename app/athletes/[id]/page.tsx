@@ -164,7 +164,7 @@ function buildSessionEmailHtml(sessionName: string, summary: string, athleteName
 <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:0.06em;color:#2563eb">AI Session Summary</h3>
 <div style="background:#eff6ff;border-left:4px solid #2563eb;padding:14px 16px;border-radius:4px;font-size:15px;line-height:1.7;white-space:pre-wrap">${body}</div>
 <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0">
-<p style="font-size:13px;color:#94a3b8">Sent via CoachVoice — the AI coaching platform</p>
+<p style="font-size:13px;color:#94a3b8">Sent via Pindar — the AI coaching platform</p>
 </body></html>`
 }
 
@@ -221,7 +221,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
     try {
       const html = buildSessionEmailHtml(
         'Test message',
-        `This is a test, sent by ${athleteName}'s coach to check that CoachVoice emails reach you.\n\nThere is no session to read and nothing you need to do. Real session updates will look like this one and will contain ${athleteName}'s actual notes.`,
+        `This is a test, sent by ${athleteName}'s coach to check that Pindar emails reach you.\n\nThere is no session to read and nothing you need to do. Real session updates will look like this one and will contain ${athleteName}'s actual notes.`,
         athleteName,
         'Coach',
         new Date().toLocaleDateString(),
@@ -232,7 +232,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
         body: JSON.stringify({
           athlete_id: athleteId,
           to: email,
-          subject: `Test — CoachVoice delivery check for ${athleteName}`,
+          subject: `Test — Pindar delivery check for ${athleteName}`,
           html,
         }),
       })

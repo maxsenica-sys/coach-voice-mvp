@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     to,
     subject: `Wellness update for ${athleteName}`,
     html,
-    fromName: `${coachName} via CoachVoice`,
+    fromName: `${coachName} via Pindar`,
     replyTo: user.email ?? undefined,
   })
 

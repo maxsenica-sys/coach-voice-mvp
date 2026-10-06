@@ -98,14 +98,14 @@ async function saveOnServer(sub: PushSubscription): Promise<void> {
  */
 export async function subscribeToPush(): Promise<'on' | 'denied'> {
   const key = pushPublicKey()
-  if (!key) throw new Error('Notifications are not set up on CoachVoice yet.')
-  if (pushSupport() !== 'ok') throw new Error('This browser cannot show notifications from CoachVoice.')
+  if (!key) throw new Error('Notifications are not set up on Pindar yet.')
+  if (pushSupport() !== 'ok') throw new Error('This browser cannot show notifications from Pindar.')
 
   const permission = await Notification.requestPermission()
   if (permission !== 'granted') return 'denied'
 
   const reg = await readyRegistration()
-  if (!reg) throw new Error('CoachVoice is still starting up on this device. Try again in a moment.')
+  if (!reg) throw new Error('Pindar is still starting up on this device. Try again in a moment.')
 
   const serverKey = keyBytes(key)
   let sub = await reg.pushManager.getSubscription()

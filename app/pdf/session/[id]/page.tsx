@@ -7,6 +7,8 @@ import { getTeam } from '@/lib/team-client'
 import { apiJson } from '@/lib/api-client'
 import { errorMessage } from '@/lib/errors'
 import { formatSessionDate } from '@/lib/session-date'
+import BrandMark from '@/app/components/BrandMark'
+import { laurelShapes } from '@/lib/brand-mark'
 
 interface SessionData {
   id: string
@@ -69,21 +71,11 @@ function summaryPoints(summary: string): string[] | null {
   return lines.map((l) => l.replace(/^[•\-*]\s*/, ''))
 }
 
-/** The mic mark, as the nameplate and the running-head chip both draw it. */
-const MIC_PATH = (
-  <>
-    <rect x="9" y="2" width="6" height="11" rx="3" />
-    <path d="M5 10.5v.5a7 7 0 0 0 14 0v-.5" />
-    <path d="M12 18.5V21" />
-  </>
-)
-
 /** The running-head chip: the nameplate shrunk to a stamp. */
 const CHIP_URL = `url("data:image/svg+xml,${encodeURIComponent(
   "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>" +
   "<rect width='24' height='24' rx='7' fill='#1F2421'/>" +
-  "<g transform='translate(5 5) scale(0.5833)' fill='none' stroke='#A8CBA0' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'>" +
-  "<rect x='9' y='2' width='6' height='11' rx='3'/><path d='M5 10.5v.5a7 7 0 0 0 14 0v-.5'/><path d='M12 18.5V21'/></g></svg>",
+  "<svg x='2.5' y='2.5' width='19' height='19' viewBox='0 0 48 48'>" + laurelShapes('#A8CBA0') + "</svg></svg>",
 )}")`
 
 const BASE_CSS = `
@@ -246,7 +238,7 @@ function pageCss(runRight: string, footLeft: string, footRight: string): string 
   size: A4;
   margin: 105px 0 89px;
   @top-left {
-    content: ${CHIP_URL} "  COACHVOICE  ·  SESSION REPORT";
+    content: ${CHIP_URL} "  PINDAR  ·  SESSION REPORT";
     font-family: var(--font-cast); font-weight: 800; font-size: 15px; letter-spacing: .2em; color: #1F2421;
     vertical-align: bottom; margin-left: 56px; width: 351px; padding-bottom: 32px; ${ticks}
   }
@@ -380,7 +372,7 @@ export default function SessionPDFPage() {
 
   const css = BASE_CSS + pageCss(
     `${athleteName} · ${sessionDateShort}`.toUpperCase(),
-    `COACHVOICE · GENERATED ${generated}`,
+    `PINDAR · GENERATED ${generated}`,
     `CONFIDENTIAL — ${athleteName.toUpperCase()}`,
   )
 
@@ -404,10 +396,10 @@ export default function SessionPDFPage() {
           <div className="gridlines" />
           <div className="inner">
             <div className="mark" aria-hidden>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">{MIC_PATH}</svg>
+              <BrandMark size={22} />
             </div>
             <div>
-              <div className="wordmark">COACHVOICE</div>
+              <div className="wordmark">PINDAR</div>
               <div className="rolecap">SESSION REPORT</div>
             </div>
             <div className="sp" />
@@ -508,7 +500,7 @@ export default function SessionPDFPage() {
 
           {/* Footer — on screen only; in print the page's margin boxes carry it */}
           <div className="screen-foot no-print">
-            <span>COACHVOICE · GENERATED {generated}</span>
+            <span>PINDAR · GENERATED {generated}</span>
             <span><b>CONFIDENTIAL</b> — {athleteName.toUpperCase()}</span>
           </div>
         </div>

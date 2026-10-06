@@ -1,4 +1,4 @@
-// ── CoachVoice Quote Database ────────────────────────────────────
+// ── Pindar Quote Database ────────────────────────────────────
 // Daily motivational quotes for coaches and athletes.
 // getDailyQuote() uses the calendar date as a seed so the same quote
 // shows all day and rotates automatically each morning.

@@ -4,7 +4,7 @@
 // message, a session title, a check-in note — passes through this before it
 // is interpolated into markup, because an email client renders what it is
 // given: an athlete who types <a href="…">tap here</a> into a message would
-// otherwise put a working link in their coach's inbox, under CoachVoice's name.
+// otherwise put a working link in their coach's inbox, under Pindar's name.
 //
 // Pure, and in lib/ so tools/email-rig.mjs can run it.
 
@@ -18,7 +18,7 @@ export function escapeHtml(s: string): string {
 }
 
 /**
- * A display name for a From header: "Jordan Lee via CoachVoice". A name is
+ * A display name for a From header: "Jordan Lee via Pindar". A name is
  * typed by a person, and inside `Name <address>` the characters < > " \ and a
  * line break are syntax — `Coach <someone@else.com>` would try to make the
  * mail claim a different sender. Those are dropped, whitespace is collapsed,
@@ -26,5 +26,5 @@ export function escapeHtml(s: string): string {
  */
 export function fromHeader(name: string | null | undefined, address: string): string {
   const clean = (name ?? '').replace(/[\r\n]+/g, ' ').replace(/[<>"\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120)
-  return `"${clean || 'CoachVoice'}" <${address}>`
+  return `"${clean || 'Pindar'}" <${address}>`
 }

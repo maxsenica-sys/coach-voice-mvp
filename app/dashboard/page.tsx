@@ -31,6 +31,7 @@ import { GROUP_COLORS, DEFAULT_GROUP_COLOR } from '@/lib/group-colors'
 import { errorMessage } from '@/lib/errors'
 import { getTeam, PENDING_INVITE_KEY, type Team } from '@/lib/team-client'
 import CoachingStaff from '@/app/components/CoachingStaff'
+import BrandMark from '@/app/components/BrandMark'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -189,10 +190,10 @@ function Brand({ rolecap }: { rolecap: string }) {
         border: '1.5px solid var(--primary)', color: 'var(--primary)', background: tint('var(--primary)', 9),
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <Icon name="mic" size={15} strokeWidth={2.2} />
+        <BrandMark size={21} />
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ ...cast(16, 700, '.22em'), lineHeight: 1, color: 'var(--text)' }}>CoachVoice</div>
+        <div style={{ ...cast(16, 700, '.22em'), lineHeight: 1, color: 'var(--text)' }}>Pindar</div>
         <div style={{ ...cast(13, 700, '.26em'), lineHeight: 1, color: 'var(--primary)', marginTop: 4 }}>{rolecap}</div>
       </div>
     </div>

@@ -154,5 +154,5 @@ export function assignmentDiff(current: readonly string[], next: readonly string
  * access to them. Plain: who, whose team, and what they can see.
  */
 export function assignedNoticeText(assistantName: string, headName: string): string {
-  return `${assistantName} is an assistant coach on ${headName}’s coaching team on CoachVoice, and can now see your sessions, messages and check-ins, and message you here.`
+  return `${assistantName} is an assistant coach on ${headName}’s coaching team on Pindar, and can now see your sessions, messages and check-ins, and message you here.`
 }

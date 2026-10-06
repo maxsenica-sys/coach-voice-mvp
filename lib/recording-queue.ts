@@ -45,6 +45,9 @@
 // No wrapper library: this is one object store and five operations, and a
 // dependency here would be larger than the code.
 
+// Still named for CoachVoice on purpose: the app is Pindar now, but renaming
+// this database would orphan anything already queued on a phone that went
+// offline before the rename. Never rename it.
 const DB_NAME = 'coachvoice-recordings'
 const DB_VERSION = 1
 const STORE = 'pending'

@@ -1,4 +1,4 @@
-# Brief: twelve sport silhouettes for the CoachVoice opening montage
+# Brief: twelve sport silhouettes for the Pindar opening montage
 
 Paste everything below the line into Claude Design (or any illustrator).
 It is written to be self-contained — it assumes no knowledge of this repo.

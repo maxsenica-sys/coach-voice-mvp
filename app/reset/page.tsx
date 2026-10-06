@@ -3,6 +3,7 @@ import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+import BrandMark from '@/app/components/BrandMark'
 
 /* Stadium Night — step three of the password reset. Steps one and two (ask
  * for a link, sent) live on `/`; the emailed link lands here. The step rail
@@ -191,12 +192,10 @@ function ResetForm() {
 
         <header className="sn-head">
           <span className="sn-mark" aria-hidden="true">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10.5v.5a7 7 0 0 0 14 0v-.5" /><path d="M12 18.5V21" />
-            </svg>
+            <BrandMark size={20} />
           </span>
           <div>
-            <div className="sn-wordmark">COACHVOICE</div>
+            <div className="sn-wordmark">PINDAR</div>
             <div className="sn-rolecap">Password reset</div>
           </div>
         </header>
@@ -237,7 +236,7 @@ function ResetForm() {
         ) : (
           <div className="sn-state">
             <h1 className="sn-title">Choose a password.</h1>
-            <p className="sn-body">Choose a secure password to access your CoachVoice portal.</p>
+            <p className="sn-body">Choose a secure password to access your Pindar portal.</p>
             {error && (
               <div role="alert" style={{
                 marginTop: 14,
@@ -334,7 +333,7 @@ function ResetForm() {
           margin: '20px 0 0', paddingTop: 12, borderTop: '1px solid var(--border)', textAlign: 'center',
           fontFamily: 'var(--font-mono)', fontSize: 'var(--t-furniture)', letterSpacing: '.07em', color: 'var(--text-2)',
         }}>
-          © 2026 COACHVOICE
+          © 2026 PINDAR
         </p>
       </div>
     </div>

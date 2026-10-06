@@ -18,7 +18,7 @@
 // a teammate on the bus. Many of the people receiving these are 13 to 18. So a
 // notification carries a TITLE naming who it is from and nothing else: never
 // the message text, a transcript, a summary, a wellness score or an injury.
-// "New message from Max" / "Max shared a new session" / "New message from
+// "New message from Max" / "Max gave you a nod" / "New message from
 // Mathilde". The payload type has no field that could hold more, the builder
 // constructs the object key by key rather than spreading any input into it,
 // and the serialiser picks those keys out again by name. The rig proves each
@@ -106,7 +106,7 @@ export function buildPushPayload(input: PushInput): PushPayload {
       })
     case 'session-shared':
       return Object.freeze({
-        title: `${pushDisplayName(input.coachFirstName, 'Your coach')} shared a new session`,
+        title: `${pushDisplayName(input.coachFirstName, 'Your coach')} gave you a nod`,
         url: '/athlete',
         tag: 'cv-session',
       })

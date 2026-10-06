@@ -5,6 +5,7 @@ import {
 } from '@/lib/montage-schedule'
 import localFont from 'next/font/local'
 import './globals.css'
+import BrandMark from './components/BrandMark'
 import './fonts/subsets.css'
 
 /* ── Type ──────────────────────────────────────────────────────────────────
@@ -147,13 +148,13 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'CoachVoice — AI-Powered Coaching Platform',
-  description: 'Voice-first coaching sessions, athlete management, and performance tracking.',
+  title: 'Pindar — the private journal between coach and athlete',
+  description: 'Your coach talks, Pindar writes it up: every athlete gets their own words from every session.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'CoachVoice',
+    title: 'Pindar',
   },
   formatDetection: { telephone: false },
   icons: {
@@ -415,7 +416,7 @@ ${MONTAGE_KEYFRAMES}
  * IntroSequence renders the frame it *resolves into* — the mark and the
  * wordmark, fully opaque — because that is also the resting state of "/" for
  * anyone who has already seen the sequence. That markup is what the server
- * sends, so on a cold start the browser paints "CoachVoice" the moment the
+ * sends, so on a cold start the browser paints "Pindar" the moment the
  * HTML lands and then holds it there for the whole JavaScript download. Only
  * once the component hydrated did its effect rewind the two elements to
  * invisible and start the animation — so the wordmark appeared, sat, blinked
@@ -643,7 +644,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="CoachVoice" />
+        <meta name="apple-mobile-web-app-title" content="Pindar" />
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-icon.png" />
         {/* iOS launch images — the screen the OS paints before the app exists.
             This is the "black screen delay when I open the app" in its most
@@ -722,13 +723,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             })}
           </svg>
 
+          {/* The laurel: lib/brand-mark.ts, the same geometry as the app icon
+              and the launch images, so the three are one picture. */}
           <div className="m">
-            <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round">
-              <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />
-              <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" />
-            </svg>
+            <BrandMark size={84} color="#FBF6EA" style={{ marginTop: 2 }} />
           </div>
-          <div className="w">CoachVoice</div>
+          <div className="w">Pindar</div>
           <div className="t">Your private training journal</div>
         </div>
         {children}

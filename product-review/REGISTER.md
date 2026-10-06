@@ -131,7 +131,7 @@ thirteen commits stale and had missed the entire entrance subsystem.
 | DESIGN-007 | 2026-09-09 | PROPOSED | STRETCH — an ink-native athlete app, keeping the promise the entrance spends 1.24 s making | TEST | — |
 
 **The convergence this round:** three of four agents independently described the
-same structural fact — **CoachVoice is a one-way pipe and nothing in it ever
+same structural fact — **Pindar is a one-way pipe and nothing in it ever
 closes a loop.** DATA-006 (the athlete gives five numbers a day and gets nothing
 back), WOW-003 (the coach says something and never learns whether it landed) and
 DATA-007 (the athlete cannot answer a session at all) are one thesis at three

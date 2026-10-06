@@ -1,4 +1,4 @@
-# CoachVoice
+# Pindar (formerly CoachVoice)
 
 A voice-first coaching platform. A coach records a session on their phone,
 Whisper transcribes it, GPT-4o-mini condenses it into bullets, and the coach

@@ -2,9 +2,9 @@ import { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'CoachVoice',
-    short_name: 'CoachVoice',
-    description: 'AI-powered voice coaching platform — record sessions, track athletes, build squads.',
+    name: 'Pindar',
+    short_name: 'Pindar',
+    description: 'The private journal between coach and athlete. Your coach talks; every athlete gets their own words from every session.',
     start_url: '/',
     display: 'standalone',
     orientation: 'portrait',
@@ -44,7 +44,7 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ['sports', 'productivity', 'health'],
     // iOS ignores SVG icons on the home screen, so PNGs must be present or the
     // install falls back to a screenshot of the page. The maskable copy is
-    // padded to the safe zone so Android doesn't crop the microphone.
+    // padded to the safe zone so Android doesn't crop the laurel.
     icons: [
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

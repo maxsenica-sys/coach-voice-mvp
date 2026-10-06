@@ -25,7 +25,7 @@ type SendEmailArgs = {
   to: string | string[]
   subject: string
   html: string
-  /** Shown in the From header, e.g. "Jordan Lee via CoachVoice". Defaults to "CoachVoice". */
+  /** Shown in the From header, e.g. "Jordan Lee via Pindar". Defaults to "Pindar". */
   fromName?: string
   /** Defaults to the RESEND_FROM_EMAIL env var, then a hardcoded fallback. */
   fromEmail?: string
@@ -78,7 +78,7 @@ export async function sendEmail({ to, subject, html, fromName, fromEmail, replyT
 }
 
 /**
- * The CoachVoice branded email shell every notification uses.
+ * The Pindar branded email shell every notification uses.
  *
  * `heading`, `ctaText` and `ctaHref` are TEXT and are escaped here, so a name
  * in a heading is safe whoever builds it. `bodyHtml` and `footerNote` are
@@ -104,7 +104,7 @@ export function renderBrandedEmail({
   <div style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;background:#1F2421;border-radius:12px;margin-bottom:12px">
     <span style="font-size:22px">🎙</span>
   </div>
-  <div style="font-weight:900;font-size:20px;letter-spacing:-0.5px;color:#1F2421">CoachVoice</div>
+  <div style="font-weight:900;font-size:20px;letter-spacing:-0.5px;color:#1F2421">Pindar</div>
 </div>
 <h1 style="font-size:22px;font-weight:800;margin:0 0 8px;letter-spacing:-0.3px">${escapeHtml(heading)}</h1>
 ${bodyHtml}
@@ -113,7 +113,7 @@ ${ctaText && ctaHref ? `<div style="text-align:center;margin:32px 0">
 </div>` : ''}
 ${footerNote ? `<p style="color:#5A6B87;font-size:13px;line-height:1.6;margin:24px 0 0">${footerNote}</p>` : ''}
 <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
-<p style="color:#5A6B87;font-size:13px;margin:0;text-align:center">Sent via CoachVoice · AI-powered coaching platform</p>
+<p style="color:#5A6B87;font-size:13px;margin:0;text-align:center">Sent via Pindar · the private journal between coach and athlete</p>
 </body></html>`
 }
 
@@ -178,20 +178,20 @@ export async function notifySessionShared({
     const appUrl = getAppBaseUrl(req)
 
     const html = renderBrandedEmail({
-      heading: 'New feedback from your coach',
+      heading: `${coachName} gave you a nod`,
       bodyHtml: `
-<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px"><strong>${escapeHtml(coachName)}</strong> just shared notes on <strong>${escapeHtml(title)}</strong> with you.</p>
+<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px"><strong>${escapeHtml(coachName)}</strong> gave you a nod from <strong>${escapeHtml(title)}</strong>: their notes from the session, written for you.</p>
 ${summary ? `<p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px;font-style:italic">&ldquo;${escapeHtml(summary.slice(0, 200))}${summary.length > 200 ? '…' : ''}&rdquo;</p>` : ''}`,
-      ctaText: 'View your feedback',
+      ctaText: 'Read your nod',
       ctaHref: `${appUrl}/athlete`,
-      footerNote: "You're receiving this because your coach shared a session with you on CoachVoice.",
+      footerNote: "You're receiving this because your coach shared a session with you on Pindar.",
     })
 
     await sendEmail({
       to: athlete.email,
-      subject: `${coachName} shared feedback with you`,
+      subject: `${coachName} gave you a nod`,
       html,
-      fromName: `${coachName} via CoachVoice`,
+      fromName: `${coachName} via Pindar`,
       replyTo: coachEmail ?? undefined,
     })
   } catch {
@@ -256,7 +256,7 @@ export async function notifyNewMessage({
         to: athlete.email,
         subject: `New message from ${coachName}`,
         html,
-        fromName: `${coachName} via CoachVoice`,
+        fromName: `${coachName} via Pindar`,
       })
     } else {
       const [{ data: athlete }, coachEmail] = await Promise.all([
@@ -352,7 +352,7 @@ export async function notifyCalendarEventCreated({
     // is what made the reminder in migration 028 a claim rather than a
     // feature. Addressed to a young athlete: what to do, why, and no alarm.
     const askHtml = checkinRequested
-      ? `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px">Before you train, please open CoachVoice and do your check-in — it takes about twenty seconds. It tells ${escapeHtml(coachName)} how your body is feeling so they can plan the session around you.</p>`
+      ? `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 12px">Before you train, please open Pindar and do your check-in — it takes about twenty seconds. It tells ${escapeHtml(coachName)} how your body is feeling so they can plan the session around you.</p>`
       : ''
 
     const html = renderBrandedEmail({
@@ -370,7 +370,7 @@ ${askHtml}${description ? `<p style="color:#4a5568;font-size:14px;line-height:1.
         ? `${coachName} would like a check-in before ${eventTitle}`
         : `${coachName} added ${eventTitle} to your calendar`,
       html,
-      fromName: `${coachName} via CoachVoice`,
+      fromName: `${coachName} via Pindar`,
     })
   } catch {
     // Never let a notification failure break the calendar-event request.
@@ -446,7 +446,7 @@ ${
     ctaText: audience === 'coach' ? 'View athlete' : undefined,
     ctaHref: audience === 'coach' ? ctaHref : undefined,
     footerNote: audience === 'parent'
-      ? "You're receiving this because your coach shared a wellness update with you on CoachVoice."
+      ? "You're receiving this because your coach shared a wellness update with you on Pindar."
       : undefined,
   })
 }

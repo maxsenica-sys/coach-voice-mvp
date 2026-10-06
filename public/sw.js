@@ -1,4 +1,4 @@
-/* CoachVoice service worker.
+/* Pindar service worker.
  *
  * ── Why this file is written by hand ──────────────────────────────────────
  *
@@ -212,7 +212,7 @@ self.addEventListener('push', (event) => {
   if (!data || typeof data !== 'object') data = {}
   const title = typeof data.title === 'string' && data.title.trim()
     ? data.title.trim().slice(0, 120)
-    : 'CoachVoice'
+    : 'Pindar'
   const options = {
     tag: typeof data.tag === 'string' && data.tag ? data.tag.slice(0, 80) : 'cv',
     data: { url: pushTarget(data.url) },

@@ -23,7 +23,7 @@
     "verify:sprite": "node tools/build-montage-sprite.mjs --check",
     "verify:push": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/push-rig.mjs",
     "verify:video": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/video-rig.mjs",
-    "build:splash": "node tools/build-montage-sprite.mjs && node tools/build-launch-images.mjs",
+    "build:splash": "node tools/build-montage-sprite.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/build-icons.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/build-launch-images.mjs",
     "verify:rls": "node tools/rls-rig.mjs",
     "verify:staff": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/staff-rig.mjs",
     "verify:wellness": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/wellness-rig.mjs",

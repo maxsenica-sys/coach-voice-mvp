@@ -58,7 +58,7 @@ async function readError(res: Response): Promise<string> {
     case 502:
     case 503:
     case 504:
-      return 'CoachVoice is temporarily unreachable. Your work is not lost — try again in a moment.'
+      return 'Pindar is temporarily unreachable. Your work is not lost — try again in a moment.'
   }
 
   if (looksWrittenForAHuman(msg)) return msg

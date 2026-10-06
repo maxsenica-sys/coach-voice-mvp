@@ -21,7 +21,7 @@ function createSupabase(req: NextRequest) {
 // can never be free text: `to` must already be saved as a caretaker of the named
 // athlete, and the athlete must belong to the signed-in coach. Without both
 // checks any signed-in account — including an athlete's — could send arbitrary
-// HTML to arbitrary addresses under the CoachVoice sending domain.
+// HTML to arbitrary addresses under the Pindar sending domain.
 export async function POST(req: NextRequest) {
   if (!process.env.RESEND_API_KEY) {
     return NextResponse.json({ error: 'Email not configured. Add RESEND_API_KEY to your environment variables.' }, { status: 503 })
@@ -87,14 +87,14 @@ export async function POST(req: NextRequest) {
   }
 
   // `||`, not `??`: join() returns '' rather than null, so `?? 'Your Coach'`
-  // could never fire and a coach with no name on file sent as " via CoachVoice".
+  // could never fire and a coach with no name on file sent as " via Pindar".
   const coachName = (typeof from_name === 'string' ? from_name.trim() : '') || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'Your Coach'
 
   const result = await sendEmail({
     to: recipient,
     subject,
     html,
-    fromName: `${coachName} via CoachVoice`,
+    fromName: `${coachName} via Pindar`,
     fromEmail: process.env.RESEND_FROM_EMAIL ?? 'reports@coachvoice.app',
     replyTo: user.email ?? undefined,   // parent replies go straight to the coach's inbox
   })
