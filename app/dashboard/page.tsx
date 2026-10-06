@@ -32,6 +32,7 @@ import { errorMessage } from '@/lib/errors'
 import { getTeam, PENDING_INVITE_KEY, type Team } from '@/lib/team-client'
 import CoachingStaff from '@/app/components/CoachingStaff'
 import BrandMark from '@/app/components/BrandMark'
+import ReinstallNudge from '@/app/components/ReinstallNudge'
 
 type Tab = 'home' | 'athletes' | 'groups' | 'sessions' | 'calendar' | 'messages' | 'settings'
 type CalMode = 'personal' | 'athlete' | 'group'
@@ -1802,6 +1803,8 @@ function DashboardPageInner() {
               calendar should actually sit above all that stuff"). Scrolls back
               through what you've done and forward through what's booked, with a
               Today control. */}
+          {/* iPhones installed as CoachVoice: once, how to get the new icon. */}
+          {tab === 'home' && <ReinstallNudge />}
           {tab === 'home' && (
               <div style={{ marginBottom: 14 }}>
                 {homeEventsError && (

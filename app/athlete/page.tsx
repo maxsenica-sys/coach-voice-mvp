@@ -36,6 +36,7 @@ import { SUPPORTED_RECORDING_TYPES, audioExtension } from '@/lib/audio-mime'
 import { buildDigest, isDigestDay, trainingToday, formatEventTime, takeawayPlacement, firstTakeaway } from '@/lib/digest'
 import TakeawayReminder from '@/app/components/TakeawayReminder'
 import AthleteDigest, { DigestLink } from '@/app/components/AthleteDigest'
+import ReinstallNudge from '@/app/components/ReinstallNudge'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -1602,6 +1603,8 @@ export default function AthletePage() {
             with TAKE INTO NEXT SESSION as the brightest thing on the card. */}
         {tab === 'home' && (
           <div className="ah-home">
+            {/* iPhones installed as CoachVoice: once, how to get the new icon. */}
+            <ReinstallNudge />
 
             {/* ── Greeting ── */}
             <div className="ah-hello">

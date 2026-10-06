@@ -33,7 +33,7 @@
 
 // Bump to invalidate everything this worker has cached. The asset URLs are
 // content-hashed, so this is for changing the *rules*, not the contents.
-const VERSION = 'v1'
+const VERSION = 'v2' // v2: the Pindar icons replaced the CoachVoice ones under the same names
 const STATIC_CACHE = `cv-static-${VERSION}`
 
 /* What the webview actually fetches on a cold start.
@@ -216,8 +216,8 @@ self.addEventListener('push', (event) => {
   const options = {
     tag: typeof data.tag === 'string' && data.tag ? data.tag.slice(0, 80) : 'cv',
     data: { url: pushTarget(data.url) },
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    icon: '/icon-192.png?v=pindar1',
+    badge: '/icon-192.png?v=pindar1',
   }
   // Every push must show something: a push that shows nothing is treated by
   // the browser as abuse and can cost the subscription.
