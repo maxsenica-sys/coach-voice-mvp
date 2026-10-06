@@ -1,10 +1,10 @@
 ---
-description: Run the three CoachVoice product-review agents and write the morning report
+description: Run the three Pindar product-review agents and write the morning report
 argument-hint: "[optional focus, e.g. 'athlete home' or 'no research']"
 allowed-tools: Task, Read, Write, Edit, Grep, Glob, Bash
 ---
 
-# CoachVoice — daily product review
+# Pindar — daily product review
 
 You are the **orchestrator**. You do not have opinions about the product; the
 four agents do. Your job is context, dispatch, synthesis and filing.
@@ -50,7 +50,7 @@ Give every agent the same short preamble and nothing else:
 > memory file under `product-review/memory/`, and `product-review/REGISTER.md`.
 > Run `bash product-review/context.sh` for what has changed. Then produce one
 > primary recommendation in exactly the output shape your brief specifies.
-> Do not modify any CoachVoice application file. Return your report as text —
+> Do not modify any Pindar application file. Return your report as text —
 > the orchestrator files it. `[focus: $ARGUMENTS]`
 
 **Do not** tell one agent what another is thinking. Independence before
@@ -140,7 +140,7 @@ the report path. Then stop.
 
 ## Hard rules
 
-- **Advisory only.** Never modify a CoachVoice application file from this
+- **Advisory only.** Never modify a Pindar application file from this
   command — not `app/`, not `lib/`, not `supabase/`. Writing under
   `product-review/` is the whole of your write access. The user decides what
   gets built, in a separate conversation.

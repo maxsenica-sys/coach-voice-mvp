@@ -8,7 +8,7 @@
  * whoever is holding the phone, without a sign-in, on a lock screen. The
  * people receiving them are coaches and 13–18 year olds. So the rule is
  * absolute: a notification names who it is from — "New message from Max",
- * "Max shared a new session", "New message from Mathilde" — and never carries
+ * "Max gave you a nod", "New message from Mathilde" — and never carries
  * message text, a transcript, a summary, or anything about wellness or injury.
  *
  * Every way of breaking that type-checks. Adding `body: content` to an object
@@ -78,7 +78,7 @@ await check('PU1', 'The payload names the sender and carries nothing else', () =
   const cases = [
     [{ kind: 'message-to-athlete', senderFirstName: 'Max', athleteId: ATHLETE }, 'New message from Max'],
     [{ kind: 'message-to-coach', senderFirstName: 'Mathilde', athleteId: ATHLETE }, 'New message from Mathilde'],
-    [{ kind: 'session-shared', coachFirstName: 'Max', athleteId: ATHLETE }, 'Max shared a new session'],
+    [{ kind: 'session-shared', coachFirstName: 'Max', athleteId: ATHLETE }, 'Max gave you a nod'],
   ]
   const allowed = [...PUSH_PAYLOAD_KEYS].sort().join(',')
   for (const [input, title] of cases) {
@@ -315,9 +315,9 @@ await check('PU10', 'The worker shows a title and never a body, whatever the pay
   }
   // A malformed push still shows something (a silent push costs the subscription).
   await w.fire('push', pushEvent(() => { throw new SyntaxError('bad json') }))
-  if (w.shown[1]?.title !== 'CoachVoice') bad.push(`malformed push showed "${w.shown[1]?.title}"`)
+  if (w.shown[1]?.title !== 'Pindar') bad.push(`malformed push showed "${w.shown[1]?.title}"`)
   await w.fire('push', { data: null })
-  if (w.shown[2]?.title !== 'CoachVoice') bad.push('an empty push showed nothing')
+  if (w.shown[2]?.title !== 'Pindar') bad.push('an empty push showed nothing')
   return bad
 })
 

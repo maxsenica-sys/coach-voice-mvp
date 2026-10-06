@@ -2,14 +2,14 @@
 /**
  * Email rig — text a person typed never becomes markup in someone's inbox.
  *
- * Every notification CoachVoice sends is HTML built from things people type:
+ * Every notification Pindar sends is HTML built from things people type:
  * a coach's name, a session title, an athlete's message, a check-in note. An
  * email client renders what it is given. Until this rig, all of those went in
  * raw, so an athlete who typed
  *
  *     <a href="https://evil.example/">tap here</a>
  *
- * into a message put a working link in their coach's inbox, sent by CoachVoice.
+ * into a message put a working link in their coach's inbox, sent by Pindar.
  * A name did the same thing to a whole roster's invite emails.
  *
  * This drives the REAL builders in lib/notify.ts — not copies — with hostile
@@ -153,7 +153,7 @@ await run('wellness alert to the coach: athlete name and check-in note', () => n
 {
   const h = fromHeader('Coach <boss@elsewhere.example>\r\nBcc: x@y', 'reports@coachvoice.app')
   check('E5  a name cannot add an address or a header to From', h === '"Coach boss@elsewhere.example Bcc: x@y" <reports@coachvoice.app>', h)
-  check('E5  an empty name falls back to CoachVoice', fromHeader('  ', 'a@b.c') === '"CoachVoice" <a@b.c>')
+  check('E5  an empty name falls back to Pindar', fromHeader('  ', 'a@b.c') === '"Pindar" <a@b.c>')
   const froms = sent.map((m) => m.from)
   check('E5  every email sendEmail produced has a clean From', froms.length > 0 && froms.every((f) => /^"[^"<>\r\n]*" <[^<>\s]+>$/.test(f)),
     froms.filter((f) => !/^"[^"<>\r\n]*" <[^<>\s]+>$/.test(f)).join(' | '))

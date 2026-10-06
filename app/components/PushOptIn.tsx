@@ -36,10 +36,10 @@ const COPY = {
 } as const
 
 const NOTE: Partial<Record<View, string>> = {
-  'ios-needs-install': 'On iPhone and iPad this works once CoachVoice is on your Home Screen: tap Share, then Add to Home Screen, and open it from there.',
+  'ios-needs-install': 'On iPhone and iPad this works once Pindar is on your Home Screen: tap Share, then Add to Home Screen, and open it from there.',
   'ios-too-old': 'Notifications need iOS 16.4 or later on this iPhone or iPad.',
-  unsupported: 'This browser can’t show notifications from CoachVoice.',
-  denied: 'Notifications are blocked for CoachVoice on this device. Allow them in your browser or phone settings, then come back here.',
+  unsupported: 'This browser can’t show notifications from Pindar.',
+  denied: 'Notifications are blocked for Pindar on this device. Allow them in your browser or phone settings, then come back here.',
 }
 
 export default function PushOptIn({ audience }: { audience: 'athlete' | 'coach' }) {

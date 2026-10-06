@@ -7,6 +7,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { ALL_SPORTS } from '@/lib/sports'
 import { errorMessage } from '@/lib/errors'
 import { apiJson } from '@/lib/api-client'
+import BrandMark from '@/app/components/BrandMark'
 
 /* ── Stadium Night — the new-account flow ────────────────────────────────────
  *
@@ -585,14 +586,12 @@ export default function SignupPage() {
         <header className="sn-head">
           {/* The whole lockup is the way back to sign in, so the target is
               the lockup's height, not the 30px mark's. */}
-          <Link href="/" aria-label="CoachVoice — back to sign in" style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, textDecoration: 'none' }}>
+          <Link href="/" aria-label="Pindar — back to sign in" style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, textDecoration: 'none' }}>
             <span className="sn-mark" aria-hidden="true">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10.5v.5a7 7 0 0 0 14 0v-.5" /><path d="M12 18.5V21" />
-              </svg>
+              <BrandMark size={20} />
             </span>
             <span aria-hidden="true">
-              <span className="sn-wordmark" style={{ display: 'block' }}>COACHVOICE</span>
+              <span className="sn-wordmark" style={{ display: 'block' }}>PINDAR</span>
               <span className="sn-rolecap" style={{ display: 'block' }}>New account</span>
             </span>
           </Link>
@@ -680,7 +679,7 @@ export default function SignupPage() {
           {/* ── Step 1: Role ── */}
           {step === 1 && (
             <div className="fade-in">
-              <h2 className="sn-lede">How will you use <em>CoachVoice?</em></h2>
+              <h2 className="sn-lede">How will you use <em>Pindar?</em></h2>
               <p className="sn-sub">This determines your experience on the platform.</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))', gap: 12 }}>
                 {(['coach', 'athlete'] as Role[]).map((r) => {

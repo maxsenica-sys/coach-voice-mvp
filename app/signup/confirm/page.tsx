@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import BrandMark from '@/app/components/BrandMark'
 
 /* Stadium Night — the screen straight after /signup when the project asks for
  * email confirmation. Same ground and lockup as signup and reset.
@@ -84,12 +85,10 @@ export default function SignupConfirmPage() {
       <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 460, margin: '0 auto', padding: '0 20px 32px' }}>
         <header className="sn-head">
           <span className="sn-mark" aria-hidden="true">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10.5v.5a7 7 0 0 0 14 0v-.5" /><path d="M12 18.5V21" />
-            </svg>
+            <BrandMark size={20} />
           </span>
           <div>
-            <div className="sn-wordmark">COACHVOICE</div>
+            <div className="sn-wordmark">PINDAR</div>
             <div className="sn-rolecap">New account</div>
           </div>
         </header>

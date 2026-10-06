@@ -1,6 +1,6 @@
-# CoachVoice product review — four agents
+# Pindar product review — four agents
 
-A small advisory team that looks at CoachVoice each morning from four angles
+A small advisory team that looks at Pindar each morning from four angles
 and tells you what it would change. It **never changes anything itself**. You
 decide what gets built.
 
@@ -46,10 +46,10 @@ Use the visual-design agent to review the new session page.
 
 | Agent | Owns | Asks |
 |---|---|---|
-| `data-performance` | Whether CoachVoice uses data to make athletes better | "Will this help the athlete or coach make a better decision?" |
+| `data-performance` | Whether Pindar uses data to make athletes better | "Will this help the athlete or coach make a better decision?" |
 | `ux-usability` | Taps, screens, flows, states, affordance | "Could three taps be one? Could this screen not exist?" |
 | `visual-design` | One coherent design system, built up over time | "In three seconds, does the athlete know what matters?" |
-| `wow-factor` | Making CoachVoice remarkable rather than merely correct | "What would make someone show this to another coach unprompted?" |
+| `wow-factor` | Making Pindar remarkable rather than merely correct | "What would make someone show this to another coach unprompted?" |
 
 They are meant to stay separate thinkers. Only the synthesis step is allowed
 to join them up, and only where a real relationship exists.
@@ -60,9 +60,9 @@ to join them up, and only where a real relationship exists.
 MVP caution **on purpose** — the other three supply the brakes, so it does not
 need to. Its ideas are *expected* to lose the priority arithmetic; that is what
 the arithmetic is for. Judge it on whether one of its ideas eventually turns out
-to be the thing that made CoachVoice matter, not on hit rate.
+to be the thing that made Pindar matter, not on hit rate.
 
-It has hard limits, and they are not negotiable: CoachVoice's users are 13–18,
+It has hard limits, and they are not negotiable: Pindar's users are 13–18,
 many of them minors. Nothing it proposes may make a minor's data, face or
 wellness public by default, run on streak anxiety or social comparison between
 kids, or expose health data beyond the athlete, their coach and their registered

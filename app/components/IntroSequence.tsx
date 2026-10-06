@@ -32,6 +32,7 @@
  * the server markup identical to the first client frame.
  */
 
+import BrandMark from './BrandMark'
 import { useEffect, useRef } from 'react'
 
 /** Total run time, ms. */
@@ -58,12 +59,8 @@ import { PEAKS } from '@/lib/montage-schedule'
  * mark. Set through style rather than the stroke attribute because a
  * presentation attribute does not take var(). tools/boot-smoke.mjs measures
  * the glyph against both gradient stops. */
-const MicMark = () => (
-  <svg viewBox="0 0 24 24" width="33" height="33" fill="none" style={{ stroke: 'var(--on-primary)' }} strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-    <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />
-    <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" />
-  </svg>
-)
+/** The laurel, ink on the sage tile — lib/brand-mark.ts via BrandMark. */
+const LaurelMark = () => <BrandMark size={50} color="var(--on-primary)" style={{ marginTop: 1 }} />
 
 export default function IntroSequence({
   play = true,
@@ -210,7 +207,7 @@ export default function IntroSequence({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         transition: 'opacity 200ms linear, transform 320ms var(--ease-brand)',
       }}>
-        <MicMark />
+        <LaurelMark />
       </div>
 
       <div ref={word} className="cv-intro-figure" style={{
@@ -219,7 +216,7 @@ export default function IntroSequence({
         fontWeight: 800, fontSize: 26, letterSpacing: '-0.03em',
         transition: 'opacity 220ms linear, transform 320ms var(--ease-brand)',
       }}>
-        CoachVoice
+        Pindar
       </div>
     </div>
   )

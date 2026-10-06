@@ -881,7 +881,7 @@ export default function SessionDetailPage() {
             <Icon name="back" size={16} />
           </Link>
           <div style={{ minWidth: 0 }}>
-            <div style={{ ...CAST, fontSize: 16, letterSpacing: '0.22em', lineHeight: 1, color: 'var(--text)' }}>CoachVoice</div>
+            <div style={{ ...CAST, fontSize: 16, letterSpacing: '0.22em', lineHeight: 1, color: 'var(--text)' }}>Pindar</div>
             <div style={{ ...CAST, letterSpacing: '0.26em', lineHeight: 1, color: SAGE, marginTop: 4 }}>Session</div>
           </div>
         </div>
@@ -902,7 +902,7 @@ export default function SessionDetailPage() {
             {isCoach && !session.shared_with_athlete
               ? <i aria-hidden style={{ width: 7, height: 7, background: EMBER, transform: 'skewX(-14deg)', flexShrink: 0 }} />
               : <i aria-hidden style={{ width: 6, height: 6, borderRadius: '50%', background: SAGE, flexShrink: 0 }} />}
-            {isCoach ? (session.shared_with_athlete ? 'Shared' : 'Private') : 'From your coach'}
+            {isCoach ? (session.shared_with_athlete ? 'Shared' : 'Private') : 'A nod from your coach'}
           </span>
         </div>
 

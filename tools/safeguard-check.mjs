@@ -4,7 +4,7 @@
  *
  * ── Why this exists ───────────────────────────────────────────────────────
  *
- * CoachVoice is used by children. Roughly 13 to 18, many of them minors, and
+ * Pindar is used by children. Roughly 13 to 18, many of them minors, and
  * the app holds their voice recordings, their photographs, their coach's
  * candid remarks about them, and five daily numbers about how they are
  * sleeping and feeling.
@@ -231,7 +231,7 @@ const RULES = [
     id: 'SG1',
     title: 'Every API route authenticates before it answers',
     why: 'A route that forgets to establish who is calling serves a child\'s sessions, wellness scores or messages to anyone who guesses the URL. There is no public surface in this product and there must not be one by accident.',
-    cite: 'PROJECT-STATE.md — "CoachVoice has no public surface at all"; lib/route-identity.ts',
+    cite: 'PROJECT-STATE.md — "Pindar has no public surface at all"; lib/route-identity.ts',
     check(files) {
       const found = []
       for (const f of files) {

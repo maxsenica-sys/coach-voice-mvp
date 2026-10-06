@@ -1,4 +1,4 @@
-# CoachVoice — Project State
+# Pindar — Project State
 
 **Purpose of this file:** the shared, cheap context every review agent reads
 *instead of* re-reading the repo. Keep it under ~250 lines. Update it when the
@@ -9,7 +9,7 @@ Last verified against the codebase: **2026-09-09**, after the round-6 fixes
 
 ---
 
-## What CoachVoice is
+## What Pindar is
 
 A voice-first coaching platform. The core loop is one sentence:
 
@@ -71,7 +71,7 @@ product impossible to execute outside a running server.
 | `/sessions/[id]` | coach **and** athlete | The session page. Summary, focus points, coach notes, audio, videos, image attachments. 622 lines. |
 | `/athlete` | athlete | The athlete's whole app. 6 tabs: `home · sessions · calendar · notes · messages · wellness` (home is labelled "Today" in the nav). 1,573 lines after the 2026-09-07 design pass. Bottom nav on mobile. |
 | `/pdf/session/[id]`, `/pdf/monthly/[athleteId]` | coach | Printable reports |
-| `/share/clip/[videoId]` | signed-in | Shared video clip. **Not public** — `app/api/share/clip/[videoId]/route.ts:15` returns 401 without a session. CoachVoice has no public surface at all. |
+| `/share/clip/[videoId]` | signed-in | Shared video clip. **Not public** — `app/api/share/clip/[videoId]/route.ts:15` returns 401 without a session. Pindar has no public surface at all. |
 | `/reset`, `/auth/callback` | anyone | Password reset |
 
 Route protection is `proxy.ts` (middleware): matcher `['/', '/dashboard/*',

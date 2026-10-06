@@ -1169,7 +1169,7 @@ export default function AthletePage() {
       const missing = e instanceof DOMException && e.name === 'NotFoundError'
       setNoteError(
         denied
-          ? 'CoachVoice is not allowed to use your microphone. Allow it in your browser or phone settings, then try again.'
+          ? 'Pindar is not allowed to use your microphone. Allow it in your browser or phone settings, then try again.'
           : missing
             ? 'No microphone was found on this device.'
             : errorMessage(e, 'Could not start recording. Try again.'),
@@ -1310,7 +1310,7 @@ export default function AthletePage() {
     } catch (e: unknown) {
       // A dropped connection rejects rather than returning a status, and this
       // had no catch, so the button stopped spinning and nothing was said.
-      setJoinMsg(errorMessage(e, 'Could not reach CoachVoice. Check your connection and try again.'))
+      setJoinMsg(errorMessage(e, 'Could not reach Pindar. Check your connection and try again.'))
     } finally {
       setJoinLoading(false)
     }
@@ -1403,7 +1403,7 @@ export default function AthletePage() {
           <div style={{ marginBottom: 32 }}>
             <div className="ah-when" style={{ marginBottom: 10 }}>{onboardDate}</div>
             <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 34, letterSpacing: -0.8, lineHeight: 1.1, color: 'var(--text)' }}>
-              Welcome to CoachVoice,<br/>
+              Welcome to Pindar,<br/>
               <span style={{ fontStyle: 'italic', fontWeight: 500 }}>{onboardFirstName}.</span>
             </h1>
             <p style={{ margin: '12px 0 0', fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, maxWidth: 340 }}>
@@ -1480,7 +1480,7 @@ export default function AthletePage() {
             {(athleteName.split(' ')[0]?.[0] ?? 'A').toUpperCase()}{(athleteName.split(' ')[1]?.[0] ?? '').toUpperCase()}
           </div>
           <div style={{ minWidth: 0 }}>
-            <div className="ah-wordmark">CoachVoice</div>
+            <div className="ah-wordmark">Pindar</div>
             <div className="ah-rolecap">Athlete</div>
           </div>
           <span style={{ flex: 1 }} />
@@ -1505,7 +1505,7 @@ export default function AthletePage() {
         {confirmOut && (
           <div role="group" aria-label="Sign out?" style={{ maxWidth: 1000, margin: '0 auto', padding: '0 20px 10px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <span style={{ flex: '1 1 140px', minWidth: 0, fontSize: 'var(--fs-3)', color: 'var(--text)', fontWeight: 600 }}>
-              Sign out of CoachVoice?
+              Sign out of Pindar?
             </span>
             <button className="btn btn-ghost" onClick={() => setConfirmOut(false)} style={{ minHeight: 44 }}>
               Stay
@@ -1861,7 +1861,7 @@ export default function AthletePage() {
             {sessions.length > 0 && (
               <section>
                 <div className="ah-sec">
-                  <h2>From your coach</h2>
+                  <h2>Nods from your coach</h2>
                   <span style={{ flex: 1 }} />
                   {sessions.length > 3 && (
                     <button className="ah-link lit" onClick={() => setTab('sessions')} style={TAP_INLINE}>
@@ -2034,7 +2034,7 @@ export default function AthletePage() {
                 this tab is the full record, so it's just the record. */}
             {sessions.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, gap: 10 }}>
-                <div className="ah-sec" style={{ margin: 0 }}><h2>From your coach</h2></div>
+                <div className="ah-sec" style={{ margin: 0 }}><h2>Nods from your coach</h2></div>
                 <div className="ah-eyebrow" style={{ letterSpacing: '0.14em' }}>
                   <span className="num">{sessions.length}</span> session{sessions.length !== 1 ? 's' : ''}
                 </div>

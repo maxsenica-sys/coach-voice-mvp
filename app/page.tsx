@@ -474,7 +474,7 @@ export default function Home() {
         <footer style={{ paddingBottom: 'max(28px, env(safe-area-inset-bottom))' }}>
           {mode === 'login' && (
             <p style={{ margin: 0, paddingTop: 10, borderTop: '1px solid var(--border)', textAlign: 'center', fontSize: 14, color: 'var(--text-2)', lineHeight: 1.4 }}>
-              New to CoachVoice?{' '}
+              New to Pindar?{' '}
               <Link href="/signup" className="sn-link">Create an account</Link>
             </p>
           )}
@@ -482,7 +482,7 @@ export default function Home() {
             margin: '8px 0 0', textAlign: 'center', textTransform: 'uppercase',
             fontFamily: 'var(--font-mono)', fontSize: 'var(--t-furniture)', letterSpacing: '.08em', color: 'var(--text-2)',
           }}>
-            © 2026 CoachVoice. All rights reserved.
+            © 2026 Pindar. All rights reserved.
           </p>
         </footer>
       </div>

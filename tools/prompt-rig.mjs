@@ -5,7 +5,7 @@
  * ── Why this exists ───────────────────────────────────────────────────────
  *
  * The prompt in `lib/summary-prompt.ts` is the product. Everything else in
- * CoachVoice moves a recording from a phone to a database; that text is the
+ * Pindar moves a recording from a phone to a database; that text is the
  * only thing that turns it into something a fifteen-year-old reads. It decides
  * what a child is told their coach said about them.
  *

@@ -1,4 +1,4 @@
-# Memory Bank — CoachVoice
+# Memory Bank — Pindar
 
 Running log of work done via Claude Code sessions. Read this file first before
 starting new work to avoid re-investigating things already resolved. Append a
@@ -211,7 +211,7 @@ the new session page are the parts most worth eyeballing.
 
 Started as "congregate all information on the current state of the program".
 Produced a field report (Artifact, also saved to the user's Desktop as
-`CoachVoice-Field-Report.html`), then the user said "implement all the changes
+`Pindar-Field-Report.html`), then the user said "implement all the changes
 you spoke about in the entire document. Fix all." Everything below is that.
 
 **First finding, and the reason to check this every session:** the local working
@@ -229,7 +229,7 @@ from more than one machine.
   user, so a plain identity check suffices.
 - `POST /api/email` checked only that you were logged in, then sent arbitrary
   `to`/`subject`/`html` from the verified Resend sender. Any athlete account
-  could send arbitrary mail under the CoachVoice domain. Now requires
+  could send arbitrary mail under the Pindar domain. Now requires
   `role = 'coach'`, requires `athlete_id` on the caller's roster, and requires
   the recipient to already be a saved caretaker of that athlete. Caller
   (`CaretakerPanel.sendTestEmail`) updated to pass `athlete_id`.
@@ -569,7 +569,7 @@ as the precedent for future app-triggered notifications (user's instruction:
   (the athlete invite email in `app/api/athletes/route.ts`, and the manual
   "send report" endpoint `app/api/email/route.ts`) — both refactored to call
   this instead of duplicating the fetch a third time.
-- `renderBrandedEmail()` — the shared CoachVoice HTML email shell (logo,
+- `renderBrandedEmail()` — the shared Pindar HTML email shell (logo,
   heading, body, optional CTA button, footer), extracted from what was an
   inline template only the invite email used.
 - `getAppBaseUrl(req)` — resolves the app's public URL from request headers,
@@ -747,7 +747,7 @@ file history — not sessions this memory bank was live for, so detail is
 lighter than entries above. Kept chronological (oldest first) so it reads as
 one story.
 
-**2026-04-16 — Initial build.** `8575fa0` Initial commit: CoachVoice MVP
+**2026-04-16 — Initial build.** `8575fa0` Initial commit: Pindar MVP
 scaffolded (Next.js + Supabase, coach/athlete roles, sessions, calendar,
 messaging, wellness). Same day: TS build error fix, invalid-dir cleanup, two
 rounds of "critical bug fixes + mobile responsive layout", calendar month nav
@@ -901,3 +901,12 @@ sync-on-share logic now lives in 3 places (POST /api/sessions, POST
 creation further (e.g. a 3rd save path), replicate the same
 `shared_with_athlete` gate + `session_id` link there too, don't re-derive it
 from scratch.
+
+## 2026-10-06 — Renamed to Pindar
+After ~850 candidate names across several tournaments, Max chose **Pindar** (the
+Greek poet who wrote a victory ode for each winning athlete), with **"Coach gave
+you a nod"** as the language for a shared session. Laurel-wreath mark in
+`lib/brand-mark.ts`; icons from `tools/build-icons.mjs`. IndexedDB names stay
+`coachvoice-*` on purpose. Max needs to check IP Australia / USPTO for PINDAR
+(an old UK printer, G.A. Pindar & Son, once registered it for software) and buy
+a domain (pindar.app / getpindar.com) — not done from here.

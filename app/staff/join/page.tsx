@@ -92,7 +92,7 @@ export default function StaffJoinPage() {
   return (
     <main style={WRAP}>
       <div style={COL}>
-        <p style={EYEBROW}>CoachVoice · Coaching team</p>
+        <p style={EYEBROW}>Pindar · Coaching team</p>
 
         {view.kind === 'loading' && <p style={BODY} role="status">Reading your invite…</p>}
 

@@ -1041,7 +1041,7 @@ async function assertBoot(base) {
     )
     check(
       'the shell is painted with every stylesheet stalled',
-      stalled.display === 'block' && stalled.wordmark === 'CoachVoice' && stalled.fcp > 0,
+      stalled.display === 'block' && stalled.wordmark === 'Pindar' && stalled.fcp > 0,
       JSON.stringify(stalled),
     )
     /* And it is painted in the brand's ink, not in nothing.

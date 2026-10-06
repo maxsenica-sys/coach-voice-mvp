@@ -6,6 +6,7 @@ import Link from 'next/link'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import { errorMessage } from '@/lib/errors'
 import { apiJson } from '@/lib/api-client'
+import BrandMark from '@/app/components/BrandMark'
 
 interface ClipVideo {
   signedUrl: string | null
@@ -57,9 +58,7 @@ function Mark() {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10.5v.5a7 7 0 0 0 14 0v-.5" /><path d="M12 18.5V21" />
-      </svg>
+      <BrandMark size={20} />
     </div>
   )
 }
@@ -67,7 +66,7 @@ function Mark() {
 function Wordmark() {
   return (
     <span style={{ fontFamily: CAST, fontWeight: 700, fontSize: 16, letterSpacing: '.22em', lineHeight: 1, color: 'var(--text)' }}>
-      COACHVOICE
+      PINDAR
     </span>
   )
 }
@@ -121,7 +120,7 @@ export default function ShareClipPage() {
   }, [videoId, sessionId, linkIsValid])
 
   if (!linkIsValid) return (
-    <ClipMessage action={<Link href="/" style={homeLink}>Go to CoachVoice</Link>}>
+    <ClipMessage action={<Link href="/" style={homeLink}>Go to Pindar</Link>}>
       Invalid share link
     </ClipMessage>
   )
@@ -129,7 +128,7 @@ export default function ShareClipPage() {
   if (loading) return <ClipMessage>Loading clip…</ClipMessage>
 
   if (error || !video?.signedUrl) return (
-    <ClipMessage action={<Link href="/" style={homeLink}>Go to CoachVoice</Link>}>
+    <ClipMessage action={<Link href="/" style={homeLink}>Go to Pindar</Link>}>
       {error ?? 'Clip not available'}
     </ClipMessage>
   )
@@ -191,11 +190,11 @@ export default function ShareClipPage() {
           <h2 style={{ fontFamily: CAST, fontWeight: 700, fontSize: 13, letterSpacing: '.26em', color: 'var(--text-2)', margin: 0 }}>WHO CAN OPEN THIS</h2>
         </div>
         <p style={{ margin: '8px 0 0', padding: '12px 15px 13px', borderRadius: 16, background: 'var(--card)', border: '1px solid var(--border)', fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 17, lineHeight: 1.35, color: 'var(--text)' }}>
-          Only the coach who recorded this session and the athlete it was shared with, signed in to CoachVoice.
+          Only the coach who recorded this session and the athlete it was shared with, signed in to Pindar.
         </p>
 
         <div style={{ marginTop: 22, paddingTop: 4, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-          <Link href="/" style={homeLink}>Go to CoachVoice</Link>
+          <Link href="/" style={homeLink}>Go to Pindar</Link>
         </div>
       </main>
     </div>

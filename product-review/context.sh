@@ -2,7 +2,7 @@
 # product-review/context.sh
 #
 # The change-driven half of the review context. Prints a compact digest of what
-# has moved in CoachVoice since the last saved report, so an agent can weight
+# has moved in Pindar since the last saved report, so an agent can weight
 # recently touched screens without reading the repository.
 #
 # Deliberately cheap: no file contents, only names, counts and commit subjects.

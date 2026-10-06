@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
   if (!who.ok) return respond({ error: 'Unauthorized' }, 401, cookiesToSet)
 
   if (!pushConfig()) {
-    return respond({ error: 'Notifications are not set up on CoachVoice yet.' }, 503, cookiesToSet)
+    return respond({ error: 'Notifications are not set up on Pindar yet.' }, 503, cookiesToSet)
   }
 
   const body = await req.json().catch(() => null) as { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } } | null
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   const p256dh = body?.keys?.p256dh
   const auth = body?.keys?.auth
   if (!isAllowedPushEndpoint(endpoint) || !isPushKey(p256dh) || !isPushKey(auth)) {
-    return respond({ error: 'This browser sent a notification subscription CoachVoice cannot use.' }, 400, cookiesToSet)
+    return respond({ error: 'This browser sent a notification subscription Pindar cannot use.' }, 400, cookiesToSet)
   }
 
   const userAgent = (req.headers.get('user-agent') ?? '').slice(0, 300) || null

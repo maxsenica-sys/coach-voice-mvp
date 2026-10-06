@@ -10,7 +10,7 @@
  * recording, addressed to one person, about the next session. And it renders
  * as a 13px line in a tinted box — the same visual weight as a caption.
  *
- * Separately: CoachVoice has no *object*. Nothing anyone can hold up, put on a
+ * Separately: Pindar has no *object*. Nothing anyone can hold up, put on a
  * wall, or put on a phone. It cannot have one the usual way either, because
  * there is no public surface and there must not be one — the athletes are
  * minors. An image is the way out of that: a file is not a URL, so it needs no
@@ -417,7 +417,7 @@ export default function FocusCard({ point, dateLabel }: { point: string; dateLab
     drawTracked(ctx, date, margin, DATE_BASELINE, dateTracking)
 
     ctx.font = `800 ${WORDMARK}px ${cast}`
-    drawTracked(ctx, 'COACHVOICE', margin, WORDMARK_BASELINE, WORDMARK * 0.22)
+    drawTracked(ctx, 'PINDAR', margin, WORDMARK_BASELINE, WORDMARK * 0.22)
     ctx.globalAlpha = 1
 
     return new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'))

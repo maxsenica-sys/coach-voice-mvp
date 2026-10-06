@@ -240,14 +240,14 @@ export async function POST(req: NextRequest) {
     const html = renderBrandedEmail({
       heading: 'Join a coaching team',
       bodyHtml: `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 16px">Hi ${escapeHtml(name)},</p>`
-        + `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 16px"><strong>${escapeHtml(headName)}</strong> has invited you to be an assistant coach on CoachVoice.</p>`
+        + `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 16px"><strong>${escapeHtml(headName)}</strong> has invited you to be an assistant coach on Pindar.</p>`
         + `<p style="color:#4a5568;font-size:15px;line-height:1.6;margin:0 0 24px">They have chosen ${athleteIds.length === 1 ? 'one athlete' : `${athleteIds.length} athletes`} for you. For ${athleteIds.length === 1 ? 'that athlete' : 'each of them'} you will be able to see sessions, messages and wellness check-ins, record sessions, message them, and add notes, injuries and videos.</p>`,
       ctaText: 'Accept the invite',
       ctaHref: link,
       footerNote: `This link works once and expires in ${INVITE_TTL_DAYS} days. Open it signed in with this email address (${escapeHtml(email)}). If you were not expecting this, you can ignore it.`,
     })
     const sent = process.env.RESEND_API_KEY
-      ? await sendEmail({ to: email, subject: `${headName} invited you to coach with them on CoachVoice`, html, replyTo: user.email ?? undefined })
+      ? await sendEmail({ to: email, subject: `${headName} invited you to coach with them on Pindar`, html, replyTo: user.email ?? undefined })
       : { ok: false as const }
 
     return reply({

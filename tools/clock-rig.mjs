@@ -4,7 +4,7 @@
  *
  * ── Why this exists ───────────────────────────────────────────────────────
  *
- * CoachVoice has shipped a date bug that every check it owned passed on.
+ * Pindar has shipped a date bug that every check it owned passed on.
  *
  * The twelve-week training chart bucketed sessions by dividing a millisecond
  * difference by 86,400,000. That assumes every local day is 24 hours long. Two
