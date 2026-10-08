@@ -595,31 +595,58 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
   setCodeDraft: (v: string) => void; setCodeEditing: (v: boolean) => void; setCodeMsg: (v: string) => void
   saveCode: () => void; onNameChange: (f: string, l: string, s: string, e?: string) => void; logout: () => void
 }) {
-  const [profileForm, setProfileForm] = useState(() => {
-    const parts = coachName.trim().split(' ')
-    return { first_name: parts[0] ?? '', last_name: parts.slice(1).join(' ') ?? '', sport: coachSport, email: coachEmail }
-  })
+  /* The profile is a read view with an Edit button, not a form left open.
+   *
+   * It was a permanently open form: Save showed "Profile updated!" for three
+   * seconds and the fields sat there unchanged, so nothing on the screen
+   * moved to prove the save had landed. Max: a save has to close what was
+   * opened or visibly change the app. Now a successful save closes the form
+   * and the card reads back the new values (and the header initials change).
+   * A failed save stays in the form with the error, so nothing typed is lost.
+   *
+   * The draft is seeded from the props each time Edit is tapped, not once at
+   * mount — the tab can mount before boot() has resolved the profile, and a
+   * form seeded then opened empty. */
+  const [profileEditing, setProfileEditing] = useState(false)
+  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', sport: '', email: '' })
   const [profileSaving, setProfileSaving] = useState(false)
-  const [profileMsg, setProfileMsg] = useState('')
+  const [profileError, setProfileError] = useState('')
+  const [profileSaved, setProfileSaved] = useState(false)
+  const profileEditBtnRef = useRef<HTMLButtonElement>(null)
+
+  const openProfileEditor = () => {
+    // coachName falls back to the email when no name is set; that is not a first name.
+    const parts = coachName === coachEmail ? [] : coachName.trim().split(' ')
+    setProfileForm({ first_name: parts[0] ?? '', last_name: parts.slice(1).join(' '), sport: coachSport, email: coachEmail })
+    setProfileError(''); setProfileSaved(false); setProfileEditing(true)
+  }
+  const closeProfileEditor = () => {
+    setProfileEditing(false); setProfileError('')
+    // The Save/Cancel buttons unmount; put focus back where the edit began.
+    requestAnimationFrame(() => profileEditBtnRef.current?.focus())
+  }
 
   const saveProfile = async () => {
     if (!profileForm.first_name.trim() || !profileForm.last_name.trim()) {
-      setProfileMsg('First and last name are required.'); return
+      setProfileError('First and last name are required.'); return
     }
-    setProfileSaving(true); setProfileMsg('')
+    setProfileSaving(true); setProfileError('')
     try {
-      const res = await fetch('/api/coach-profile', {
+      const email = profileForm.email.trim()
+      const json = await apiJson<{ first_name: string; last_name: string; sport?: string }>('/api/coach-profile', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ first_name: profileForm.first_name, last_name: profileForm.last_name, sport: profileForm.sport, email: profileForm.email }),
+        body: JSON.stringify({ first_name: profileForm.first_name, last_name: profileForm.last_name, sport: profileForm.sport, email }),
       })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json?.error)
-      onNameChange(json.first_name, json.last_name, json.sport ?? '', profileForm.email)
-      setProfileMsg('Profile updated!')
-      setTimeout(() => setProfileMsg(''), 3000)
-    } catch (e: unknown) { setProfileMsg(errorMessage(e, 'Failed')) }
+      onNameChange(json.first_name, json.last_name, json.sport ?? '', email)
+      closeProfileEditor()
+      setProfileSaved(true)
+      setTimeout(() => setProfileSaved(false), 4000)
+    } catch (e: unknown) { setProfileError(errorMessage(e, 'Could not save your profile.')) }
     finally { setProfileSaving(false) }
   }
+
+  const profileRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 2, minWidth: 0 }
+  const profileValue: React.CSSProperties = { margin: 0, fontSize: 'var(--fs-4)', fontWeight: 600, color: 'var(--text)', overflowWrap: 'anywhere', minWidth: 0 }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 560 }}>
@@ -634,6 +661,32 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
       <div className="card" style={{ padding: 22 }}>
         <SecHead title="Your profile" />
         <div className="section-sub" style={{ marginBottom: 18, color: 'var(--text-2)' }}>How you appear to athletes and in session reports.</div>
+        {!profileEditing ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <dl style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+              <div style={profileRow}>
+                <dt className="label" style={{ marginBottom: 0 }}>Name</dt>
+                <dd style={profileValue}>{coachName && coachName !== coachEmail ? coachName : <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Not set</span>}</dd>
+              </div>
+              <div style={profileRow}>
+                <dt className="label" style={{ marginBottom: 0 }}>Email address</dt>
+                <dd style={profileValue}>{coachEmail ? <BreakableEmail email={coachEmail} /> : <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Not set</span>}</dd>
+              </div>
+              <div style={profileRow}>
+                <dt className="label" style={{ marginBottom: 0 }}>Sport / discipline</dt>
+                <dd style={profileValue}>{coachSport || <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Not set</span>}</dd>
+              </div>
+            </dl>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button ref={profileEditBtnRef} type="button" className="btn btn-ghost" onClick={openProfileEditor} style={{ gap: 6, minHeight: 44 }}>
+                <Icon name="edit" size={15} /> Edit profile
+              </button>
+              {profileSaved && (
+                <span role="status" style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: 'var(--success)' }}>Saved</span>
+              )}
+            </div>
+          </div>
+        ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
             <div style={{ minWidth: 0 }}>
@@ -658,13 +711,15 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
             <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving} style={{ minWidth: 120, minHeight: 44 }}>
               {profileSaving ? 'Saving…' : 'Save profile'}
             </button>
-            {profileMsg && (
-              <span style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: profileMsg.includes('updated') ? 'var(--success)' : 'var(--danger)' }}>
-                {profileMsg}
+            <button type="button" className="btn btn-ghost" onClick={closeProfileEditor} disabled={profileSaving} style={{ minHeight: 44 }}>Cancel</button>
+            {profileError && (
+              <span role="alert" style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: 'var(--danger)', minWidth: 0, overflowWrap: 'anywhere' }}>
+                {profileError}
               </span>
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* ── Invite Code ── (head coaches only: an assistant's athletes are the head's) */}
@@ -2722,9 +2777,15 @@ function DashboardPageInner() {
               setCodeMsg={setCodeMsg}
               saveCode={saveCode}
               onNameChange={(first, last, sport, email) => {
-                setCoachName(`${first} ${last}`.trim())
+                const next = { firstName: first, lastName: last, sport, email: email || coachEmail }
+                setCoachName(displayName(next))
+                // The header monogram is derived from the name too; it used to
+                // keep the old initials until the next full load.
+                setCoachInitials(initialsFor(next))
                 setCoachSport(sport)
                 if (email) setCoachEmail(email)
+                // And the session cache, or the next navigation paints the old name first.
+                if (coachUserId) writeCachedProfile({ userId: coachUserId, role: 'coach', ...next })
               }}
               logout={logout}
               onShowQR={() => setShowInviteQR(true)}
