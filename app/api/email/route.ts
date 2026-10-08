@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { sendEmail } from '@/lib/notify'
+import { sendEmail, emailConfigured } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
 
@@ -17,14 +17,14 @@ function createSupabase(req: NextRequest) {
 // POST /api/email — send a report to a caretaker of one of your athletes.
 // Body: { athlete_id, to, subject, html }
 //
-// This route sends mail from the app's verified Resend sender, so the recipient
+// This route sends mail from the app's sender (Gmail or Resend), so the recipient
 // can never be free text: `to` must already be saved as a caretaker of the named
 // athlete, and the athlete must belong to the signed-in coach. Without both
 // checks any signed-in account — including an athlete's — could send arbitrary
 // HTML to arbitrary addresses under the Pindar sending domain.
 export async function POST(req: NextRequest) {
-  if (!process.env.RESEND_API_KEY) {
-    return NextResponse.json({ error: 'Email not configured. Add RESEND_API_KEY to your environment variables.' }, { status: 503 })
+  if (!emailConfigured()) {
+    return NextResponse.json({ error: 'Email is not set up yet. Add GMAIL_USER and GMAIL_APP_PASSWORD in Vercel.' }, { status: 503 })
   }
 
   const { supabase, cookiesToSet } = createSupabase(req)

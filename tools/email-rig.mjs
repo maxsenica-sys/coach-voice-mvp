@@ -44,6 +44,11 @@ const GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', BOLD = '\x1b[1m', O
 // Resend POSTs are captured. The admin client's getUserById (the coach's
 // address, for athlete → coach mail) is answered. Anything else is a failure.
 process.env.RESEND_API_KEY = 'rig-not-a-key'
+// Gmail wins over Resend when both are set (lib/notify.ts), and Gmail is a real
+// SMTP connection the stub network below cannot see. A developer with these in
+// their shell would otherwise send real mail from the rig.
+delete process.env.GMAIL_USER
+delete process.env.GMAIL_APP_PASSWORD
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.rig.invalid'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'rig-not-a-key'
 const sent = []
@@ -175,6 +180,30 @@ await run('wellness alert to the coach: athlete name and check-in note', () => n
   }
   check('E6  every value a route puts in an HTML literal goes through escapeHtml', seen > 0 && bad.length === 0,
     seen === 0 ? 'found no HTML literal in any route — the pattern stopped matching, so this rule stopped looking' : bad.join('\n      '))
+}
+
+// E7 — "is email set up?" is asked of lib/notify.ts, never of one variable.
+{
+  const keep = { g: process.env.GMAIL_USER, p: process.env.GMAIL_APP_PASSWORD, r: process.env.RESEND_API_KEY }
+  const set = (g, p, r) => {
+    for (const [k, v] of [['GMAIL_USER', g], ['GMAIL_APP_PASSWORD', p], ['RESEND_API_KEY', r]]) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v
+    }
+  }
+  set(undefined, undefined, undefined); const none = notify.emailConfigured()
+  set('coach@gmail.com', 'abcd efgh ijkl mnop', undefined); const gmail = notify.emailConfigured()
+  set(undefined, undefined, 're_x'); const resend = notify.emailConfigured()
+  set('coach@gmail.com', undefined, undefined); const half = notify.emailConfigured()
+  set('  ', '  ', undefined); const blank = notify.emailConfigured()
+  set(keep.g, keep.p, keep.r)
+  check('E7  nothing set: email is off', none === false)
+  check('E7  Gmail alone is enough (no domain needed)', gmail === true)
+  check('E7  Resend alone is enough', resend === true)
+  check('E7  a Gmail address without its app password is not', half === false)
+  check('E7  blank values are not', blank === false)
+  const routes = ['app/api/athletes/route.ts', 'app/api/staff/route.ts', 'app/api/email/route.ts']
+  const direct = routes.filter((r) => readFileSync(join(ROOT, r), 'utf8').includes('process.env.RESEND_API_KEY'))
+  check('E7  no route decides "email is off" from RESEND_API_KEY alone', direct.length === 0, direct.join(', '))
 }
 
 check('the stub network saw nothing unexpected', unexpected.length === 0, unexpected.join(', '))

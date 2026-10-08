@@ -24,7 +24,7 @@ import { createServerClient } from '@supabase/ssr'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { resolveCoachScope, HEAD_ONLY_MESSAGE } from '@/lib/coach-scope'
-import { sendEmail, renderBrandedEmail, getAppBaseUrl } from '@/lib/notify'
+import { sendEmail, renderBrandedEmail, getAppBaseUrl, emailConfigured } from '@/lib/notify'
 import { escapeHtml, inviteExpiry, MAX_STAFF, newInviteToken, normaliseEmail, INVITE_TTL_DAYS, parseAthleteIds, assignmentDiff } from '@/lib/staff-invite'
 import { noticeAssignedAthletes } from '@/lib/staff-notice'
 import { errorMessage } from '@/lib/errors'
@@ -246,7 +246,7 @@ export async function POST(req: NextRequest) {
       ctaHref: link,
       footerNote: `This link works once and expires in ${INVITE_TTL_DAYS} days. Open it signed in with this email address (${escapeHtml(email)}). If you were not expecting this, you can ignore it.`,
     })
-    const sent = process.env.RESEND_API_KEY
+    const sent = emailConfigured()
       ? await sendEmail({ to: email, subject: `${headName} invited you to coach with them on Pindar`, html, replyTo: user.email ?? undefined })
       : { ok: false as const }
 
