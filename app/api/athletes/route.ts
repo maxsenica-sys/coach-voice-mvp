@@ -4,7 +4,7 @@ import { createRouteClient } from '@/lib/supabase-route'
 import { routeIdentity } from '@/lib/route-identity'
 import { athleteStatus } from '@/lib/athlete-status'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
-import { sendEmail, renderBrandedEmail } from '@/lib/notify'
+import { sendEmail, renderBrandedEmail, emailConfigured } from '@/lib/notify'
 import { escapeHtml } from '@/lib/escape-html'
 import { errorMessage } from '@/lib/errors'
 import { resolveCoachScope, HEAD_ONLY_MESSAGE, athleteFilter } from '@/lib/coach-scope'
@@ -144,10 +144,10 @@ export async function POST(request: Request) {
       ? `${coachProfile.first_name} ${coachProfile.last_name}`
       : 'Your coach'
 
-    // 3) Send branded invite email via Resend
+    // 3) Send the branded invite email (Gmail or Resend — see emailConfigured)
     let emailWarning: string | null = null
-    if (!process.env.RESEND_API_KEY) {
-      emailWarning = 'RESEND_API_KEY is not configured — invite email was not sent. Share the invite link manually.'
+    if (!emailConfigured()) {
+      emailWarning = 'Email is not set up yet, so the invite email was not sent. Share the invite link manually.'
     } else if (inviteLink) {
       const html = renderBrandedEmail({
         heading: "You've been invited",
@@ -163,7 +163,7 @@ export async function POST(request: Request) {
         replyTo: user.email ?? undefined,
       })
       if (!result.ok) {
-        emailWarning = 'Athlete created but invite email failed to send. Check your RESEND_API_KEY and RESEND_FROM_EMAIL environment variables.'
+        emailWarning = 'Athlete created but invite email failed to send. Check the GMAIL_USER and GMAIL_APP_PASSWORD settings in Vercel, or share the invite link manually.'
       }
     }
 

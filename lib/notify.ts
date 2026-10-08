@@ -35,10 +35,35 @@ type SendEmailArgs = {
 
 type SendEmailResult = { ok: true; id?: string } | { ok: false; error: string }
 
-/** Low-level Resend call. Returns a result instead of throwing. */
+/**
+ * Whether the app can send email at all. Two ways, either is enough:
+ *
+ *  - Gmail: GMAIL_USER + GMAIL_APP_PASSWORD. For a coach with no web domain of
+ *    their own (Max, 2026-10-08: the app stays on its vercel.app address). Mail
+ *    goes out through Gmail's own servers, from the Gmail address, so it lands
+ *    in inboxes without any DNS set-up. Gmail caps a personal account at about
+ *    500 recipients a day, which is far above one coach's squad.
+ *  - Resend: RESEND_API_KEY (+ RESEND_FROM_EMAIL on a domain verified in
+ *    Resend). Needs a domain; without one Resend only delivers to its own
+ *    account holder, which is why invites silently never arrived.
+ *
+ * Gmail wins when both are set. Routes that tell a coach "email is not set up,
+ * copy the link instead" ask this rather than reading one variable.
+ */
+export function emailConfigured(): boolean {
+  return gmailConfigured() || !!process.env.RESEND_API_KEY
+}
+
+function gmailConfigured(): boolean {
+  return !!(process.env.GMAIL_USER?.trim() && process.env.GMAIL_APP_PASSWORD?.trim())
+}
+
+/** Sends through Gmail when configured, otherwise Resend. Returns a result instead of throwing. */
 export async function sendEmail({ to, subject, html, fromName, fromEmail, replyTo }: SendEmailArgs): Promise<SendEmailResult> {
+  if (gmailConfigured()) return sendViaGmail({ to, subject, html, fromName, replyTo })
+
   const resendKey = process.env.RESEND_API_KEY
-  if (!resendKey) return { ok: false, error: 'RESEND_API_KEY is not configured' }
+  if (!resendKey) return { ok: false, error: 'Email is not set up (no GMAIL_USER/GMAIL_APP_PASSWORD or RESEND_API_KEY)' }
 
   const from = fromHeader(fromName, fromEmail ?? process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev')
 
@@ -72,6 +97,33 @@ export async function sendEmail({ to, subject, html, fromName, fromEmail, replyT
         ? result.id
         : undefined
     return { ok: true, id }
+  } catch (e: unknown) {
+    return { ok: false, error: errorMessage(e, 'Email send failed') }
+  }
+}
+
+/**
+ * Gmail's SMTP server, logged in with an app password (not the account
+ * password — Google refuses that for SMTP). The From address has to be the
+ * Gmail account itself: Gmail rewrites any other address to it anyway, and a
+ * mismatch is what spam filters look for. So `fromEmail` is ignored here and
+ * only the display name ("Max via Pindar") changes. fromHeader() strips CR/LF
+ * and quotes from that name, exactly as on the Resend path.
+ */
+async function sendViaGmail({ to, subject, html, fromName, replyTo }: Omit<SendEmailArgs, 'fromEmail'>): Promise<SendEmailResult> {
+  const user = process.env.GMAIL_USER!.trim()
+  const pass = process.env.GMAIL_APP_PASSWORD!.trim().replace(/\s+/g, '') // pasted as "abcd efgh ijkl mnop"
+  try {
+    const { createTransport } = await import('nodemailer')
+    const transport = createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user, pass } })
+    const info = await transport.sendMail({
+      from: fromHeader(fromName, user),
+      to: Array.isArray(to) ? to : [to],
+      replyTo,
+      subject,
+      html,
+    })
+    return { ok: true, id: typeof info.messageId === 'string' ? info.messageId : undefined }
   } catch (e: unknown) {
     return { ok: false, error: errorMessage(e, 'Email send failed') }
   }
