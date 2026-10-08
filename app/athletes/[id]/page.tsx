@@ -187,16 +187,48 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
       .catch((e: unknown) => { setMsg(errorMessage(e, 'Could not load caretakers')); setLoaded(true) })
   }, [athleteId, loaded, setCaretakers, setMsg])
 
+  /* The row a save just wrote, marked for a few seconds. A cleared form and a
+   * "Saved" line alone read as nothing happening — and when the email was
+   * already on file the POST upserts, so the row moves to the bottom of the
+   * list rather than appearing; the mark is what shows where it went. */
+  const [justSavedId, setJustSavedId] = useState<string | null>(null)
+  const [justSavedWasUpdate, setJustSavedWasUpdate] = useState(false)
+  const justSavedRow = useRef<HTMLDivElement | null>(null)
+  const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The confirmation clears itself; an error that replaced it must not.
+  const savedMsg = useRef('')
+  const latestMsg = useRef(msg)
+  useEffect(() => { latestMsg.current = msg }, [msg])
+  const endFlash = () => {
+    justSavedTimer.current = null
+    setJustSavedId(null)
+    if (latestMsg.current === savedMsg.current) setMsg('')
+  }
+  useEffect(() => () => {
+    // Hiding the panel mid-flash: finish the flash rather than leave "Saved"
+    // sitting in the parent's state for the next time it opens.
+    if (justSavedTimer.current) { clearTimeout(justSavedTimer.current); if (latestMsg.current === savedMsg.current) setMsg('') }
+  }, [setMsg])
+  useEffect(() => {
+    if (justSavedId) justSavedRow.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [justSavedId])
+
   const save = async () => {
     if (!form.name || !form.email) { setMsg('Name and email required'); return }
     setSaving(true); setMsg('')
     try {
-      const res = await fetch('/api/caretakers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, caretaker_name: form.name, caretaker_email: form.email, relationship: form.relationship, notify_session_reports: form.notify_session_reports, notify_monthly_reports: form.notify_monthly_reports, notify_wellness_alerts: form.notify_wellness_alerts }) })
-      const j = await res.json()
-      if (!res.ok) throw new Error(j.error)
-      setCaretakers([...caretakers.filter(c => c.caretaker_email !== form.email), j.caretaker])
+      const j = await apiJson<{ caretaker: Caretaker }>('/api/caretakers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ athlete_id: athleteId, caretaker_name: form.name, caretaker_email: form.email, relationship: form.relationship, notify_session_reports: form.notify_session_reports, notify_monthly_reports: form.notify_monthly_reports, notify_wellness_alerts: form.notify_wellness_alerts }) })
+      const saved = j.caretaker
+      const existed = caretakers.some(c => c.id === saved.id || c.caretaker_email === form.email)
+      setCaretakers([...caretakers.filter(c => c.id !== saved.id && c.caretaker_email !== form.email), saved])
       setForm({ name: '', email: '', relationship: 'parent', notify_session_reports: true, notify_monthly_reports: true, notify_wellness_alerts: true })
-      setMsg('Saved!')
+      const who = saved.caretaker_name || form.name
+      const text = existed ? `Saved — ${who}'s details updated.` : `Saved — ${who} added.`
+      savedMsg.current = text; latestMsg.current = text
+      setMsg(text)
+      setJustSavedId(saved.id); setJustSavedWasUpdate(existed)
+      if (justSavedTimer.current) clearTimeout(justSavedTimer.current)
+      justSavedTimer.current = setTimeout(endFlash, 3500)
     } catch (e: unknown) { setMsg(errorMessage(e, 'Failed')) }
     setSaving(false)
   }
@@ -249,9 +281,24 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
       <h3 style={{ ...EYEBROW, marginBottom: 14 }}>Caretakers</h3>
       {caretakers.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-          {caretakers.map(c => (
-            <div key={c.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+          {caretakers.map(c => {
+            const fresh = c.id === justSavedId
+            return (
+            <div
+              key={c.id}
+              ref={fresh ? justSavedRow : undefined}
+              style={{
+                display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: fresh ? '10px' : '10px 0', borderTop: '1px solid var(--border)',
+                borderRadius: fresh ? 12 : 0, transition: 'background-color 0.3s ease',
+                background: fresh ? 'color-mix(in srgb, var(--success) 12%, transparent)' : 'transparent',
+              }}
+            >
               <div style={{ flex: 1, minWidth: 0 }}>
+                {fresh && (
+                  <div style={{ marginBottom: 6 }}>
+                    <Chip color="var(--success)">{justSavedWasUpdate ? '✓ Updated' : '✓ Just added'}</Chip>
+                  </div>
+                )}
                 <div style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text)', overflowWrap: 'break-word' }}>{c.caretaker_name} <span style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.14em', color: 'var(--text-muted)' }}>{c.relationship}</span></div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', overflowWrap: 'anywhere', marginTop: 2 }}>{c.caretaker_email}</div>
               </div>
@@ -305,7 +352,8 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
       {emailMsg && <div style={{ fontSize: 'var(--t-min)', color: emailMsg.startsWith('Test sent') ? 'var(--success)' : 'var(--danger)', marginBottom: 10, fontWeight: 600 }}>{emailMsg}</div>}
@@ -324,11 +372,36 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
         <label style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', cursor: 'pointer', lineHeight: 1.45 }}>
           <input type="checkbox" style={{ accentColor: 'var(--primary)', flexShrink: 0 }} checked={form.notify_wellness_alerts} onChange={e => setForm({ ...form, notify_wellness_alerts: e.target.checked })} /> Show in wellness alert &quot;notify parent&quot; list
         </label>
-        {msg && <div style={{ fontSize: 'var(--t-min)', color: msg.includes('Saved') ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{msg}</div>}
+        {msg && <div role="status" style={{ fontSize: 'var(--t-min)', color: msg.startsWith('Saved') ? 'var(--success)' : 'var(--danger)', fontWeight: 600, overflowWrap: 'anywhere' }}>{msg}</div>}
         <button className="btn btn-primary" style={{ fontSize: 13, minHeight: 44 }} onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Caretaker'}</button>
       </div>
     </div>
   )
+}
+
+// ── Profile form ─────────────────────────────────────────────────
+type ProfileForm = {
+  first_name: string; last_name: string; position: string; height: string
+  sport: string; goals: string
+  sport_metrics: Record<string, string>
+  custom_fields: { label: string; value: string }[]
+}
+/** The saved height as the coach typed it, or the legacy centimetre column. */
+function athleteHeight(a: Athlete): string {
+  return a.height ?? (a.height_cm != null ? String(a.height_cm) + 'cm' : '')
+}
+/** The edit form, filled from the saved athlete (or empty before it loads). */
+function profileFormFrom(a: Athlete | null): ProfileForm {
+  return {
+    first_name: a?.first_name ?? '',
+    last_name: a?.last_name ?? '',
+    position: a?.position ?? '',
+    height: a ? athleteHeight(a) : '',
+    sport: a?.sport ?? '',
+    goals: a?.goals ?? '',
+    sport_metrics: { ...(a?.sport_metrics ?? {}) },
+    custom_fields: (a?.custom_fields ?? []).map(cf => ({ ...cf })),
+  }
 }
 
 // ── Video upload progress bar ────────────────────────────────────
@@ -403,16 +476,16 @@ export default function AthleteDetailPage() {
      difference is whether the upload also started. */
   const [videoError, setVideoError] = useState<Record<string, string>>({})
 
-  // Profile editing
-  const [showProfile, setShowProfile] = useState(false)
-  const [profileForm, setProfileForm] = useState({
-    first_name: '', last_name: '', position: '', height: '',
-    sport: '',
-    goals: '', sport_metrics: {} as Record<string, string>,
-    custom_fields: [] as { label: string; value: string }[],
-  })
+  // Profile editing. The tab reads as the saved profile; the form appears only
+  // while editing, and a save closes it — the new values on screen are the
+  // proof it saved, not a line of text under a form that never moved.
+  const [editingProfile, setEditingProfile] = useState(false)
+  const [profileForm, setProfileForm] = useState<ProfileForm>(() => profileFormFrom(null))
   const [profileSaving, setProfileSaving] = useState(false)
+  /** A failed save, shown in the form. */
   const [profileMsg, setProfileMsg] = useState('')
+  /** A save just landed — a brief line over the read view. */
+  const [profileJustSaved, setProfileJustSaved] = useState(false)
   const [photoUploading, setPhotoUploading] = useState(false)
   const [metricKey, setMetricKey] = useState('')
   const [metricVal, setMetricVal] = useState('')
@@ -512,16 +585,7 @@ export default function AthleteDetailPage() {
       const { athlete: a } = await aRes.json()
       if (stale()) return
       setAthlete(a); setAutoMonthlyReport(a.auto_monthly_report ?? false)
-      setProfileForm({
-        first_name: a.first_name ?? '',
-        last_name: a.last_name ?? '',
-        position: a.position ?? '',
-        height: a.height ?? (a.height_cm != null ? String(a.height_cm) + 'cm' : ''),
-        sport: a.sport ?? '',
-        goals: a.goals ?? '',
-        sport_metrics: a.sport_metrics ?? {},
-        custom_fields: a.custom_fields ?? [],
-      })
+      setProfileForm(profileFormFrom(a))
       const sRes = await sessionsPromise
       if (stale()) return
       if (!sRes.ok) throw new Error((await sRes.json().catch(() => ({}))).error ?? 'Failed to load sessions')
@@ -543,6 +607,7 @@ export default function AthleteDetailPage() {
       setAthlete(null); setSessions([]); setOpenSessionId(null); setSessionVideos({})
       setNotes([]); setNotesState('idle'); setNotesError(''); notesSeq.current++
       setNoteText(''); setNoteMsg(''); setSessionsShowAll(false)
+      setEditingProfile(false); setProfileMsg(''); setProfileJustSaved(false)
     }
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -837,6 +902,14 @@ export default function AthleteDetailPage() {
   const [alertSendTo, setAlertSendTo] = useState('')
   const [alertSending, setAlertSending] = useState(false)
   const [alertMsg, setAlertMsg] = useState('')
+  /* Who the last alert went to. A "Sent" line under a form still holding the
+   * address and a live button read as not having gone — and invited a second
+   * tap, which emails a parent about their child twice. So a send clears the
+   * picker and the button becomes the receipt, disabled until a different
+   * address is chosen. */
+  const [alertSentTo, setAlertSentTo] = useState<string | null>(null)
+  const alertJustSent = alertSentTo !== null
+    && (alertSendTo.trim() === '' || alertSendTo.trim().toLowerCase() === alertSentTo.toLowerCase())
   const sendWellnessAlert = async (email: string) => {
     if (!email.includes('@')) { setAlertMsg('Enter a valid email.'); return }
     setAlertSending(true); setAlertMsg('')
@@ -847,7 +920,8 @@ export default function AthleteDetailPage() {
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error ?? 'Failed to send')
-      setAlertMsg(`Sent to ${email}!`)
+      setAlertSentTo(email.trim())
+      setAlertSendTo('')
     } catch (e: unknown) { setAlertMsg(errorMessage(e, 'Failed to send')) }
     setAlertSending(false)
   }
@@ -1009,6 +1083,7 @@ export default function AthleteDetailPage() {
     setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).map(v => v.id === videoId ? { ...v, shared_with_athlete: !current } : v) }))
   }
 
+  const profileSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveProfile = async () => {
     setProfileSaving(true); setProfileMsg('')
     try {
@@ -1022,8 +1097,14 @@ export default function AthleteDetailPage() {
         height: profileForm.height.trim() || null,
         sport: profileForm.sport.trim() || null,
         goals: profileForm.goals.trim() || null,
-        sport_metrics: profileForm.sport_metrics,
-        custom_fields: profileForm.custom_fields,
+        // A row typed into the "+ Add" boxes but never added is still what the
+        // coach meant to save — dropping it on Save would lose it silently.
+        sport_metrics: metricKey.trim()
+          ? { ...profileForm.sport_metrics, [metricKey.trim()]: metricVal.trim() }
+          : profileForm.sport_metrics,
+        custom_fields: customLabel.trim()
+          ? [...profileForm.custom_fields, { label: customLabel.trim(), value: customVal.trim() }]
+          : profileForm.custom_fields,
       }
       const res = await fetch(`/api/athletes/${athleteId}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -1031,10 +1112,28 @@ export default function AthleteDetailPage() {
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Save failed')
       const { athlete: updated } = await res.json()
       setAthlete(prev => prev ? { ...prev, ...updated } : prev)
-      setProfileMsg('Saved!')
-      setTimeout(() => setProfileMsg(''), 3000)
+      // The form is rebuilt from what the server stored, so the read view and
+      // the next edit both start from the saved row, not from what was typed.
+      if (athlete) setProfileForm(profileFormFrom({ ...athlete, ...updated }))
+      setMetricKey(''); setMetricVal(''); setCustomLabel(''); setCustomVal('')
+      setEditingProfile(false)
+      setProfileJustSaved(true)
+      if (profileSavedTimer.current) clearTimeout(profileSavedTimer.current)
+      profileSavedTimer.current = setTimeout(() => setProfileJustSaved(false), 3000)
     } catch (e: unknown) { setProfileMsg(errorMessage(e, 'Failed')) }
     finally { setProfileSaving(false) }
+  }
+  const editProfile = () => {
+    if (athlete) setProfileForm(profileFormFrom(athlete))
+    setProfileMsg(''); setProfileJustSaved(false)
+    setEditingProfile(true)
+  }
+  /** Cancel puts back the saved values, including rows added with "+ Add". */
+  const cancelProfileEdit = () => {
+    if (athlete) setProfileForm(profileFormFrom(athlete))
+    setMetricKey(''); setMetricVal(''); setCustomLabel(''); setCustomVal('')
+    setProfileMsg('')
+    setEditingProfile(false)
   }
 
   const loadNotes = async (force = false) => {
@@ -1886,14 +1985,35 @@ export default function AthleteDetailPage() {
                     value={alertSendTo}
                     onChange={e => setAlertSendTo(e.target.value)}
                   />
-                  <button
-                    className="btn btn-danger" style={{ fontSize: 'var(--t-furniture)', padding: '6px 14px', minHeight: 44 }}
-                    disabled={alertSending || !alertSendTo}
-                    onClick={() => sendWellnessAlert(alertSendTo)}
-                  >
-                    {alertSending ? 'Sending…' : 'Notify parent'}
-                  </button>
+                  {alertJustSent && !alertSending ? (
+                    <button
+                      className="btn" disabled
+                      style={{
+                        fontSize: 'var(--t-furniture)', padding: '6px 14px', minHeight: 44, minWidth: 0, maxWidth: '100%',
+                        whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left',
+                        // Not the faded look of a disabled control: this is a receipt.
+                        opacity: 1, color: 'var(--success)',
+                        background: 'color-mix(in srgb, var(--success) 12%, transparent)',
+                        border: '1px solid color-mix(in srgb, var(--success) 45%, transparent)',
+                      }}
+                    >
+                      ✓ Sent to {alertSentTo}
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-danger" style={{ fontSize: 'var(--t-furniture)', padding: '6px 14px', minHeight: 44 }}
+                      disabled={alertSending || !alertSendTo}
+                      onClick={() => sendWellnessAlert(alertSendTo)}
+                    >
+                      {alertSending ? 'Sending…' : 'Notify parent'}
+                    </button>
+                  )}
                 </div>
+                {alertJustSent && !alertSending && (
+                  <div role="status" style={{ fontSize: 'var(--t-body-tight)', marginTop: 8, lineHeight: 1.5, color: 'var(--text-2)' }}>
+                    Alert emailed. To notify someone else, choose or type another address.
+                  </div>
+                )}
                 {alertMsg && (
                   <div style={{ fontSize: 'var(--t-min)', marginTop: 8, fontWeight: 600, color: alertMsg.includes('Sent') ? 'var(--success)' : 'var(--danger)' }}>
                     {alertMsg}
@@ -2071,7 +2191,16 @@ export default function AthleteDetailPage() {
         ══════════════════════════════════════ */}
         {activeTab === 'profile' && athlete && !isAssistant && (
           <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
-            <h2 style={{ ...EYEBROW, fontSize: 17, letterSpacing: '0.14em', color: 'var(--text)', marginBottom: 16 }}>Athlete Profile</h2>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 16 }}>
+              <h2 style={{ ...EYEBROW, fontSize: 17, letterSpacing: '0.14em', color: 'var(--text)' }}>
+                {editingProfile ? 'Edit Profile' : 'Athlete Profile'}
+              </h2>
+              {!editingProfile && (
+                <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', minHeight: 44, paddingInline: 14 }} onClick={editProfile}>
+                  Edit profile
+                </button>
+              )}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '120px minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>
               {/* Photo */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
@@ -2094,74 +2223,138 @@ export default function AthleteDetailPage() {
                 </label>
               </div>
 
-              {/* Fields */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
-                  <div>
-                    <label className="label">First name</label>
-                    <input className="input" value={profileForm.first_name} onChange={e => setProfileForm(f => ({ ...f, first_name: e.target.value }))} />
+              {/* Fields — the saved profile, or the form while editing */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+                {editingProfile ? (<>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
+                    <div>
+                      <label className="label">First name</label>
+                      <input className="input" value={profileForm.first_name} onChange={e => setProfileForm(f => ({ ...f, first_name: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Last name</label>
+                      <input className="input" value={profileForm.last_name} onChange={e => setProfileForm(f => ({ ...f, last_name: e.target.value }))} />
+                    </div>
                   </div>
                   <div>
-                    <label className="label">Last name</label>
-                    <input className="input" value={profileForm.last_name} onChange={e => setProfileForm(f => ({ ...f, last_name: e.target.value }))} />
+                    <label className="label">Sport</label>
+                    <SportWheelPicker value={profileForm.sport} onChange={v => setProfileForm(f => ({ ...f, sport: v }))} />
                   </div>
-                </div>
-                <div>
-                  <label className="label">Sport</label>
-                  <SportWheelPicker value={profileForm.sport} onChange={v => setProfileForm(f => ({ ...f, sport: v }))} />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
+                    <div>
+                      <label className="label">Position / Role</label>
+                      <input className="input" placeholder="e.g. Striker, Setter, Sprinter" value={profileForm.position} onChange={e => setProfileForm(f => ({ ...f, position: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Height</label>
+                      <input className="input" type="text" placeholder={`e.g. 6'2" or 188cm`} value={profileForm.height} onChange={e => setProfileForm(f => ({ ...f, height: e.target.value }))} />
+                    </div>
+                  </div>
                   <div>
-                    <label className="label">Position / Role</label>
-                    <input className="input" placeholder="e.g. Striker, Setter, Sprinter" value={profileForm.position} onChange={e => setProfileForm(f => ({ ...f, position: e.target.value }))} />
+                    <label className="label">Personal Goals</label>
+                    <textarea className="input" rows={3} placeholder="Athlete's current goals and targets…" value={profileForm.goals} onChange={e => setProfileForm(f => ({ ...f, goals: e.target.value }))} />
                   </div>
-                  <div>
-                    <label className="label">Height</label>
-                    <input className="input" type="text" placeholder={`e.g. 6'2" or 188cm`} value={profileForm.height} onChange={e => setProfileForm(f => ({ ...f, height: e.target.value }))} />
-                  </div>
-                </div>
-                <div>
-                  <label className="label">Personal Goals</label>
-                  <textarea className="input" rows={3} placeholder="Athlete's current goals and targets…" value={profileForm.goals} onChange={e => setProfileForm(f => ({ ...f, goals: e.target.value }))} />
-                </div>
 
-                {/* Sport-specific metrics */}
-                <div>
-                  <label className="label">Sport Metrics</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-                    {Object.entries(profileForm.sport_metrics).map(([k, v]) => (
-                      <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.1em', color: 'var(--text-2)', flex: '0 1 auto', minWidth: 0, maxWidth: '40%', padding: '6px 10px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', overflowWrap: 'anywhere' }}>{k}</span>
-                        <input className="input" style={{ flex: 1, minWidth: 0, fontSize: 13 }} value={v} onChange={e => setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [k]: e.target.value } }))} />
-                        <button aria-label={`Remove ${k}`} onClick={() => setProfileForm(f => { const m = { ...f.sport_metrics }; delete m[k]; return { ...f, sport_metrics: m } })} style={{ ...HIT, background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 20, padding: 0, flexShrink: 0 }}>×</button>
-                      </div>
-                    ))}
+                  {/* Sport-specific metrics */}
+                  <div>
+                    <label className="label">Sport Metrics</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                      {Object.entries(profileForm.sport_metrics).map(([k, v]) => (
+                        <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.1em', color: 'var(--text-2)', flex: '0 1 auto', minWidth: 0, maxWidth: '40%', padding: '6px 10px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', overflowWrap: 'anywhere' }}>{k}</span>
+                          <input className="input" style={{ flex: 1, minWidth: 0, fontSize: 13 }} value={v} onChange={e => setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [k]: e.target.value } }))} />
+                          <button aria-label={`Remove ${k}`} onClick={() => setProfileForm(f => { const m = { ...f.sport_metrics }; delete m[k]; return { ...f, sport_metrics: m } })} style={{ ...HIT, background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 20, padding: 0, flexShrink: 0 }}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      <input className="input" style={{ flex: '1 1 210px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Metric (e.g. 40m Sprint)" value={metricKey} onChange={e => setMetricKey(e.target.value)} />
+                      <input className="input" style={{ flex: '1 1 160px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. 5.2s)" value={metricVal} onChange={e => setMetricVal(e.target.value)} />
+                      <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', flexShrink: 0, minHeight: 44 }} onClick={() => { if (!metricKey.trim()) return; setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [metricKey.trim()]: metricVal.trim() } })); setMetricKey(''); setMetricVal('') }}>+ Add</button>
+                    </div>
+                    <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.45 }}>Added rows are saved when you tap Save profile.</div>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    <input className="input" style={{ flex: '1 1 210px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Metric (e.g. 40m Sprint)" value={metricKey} onChange={e => setMetricKey(e.target.value)} />
-                    <input className="input" style={{ flex: '1 1 160px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. 5.2s)" value={metricVal} onChange={e => setMetricVal(e.target.value)} />
-                    <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', flexShrink: 0, minHeight: 44 }} onClick={() => { if (!metricKey.trim()) return; setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [metricKey.trim()]: metricVal.trim() } })); setMetricKey(''); setMetricVal('') }}>+ Add</button>
-                  </div>
-                </div>
 
-                {/* Custom fields */}
-                <div>
-                  <label className="label">Custom Fields</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-                    {profileForm.custom_fields.map((cf, i) => (
-                      <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                        <input className="input" style={{ flex: '1 1 110px', minWidth: 0, fontSize: 'var(--t-body-tight)', fontWeight: 700 }} value={cf.label} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} />
-                        <input className="input" style={{ flex: '2 1 160px', minWidth: 0, fontSize: 13 }} value={cf.value} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, value: e.target.value } : x) }))} />
-                        <button aria-label={`Remove ${cf.label || 'this field'}`} onClick={() => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.filter((_, j) => j !== i) }))} style={{ ...HIT, background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 20, padding: 0, flexShrink: 0 }}>×</button>
+                  {/* Custom fields */}
+                  <div>
+                    <label className="label">Custom Fields</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                      {profileForm.custom_fields.map((cf, i) => (
+                        <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                          <input className="input" style={{ flex: '1 1 110px', minWidth: 0, fontSize: 'var(--t-body-tight)', fontWeight: 700 }} value={cf.label} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} />
+                          <input className="input" style={{ flex: '2 1 160px', minWidth: 0, fontSize: 13 }} value={cf.value} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, value: e.target.value } : x) }))} />
+                          <button aria-label={`Remove ${cf.label || 'this field'}`} onClick={() => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.filter((_, j) => j !== i) }))} style={{ ...HIT, background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 20, padding: 0, flexShrink: 0 }}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      <input className="input" style={{ flex: '1 1 150px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Label (e.g. Club)" value={customLabel} onChange={e => setCustomLabel(e.target.value)} />
+                      <input className="input" style={{ flex: '2 1 190px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. City FC)" value={customVal} onChange={e => setCustomVal(e.target.value)} />
+                      <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', flexShrink: 0, minHeight: 44 }} onClick={() => { if (!customLabel.trim()) return; setProfileForm(f => ({ ...f, custom_fields: [...f.custom_fields, { label: customLabel.trim(), value: customVal.trim() }] })); setCustomLabel(''); setCustomVal('') }}>+ Add</button>
+                    </div>
+                    <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.45 }}>Added rows are saved when you tap Save profile.</div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                    <button className="btn btn-primary" style={{ minHeight: 44 }} onClick={saveProfile} disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save profile'}</button>
+                    <button className="btn btn-ghost" style={{ minHeight: 44 }} onClick={cancelProfileEdit} disabled={profileSaving}>Cancel</button>
+                  </div>
+                  {profileMsg && <div role="alert" style={{ fontSize: 'var(--t-body-tight)', fontWeight: 600, color: 'var(--danger)', overflowWrap: 'anywhere' }}>{profileMsg}</div>}
+                </>) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+                  {profileJustSaved && (
+                    <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--t-body-tight)', fontWeight: 700, color: 'var(--success)' }}>
+                      <Icon name="check" size={16} /> Profile saved
+                    </div>
+                  )}
+                  {(() => {
+                    /* Every saved field, in full. An empty one says so rather
+                       than vanishing, so "not set" is never confused with
+                       "not shown". */
+                    const VALUE: React.CSSProperties = { fontSize: 'var(--t-body)', color: 'var(--text)', lineHeight: 1.5, overflowWrap: 'anywhere', marginTop: 4 }
+                    const UNSET: React.CSSProperties = { ...VALUE, color: 'var(--text-muted)' }
+                    const field = (label: string, value: string | null | undefined, pre = false) => (
+                      <div style={{ minWidth: 0 }}>
+                        <div style={EYEBROW}>{label}</div>
+                        {value && value.trim()
+                          ? <div style={pre ? { ...VALUE, whiteSpace: 'pre-wrap' } : VALUE}>{value}</div>
+                          : <div style={UNSET}>Not set</div>}
                       </div>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    <input className="input" style={{ flex: '1 1 150px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Label (e.g. Club)" value={customLabel} onChange={e => setCustomLabel(e.target.value)} />
-                    <input className="input" style={{ flex: '2 1 190px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. City FC)" value={customVal} onChange={e => setCustomVal(e.target.value)} />
-                    <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', flexShrink: 0, minHeight: 44 }} onClick={() => { if (!customLabel.trim()) return; setProfileForm(f => ({ ...f, custom_fields: [...f.custom_fields, { label: customLabel.trim(), value: customVal.trim() }] })); setCustomLabel(''); setCustomVal('') }}>+ Add</button>
-                  </div>
+                    )
+                    const metrics = Object.entries(athlete.sport_metrics ?? {})
+                    const custom = athlete.custom_fields ?? []
+                    const pairList = (rows: [string, string][], empty: string) => rows.length === 0
+                      ? <div style={UNSET}>{empty}</div>
+                      : (
+                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: 4 }}>
+                          {rows.map(([k, v], i) => (
+                            <div key={`${k}-${i}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)', gap: 10, padding: '8px 0', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                              <div style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.1em', color: 'var(--text-2)', minWidth: 0, overflowWrap: 'anywhere', lineHeight: 1.4 }}>{k || 'Untitled'}</div>
+                              <div style={{ fontSize: 'var(--t-body)', color: v ? 'var(--text)' : 'var(--text-muted)', minWidth: 0, overflowWrap: 'anywhere', lineHeight: 1.4 }}>{v || 'Not set'}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    return (<>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 14 }}>
+                        {field('Name', `${athlete.first_name ?? ''} ${athlete.last_name ?? ''}`.trim())}
+                        {field('Sport', athlete.sport)}
+                        {field('Position / Role', athlete.position)}
+                        {field('Height', athleteHeight(athlete))}
+                      </div>
+                      {field('Personal Goals', athlete.goals, true)}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={EYEBROW}>Sport Metrics</div>
+                        {pairList(metrics, 'None added')}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={EYEBROW}>Custom Fields</div>
+                        {pairList(custom.map(cf => [cf.label, cf.value] as [string, string]), 'None added')}
+                      </div>
+                    </>)
+                  })()}
                 </div>
+                )}
 
                 {/* Caretakers toggle */}
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 4 }}>
@@ -2193,11 +2386,6 @@ export default function AthleteDetailPage() {
                       <CaretakerPanel athleteId={athleteId} athleteName={`${athlete.first_name} ${athlete.last_name}`} caretakers={caretakers} setCaretakers={setCaretakers} form={caretakerForm} setForm={setCaretakerForm} saving={caretakerSaving} setSaving={setCaretakerSaving} msg={caretakerMsg} setMsg={setCaretakerMsg} emailSending={emailSending} setEmailSending={setEmailSending} emailMsg={emailMsg} setEmailMsg={setEmailMsg} />
                     </div>
                   )}
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-                  <button className="btn btn-primary" style={{ minHeight: 44 }} onClick={saveProfile} disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save Profile'}</button>
-                  {profileMsg && <span style={{ fontSize: 13, fontWeight: 600, color: profileMsg.includes('Saved') ? 'var(--success)' : 'var(--danger)' }}>{profileMsg}</span>}
                 </div>
               </div>
             </div>

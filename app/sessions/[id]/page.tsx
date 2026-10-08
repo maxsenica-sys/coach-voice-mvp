@@ -488,6 +488,19 @@ export default function SessionDetailPage() {
 
   const [notesDraft, setNotesDraft] = useState('')
   const [notesDirty, setNotesDirty] = useState(false)
+  /**
+   * The coach's notes are read, not a standing textarea. Saving closes the
+   * editor and the saved words take its place — the page visibly moves on, so
+   * nobody is left wondering whether "Notes saved" meant it (Max's rule).
+   */
+  const [notesEditing, setNotesEditing] = useState(false)
+  const [notesSaving, setNotesSaving] = useState(false)
+  const notesSavingRef = useRef(false)
+  /** Set on pointer-down on Cancel, so the textarea's blur does not save what is being discarded. */
+  const notesCancellingRef = useRef(false)
+  const notesRef = useRef<HTMLTextAreaElement | null>(null)
+  /** What is in the textarea right now, readable after an await. */
+  const notesLatestRef = useRef('')
   const [newFocus, setNewFocus] = useState('')
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
@@ -566,7 +579,9 @@ export default function SessionDetailPage() {
       const json = await apiJson<DetailResponse>(`/api/sessions/${sessionId}/detail`, { cache: 'no-store' })
       setData(json)
       setNotesDraft(json.session.coach_notes ?? '')
+      notesLatestRef.current = json.session.coach_notes ?? ''
       setNotesDirty(false)
+      setNotesEditing(false)
       void loadVideoFeatures(json.viewerRole, json.athlete?.id ?? null)
     } catch (e: unknown) {
       setPageError(errorMessage(e, 'Could not open this session.'))
@@ -597,14 +612,47 @@ export default function SessionDetailPage() {
     }
   }
 
+  /**
+   * Save from the button or from the textarea's blur. The ref stops the two
+   * firing one PATCH each when a tap on Save is also what blurs the textarea.
+   * On failure the editor stays open with every typed word in it.
+   */
   const saveNotes = async () => {
-    if (!session) return
-    const ok = await patchSession({ coach_notes: notesDraft }, 'Notes saved')
+    if (!session || notesSavingRef.current) return
+    if (!notesDirty) { setNotesEditing(false); return }
+    const text = notesDraft
+    notesSavingRef.current = true
+    setNotesSaving(true)
+    const ok = await patchSession({ coach_notes: text }, 'Notes saved')
+    notesSavingRef.current = false
+    setNotesSaving(false)
     if (ok) {
-      setNotesDirty(false)
-      setData((d) => (d ? { ...d, session: { ...d.session, coach_notes: notesDraft } } : d))
+      setData((d) => (d ? { ...d, session: { ...d.session, coach_notes: text } } : d))
+      // Typed into while the request was in flight: keep editing, keep it dirty.
+      if (notesLatestRef.current === text) { setNotesDirty(false); setNotesEditing(false) }
     }
   }
+
+  const openNotes = () => {
+    notesLatestRef.current = notesDraft
+    setNotesEditing(true)
+  }
+
+  const cancelNotes = () => {
+    notesCancellingRef.current = false
+    notesLatestRef.current = session?.coach_notes ?? ''
+    setNotesDraft(session?.coach_notes ?? '')
+    setNotesDirty(false)
+    setNotesEditing(false)
+  }
+
+  // Opening the editor puts the caret at the end of what is already there.
+  useEffect(() => {
+    const el = notesRef.current
+    if (!notesEditing || !el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [notesEditing])
 
   const setFocusPoints = async (points: FocusPoint[]): Promise<boolean> => {
     if (!session) return false
@@ -1297,25 +1345,54 @@ export default function SessionDetailPage() {
         {(isCoach || session.coach_notes) && (
           <Section
             label={isCoach ? 'Your notes' : 'Notes from your coach'}
-            action={isCoach && notesDirty ? (
-              <button className="btn btn-primary" onClick={saveNotes} style={{ minHeight: 44, padding: '0 16px', fontSize: 'var(--t-furniture)' }}>
-                Save
-              </button>
+            action={isCoach && !notesEditing && session.coach_notes?.trim() ? (
+              <button onClick={openNotes} style={toolButton}>Edit notes</button>
             ) : undefined}
           >
-            {isCoach ? (
-              <textarea
-                value={notesDraft}
-                onChange={(e) => { setNotesDraft(e.target.value); setNotesDirty(true) }}
-                onBlur={() => { if (notesDirty) void saveNotes() }}
-                placeholder="Anything worth remembering — context, what you tried, what to watch for."
-                rows={4}
-                style={{
-                  display: 'block', width: '100%', border: `1px solid ${LINE_2}`, borderRadius: 16,
-                  padding: '13px 15px', font: 'inherit', fontSize: 16, lineHeight: 1.6,
-                  background: PANEL, color: 'var(--text)', resize: 'vertical', minHeight: 104,
-                }}
-              />
+            {isCoach && notesEditing ? (
+              <>
+                <textarea
+                  ref={notesRef}
+                  value={notesDraft}
+                  onChange={(e) => { setNotesDraft(e.target.value); notesLatestRef.current = e.target.value; setNotesDirty(true) }}
+                  onFocus={() => { notesCancellingRef.current = false }}
+                  onBlur={() => { if (notesDirty && !notesCancellingRef.current) void saveNotes() }}
+                  placeholder="Anything worth remembering — context, what you tried, what to watch for."
+                  rows={4}
+                  style={{
+                    display: 'block', width: '100%', border: `1px solid ${LINE_2}`, borderRadius: 16,
+                    padding: '13px 15px', font: 'inherit', fontSize: 16, lineHeight: 1.6,
+                    background: PANEL, color: 'var(--text)', resize: 'vertical', minHeight: 104,
+                  }}
+                />
+                {/* mouseDown is held so a tap here does not blur the textarea
+                    first — Save would otherwise fire twice, and Cancel would
+                    save the very text it is throwing away. */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 10 }}>
+                  <button
+                    className="btn btn-primary"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => void saveNotes()}
+                    disabled={notesSaving}
+                    style={{ minHeight: 44, padding: '0 18px', fontSize: 'var(--t-furniture)', cursor: notesSaving ? 'progress' : 'pointer' }}
+                  >
+                    {notesSaving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    onPointerDown={() => { notesCancellingRef.current = true }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={cancelNotes}
+                    disabled={notesSaving}
+                    style={{ ...toolButton, opacity: notesSaving ? 0.5 : 1, cursor: notesSaving ? 'not-allowed' : 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : isCoach && !session.coach_notes?.trim() ? (
+              <button onClick={openNotes} style={toolButton}>
+                <Icon name="plus" size={13} /> Add notes
+              </button>
             ) : (
               <div style={{
                 ...panel, padding: '13px 15px', fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.6,
