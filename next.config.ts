@@ -3,11 +3,10 @@ import { execSync } from 'node:child_process'
 
 /* The version this build is, for lib/app-update.ts: the running bundle and the
  * web app manifest are built with the same value, so an installed app can ask
- * the manifest whether it is behind. The commit, so a redeploy of the same
- * code is not an "update". It must be identical in every build worker, which
- * is why there is no timestamp fallback: two workers would mint two versions
- * and the app would believe it was always out of date. 'dev' turns the
- * watcher off.
+ * the manifest whether it is behind. The commit, not a clock: a redeploy of
+ * the same code (an environment variable changed) must not reload every open
+ * app for nothing, and a value derived from the code is the same however many
+ * times or processes the config is evaluated in. 'dev' turns the watcher off.
  */
 function appVersion(): string {
   if (process.env.VERCEL_GIT_COMMIT_SHA) return process.env.VERCEL_GIT_COMMIT_SHA

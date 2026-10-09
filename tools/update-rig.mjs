@@ -21,7 +21,7 @@
  *       was taken from — a recorder whose markup changes turns this red
  *       rather than quietly becoming reloadable.
  *   U9  The build and the manifest carry the same version, and it is never
- *       a timestamp (two build workers would mint two of them).
+ *       a timestamp (a same-code redeploy would reload every open app).
  *   U10 The service worker never answers for the manifest, so the answer is
  *       the server's.
  *
@@ -90,6 +90,9 @@ for (const [sel, file, re, why] of anchors) {
     !BUSY_SELECTOR.includes(sel) ? 'missing from BUSY_SELECTOR' : `${file} no longer matches ${re}`)
 }
 check('U8  an unsent voice message URL really is a blob: URL', /setAudioUrl\(URL\.createObjectURL\(/.test(src('app/components/MessagingPanel.tsx')))
+check('U8  only text the person typed counts — a field the app filled in never holds an update back',
+  /if \(!typedInto\.has\(el\)\) continue/.test(src('app/components/UpdateWatcher.tsx')) &&
+  /addEventListener\('input', onInput, true\)/.test(src('app/components/UpdateWatcher.tsx')))
 check('U8  typed text counts: textarea and plain inputs are text entry', ['textarea', 'input:not([type])', 'input[type="text"]'].every((s) => TEXT_ENTRY_SELECTOR.includes(s)))
 
 // U9 — one version, the same in the bundle and the manifest.

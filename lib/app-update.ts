@@ -78,8 +78,10 @@ export const BUSY_SELECTOR = [
   'video[src^="blob:"]',
 ].join(', ')
 
-/** Fields whose content would be lost. Hidden, file, checkbox-like and button
- *  inputs hold nothing a person typed. */
+/** Fields whose content would be lost — counted only once the person has
+ *  typed into them (UpdateWatcher listens for `input`), so a field the app
+ *  filled in itself never holds an update back. Hidden, file, checkbox-like
+ *  and button inputs hold nothing a person typed. */
 export const TEXT_ENTRY_SELECTOR =
   'textarea, input:not([type]), input[type="text"], input[type="email"], input[type="search"], input[type="tel"], input[type="url"], input[type="number"], input[type="password"], [contenteditable="true"]'
 

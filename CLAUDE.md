@@ -278,8 +278,11 @@ are `lib/app-update.ts`; `npm run verify:update` holds them.
   `BUSY_SELECTOR`** — use `role="dialog"`, or add its marker there and an anchor
   in `tools/update-rig.mjs`. Otherwise an update can reload over it.
 - **`NEXT_PUBLIC_APP_VERSION` is the commit** (`next.config.ts`). Never a
-  timestamp: each build worker would mint its own and the app would believe it
-  was always out of date.
+  timestamp: a redeploy of the same code would reload every open app for
+  nothing.
+- **Only text a person typed holds an update back.** A field the app filled in
+  itself does not — otherwise a screen that always shows one would never
+  update on resume.
 - **What still only changes on a fresh install:** the Home Screen icon, its
   name and the iOS launch images. Treat them as fixed; changing any of them
   means a stale copy on every existing iPhone.
