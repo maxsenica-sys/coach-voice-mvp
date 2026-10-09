@@ -26,9 +26,22 @@
  *
  * ── Why it is generated ───────────────────────────────────────────────────
  *
- * The picture has to be the resting frame of the boot shell in app/layout.tsx,
- * pixel for pixel, or the handoff from the OS screen to the document is a
- * visible jump. Hand-making eighteen of those and keeping them in step with a
+ * The picture has to be the FIRST frame of the boot shell in app/layout.tsx —
+ * the bare ink ground the opening starts from — pixel for pixel, or the
+ * handoff from the OS screen to the document is a visible jump.
+ *
+ * It used to be the opening's resting frame: the finished wreath and the name.
+ * Max, 2026-10-09: "when I open it, it opens to Pindar and your training
+ * journal and then goes through the opening … we can't have that occurring."
+ * A finished lockup on the launch screen is a whole screen that appears, sits,
+ * vanishes, and is then built again from nothing — the opening's punchline
+ * shown before its setup. The bare ground goes straight into the animation.
+ *
+ * It is also the only picture here that cannot go stale. iOS keeps the launch
+ * image it stored when the app was added; that is why a phone installed before
+ * 2026-10-09 still shows "Your private training journal", a line the app has
+ * not carried since. A launch screen with no words and no mark on it has
+ * nothing to fall out of date when the opening changes again. Hand-making eighteen of those and keeping them in step with a
  * CSS gradient is not a thing anyone will do twice, so this renders them from
  * the same values, in the browser, at each device's real pixel ratio.
  */
@@ -37,7 +50,6 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import sharp from 'sharp'
 import { join } from 'node:path'
 import { existsSync, readdirSync } from 'node:fs'
-import { BRAND } from '../lib/brand-mark.ts'
 
 const ROOT = process.cwd()
 const OUT_DIR = join(ROOT, 'public', 'splash')
@@ -66,7 +78,7 @@ const DEVICES = [
 
 const name = (d) => `launch-${d.w * d.dpr}x${d.h * d.dpr}.png`
 
-/* The resting frame, written out in literals rather than read from
+/* The ground, written out in literals rather than read from
  * globals.css, for the same reason the boot shell inlines them: this picture
  * is painted by an operating system that has never heard of a CSS variable.
  * They must match #cv-boot in app/layout.tsx.
@@ -85,38 +97,27 @@ const name = (d) => `launch-${d.w * d.dpr}x${d.h * d.dpr}.png`
 const INK_FROM = '#1F2421'
 const INK_TO = '#3A4F38'
 
-/* The opening's resting frame: the wreath, the name and the line, laid out by
- * the same fullScreenFrameCss() the boot shell uses, so the two cannot drift. */
-/* Imported only on the path that renders. lib/opening.ts uses the app's @/
- * alias, which plain Node learns from tools/alias-register.mjs — `npm run
- * build:splash` passes it. The --list and --links paths, which
- * tools/boot-smoke.mjs runs bare, never get this far. */
-const renderHtml = async () => {
-  const { openingCss, openingSvgMarkup, fullScreenFrameCss, SLOGAN } = await import('../lib/opening.ts')
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+/* The opening's first frame: the ground and nothing else. Every part of the
+ * opening starts invisible (lib/opening.ts — bars, stems, leaves, name and
+ * line all begin at opacity 0), so this is exactly what #cv-boot paints
+ * before its first animation frame, and what the opening grows out of. */
+const renderHtml = async () => `<!doctype html><html><head><meta charset="utf-8"><style>
   html, body { margin: 0; height: 100%; }
   body {
     background: linear-gradient(160deg, ${INK_FROM} 0%, ${INK_TO} 100%);
     position: relative; overflow: hidden;
-    /* Explicit, and equal to #cv-boot's: the shell pins its own metrics so
-       that neither side inherits them from anywhere. */
-    line-height: normal;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      "Helvetica Neue", Arial, sans-serif;
   }
-${openingCss('body').split('\n@media')[0]}
-${fullScreenFrameCss('body')}
-</style></head><body>
-  ${openingSvgMarkup()}
-  <div class="op-word">${BRAND}</div>
-  <div class="op-slogan">${SLOGAN}</div>
-</body></html>`
-}
+</style></head><body></body></html>`
+
+/* Bumped whenever the pictures change. Wherever iOS (or any cache between it
+ * and us) keys a launch image by its URL, a new URL is a new picture. Where
+ * it keeps the copy it stored at install, nothing can reach it — see above. */
+const LAUNCH_VERSION = 'ink1'
 
 if (process.argv.includes('--links')) {
   for (const d of DEVICES) {
     console.log(
-      `        <link rel="apple-touch-startup-image" href="/splash/${name(d)}" ` +
+      `        <link rel="apple-touch-startup-image" href="/splash/${name(d)}?v=${LAUNCH_VERSION}" ` +
       `media="(device-width: ${d.w}px) and (device-height: ${d.h}px) and ` +
       `(-webkit-device-pixel-ratio: ${d.dpr}) and (orientation: portrait)" />`,
     )

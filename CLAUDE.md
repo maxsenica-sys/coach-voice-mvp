@@ -333,7 +333,13 @@ fonts, routing, caching or the service worker.
 > it"). The opening is now "Voice Becomes the Wreath" from `lib/opening.ts`:
 > voice bars fly up into the laurel, then "Pindar" and "Hear it. Own it." It
 > is still inline CSS over server markup, for the reason above. The iOS launch
-> images are generated from its resting frame (`tools/build-launch-images.mjs`)
+> images are its **first** frame — the bare ink ground, no mark and no words —
+> so the phone goes from its launch screen straight into the animation (Max,
+> 2026-10-09: a launch screen showing the finished lockup "opens to Pindar …
+> and then goes through the opening … we can't have that occurring"). Never put
+> the mark or any text back on them: they are also the one thing iOS keeps from
+> install day, so a bare ground is the only picture that cannot go stale.
+> They are generated (`tools/build-launch-images.mjs`)
 > and the icons by `tools/build-icons.mjs` —
 > `npm run build:splash` rebuilds both. Do not hand-edit either output. iOS
 > matches a launch image by exact device geometry with no fallback, so a device

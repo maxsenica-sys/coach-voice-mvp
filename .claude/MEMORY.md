@@ -938,3 +938,14 @@ dialog, recording, unsent clip or typed text; ≥60s away; loop guard).
 verify:update rig. Phones running a pre-fix build need ONE swipe-close and
 reopen (not a delete) to pick up the watcher. Icon/name/launch images remain
 install-time only on iOS — treat them as fixed.
+
+## 2026-10-09 — Launch screen is the bare ground (no "Pindar / training journal" before the opening)
+Max saw "Pindar / Your private training journal" then the opening. That was the
+iOS launch image stored at install (pre-#54 images carried that line). Launch
+images are now the opening's FIRST frame — plain ink, no mark, no words — so
+launch → animation directly, and they can never go stale again. Links carry
+?v=ink1 (helps only if iOS/caches key by URL). Phones installed before this keep
+their stored picture until re-added; nothing in code can reach it. A delay in
+the app cannot help: iOS shows its launch image until the app's first paint, so
+delaying the app would lengthen it. boot-smoke compares launch images to the
+shell at t=0.
