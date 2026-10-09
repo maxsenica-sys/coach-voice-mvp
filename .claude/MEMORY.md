@@ -910,3 +910,20 @@ you a nod"** as the language for a shared session. Laurel-wreath mark in
 `coachvoice-*` on purpose. Max needs to check IP Australia / USPTO for PINDAR
 (an old UK printer, G.A. Pindar & Son, once registered it for software) and buy
 a domain (pindar.app / getpindar.com) — not done from here.
+
+## 2026-10-09 — Opening and slogan (banked alternatives)
+Shipped: opening **Voice Becomes the Wreath** (lib/opening.ts) with the line
+**"Hear it. Own it."** Max asked that the alternatives be kept in case he
+changes his mind:
+- **Slogans (his top three, in order):** "Hear it. Own it." (shipped),
+  "Listen. Learn. Win.", "Heard today. Better tomorrow." Rejected:
+  "Become who you are" (Pindar's line, too abstract to motivate). Other ideas
+  offered: "Earn your crown.", "Exhaust the possible.", "Nothing goes unsung.",
+  "Earn your ode.", "Be worth the song.", "One nod closer.". To swap, change
+  `SLOGAN` in lib/opening.ts and run `npm run build:splash` (launch images).
+- **Openings:** runner-up "The Crowning" (wreath grows leaf by leaf, then the
+  name). Also mocked: "Flame On" (torch lights the leaves), "Your Name, Sung"
+  (signed-in athlete's name + "1 new nod" in the wreath — an add-on), "The
+  Inscription" (PINDAR carved letter by letter with a gold sweep). Mock-up page:
+  https://claude.ai/artifact/HQKR7zjZFxLW8zFrsnYhde
+- Leaves: laurel (Delphi's wreath) kept; olive (Olympia's) was offered.

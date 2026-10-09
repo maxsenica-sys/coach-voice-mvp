@@ -1,11 +1,8 @@
 import type { Metadata, Viewport } from 'next'
-import {
-  SPORT_COUNT, DRAW_MS, COLLAPSE_AT, MARK_AT, WORD_AT, SEQUENCE_MS,
-  montageKeyframesCss, at, PEAKS,
-} from '@/lib/montage-schedule'
+import { SEQUENCE_MS, WORD_AT, openingCss, fullScreenFrameCss } from '@/lib/opening'
 import localFont from 'next/font/local'
 import './globals.css'
-import BrandMark from './components/BrandMark'
+import OpeningMark from './components/OpeningMark'
 import './fonts/subsets.css'
 
 /* ── Type ──────────────────────────────────────────────────────────────────
@@ -166,29 +163,16 @@ export const metadata: Metadata = {
 /** How long the shell takes to fade off once the app says it is ready. */
 const OUT_MS = 460
 
-/* The earliest the shell may leave.
+/* The earliest the shell may leave: once the name has landed.
  *
- * This was COLLAPSE_AT + 520 — about 2.6 seconds — for one day, and it was
- * wrong. The reasoning was that being cut short is what killed the montage, so
- * the montage should always finish. But the montage was never cut short by the
- * floor; it was cut short by a clock it could not keep up with, and that is
- * fixed elsewhere. Holding the shell for the full sequence just turned a fix
- * for a missing animation into a second and a half of new waiting, on an app
- * whose actual complaint is that it takes too long to open.
- *
- * A splash covers a wait. Where there is no wait it has no job, and the right
- * length is "long enough not to be a flash". So: one second, about five sports,
- * and then it dissolves into whatever is ready underneath. The full sequence —
- * all fourteen, the collapse, the mark rising — still plays in full whenever
- * the app is genuinely slow to arrive, which is the only time anyone was ever
- * going to watch it. A tap leaves immediately, as before. */
-const FLOOR_MS = 1000
-
-/* The montage's frame schedule, generated from lib/montage-schedule.ts so the
- * CSS below and the JavaScript that has to know how long the sequence lasts
- * cannot drift apart. It is fourteen step-end stops at their real offsets,
- * because the cadence accelerates and steps() is even. */
-const MONTAGE_KEYFRAMES = montageKeyframesCss()
+ * The montage this replaced held for one second, on the reasoning that a splash
+ * only covers a wait. The opening is different in kind: it is the brand, a
+ * coach's voice becoming the wreath, and leaving at one second would cut it off
+ * with the bars still in the air — the wreath never closes and the name never
+ * arrives. So the floor is the name (WORD_AT, plus enough to read it). It only
+ * plays on a cold start, at most once every thirty minutes (cv_splash_at below),
+ * and a tap still leaves at once. */
+const FLOOR_MS = WORD_AT + 400
 
 const BOOT_CSS = `/* ── The boot shell ────────────────────────────────────────────────────────
  *
@@ -196,23 +180,14 @@ const BOOT_CSS = `/* ── The boot shell ────────────�
  * server already sent, it starts with the document's first paint, and no
  * JavaScript is involved in playing it.
  *
- * ── Why it is not a React component any more ──────────────────────────────
+ * ── Why it is not a React component ───────────────────────────────────────
  *
- * It was one, and that is how Max's "you have completely removed the animation
- * of all the people" happened. Nothing was removed. /dashboard and /athlete are
- * client components, so their server HTML is a Suspense bail-out and anything
- * they render waits for roughly a megabyte of JavaScript. The montage of
- * fourteen sports was drawn by an effect inside that megabyte, on a clock
- * anchored to the start of the navigation — so on the slow launch it existed
- * for, its own timeline said the montage was over before the code that draws it
- * was alive, and on a fast launch the ready-handler jumped the clock past it
- * deliberately. Both ends closed. The full reasoning is in
- * lib/montage-schedule.ts.
- *
- * So the sequence moved to where the first paint is: here. The fourteen
- * figures are one image, scrolled by background-position. The timings are
- * generated from lib/montage-schedule.ts, so the CSS below and anything in
- * JavaScript that needs to know how long this lasts read the same numbers.
+ * /dashboard and /athlete are client components, so their server HTML is a
+ * Suspense bail-out and anything they render waits for roughly a megabyte of
+ * JavaScript. An opening drawn by that JavaScript would play to nobody: on a
+ * slow launch it would arrive after the wait it exists to cover. (That is
+ * exactly how the old montage of fourteen sports went missing.) So the opening
+ * is CSS over markup the server already sent, generated from lib/opening.ts.
  *
  * Nothing in this block may depend on JavaScript, on the CSS chunk, or on the
  * webfont. It is inline, it is unconditional, and its whole job is to be early.
@@ -280,153 +255,32 @@ html[data-boot] #cv-boot { display: block }
  * dead-man's switch — then the element is removed a beat later. */
 html[data-boot-out] #cv-boot { opacity: 0; pointer-events: none }
 
-/* ── The montage: the people ──────────────────────────────────────────────
+/* ── The opening: a coach's voice becomes the wreath ────────────────────────
  *
- * One image, ${SPORT_COUNT} frames wide, generated from the app's own artwork by
- * tools/build-montage-sprite.mjs and precached by public/sw.js. The frames are
- * stepped through by background-position, which is why this needs no script
- * and cannot be late.
+ * A line of voice bars pulses like a coach talking, then each bar flies up and
+ * becomes one leaf of the laurel, the stems draw, the name rises and the line
+ * lands. Generated from lib/opening.ts, which the sign-in intro and the iOS
+ * launch images share, so all three are one picture.
  *
- * The figures are --ink-figure and that is a safeguarding constraint, not a
- * style choice: WCAG 2.3.1 permits three flashes a second, a flash being a
- * luminance swing of 10% or more over a large area, and these are full-height
- * and change as fast as every 70ms. --ink-figure sits at 7.6% against the ink
- * ground. --primary-dark is 11.0% and --primary 22.1%; either would flash, for
- * an audience aged 13-18. If they need to read harder, make them bigger or
- * slower. Never lighter. The colour is baked into the sprite because a
- * background-image cannot inherit currentColor; tools/boot-smoke.mjs asserts
- * the baked value still matches the token.
+ * Every element's plain style is the resting frame and every animation sits
+ * inside prefers-reduced-motion: no-preference. So reduced motion shows the
+ * finished lockup at once, and nothing here can leave the brand invisible —
+ * the failure the "never leave the brand invisible" rule in CLAUDE.md exists
+ * for. The bars are small and sage on ink: no large-area flash (WCAG 2.3.1).
  */
-#cv-boot .figs {
-  position: absolute; top: 50%; left: 50%;
-  width: min(62vw, 260px); height: min(84vw, 350px);
-  transform: translate(-50%, -54%);
-  background-image: url(/splash/montage.svg);
-  background-repeat: no-repeat;
-  background-size: ${SPORT_COUNT * 100}% 100%;
-  background-position: 0% 50%;
-  opacity: 0;
-  animation: cv-riffle ${SEQUENCE_MS}ms step-end both,
-             cv-figs ${SEQUENCE_MS}ms linear both;
-}
-${MONTAGE_KEYFRAMES}
-/* On for the montage, off as it collapses into the mark. */
-@keyframes cv-figs {
-  0%, ${at(DRAW_MS - 1)} { opacity: 0 }
-  ${at(DRAW_MS)}, ${at(COLLAPSE_AT - 60)} { opacity: 1 }
-  ${at(COLLAPSE_AT + 120)}, 100% { opacity: 0 }
-}
+${fullScreenFrameCss('#cv-boot')}
+${openingCss('#cv-boot', '', 'cv-op')}
 
-/* ── The stroke: the voice ────────────────────────────────────────────────
+/* ── The sign-in intro ─────────────────────────────────────────────────────
  *
- * The amplitude envelope of a real coaching clip, drawn once across the
- * montage's own clock so sound and sport accelerate together. It is revealed
- * by a clip-path wipe rather than by animating sixty-four bars, because sixty
- * bars times sixty frames a second is work for nothing on a phone — and
- * because one element is one thing that can go wrong.
- */
-#cv-boot .wave {
-  position: absolute; top: 50%; left: 50%;
-  width: min(86vw, 440px); height: 170px;
-  transform: translate(-50%, -50%);
-  color: #5D7F59;
-  animation: cv-wave ${SEQUENCE_MS}ms linear both;
-}
-@keyframes cv-wave {
-  0%            { clip-path: inset(0 100% 0 0); opacity: 1 }
-  ${at(DRAW_MS)}   { clip-path: inset(0 92% 0 0); opacity: 1 }
-  ${at(COLLAPSE_AT)} { clip-path: inset(0 0 0 0); opacity: 1 }
-  ${at(COLLAPSE_AT + 280)}, 100% { clip-path: inset(0 0 0 0); opacity: 0 }
-}
-
-/* ── What it all arrives at ───────────────────────────────────────────────
- *
- * The mark and the wordmark are the app's resting frame, and they are also the
- * picture in the iOS launch images, so the handoff from the OS screen to this
- * one is a repaint of the same pixels. They start invisible and are handed
- * back by the animation's "both" fill mode, which is what guarantees they can
- * never be left hidden — the failure the "never leave the brand invisible"
- * rule in CLAUDE.md exists for.
- */
-#cv-boot .m {
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, calc(-50% - 34px));
-  width: 118px; height: 118px; border-radius: 34px;
-  background: linear-gradient(135deg, #6F8E6B 0%, #4F6B4B 100%);
-  box-shadow: 0 20px 56px rgba(111, 142, 107, .48);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0;
-  animation: cv-mark ${SEQUENCE_MS}ms cubic-bezier(.22, 1, .36, 1) both;
-}
-@keyframes cv-mark {
-  0%, ${at(MARK_AT)} {
-    opacity: 0; transform: translate(-50%, calc(-50% - 34px + 46px)) scale(.55);
-  }
-  ${at(MARK_AT + 420)}, 100% {
-    opacity: 1; transform: translate(-50%, calc(-50% - 34px)) scale(1);
-  }
-}
-#cv-boot .w {
-  position: absolute; top: calc(50% + 62px); left: 0; right: 0;
-  text-align: center; color: #F5ECD7;
-  font-weight: 800; font-size: 38px; letter-spacing: -0.04em;
-  /* The system stack, with no var(--font-jakarta) in front of it. Inheriting
-     put the wordmark in the browser's default serif — the brand's first
-     impression in a typeface it does not use — and naming the variable first
-     did not fix it: the variable is still unresolved at this instant, and an
-     empty var() makes the whole font-family declaration invalid at computed
-     value time, taking the fallbacks down with it. This paints before the
-     webfont by definition, so it asks for what is already on the device. */
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  opacity: 0;
-  animation: cv-word ${SEQUENCE_MS}ms cubic-bezier(.22, 1, .36, 1) both;
-}
-@keyframes cv-word {
-  0%, ${at(WORD_AT)} { opacity: 0; transform: translateY(14px) }
-  ${at(WORD_AT + 380)}, 100% { opacity: 1; transform: translateY(0) }
-}
-#cv-boot .t {
-  position: absolute; left: 0; right: 0;
-  bottom: calc(env(safe-area-inset-bottom) + 34px);
-  text-align: center; color: rgba(245, 236, 215, .72);
-  font-size: 13px; font-style: italic;
-  opacity: 0;
-  animation: cv-word ${SEQUENCE_MS}ms cubic-bezier(.22, 1, .36, 1) both;
-}
-
-/* ── Reduced motion ───────────────────────────────────────────────────────
- *
- * No montage, no wipe, no rise: the resting frame, immediately. Note this has
- * to hand the mark and wordmark back explicitly — they are opacity: 0 in
- * their own rules and only the animation makes them visible, so cancelling the
- * animation without this would leave an ink screen with nothing on it. That is
- * the worst failure available here and it is one line away at all times.
- */
-@media (prefers-reduced-motion: reduce) {
-  #cv-boot .figs, #cv-boot .wave { animation: none; opacity: 0 }
-  #cv-boot .m, #cv-boot .w, #cv-boot .t {
-    animation: none; opacity: 1; transform: none;
-  }
-  #cv-boot .m { transform: translate(-50%, calc(-50% - 34px)) }
-}
-
-/* ── The intro's pre-animation frame ───────────────────────────────────────
- *
- * IntroSequence renders the frame it *resolves into* — the mark and the
- * wordmark, fully opaque — because that is also the resting state of "/" for
- * anyone who has already seen the sequence. That markup is what the server
- * sends, so on a cold start the browser paints "Pindar" the moment the
- * HTML lands and then holds it there for the whole JavaScript download. Only
- * once the component hydrated did its effect rewind the two elements to
- * invisible and start the animation — so the wordmark appeared, sat, blinked
- * out, and animated back in. That is the title flashing before the intro.
- *
- * Hiding them here costs nothing and cannot be late: the attribute is set by
- * the script below, before the body paints, and the rule applies at first
- * paint. The effect then owns the two elements through inline styles and drops
- * the attribute. */
-html[data-intro] .cv-intro-figure { opacity: 0 }`
+ * The same opening on "/", inside app/components/IntroSequence.tsx. It used to
+ * be drawn by an effect after hydration, which is why the wordmark once painted,
+ * sat, blinked out and animated back in. Now it is this CSS, gated on the
+ * data-intro attribute the script below sets before the body paints, so it
+ * plays from the first frame and needs no JavaScript at all. Without the
+ * attribute (a returning visitor, a ?next link) the same markup simply shows
+ * its resting frame. */
+${openingCss('.cv-intro', 'html[data-intro] ', 'cv-in')}`
 
 const BOOT_JS = `/* Runs before the body paints, so the shell is either up or never was — there
  * is no frame in which the wrong thing is on screen.
@@ -543,13 +397,11 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
      * a tap, and the dead-man's switch. They used to be three code paths
      * removing two attributes each, which is three chances to disagree.
      *
-     * The floor is what guarantees the montage is actually seen. The previous
-     * design had the opposite rule — when the app became ready early it
-     * jumped the animation's clock forward to skip straight to the logo — and
-     * skipping the montage on a fast launch was half of why the fourteen
-     * sports had stopped appearing at all. A cold start is the one moment
-     * this app has to look like something; it is worth ${FLOOR_MS}ms. A tap
-     * overrides it, because someone who taps wants to be in the app.
+     * The floor is what guarantees the opening is actually seen: the wreath
+     * closes and the name lands before the shell hands over, even when the app
+     * is ready sooner. A cold start is the one moment this app has to look like
+     * something; it is worth ${FLOOR_MS}ms. A tap overrides it, because someone
+     * who taps wants to be in the app.
      *
      * With reduced motion there is no sequence to protect, so there is no
      * floor beyond not being a flash.
@@ -652,7 +504,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // computed value time — taking the literal fallbacks down with it and
     // dropping every screen into the browser's default serif. Same trap the
     // boot shell's wordmark hit; see BOOT_CSS above.
-    <html lang="en" className={`${jakartaSans.variable} ${newsreader.variable} ${jetbrainsMono.variable} ${bigShoulders.variable}`}>
+    //
+    // suppressHydrationWarning: the inline script in <head> sets data-boot,
+    // data-intro and data-boot-out on <html> before React exists, on purpose
+    // (see BOOT_JS), and React would otherwise report a mismatch on every cold
+    // start. It covers this element's own attributes only, nothing inside it.
+    <html lang="en" suppressHydrationWarning className={`${jakartaSans.variable} ${newsreader.variable} ${jetbrainsMono.variable} ${bigShoulders.variable}`}>
       <head>
         {/* PWA / Apple home screen */}
         <meta name="mobile-web-app-capable" content="yes" />
@@ -696,12 +553,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-startup-image" href="/splash/launch-1668x2224.png" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/splash/launch-1668x2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/splash/launch-2048x2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
-        {/* The montage image, asked for as early as the document can ask. It
-            is the first thing the cold-start sequence draws, and it is the one
-            part of that sequence that is not already in this document. The
-            service worker precaches it too, so after the first launch it comes
-            off disk; this is what covers the first launch. */}
-        <link rel="preload" as="image" href="/splash/montage.svg" type="image/svg+xml" />
         <style dangerouslySetInnerHTML={{ __html: BOOT_CSS }} />
         <script dangerouslySetInnerHTML={{ __html: BOOT_JS }} />
       </head>
@@ -710,40 +561,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             follows it. Server-rendered and driven by the inline CSS above, so
             it plays whether or not the bundle ever arrives. See BOOT_CSS. */}
         <div id="cv-boot" aria-hidden="true">
-          {/* The people. One image, fourteen frames, stepped by
-              background-position — see BOOT_CSS and
-              tools/build-montage-sprite.mjs. */}
-          <div className="figs" />
-
-          {/* The voice: the amplitude envelope of a real coaching clip, wiped
-              in from the left across the montage's own clock. Static bars
-              revealed by a clip-path, not sixty-four animated elements — one
-              thing to go wrong instead of sixty-four, and no per-frame layout
-              work on a phone that is already busy booting. */}
-          <svg className="wave" viewBox="0 0 440 170" preserveAspectRatio="none" aria-hidden="true">
-            {PEAKS.map((peak, i) => {
-              const h = Math.max(3, peak * 2.6)
-              return (
-                <rect
-                  key={i}
-                  x={i * (440 / PEAKS.length) + 1}
-                  y={85 - h / 2}
-                  width={440 / PEAKS.length - 2}
-                  height={h}
-                  rx={2}
-                  fill="currentColor"
-                />
-              )
-            })}
-          </svg>
-
-          {/* The laurel: lib/brand-mark.ts, the same geometry as the app icon
-              and the launch images, so the three are one picture. */}
-          <div className="m">
-            <BrandMark size={84} color="#FBF6EA" style={{ marginTop: 2 }} />
-          </div>
-          <div className="w">Pindar</div>
-          <div className="t">Your private training journal</div>
+          <OpeningMark />
         </div>
         {children}
       </body>

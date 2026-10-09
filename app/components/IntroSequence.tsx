@@ -1,223 +1,74 @@
 'use client'
 
 /**
- * The opening sequence on `/` — Direction A, "The Voice".
+ * The opening on `/`: a coach's voice becomes the wreath, then "Pindar" and
+ * "Hear it. Own it." The same picture as the cold-start shell in
+ * app/layout.tsx and the iOS launch images; all three come from lib/opening.ts.
  *
- * A hairline draws across the centre, becomes a waveform taken from a real
- * coaching clip's amplitude envelope, then collapses into the mic mark that
- * the screen keeps. 2.1 seconds, no assets, no dependency.
+ * Max chose it on 2026-10-09 from five mock-ups ("Voice Becomes the Wreath …
+ * my favourite by a long shot"). The others, and the earlier waveform-into-mic
+ * and sport-silhouette directions, are not kept in this repo — see the note on
+ * prototypes in CLAUDE.md.
  *
- * Directions B (15 sport silhouettes) and D (one stroke swelling into
- * silhouettes) were explored and deleted. Unshipped alternatives do not live
- * in this repo — see the note on prototypes in CLAUDE.md.
+ * ── How it plays ───────────────────────────────────────────────────────────
  *
- * ── Two rules this component exists under ──────────────────────────────────
+ * It is CSS, not an effect. The animation rules live in the inline BOOT_CSS in
+ * app/layout.tsx, gated on `html[data-intro]`, which the inline script there
+ * sets before the body paints. So the opening starts with the first frame and
+ * needs none of this file's JavaScript. That is why the old "wordmark paints,
+ * blinks out, animates back in" bug cannot come back: there is no rewind.
+ *
+ * Without the attribute (a returning visitor, someone arriving on a `next`
+ * link, or reduced motion) the same markup is simply the resting frame.
  *
  * **It never blocks.** `pointer-events: none`, behind a sign-in card that is
- * interactive from the first frame. There is nothing to skip because nothing
- * is in the way — tapping the email field is the skip.
- *
- * **The figure colour is a safety constraint, not a style choice.** WCAG 2.3.1
- * counts a "general flash" as a luminance swing of 10% or more. Against
- * --ink-base (#1F2421, L 0.01663), --ink-figure #445C42 sits at 7.6%, so no
- * flash occurs at any cadence. --primary-dark is 11.0% and --primary is 22.1%,
- * and either would flash. The audience is 13-18 year olds. If the waveform
- * needs to read harder, make it bigger or slower — never lighter.
- *
- * Under prefers-reduced-motion nothing animates: the component renders its
- * resolved final frame, which is also the screen's resting state.
- *
- * The animation writes styles through refs rather than React state. Rendering
- * 64 bars sixty times a second on a phone is work for nothing, and it keeps
- * the server markup identical to the first client frame.
+ * interactive from the first frame. Tapping the email field is the skip.
  */
 
-import BrandMark from './BrandMark'
 import { useEffect, useRef } from 'react'
+import OpeningMark from './OpeningMark'
+import { SEQUENCE_MS } from '@/lib/opening'
 
 /** Total run time, ms. */
-export const INTRO_MS = 2100
+export const INTRO_MS = SEQUENCE_MS
 
-const DRAW_MS = 450 // hairline
-const GROW_MS = 650 // bars rise
-const FADE_AT = 1100 // waveform collapses
-const MARK_AT = 1200
-const WORD_AT = 1500
-
-/** The voice this sequence draws. It lives in lib/montage-schedule.ts because
- *  the boot shell in app/layout.tsx draws the same waveform and is a server
- *  component, which cannot import a constant out of a 'use client' module
- *  without pulling the component in with it. Re-exported so existing importers
- *  of this file keep working. */
-export { PEAKS } from '@/lib/montage-schedule'
-import { PEAKS } from '@/lib/montage-schedule'
-
-/* The glyph is --on-primary, not white. The mark's ground is --primary to
- * --primary-dark, and since Stadium Night lifted those to be read on ink they
- * are light: white on them measured 1.79:1 and 1.47:1, under the 3:1 a
- * graphic needs (WCAG 1.4.11), so the microphone all but vanished from the
- * mark. Set through style rather than the stroke attribute because a
- * presentation attribute does not take var(). tools/boot-smoke.mjs measures
- * the glyph against both gradient stops. */
-/** The laurel, ink on the sage tile — lib/brand-mark.ts via BrandMark. */
-const LaurelMark = () => <BrandMark size={50} color="var(--on-primary)" style={{ marginTop: 1 }} />
+/* Where the pieces sit in the sign-in hero. Inline so it arrives with the
+ * server markup and the first frame is already laid out. Unlike the boot shell,
+ * this page's stylesheet and fonts are present, so the tokens are safe here. */
+const INTRO_LAYOUT_CSS = `
+.cv-intro .op-wreath { position: absolute; left: 50%; top: 0; width: 132px; height: 132px; transform: translateX(-50%); overflow: visible }
+.cv-intro .op-word { position: absolute; left: 0; right: 0; top: 140px; text-align: center; color: var(--on-ink, #F5ECD7); font-weight: 800; font-size: 34px; letter-spacing: -0.035em; line-height: 1.1 }
+.cv-intro .op-slogan { position: absolute; left: 0; right: 0; top: 186px; text-align: center; color: var(--text, #F5ECD7); font-family: var(--font-display); font-style: italic; font-size: 20px; line-height: 1.3 }
+`
 
 export default function IntroSequence({
   play = true,
   onDone,
 }: {
-  /** False renders the resolved final frame at once — a returning visitor, or
-   *  someone sent here from a link they were already trying to open. */
+  /** False shows the resting frame at once — a returning visitor, or someone
+   *  sent here from a link they were already trying to open. */
   play?: boolean
   onDone?: () => void
 }) {
-  const hair = useRef<HTMLDivElement | null>(null)
-  const bars = useRef<(HTMLSpanElement | null)[]>([])
-  const mark = useRef<HTMLDivElement | null>(null)
-  const word = useRef<HTMLDivElement | null>(null)
-
   // Held in a ref so a caller passing an inline callback cannot restart the
   // sequence on every render.
   const done = useRef(onDone)
   useEffect(() => { done.current = onDone }, [onDone])
 
   useEffect(() => {
-    // The mark and the wordmark are held invisible from first paint by the
-    // `html[data-intro]` rule in app/layout.tsx — see the note there. Dropping
-    // the attribute hands them back to their own styles, so it has to happen on
-    // every path out of here, including the ones that never animate.
+    // The attribute is what runs the CSS. Leave it in place for the length of
+    // the opening, then drop it; by then every element is at its resting
+    // frame, so dropping it changes nothing on screen.
     const release = () => document.documentElement.removeAttribute('data-intro')
-
     if (!play) { release(); return }
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { release(); return }
-
-    const markEl = mark.current
-    const wordEl = word.current
-    const hairEl = hair.current
-
-    // Rewind to the pre-animation frame with transitions suppressed. Without
-    // this the mark and wordmark are rendered resolved and would visibly fade
-    // *out* over 200ms before the sequence started.
-    const suppress = (el: HTMLElement | null) => { if (el) el.style.transition = 'none' }
-    suppress(markEl); suppress(wordEl)
-
-    if (markEl) {
-      markEl.style.opacity = '0'
-      markEl.style.transform = 'translate(-50%, calc(-50% - 18px)) scale(0.66)'
-    }
-    if (wordEl) {
-      wordEl.style.opacity = '0'
-      wordEl.style.transform = 'translateY(12px)'
-    }
-    if (hairEl) hairEl.style.transform = 'scaleX(0)'
-    bars.current.forEach((b) => { if (b) { b.style.height = '2px'; b.style.opacity = '0' } })
-
-    // Force the rewind to land before the transitions come back.
-    void document.body.offsetHeight
-    // Safe now: the pre-animation frame lives in inline styles, so removing the
-    // attribute cannot make anything appear.
-    release()
-    if (markEl) markEl.style.transition = 'opacity 200ms linear, transform 320ms var(--ease-brand)'
-    if (wordEl) wordEl.style.transition = 'opacity 220ms linear, transform 320ms var(--ease-brand)'
-
-    let raf = 0
-    const start = performance.now()
-
-    const frame = (now: number) => {
-      const t = now - start
-
-      if (hairEl) {
-        hairEl.style.transform = `scaleX(${Math.min(1, t / DRAW_MS)})`
-        hairEl.style.opacity = t > FADE_AT ? String(Math.max(0, 1 - (t - FADE_AT) / 300)) : '1'
-      }
-
-      // The bars stay hidden until the hairline has finished drawing, so the
-      // line reads as one stroke rather than as 64 dots waiting to grow.
-      const rising = t > DRAW_MS
-      let k = rising ? Math.min(1, (t - DRAW_MS) / GROW_MS) : 0
-      if (t > FADE_AT) k = Math.max(0, 1 - (t - FADE_AT) / 350)
-
-      bars.current.forEach((b, i) => {
-        if (!b) return
-        b.style.opacity = rising ? '1' : '0'
-        b.style.height = `${Math.max(3, PEAKS[i] * 2.1 * k)}px`
-      })
-
-      const m = t > MARK_AT ? Math.min(1, (t - MARK_AT) / 400) : 0
-      const w = t > WORD_AT ? Math.min(1, (t - WORD_AT) / 300) : 0
-      if (markEl) {
-        markEl.style.opacity = String(m)
-        markEl.style.transform = `translate(-50%, calc(-50% - 18px)) scale(${0.66 + m * 0.34})`
-      }
-      if (wordEl) {
-        wordEl.style.opacity = String(w)
-        wordEl.style.transform = `translateY(${(1 - w) * 12}px)`
-      }
-
-      if (t < INTRO_MS) raf = requestAnimationFrame(frame)
-      else done.current?.()
-    }
-
-    raf = requestAnimationFrame(frame)
-    return () => cancelAnimationFrame(raf)
+    const t = setTimeout(() => { release(); done.current?.() }, INTRO_MS + 100)
+    return () => clearTimeout(t)
   }, [play])
 
   return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: 'absolute', inset: 0,
-        pointerEvents: 'none', // never in the way of the form
-      }}
-    >
-      {/* The line, and the waveform that grows out of it */}
-      <div style={{
-        position: 'absolute', top: '50%', left: '50%',
-        width: 'min(84vw, 380px)', height: 140,
-        transform: 'translate(-50%, -50%)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2,
-      }}>
-        <div ref={hair} style={{
-          position: 'absolute', left: 0, right: 0, top: '50%', height: 2,
-          background: 'var(--primary)', transformOrigin: 'left', opacity: 0,
-          borderRadius: 99,
-        }} />
-        {PEAKS.map((_, i) => (
-          <span
-            key={i}
-            ref={(el) => { bars.current[i] = el }}
-            style={{
-              flex: 1, height: 3, minHeight: 3, borderRadius: 99, opacity: 0,
-              background: 'var(--primary)',
-              transition: 'height 110ms cubic-bezier(.22,1,.36,1)',
-            }}
-          />
-        ))}
-      </div>
-
-      {/* What the sequence resolves into — and the screen's resting state.
-          Both carry cv-intro-figure so the layout's pre-paint rule can hold
-          them back before this component exists. */}
-      <div ref={mark} className="cv-intro-figure" style={{
-        position: 'absolute', top: '50%', left: '50%',
-        transform: 'translate(-50%, calc(-50% - 18px)) scale(1)',
-        width: 68, height: 68, borderRadius: 20,
-        background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
-        boxShadow: '0 4px 12px rgb(111 142 107 / .40)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'opacity 200ms linear, transform 320ms var(--ease-brand)',
-      }}>
-        <LaurelMark />
-      </div>
-
-      <div ref={word} className="cv-intro-figure" style={{
-        position: 'absolute', top: 'calc(50% + 34px)', left: 0, right: 0,
-        textAlign: 'center', color: 'var(--on-ink)',
-        fontWeight: 800, fontSize: 26, letterSpacing: '-0.03em',
-        transition: 'opacity 220ms linear, transform 320ms var(--ease-brand)',
-      }}>
-        Pindar
-      </div>
+    <div className="cv-intro" aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      <style>{INTRO_LAYOUT_CSS}</style>
+      <OpeningMark />
     </div>
   )
 }

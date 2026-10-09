@@ -335,16 +335,9 @@ export default function Home() {
                 resting state of the screen as well as the end of the sequence.
                 It never blocks: pointer-events: none, and the form below is live
                 from the first frame. Tapping the email field is the skip. */}
-            <div style={{ position: 'relative', height: 224 }}>
+            <div style={{ position: 'relative', height: 222 }}>
               <IntroSequence play={playIntro} />
             </div>
-            <p style={{
-              position: 'relative', margin: '-30px 0 0', textAlign: 'center',
-              fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 400,
-              fontSize: 20, lineHeight: 1.3, color: 'var(--text)',
-            }}>
-              Your private training journal.
-            </p>
           </div>
 
           {mode === 'forgot' ? (

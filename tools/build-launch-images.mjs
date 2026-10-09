@@ -2,7 +2,7 @@
 /**
  * tools/build-launch-images.mjs — the screen iOS paints before the app exists.
  *
- *   node tools/build-launch-images.mjs            # write public/splash/*.png
+ *   npm run build:splash                          # write public/splash/*.png (and the icons)
  *   node tools/build-launch-images.mjs --links    # print the <link> tags for app/layout.tsx
  *
  * ── What this is for ──────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import sharp from 'sharp'
 import { join } from 'node:path'
 import { existsSync, readdirSync } from 'node:fs'
-import { laurelSvg, BRAND } from '../lib/brand-mark.ts'
+import { BRAND } from '../lib/brand-mark.ts'
 
 const ROOT = process.cwd()
 const OUT_DIR = join(ROOT, 'public', 'splash')
@@ -84,11 +84,16 @@ const name = (d) => `launch-${d.w * d.dpr}x${d.h * d.dpr}.png`
  * sat 7px lower than it does here, because it inherited body's line-height.) */
 const INK_FROM = '#1F2421'
 const INK_TO = '#3A4F38'
-const MARK_FROM = '#6F8E6B'
-const MARK_TO = '#4F6B4B'
-const ON_INK = '#F5ECD7'
 
-const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+/* The opening's resting frame: the wreath, the name and the line, laid out by
+ * the same fullScreenFrameCss() the boot shell uses, so the two cannot drift. */
+/* Imported only on the path that renders. lib/opening.ts uses the app's @/
+ * alias, which plain Node learns from tools/alias-register.mjs — `npm run
+ * build:splash` passes it. The --list and --links paths, which
+ * tools/boot-smoke.mjs runs bare, never get this far. */
+const renderHtml = async () => {
+  const { openingCss, openingSvgMarkup, fullScreenFrameCss, SLOGAN } = await import('../lib/opening.ts')
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
   html, body { margin: 0; height: 100%; }
   body {
     background: linear-gradient(160deg, ${INK_FROM} 0%, ${INK_TO} 100%);
@@ -99,29 +104,14 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
       "Helvetica Neue", Arial, sans-serif;
   }
-  .m {
-    position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%, calc(-50% - 34px));
-    width: 118px; height: 118px; border-radius: 34px;
-    background: linear-gradient(135deg, ${MARK_FROM} 0%, ${MARK_TO} 100%);
-    box-shadow: 0 20px 56px rgba(111, 142, 107, .48);
-    display: flex; align-items: center; justify-content: center;
-  }
-  .w {
-    position: absolute; top: calc(50% + 62px); left: 0; right: 0;
-    text-align: center; color: ${ON_INK};
-    font-weight: 800; font-size: 38px; letter-spacing: -0.04em;
-  }
-  .t {
-    position: absolute; left: 0; right: 0; bottom: 34px;
-    text-align: center; color: rgba(245, 236, 215, .72);
-    font-size: 13px; font-style: italic;
-  }
+${openingCss('body').split('\n@media')[0]}
+${fullScreenFrameCss('body')}
 </style></head><body>
-  <div class="m"><div style="margin-top:2px">${laurelSvg('#FBF6EA', 84)}</div></div>
-  <div class="w">${BRAND}</div>
-  <div class="t">Your private training journal</div>
+  ${openingSvgMarkup()}
+  <div class="op-word">${BRAND}</div>
+  <div class="op-slogan">${SLOGAN}</div>
 </body></html>`
+}
 
 if (process.argv.includes('--links')) {
   for (const d of DEVICES) {
@@ -155,6 +145,7 @@ let exe
 try { if (!existsSync(chromium.executablePath())) exe = findChromium() } catch { exe = findChromium() }
 const browser = await chromium.launch({ args: ['--no-sandbox'], ...(exe ? { executablePath: exe } : {}) })
 
+const html = await renderHtml()
 mkdirSync(OUT_DIR, { recursive: true })
 let total = 0
 for (const d of DEVICES) {

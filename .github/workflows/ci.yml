@@ -135,13 +135,6 @@ jobs:
       - name: Body map tap targets
         run: npm run verify:bodymap
 
-      # The cold-start montage is generated from the app's own artwork. A stale
-      # sprite is an opening animation quietly showing something other than what
-      # the app ships, and a drifted colour is a flash-safety regression in front
-      # of thirteen-year-olds. Neither is visible in a diff.
-      - name: Montage sprite is in step with the artwork
-        run: npm run verify:sprite
-
       # A push notification is read by whoever holds the phone, on a lock
       # screen, and many recipients are 13-18. It may name the sender and say
       # nothing else — no message text, summary, transcript, wellness or injury.
