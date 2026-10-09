@@ -33,31 +33,20 @@
 
 // Bump to invalidate everything this worker has cached. The asset URLs are
 // content-hashed, so this is for changing the *rules*, not the contents.
-const VERSION = 'v2' // v2: the Pindar icons replaced the CoachVoice ones under the same names
+const VERSION = 'v3' // v2: the Pindar icons replaced the CoachVoice ones. v3: the montage sprite is gone
 const STATIC_CACHE = `cv-static-${VERSION}`
 
-/* What the webview actually fetches on a cold start.
+/* Nothing is precached at install.
  *
- * This list used to hold the nine iOS launch images and the home-screen icons,
- * on the reasoning that they are "the frame the user looks at while the
- * document is still in flight". They are — and that is exactly why a service
- * worker cannot help with them. The OS paints the launch image before the
- * webview exists, from a copy it stored when the app was added to the home
- * screen; this worker runs inside that webview. It was never in the path. With
- * the launch images now covering every iPhone and iPad rather than nine
- * geometries, keeping them here would have been 1.5MB of a user's phone spent
- * on files this code can never serve.
- *
- * The montage is different, and it is the one thing here that matters. It is
- * fetched by the webview, on every cold start, and it is the first thing the
- * boot shell draws — so its absence is a blank rectangle where the fourteen
- * sports should be, rather than merely a slower load. Everything else the app
- * needs is content-hashed under /_next/static/ and is cached on first use by
- * the fetch handler below.
+ * This list used to hold the launch images and icons, and then the montage
+ * sprite. The launch images are painted by the OS from a copy it stored when
+ * the app was added to the home screen — this worker runs inside a webview
+ * that does not exist yet, so it was never in their path. The montage is gone:
+ * the opening is now inline CSS and SVG in the document itself (lib/opening.ts),
+ * so the first frame needs no fetch at all. Everything else the app needs is
+ * content-hashed under /_next/static/ and is cached on first use below.
  */
-const PRECACHE = [
-  '/splash/montage.svg',
-]
+const PRECACHE = []
 
 /** Immutable, content-hashed, safe to keep for as long as the URL exists. */
 function isCacheable(url) {

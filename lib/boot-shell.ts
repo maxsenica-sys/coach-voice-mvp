@@ -13,10 +13,10 @@
 // timed from the start of the navigation. On the slow launch it was built for,
 // its own clock said the montage of fourteen sports was over before the code
 // that draws them was alive; on a fast one, its ready-handler skipped the
-// montage deliberately. That is why Max saw the people disappear. The full
-// account is in lib/montage-schedule.ts.
+// montage deliberately. That is why Max saw the people disappear.
 //
-// The sequence is now CSS in the boot shell in app/layout.tsx. It paints with
+// The opening is now CSS in the boot shell in app/layout.tsx, from
+// lib/opening.ts. It paints with
 // the document and there is nothing left that can be late for it. So the only
 // thing JavaScript still decides is when the app has something to show — which
 // is a fact only the pages know, and it is the one thing they were always
@@ -36,7 +36,7 @@ let announced = false
  * A page calls this when its first real data has landed.
  *
  * It asks the shell to leave; the shell decides when, because the floor that
- * keeps the montage from being cut short lives with the animation rather than
+ * keeps the opening from being cut short lives with the animation rather than
  * with each caller. `__cvBootLeave` is defined by the inline script in the
  * document head, before anything paints, so by the time any page can call this
  * it either exists or this launch was never a cold start — in which case there

@@ -41,6 +41,15 @@ const ROOT = process.cwd()
 const NEXT_DIR = join(ROOT, '.next')
 const FORCE_BUILD = process.argv.includes('--build')
 
+/* The opening's own timing and geometry, from the real module — never a copy.
+ * A harness that kept its own WORD_AT would go on passing against a schedule
+ * the app no longer has. lib/opening.ts imports through the app's @/ alias,
+ * which plain Node learns from tools/alias-register.mjs; registering it here
+ * rather than in package.json keeps `node tools/boot-smoke.mjs` working bare. */
+await import('./alias-register.mjs')
+const OPENING = await import('../lib/opening.ts')
+const { BAR_COUNT, STEMS_AT, LEAVES_AT, WORD_AT, SLOGAN_AT, SEQUENCE_MS, SLOGAN } = OPENING
+
 /* Placeholders only. The build prerenders /athlete, which builds a Supabase
  * client at module scope and throws without these; nothing here makes a network
  * call, so no real secrets belong in this file or in CI. */
@@ -411,6 +420,21 @@ function assertBuildOutput() {
     // is no staging environment to catch that here.
     check("the worker refuses navigations", src.includes("req.mode === 'navigate'"))
     check('the worker never claims /api', src.includes("url.pathname.startsWith('/api/')"))
+    /* Every precached URL must exist. install() adds them one at a time and
+     * swallows each failure, deliberately, so that one missing file cannot
+     * empty the whole precache — which also means a stale entry (the deleted
+     * montage sprite is the one this was written for) is a 404 on every
+     * install that nothing anywhere reports. This is the only thing that
+     * would notice. */
+    const list = (src.match(/const PRECACHE\s*=\s*\[([\s\S]*?)\]/) || [, null])[1]
+    const entries = list === null ? null : [...list.replace(/\/\/.*$/gm, '').matchAll(/['"`]([^'"`]+)['"`]/g)].map((m) => m[1])
+    const dead = (entries ?? []).filter((u) => !existsSync(join(ROOT, 'public', u.replace(/^\//, ''))))
+    check(
+      'every PRECACHE entry in the worker is a file that exists',
+      entries !== null && dead.length === 0,
+      entries === null ? 'no PRECACHE array found — the rule stopped looking' : dead.length ? `missing: ${dead.join(', ')}` : `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}${entries.length ? ': ' + entries.join(', ') : ''}`,
+    )
+    check('the worker no longer references the montage', !src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '').includes('montage'))
   }
 
   const htmlFiles = walk(join(NEXT_DIR, 'server', 'app')).filter((f) => f.endsWith('.html'))
@@ -419,12 +443,91 @@ function assertBuildOutput() {
 
   if (index) {
     const html = readFileSync(index, 'utf8')
-    // The two elements the pre-paint rule hides. If the class is gone the rule
-    // silently stops matching and the flash returns with nothing failing.
-    const figures = (html.match(/class="cv-intro-figure"/g) || []).length
-    check('the intro figures carry cv-intro-figure', figures === 2, `found ${figures}, expected 2`)
-    check('the pre-paint rule is inlined in <head>', html.includes('html[data-intro] .cv-intro-figure'))
+
+    /* ── The opening is in the server markup, twice, whole ──
+     *
+     * The opening is CSS over markup the server sent: once in #cv-boot, once
+     * in the sign-in intro (.cv-intro). Every rule in lib/opening.ts selects by
+     * class, so a renamed or missing class does not fail anything — the rule
+     * simply stops matching and that piece shows its plain style for ever. So
+     * count the pieces the CSS addresses, in the HTML as shipped. */
+    const count = (re) => (html.match(re) || []).length
+    const pieces = {
+      wreaths: count(/class="op-wreath"/g),
+      stems: count(/class="op-stem"/g),
+      leaves: new Set([...html.matchAll(/class="op-leaf (l\d+)"/g)].map((m) => m[1])).size,
+      bars: new Set([...html.matchAll(/class="op-bar (b\d+)"/g)].map((m) => m[1])).size,
+      words: count(/class="op-word">Pindar</g),
+      slogans: count(new RegExp(`class="op-slogan">${SLOGAN.replace(/\./g, '\\.')}<`, 'g')),
+    }
+    check(
+      'the opening is server-rendered whole, in the shell and in the intro',
+      pieces.wreaths === 2 && pieces.stems === 4 && pieces.leaves === BAR_COUNT && pieces.bars === BAR_COUNT &&
+        pieces.words === 2 && pieces.slogans === 2,
+      `${JSON.stringify(pieces)} — expected 2 wreaths, 4 stems, ${BAR_COUNT} distinct leaves and bars, 2 × "Pindar", 2 × "${SLOGAN}"`,
+    )
     check('the boot shell markup is server-rendered', html.includes('id="cv-boot"'))
+    check('the intro\'s animation is inlined in <head>, gated on data-intro', html.includes('html[data-intro] .cv-intro .op-word { animation'))
+
+    /* ── Every animation is behind the reduced-motion gate ──
+     *
+     * The opening's safety rests on one arrangement in lib/opening.ts: each
+     * element's plain style is its resting frame, and every animation sits
+     * inside `@media (prefers-reduced-motion: no-preference)`. One animation
+     * declared outside that block plays for someone who asked the OS for no
+     * motion, and nothing about the page looks broken to anyone else. Read
+     * out of the inline <style> the browser will actually get, with a brace
+     * counter rather than a regex, because the blocks nest. */
+    {
+      const inline = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]).filter((s) => s.includes('#cv-boot'))
+      const ungated = []
+      let gatedAnims = 0
+      for (const css of inline) {
+        const stack = []
+        let i = 0
+        const src = css.replace(/\/\*[\s\S]*?\*\//g, '')
+        while (i < src.length) {
+          const open = src.indexOf('{', i), close = src.indexOf('}', i)
+          if (open !== -1 && open < close) {
+            const prelude = src.slice(i, open).split(/[;}]/).pop().trim()
+            stack.push(prelude)
+            const body = src.slice(open + 1, Math.min(...[src.indexOf('{', open + 1), src.indexOf('}', open + 1)].filter((n) => n !== -1)))
+            if (/(^|[;\s])animation(-name)?\s*:/.test(body) && !prelude.startsWith('@keyframes') && !/^\d|^from|^to/.test(prelude)) {
+              if (stack.some((p) => /@media\s*\(prefers-reduced-motion:\s*no-preference\)/.test(p))) gatedAnims++
+              else ungated.push(prelude.slice(0, 60))
+            }
+            i = open + 1
+          } else if (close !== -1) {
+            stack.pop(); i = close + 1
+          } else break
+        }
+      }
+      check(
+        'every animation in the inline shell CSS is behind prefers-reduced-motion: no-preference',
+        gatedAnims > 0 && ungated.length === 0,
+        ungated.length ? `ungated: ${ungated.slice(0, 4).join(' | ')}` : `${gatedAnims} animated rule(s), all gated`,
+      )
+    }
+
+    /* ── The first frame needs nothing but the document ──
+     *
+     * The montage this replaced was an image, preloaded here and precached by
+     * the worker, because without it the shell's centrepiece was a blank
+     * rectangle. The opening is inline SVG and CSS. A url() or an image
+     * preload creeping back into the shell is a second request the first
+     * frame waits on — and a reference to the deleted sprite is a 404 on every
+     * cold start. */
+    {
+      const shellCss = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]).filter((s) => s.includes('#cv-boot')).join('\n')
+      const urls = shellCss.replace(/\/\*[\s\S]*?\*\//g, '').match(/url\([^)]*\)/g) || []
+      const imgPreloads = (html.match(/<link[^>]*rel="preload"[^>]*as="image"[^>]*>/g) || [])
+      check(
+        'the opening fetches nothing: no url() in the shell CSS, no image preload',
+        urls.length === 0 && imgPreloads.length === 0,
+        urls.length || imgPreloads.length ? [...urls, ...imgPreloads].slice(0, 3).join(', ') : 'inline SVG and CSS only',
+      )
+      check('nothing still asks for the deleted montage sprite', !html.includes('montage.svg'), html.includes('montage.svg') ? 'montage.svg is referenced in the HTML — a 404 on every cold start' : '')
+    }
     const ext = (html.match(/<link[^>]+rel="stylesheet"[^>]+href="https?:[^"]*"/g) || [])
     check('no third-party stylesheet in <head>', ext.length === 0, ext.join(', '))
 
@@ -685,18 +788,33 @@ try {
   }).observe({ type: 'paint', buffered: true })
 } catch (e) {}
 ;(function sample() {
-  const els = document.querySelectorAll('.cv-intro-figure')
-  if (els.length >= 2) {
+  const root = document.querySelector('.cv-intro')
+  const word = root && root.querySelector('.op-word')
+  if (word) {
+    const op = (el) => parseFloat(getComputedStyle(el).opacity)
+    const leaves = [...root.querySelectorAll('.op-leaf')].map(op)
+    const bars = [...root.querySelectorAll('.op-bar')].map(op)
+    const stems = [...root.querySelectorAll('.op-stem')].map((s) => parseFloat(getComputedStyle(s).strokeOpacity))
     window.__cv.frames.push({
       t: performance.now(),
-      mark: parseFloat(getComputedStyle(els[0]).opacity),
-      word: parseFloat(getComputedStyle(els[1]).opacity),
+      word: op(word),
+      slogan: op(root.querySelector('.op-slogan')),
+      leafMin: Math.min(...leaves), leafMax: Math.max(...leaves), leaves: leaves.length,
+      barMax: Math.max(...bars), bars: bars.length,
+      stemMax: Math.max(...stems),
       attr: document.documentElement.hasAttribute('data-intro'),
     })
   }
   if (performance.now() < 4000) requestAnimationFrame(sample)
 })()
 `
+/* The resting frame, as the sampler above sees it: the name, the line and the
+ * whole wreath, with the voice bars gone (they exist only to become leaves). */
+const atRest = (f) => !!f && f.word === 1 && f.slogan === 1 && f.leafMin === 1 && f.leaves === BAR_COUNT &&
+  f.barMax === 0 && f.stemMax === 1
+const restDetail = (f) => f
+  ? `word=${f.word} slogan=${f.slogan} leaves ${f.leafMin}..${f.leafMax} (${f.leaves}) bars max ${f.barMax} stems ${f.stemMax} data-intro=${f.attr}`
+  : 'no frames'
 
 async function assertBoot(base) {
   let chromium
@@ -724,18 +842,52 @@ async function assertBoot(base) {
     const fresh = await browser.newContext()
     const cold = await timelineFor(fresh, '/')
     const first = cold.frames[0]
-    const early = cold.frames.filter((f) => f.t < 500 && (f.word > 0.5 || f.mark > 0.5))
+    /* "Painted" is any opacity at all, not "more than half". The old version of
+     * this check used 0.5 and a wordmark fading in early at 0.4 is still a
+     * wordmark on screen before its moment. */
+    const early = cold.frames.filter((f) => f.t < 500 && (f.word > 0.02 || f.slogan > 0.02 || f.leafMax > 0.02))
     const settled = cold.frames[cold.frames.length - 1]
 
-    check('the intro figures were found', cold.frames.length > 0, `${cold.frames.length} frames sampled`)
+    check('the intro\'s opening was found and sampled', cold.frames.length > 20 && first?.leaves === BAR_COUNT && first?.bars === BAR_COUNT,
+      `${cold.frames.length} frames sampled; ${first?.leaves} leaves, ${first?.bars} bars`)
     check(
-      'brand is NOT painted in the first 500ms (the title flash)',
-      early.length === 0,
-      early.length ? `visible at ${early.map((f) => Math.round(f.t) + 'ms').slice(0, 4).join(', ')}` : `first frame at ${Math.round(first?.t ?? 0)}ms had mark=${first?.mark} word=${first?.word}`,
+      'the name, the line and the wreath are NOT painted in the first 500ms (the title flash)',
+      early.length > 0 ? false : cold.frames.some((f) => f.t < 500),
+      early.length
+        ? `visible at ${early.slice(0, 3).map((f) => `${Math.round(f.t)}ms word=${f.word.toFixed(2)} slogan=${f.slogan.toFixed(2)} leaves≤${f.leafMax.toFixed(2)}`).join('; ')}`
+        : cold.frames.some((f) => f.t < 500) ? `first frame at ${Math.round(first.t)}ms: ${restDetail(first)}` : 'no frame was sampled before 500ms, so nothing was proved',
     )
-    check('the sequence resolves to a visible brand', settled && settled.mark > 0.9 && settled.word > 0.9,
-      settled ? `at ${Math.round(settled.t)}ms mark=${settled.mark.toFixed(2)} word=${settled.word.toFixed(2)}` : 'no frames')
-    check('the brand does animate rather than snapping on', cold.frames.some((f) => f.word > 0.05 && f.word < 0.95))
+    check('the sequence resolves to the full lockup', atRest(settled), `at ${Math.round(settled?.t ?? 0)}ms: ${restDetail(settled)}`)
+    check('the name does animate rather than snapping on', cold.frames.some((f) => f.word > 0.05 && f.word < 0.95))
+    check('the voice bars play before the wreath forms', cold.frames.some((f) => f.barMax > 0.9 && f.leafMax === 0),
+      `bars peaked at ${Math.max(...cold.frames.map((f) => f.barMax)).toFixed(2)}`)
+    /* The rewind bug, asked as a property of the whole timeline: once the name
+     * has been on screen it never goes away again. The old intro painted the
+     * wordmark with the HTML, then hydration rewound it to invisible and
+     * animated it back — a dip this catches wherever in the film it happens. */
+    {
+      let peak = 0, dip = null
+      for (const f of cold.frames) {
+        if (f.word > peak) peak = f.word
+        if (peak > 0.3 && f.word < peak - 0.2 && !dip) dip = f
+      }
+      check('once the name appears it never blinks out again (no rewind)', !dip,
+        dip ? `word fell to ${dip.word.toFixed(2)} at ${Math.round(dip.t)}ms after reaching ${peak.toFixed(2)}` : `word rose once, to ${peak.toFixed(2)}`)
+    }
+    /* The round caps. A stem drawn by stroke-dashoffset is "invisible" at
+     * offset 1 only along its length: each end still paints its round cap, so
+     * for the 900ms before the stems start there are four stray cream dots on
+     * the ink where the wreath will be. The fix is a stroke-opacity ramp in the
+     * keyframes, which the backwards fill holds at 0 through the delay. This is
+     * asked of the browser's computed style; the boot shell section asks the
+     * pixels. */
+    {
+      const beforeStems = cold.frames.filter((f) => f.t < STEMS_AT)
+      const lit = beforeStems.filter((f) => f.stemMax > 0)
+      check(`no stem is painted before the stems start (${STEMS_AT}ms) — the round-cap dots`,
+        beforeStems.length > 0 && lit.length === 0,
+        lit.length ? `stroke-opacity ${lit[0].stemMax} at ${Math.round(lit[0].t)}ms` : `${beforeStems.length} frames before ${STEMS_AT}ms, stroke-opacity 0 in all`)
+    }
     console.log(`         first contentful paint: ${Math.round(cold.fcp)}ms`)
     await cold.page.close()
 
@@ -743,36 +895,89 @@ async function assertBoot(base) {
     heading('The resting state and the ways out')
     const seen = await timelineFor(fresh, '/', 700)   // same context: intro already consumed
     const rest = seen.frames[0]
-    check('a returning visit shows the brand at once', rest && rest.word === 1 && rest.mark === 1 && !rest.attr,
-      rest ? `mark=${rest.mark} word=${rest.word} data-intro=${rest.attr}` : 'no frames')
-    check('a returning visit never hides the brand', seen.frames.every((f) => f.word === 1))
+    check('a returning visit shows the resting frame at once', atRest(rest) && !rest.attr, restDetail(rest))
+    check('a returning visit never hides the brand', seen.frames.length > 0 && seen.frames.every(atRest))
     await seen.page.close()
 
     const replay = await timelineFor(fresh, '/?intro=1')
-    check('?intro=1 replays the sequence', replay.frames[0]?.word === 0 && replay.frames.at(-1)?.word > 0.9)
+    check('?intro=1 replays the sequence', replay.frames[0]?.word === 0 && replay.frames[0]?.attr && atRest(replay.frames.at(-1)),
+      `first ${restDetail(replay.frames[0])}; last ${restDetail(replay.frames.at(-1))}`)
     await replay.page.close()
 
     const interrupted = await browser.newContext()
     const nx = await timelineFor(interrupted, '/?next=%2Fsessions%2Fabc', 700)
-    check('?next= skips the intro and shows the brand', nx.frames[0]?.word === 1 && !nx.frames[0]?.attr)
+    check('?next= skips the intro and shows the resting frame', atRest(nx.frames[0]) && !nx.frames[0]?.attr, restDetail(nx.frames[0]))
     await nx.page.close(); await interrupted.close()
 
     const reduced = await browser.newContext({ reducedMotion: 'reduce' })
     const rm = await timelineFor(reduced, '/', 700)
-    check('prefers-reduced-motion never hides the brand', rm.frames.every((f) => f.word === 1 && !f.attr))
+    check('prefers-reduced-motion shows the resting frame from the first sample, and never moves',
+      rm.frames.length > 0 && rm.frames.every((f) => atRest(f) && !f.attr),
+      `${rm.frames.length} frames; first ${restDetail(rm.frames[0])}`)
     await rm.page.close(); await reduced.close()
 
-    // The pre-paint rule hides the brand and hands it back in an effect. If the
-    // bundle never arrives, nothing must be left invisible.
+    /* Reduced motion with the attribute forced on. The inline script declines
+     * to set data-intro under reduced motion, so the check above passes even if
+     * the CSS has lost its own gate — which is the second, independent half of
+     * the arrangement. Force the attribute and ask the CSS alone. */
+    {
+      const rctx = await browser.newContext({ reducedMotion: 'reduce' })
+      const rp = await rctx.newPage()
+      await rp.goto(base + '/?next=%2Fx', { waitUntil: 'domcontentloaded' })
+      const r = await rp.evaluate(async () => {
+        document.documentElement.setAttribute('data-intro', '1')
+        document.documentElement.setAttribute('data-boot', '1')
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)))
+        const n = (sel) => document.querySelectorAll(sel).length
+        return {
+          introAnims: document.getAnimations().filter((a) => a.effect?.target?.closest?.('.cv-intro')).length,
+          shellAnims: document.getAnimations().filter((a) => a.effect?.target?.closest?.('#cv-boot')).length,
+          introPieces: n('.cv-intro .op-leaf'), shellPieces: n('#cv-boot .op-leaf'),
+        }
+      })
+      check('the CSS itself plays nothing under reduced motion, in the intro or the shell',
+        r.introPieces === BAR_COUNT && r.shellPieces === BAR_COUNT && r.introAnims === 0 && r.shellAnims === 0,
+        JSON.stringify(r))
+      await rctx.close()
+    }
+
+    // If the bundle never arrives, nothing must be left invisible. With
+    // JavaScript off the inline script does not run either, so this is the
+    // markup's plain style alone — which must be the whole lockup.
     const nojs = await browser.newContext({ javaScriptEnabled: false })
     const p = await nojs.newPage()
     await p.goto(base + '/', { waitUntil: 'domcontentloaded' })
-    const noJsWord = await p.evaluate(() => {
-      const e = document.querySelectorAll('.cv-intro-figure')
-      return e.length >= 2 ? parseFloat(getComputedStyle(e[1]).opacity) : null
+    await p.waitForTimeout(300)
+    const noJs = await p.evaluate(() => {
+      const root = document.querySelector('.cv-intro')
+      if (!root) return null
+      const op = (el) => parseFloat(getComputedStyle(el).opacity)
+      const leaves = [...root.querySelectorAll('.op-leaf')].map(op)
+      return { word: op(root.querySelector('.op-word')), slogan: op(root.querySelector('.op-slogan')), leafMin: Math.min(...leaves), leaves: leaves.length }
     }).catch(() => null)
-    check('with JavaScript dead the brand is still shown', noJsWord === 1, `opacity=${noJsWord}`)
+    check('with JavaScript dead the name, the line and the wreath are shown',
+      !!noJs && noJs.word === 1 && noJs.slogan === 1 && noJs.leafMin === 1 && noJs.leaves === BAR_COUNT, JSON.stringify(noJs))
     await nojs.close()
+
+    /* The "/" intro with the bundle dead but the inline script alive — the
+     * slow phone, not the disabled-JS one. data-intro is set, so the CSS plays;
+     * nothing will ever hydrate to remove the attribute. The opening must still
+     * resolve on its own (its fill mode holds the end frame), not sit at its
+     * first frame waiting for an effect. */
+    {
+      const dctx = await browser.newContext()
+      const dp = await dctx.newPage()
+      await dp.route('**/_next/static/chunks/**', () => { /* hang */ })
+      await dp.addInitScript(TIMELINE_INIT)
+      await dp.goto(base + '/?intro=1', { waitUntil: 'commit' })
+      await dp.waitForTimeout(SEQUENCE_MS + 700)
+      const d = await dp.evaluate(() => window.__cv)
+      const last = d.frames.at(-1)
+      check('with every chunk hung, the "/" intro still plays and resolves',
+        d.frames[0]?.attr === true && d.frames[0]?.word === 0 && d.frames.some((f) => f.barMax > 0.9) && last?.word === 1 && last?.slogan === 1 && last?.leafMin === 1,
+        `first ${restDetail(d.frames[0])}; last ${restDetail(last)}`)
+      await dctx.close()
+    }
 
     /* ── fonts ── */
     heading('Typography actually resolves')
@@ -1027,7 +1232,7 @@ async function assertBoot(base) {
       return {
         armed: document.documentElement.hasAttribute('data-boot'),
         display: el ? getComputedStyle(el).display : 'MISSING',
-        wordmark: el ? (el.querySelector('.w')?.textContent ?? '') : '',
+        wordmark: el ? (el.querySelector('.op-word')?.textContent ?? '') : '',
         ground: el ? getComputedStyle(el).backgroundColor : '',
         groundImage: el ? getComputedStyle(el).backgroundImage : '',
         htmlGround: getComputedStyle(document.documentElement).backgroundColor,
@@ -1167,11 +1372,9 @@ async function assertBoot(base) {
       const pg = await ctx.newPage()
       await pg.route('**/_next/static/chunks/**', () => { /* hang */ })
       await pg.goto(base + '/?splash=1', { waitUntil: 'commit' })
-      await pg.waitForSelector('#cv-boot .w', { state: 'attached' })
+      await pg.waitForSelector('#cv-boot .op-slogan', { state: 'attached' })
       const end = await pg.evaluate(async () => {
         window.__cvBootLeave = () => {}
-        const img = new Image(); img.src = '/splash/montage.svg'
-        await img.decode().catch(() => {})
         // Only the shell's own animations. The page underneath has looping
         // ones with an infinite end time, and they are not this film.
         window.__cvShellAnims = () => document.getAnimations()
@@ -1261,17 +1464,17 @@ async function assertBoot(base) {
      * iOS: the launch image for this geometry, then the shell's frames.
      * Android: a flat field of the served background_color (the icon on it is
      * the same on either ground and is left out), then the same frames. The
-     * shell is filmed every 20ms across its whole sequence — the fastest
-     * montage frame is 70ms, so every figure is seen — then its fade-out, then
-     * what it reveals.
+     * shell is filmed every 20ms across its whole sequence — the bars' fastest
+     * pulse is ~180ms, so every swing is seen — then its fade-out, then what
+     * it reveals.
      *
      * Two properties. The handoff from the OS into the webview is a single
      * change, not a flash, but a full-screen jump there is the opposite of the
      * calm first second this audience needs, so it is held under the WCAG
      * large-area figure on its own. And the film as a whole must contain no
      * general flash: no area over that figure changing by ≥10% more than
-     * three times in any second. That is the property the ink-figure colour
-     * exists for, measured instead of asserted from a hex. */
+     * three times in any second. Measured on pixels, never asserted from a
+     * hex. */
     if (sharp) {
       const W = 390, H = 844, N = W * H
       const iosPng = join(ROOT, 'public', 'splash', 'launch-1170x2532.png')
@@ -1345,50 +1548,97 @@ async function assertBoot(base) {
       )
       console.log(`         largest single step inside the shell: ${pct(worstStep)} at ${worstStep.at}`)
 
-      /* ── The montage, alone, never moves by a flash's worth ──
+      /* ── The opening's flicker is small, measured as area ──
        *
-       * Stricter than 2.3.1, and on purpose. The layout's own rule is that the
-       * figures sit at 7.6% against the ink and are never made lighter: they
-       * are full-height and turn over every 70ms at the end, for 13-18 year
-       * olds. The only thing that enforced it was a check that the sprite's
-       * colour equals the --ink-figure token — which stays green if the token
-       * is lightened and the sprite regenerated to match. And measured, a
-       * riffle of light figures (the figures inverted, ~0.40 luminance) was
-       * borderline under the WCAG area test rather than a clear fail, because
-       * each change swaps 11-26k px² and the limit is 21.8k.
+       * Stricter than 2.3.1, and on purpose. The montage this replaced was held
+       * to "no pixel changes by 10% between frames", because its figures were
+       * full-height and turned over every 70ms. The opening cannot meet that
+       * and does not need to: its voice bars are sage on ink — a ~50% swing —
+       * but they are thin, and what keeps it calm is that they are SMALL.
+       * Everything else in it (the leaves, the stems, the name, the line)
+       * arrives once and stays, which is one transition, not a flash.
        *
-       * So the rule is asserted as the rule: film the figures with everything
-       * else hidden, and no pixel may change by 10% between any two frames. */
+       * So the rule is asserted on area: film the shell's own sequence alone,
+       * count every pixel that goes through even ONE flash — a ≥10% swing and
+       * back within a second — and sum that over the whole screen, not per 10°
+       * field. That total must stay under WCAG's large-area figure.
+       *
+       * Measured 2026-10-09, each group filmed alone: the bars 6,565px² — it
+       * is their FLIGHT that flickers, a rotated bar sweeping its length
+       * across the ground, so bar length matters and bar width barely does
+       * (2.7× wider: 7,793) — the leaves' overshoot rim 3,172, the name 1,434,
+       * the stems 442, the line 0. Together ~10,000 of 21,824, so there is
+       * about 2× headroom: bars 2.5× longer measured 15,103 and passed. The
+       * opening drawn at 380px instead of 210 measured 27,737 and failed —
+       * while the WCAG 2.3.1 check above stayed green on the same film, which
+       * is the sense in which this one is stricter. Flicker area scales with
+       * the size of the picture; a bigger wreath is the change to watch. */
       {
-        const { ctx: fctx, pg: fpg, end: fend, seek: fseek, shot: fshot } = await openShell(W, H)
-          await fpg.evaluate(() => {
-          for (const sel of ['#cv-boot .wave', '#cv-boot .m', '#cv-boot .w', '#cv-boot .t']) {
-            const el = document.querySelector(sel)
-            if (el) el.style.visibility = 'hidden'
-          }
-        })
-        let last = null, maxD = 0, maxArea = 0, at = 0, figFrames = 0
+        const { ctx: fctx, end: fend, seek: fseek, shot: fshot } = await openShell(W, H)
+        const solo = flashMeter(N, W)
+        let fFrames = 0
         for (let t = 0; t <= fend; t += 20) {
           await fseek(t)
-          const L = await lumaFrame(await fshot(), W, H)
-          figFrames++
-          if (last) {
-            let area = 0, m = 0
-            for (let i = 0; i < N; i++) {
-              const d = Math.abs(L[i] - last[i])
-              if (d > m) m = d
-              if (d >= 0.1) area++
-            }
-            if (m > maxD) { maxD = m; at = t }
-            if (area > maxArea) maxArea = area
-          }
-          last = L
+          solo.push(t, await lumaFrame(await fshot(), W, H))
+          fFrames++
         }
         await fctx.close()
+        const r = solo.result()
         check(
-          'the montage never changes by a flash\'s worth (figures stay under 10% of the ink)',
-          figFrames > 10 && maxD < 0.1,
-          `${figFrames} frames of the figures alone: largest change ΔL ${maxD.toFixed(3)} at ${at}ms, ${maxArea}px² at ≥10% — the rule is under 0.100, and --ink-figure is designed at 0.076`,
+          'the opening\'s flicker stays small: the area that flashes even once is under the WCAG large-area figure',
+          fFrames > 50 && r.anyFlash > 0 && r.anyFlash < FLASH_AREA_PX,
+          `${fFrames} frames of the shell's sequence alone: ${r.anyFlash}px² goes through at least one flash (limit ${FLASH_AREA_PX}px², summed over the whole screen); ` +
+          `worst ${r.peakFlashesPerSecond} flashes/s at any pixel` + (r.anyFlash === 0 ? ' — NOTHING flashed, so the bars were not filmed and nothing was measured' : ''),
+        )
+      }
+
+      /* ── No stray dots before the stems draw ──
+       *
+       * Each stem is drawn by animating stroke-dashoffset from 1 to 0, and at
+       * offset 1 its length is all gap — but a round line cap is painted at
+       * the end of every dash, including an empty one, so the "invisible" stem
+       * still put a cream dot at each end: four dots on the ink for the 900ms
+       * before the stems start, where nothing else has appeared yet. The fix is
+       * a stroke-opacity ramp in the keyframes, held at 0 through the delay by
+       * the backwards fill.
+       *
+       * Asked of the pixels, not the stylesheet: the shell frozen at 150ms,
+       * once as it is and once with the stems hidden. Any pixel that differs is
+       * a stem pixel on screen before its time. */
+      {
+        const { ctx: sctx, pg: spg, seek: sseek, shot: sshot } = await openShell(W, H)
+        // The bars are hidden in BOTH captures. They are not what is under
+        // test, and the SVG re-rasterising between the two captures moved
+        // their antialiased edges by up to ΔL 0.06 — noise that, left in,
+        // would make this check either flaky or too blunt to see a dot.
+        await spg.evaluate(() => document.querySelectorAll('#cv-boot .op-bar').forEach((e) => { e.style.visibility = 'hidden' }))
+        await sseek(150)
+        const withStems = await lumaFrame(await sshot(), W, H)
+        const ends = await spg.evaluate(() => [...document.querySelectorAll('#cv-boot .op-stem')].flatMap((p) => {
+          const m = p.getScreenCTM()
+          return [0, p.getTotalLength()].map((l) => {
+            const q = p.getPointAtLength(l).matrixTransform(m)
+            return [Math.round(q.x), Math.round(q.y)]
+          })
+        }))
+        await spg.evaluate(() => {
+          document.querySelectorAll('#cv-boot .op-stem').forEach((e) => { e.style.visibility = 'hidden' })
+          return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+        })
+        const noStems = await lumaFrame(await sshot(), W, H)
+        await sctx.close()
+        let lit = 0, maxD = 0
+        const hits = []
+        for (let i = 0; i < N; i++) {
+          const d = Math.abs(withStems[i] - noStems[i])
+          if (d > maxD) maxD = d
+          if (d >= 0.03) { lit++; if (hits.length < 4) hits.push(`(${i % W},${(i / W) | 0})`) }
+        }
+        check(
+          `no stem pixel is painted at 150ms, before the stems start at ${STEMS_AT}ms (the round-cap dots)`,
+          ends.length === 4 && lit === 0,
+          lit ? `${lit} px differ when the stems are hidden (max ΔL ${maxD.toFixed(3)}), e.g. ${hits.join(' ')}; stem ends at ${ends.map((e) => e.join(',')).join(' / ')}`
+            : `stems hidden vs shown at 150ms: max ΔL ${maxD.toFixed(4)} over the whole screen; ends at ${ends.map((e) => e.join(',')).join(' / ')}`,
         )
       }
     }
@@ -1397,19 +1647,20 @@ async function assertBoot(base) {
      *
      * A signed-out launch — which is every first launch after install — goes
      * from the OS screen to "/", not to the shell, and "/" plays its own intro.
-     * The intro is driven by requestAnimationFrame rather than CSS, so it
-     * cannot be seeked; it is filmed in real time from the compositor with a
-     * CDP screencast instead, and run through the same analysis.
+     * The intro is CSS now and could be seeked like the shell, but it is
+     * filmed in real time from the compositor with a CDP screencast instead,
+     * because the thing worth catching here is the page around it: the sign-in
+     * card arriving, hydration, anything that repaints the ground. Same
+     * analysis as the shell.
      *
      * The film is what the compositor delivered, so its resolution is
      * reported. A dropped frame merges two steps into one, which can only
      * make the per-frame area look larger (conservative) but could hide a
      * very fast on-off at a single pixel; the intro has none by design.
      *
-     * Its waveform is var(--primary), and Stadium Night lifted --primary from
-     * a mid sage to #A8CBA0 — about a 52% swing against the ink, where it had
-     * been far less. It rises once and falls once, so it should be one flash
-     * per pixel at most. That is now measured rather than reasoned. */
+     * Its voice bars are #A8CBA0 — about a 52% swing against the ink. Each
+     * pulses three times and flies off, on a few px² apiece; that is measured
+     * here rather than reasoned. */
     if (sharp) {
       const W = 390, H = 844, N = W * H
       const ictx = await browser.newContext({ viewport: { width: W, height: H } })
@@ -1490,150 +1741,269 @@ async function assertBoot(base) {
       )
     }
 
-    /* ── The mark is legible on its own ground ──
+    /* ── The opening is legible on its own ground ──
      *
-     * Stadium Night lifted --primary so it could be read on ink, and anything
-     * drawn ON it has to be ink (--on-primary). The intro's mark on "/" kept a
-     * hard-coded white microphone: 1.79:1 and 1.47:1 on its two gradient stops,
-     * so the brand's own glyph all but disappeared, and nothing failed. A
-     * graphic needs 3:1 (WCAG 1.4.11). Both marks are checked — the shell's and
-     * the intro's — against each stop the browser computed. */
+     * Stadium Night lifted --primary so it could be read on ink, and the intro's
+     * mark on "/" kept a hard-coded white microphone on it: 1.79:1 and 1.47:1,
+     * so the brand's own glyph all but disappeared, and nothing failed. The
+     * opening has no tile: the wreath, the name and the line sit straight on
+     * whatever ground is behind them, which in the shell is its own gradient
+     * and on "/" is the page. So each is measured against every stop of the
+     * nearest ground the browser actually paints, with the line's alpha
+     * composited — rgba(…, .8) is not the colour it reads as. The wreath is a
+     * graphic (3:1, WCAG 1.4.11); "Pindar" is large text (3:1); the line is
+     * 20px regular italic, which is body text (4.5:1). */
     const mCtx = await browser.newContext()
     const mPage = await mCtx.newPage()
     await mPage.goto(base + '/?next=%2Fx', { waitUntil: 'load' })
     const marks = await mPage.evaluate(() => {
-      const read = (svg) => {
-        if (!svg) return null
-        const stops = (getComputedStyle(svg.parentElement).backgroundImage.match(/rgba?\([^)]*\)/g) || [])
-        return { glyph: getComputedStyle(svg).stroke, stops }
+      const groundOf = (el) => {
+        for (let a = el; a; a = a.parentElement) {
+          const cs = getComputedStyle(a)
+          const stops = cs.backgroundImage.match(/rgba?\([^)]*\)/g)
+          if (stops) return stops
+          if (!/rgba\(\d+, \d+, \d+, 0\)|transparent/.test(cs.backgroundColor)) return [cs.backgroundColor]
+        }
+        return [getComputedStyle(document.documentElement).backgroundColor]
+      }
+      const read = (root) => {
+        const r = document.querySelector(root)
+        if (!r) return null
+        const leaf = r.querySelector('.op-leaf ellipse'), word = r.querySelector('.op-word'), slogan = r.querySelector('.op-slogan')
+        if (!leaf || !word || !slogan) return null
+        return {
+          ground: groundOf(r),
+          leaf: getComputedStyle(leaf).fill, word: getComputedStyle(word).color, slogan: getComputedStyle(slogan).color,
+        }
       }
       document.documentElement.setAttribute('data-boot', '1')
-      return { shell: read(document.querySelector('#cv-boot .m svg')), intro: read(document.querySelector('.cv-intro-figure svg')) }
+      return { shell: read('#cv-boot'), intro: read('.cv-intro') }
     })
     await mCtx.close()
+    /* Composite an rgba() foreground over an opaque ground, in sRGB, the way
+     * the browser does, and return hex. */
+    const over = (fg, bg) => {
+      const f = String(fg).match(/[\d.]+/g).map(Number), b = String(bg).match(/[\d.]+/g).map(Number)
+      const al = f.length > 3 ? f[3] : 1
+      return '#' + [0, 1, 2].map((k) => Math.round(f[k] * al + b[k] * (1 - al)).toString(16).padStart(2, '0')).join('').toUpperCase()
+    }
     for (const [name, m] of [['boot shell', marks.shell], ['intro on "/"', marks.intro]]) {
-      const ratios = m ? m.stops.map((s) => contrast(toHex(m.glyph), toHex(s))) : []
-      check(
-        `the ${name} mark's glyph is ≥3:1 on its ground`,
-        ratios.length > 0 && ratios.every((r) => r >= 3),
-        m ? `${toHex(m.glyph)} on ${m.stops.map(toHex).join(' → ')}: ${ratios.map((r) => r.toFixed(2) + ':1').join(', ')}` : 'mark not found',
-      )
+      for (const [part, min] of [['leaf', 3], ['word', 3], ['slogan', 4.5]]) {
+        const ratios = m ? m.ground.map((g) => contrast(over(m[part], g), toHex(g))) : []
+        const label = { leaf: 'wreath', word: '"Pindar"', slogan: `"${SLOGAN}"` }[part]
+        check(
+          `the ${name}'s ${label} is ≥${min}:1 on its ground`,
+          ratios.length > 0 && ratios.every((r) => r >= min),
+          m ? `${m[part]} on ${m.ground.map(toHex).join(' → ')}: ${ratios.map((r) => r.toFixed(2) + ':1').join(', ')}` : 'opening not found',
+        )
+      }
     }
 
-    /* ── the montage: the people ──
+    /* ── the opening plays with the bundle dead ──
      *
-     * This section exists because the montage stopped playing and every check
-     * this project owned stayed green. It was not deleted, not broken and not
-     * misconfigured: it was drawn by a React effect inside the page bundle, on
-     * a clock anchored to the start of the navigation, so by the time the code
-     * could run its own timeline said the sequence was over — and when the app
-     * loaded quickly the ready-handler skipped the montage on purpose. tsc,
-     * eslint and next build could not have an opinion about any of that, and
-     * nothing here was looking.
+     * The montage this replaced stopped playing and every check this project
+     * owned stayed green. It was drawn by a React effect inside the page
+     * bundle, on a clock anchored to the start of the navigation, so by the
+     * time the code could run its own timeline said the sequence was over.
+     * tsc, eslint and next build could not have an opinion about any of that.
      *
-     * So the hostile version of the question: kill the bundle outright, and
-     * ask whether the fourteen sports still go past. If this passes with every
-     * chunk hanging, the montage cannot be late for itself again — which is
-     * the property, not the pixel.
+     * So the hostile version of the question, asked of the opening: kill the
+     * bundle outright and ask whether a coach's voice still becomes the
+     * wreath — bars pulse, bars fly, leaves sprout bottom to tip, stems draw,
+     * the name lands, the line lands. If this passes with every chunk hanging,
+     * the opening cannot be late for itself. That is the property.
      */
-    heading('The montage — the fourteen sports actually go past')
-
-    const sprite = JSON.parse(execFileSync(process.execPath,
-      [join(ROOT, 'tools', 'build-montage-sprite.mjs'), '--json'], { encoding: 'utf8' }))
-    check(
-      'the sprite is in step with the artwork and the palette',
-      sprite.upToDate,
-      sprite.upToDate ? `${sprite.frames} frames, ${sprite.colour}` : sprite.why,
-    )
-    check(
-      'the figure colour is still flash-safe against the ink ground',
-      sprite.colour.toLowerCase() === sprite.token.toLowerCase(),
-      `sprite ${sprite.colour} vs --ink-figure ${sprite.token} — WCAG 2.3.1 caps a large-area luminance swing at 10%; this one is 7.6%`,
-    )
+    heading('The opening plays with every chunk dead')
 
     const deadCtx = await browser.newContext()
     const dead = await deadCtx.newPage()
-    const assets = []
-    dead.on('response', (r) => {
-      if (r.url().includes('/splash/montage.svg')) assets.push(r.status())
+    const fetched = []
+    dead.on('request', (r) => {
+      const u = new URL(r.url())
+      if (!u.pathname.startsWith('/_next/static/') && r.resourceType() !== 'document') fetched.push(`${r.resourceType()} ${u.pathname}`)
     })
     // Every page chunk hangs for the life of the page: hydration never starts,
     // which is the worst case a real phone on a real network produces and the
     // exact condition the old implementation could not survive.
     await dead.route('**/_next/static/chunks/**', () => { /* hang */ })
     await dead.goto(base + '/?splash=1', { waitUntil: 'commit' })
-    const film = await dead.evaluate(async () => {
+    await dead.waitForSelector('#cv-boot .op-slogan', { state: 'attached' })
+    const film = await dead.evaluate(async (ms) => {
+      const root = document.querySelector('#cv-boot')
+      const word = root && root.querySelector('.op-word')
+      if (!word) return { error: 'no #cv-boot .op-word' }
+      window.__cvBootLeave = () => {}   // nothing may take the shell down mid-film
+      const bars = [...root.querySelectorAll('.op-bar')], leaves = [...root.querySelectorAll('.op-leaf')]
+      const stems = [...root.querySelectorAll('.op-stem')]
+      const slogan = root.querySelector('.op-slogan')
+      const centre = (el) => { const b = el.getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2, b.height] }
+      // Where each bar starts and where its leaf ends up, in screen space.
+      const barStart = bars.map(centre)
+      const op = (el) => Number(getComputedStyle(el).opacity)
       const seen = []
-      const el = document.querySelector('#cv-boot .figs')
-      if (!el) return { error: 'no .figs element' }
       const t0 = performance.now()
-      while (performance.now() - t0 < 3300) {
-        const cs = getComputedStyle(el)
+      // The opening's own clock: timeline time since the name's animation
+      // started, which is when the shell was first styled. Not
+      // performance.now(), which also counts the wait for the document, and
+      // not currentTime, which stops when that one animation finishes.
+      const wa = word.getAnimations()[0]
+      const clock = () => (wa && wa.startTime !== null ? document.timeline.currentTime - wa.startTime : performance.now())
+      while (performance.now() - t0 < ms) {
         seen.push({
-          t: Math.round(performance.now() - t0),
-          x: cs.backgroundPositionX,
-          o: Number(cs.opacity),
+          t: Math.round(clock()),
+          bars: bars.map((b) => { const c = centre(b); return [op(b), c[0], c[1], Math.round(c[2] * 10) / 10] }),
+          leaves: leaves.map(op),
+          stemOff: stems.map((s) => Number.parseFloat(getComputedStyle(s).strokeDashoffset)),
+          stemOp: stems.map((s) => Number(getComputedStyle(s).strokeOpacity)),
+          word: op(word), slogan: op(slogan),
         })
         await new Promise((r) => requestAnimationFrame(r))
       }
-      const mark = document.querySelector('#cv-boot .m')
-      const word = document.querySelector('#cv-boot .w')
-      return {
-        seen,
-        hydrated: !!document.querySelector('#cv-boot')?.isConnected && document.readyState,
-        markEnd: mark ? Number(getComputedStyle(mark).opacity) : null,
-        wordEnd: word ? Number(getComputedStyle(word).opacity) : null,
-      }
-    })
+      return { seen, barStart, leafEnd: leaves.map(centre), clocked: !!wa }
+    }, SEQUENCE_MS + 700)
 
-    const visible = (film.seen ?? []).filter((f) => f.o > 0.9)
-    const positions = new Set(visible.map((f) => f.x))
-    check(
-      'the sprite is served',
-      assets.length > 0 && assets.every((s) => s === 200),
-      assets.length ? `status ${assets.join(', ')}` : 'never requested — the montage would be a blank rectangle',
-    )
-    check(
-      'the figures are painted at all',
-      visible.length > 0,
-      visible.length ? `visible from ${visible[0].t}ms to ${visible[visible.length - 1].t}ms` : 'opacity never rose above 0.9 — this is the bug',
-    )
-    check(
-      `all ${sprite.frames} sports go past, with the bundle dead`,
-      positions.size >= sprite.frames,
-      `${positions.size} distinct frames of ${sprite.frames}`,
-    )
-    check(
-      'the montage is not over before it is seen',
-      visible.length > 0 && visible[0].t < 600,
-      visible.length ? `first figure at ${visible[0].t}ms` : 'never',
-    )
-    check(
-      'it resolves into the brand rather than stopping on a stranger',
-      film.markEnd > 0.9 && film.wordEnd > 0.9 && (film.seen ?? []).at(-1)?.o < 0.1,
-      `mark=${film.markEnd} word=${film.wordEnd} figures=${(film.seen ?? []).at(-1)?.o}`,
-    )
+    const frames = film.seen ?? []
+    const anim = 0   // t is already opening time
+    check('the shell is animating at all (the name has a running animation)', film.clocked === true && frames.length > 60,
+      film.error ?? (film.clocked ? `${frames.length} frames on the opening's own clock` : 'no animation on #cv-boot .op-word'))
+    const last = frames.at(-1)
+    {
+      // The bars pulse: each one's rendered height takes several values while
+      // it is on screen, not one.
+      const heights = new Set()
+      for (const f of frames) for (const b of f.bars) if (b[0] > 0.9) heights.add(b[3])
+      const firstBar = frames.find((f) => f.bars.some((b) => b[0] > 0.5))
+      check('the voice bars appear early and pulse', !!firstBar && firstBar.t - anim < 400 && heights.size >= 6,
+        firstBar ? `first bar at +${firstBar.t - anim}ms; ${heights.size} distinct bar heights while fully visible` : 'no bar ever became visible')
+
+      // The bars fly to the wreath: every bar's centre gets at least halfway
+      // from where it started to the leaf nearest its final heading.
+      let flown = 0
+      const worst = []
+      film.barStart?.forEach((s, i) => {
+        let best = 0
+        for (const f of frames) {
+          const b = f.bars[i]
+          if (b[0] < 0.05) continue
+          const d = Math.hypot(b[1] - s[0], b[2] - s[1])
+          if (d > best) best = d
+        }
+        const nearestLeaf = Math.min(...film.leafEnd.map((l) => Math.hypot(l[0] - s[0], l[1] - s[1])))
+        if (best >= nearestLeaf * 0.5) flown++
+        else worst.push(`b${i} moved ${best.toFixed(0)}px of ${nearestLeaf.toFixed(0)}`)
+      })
+      check(`all ${BAR_COUNT} bars fly toward the wreath`, flown === BAR_COUNT, worst.length ? worst.slice(0, 4).join('; ') : `${flown} of ${BAR_COUNT}`)
+
+      // Leaves sprout, bottom to tip: none before LEAVES_AT, all by the end,
+      // and the tip leaves after the bottom ones.
+      const firstLit = (i) => (frames.find((f) => f.leaves[i] > 0.5) ?? { t: Infinity }).t - anim
+      const lit = Array.from({ length: BAR_COUNT }, (_, i) => firstLit(i))
+      const half = BAR_COUNT / 2
+      const early = lit.filter((t) => t < LEAVES_AT - 100)
+      check('the leaves sprout after the voice, bottom to tip',
+        lit.every(Number.isFinite) && early.length === 0 && lit[half - 1] > lit[0] && lit[BAR_COUNT - 1] > lit[half],
+        `first leaf at +${Math.min(...lit)}ms (LEAVES_AT ${LEAVES_AT}); bottom ${lit[0]}/${lit[half]}ms, tips ${lit[half - 1]}/${lit[BAR_COUNT - 1]}ms`)
+
+      // The stems draw: the dash offset passes through the middle of its range.
+      const drawing = frames.some((f) => f.stemOff.some((o) => o > 0.2 && o < 0.8) && f.stemOp.every((o) => o > 0.5))
+      check('the stems draw', drawing && last?.stemOff.every((o) => o === 0))
+
+      const wordAt = (frames.find((f) => f.word > 0.5) ?? { t: Infinity }).t - anim
+      const sloganAt = (frames.find((f) => f.slogan > 0.5) ?? { t: Infinity }).t - anim
+      check('the name lands after the wreath, then the line',
+        wordAt >= WORD_AT - 100 && Number.isFinite(sloganAt) && sloganAt > wordAt && sloganAt >= SLOGAN_AT - 100,
+        `"Pindar" at +${wordAt}ms (WORD_AT ${WORD_AT}), "${SLOGAN}" at +${sloganAt}ms (SLOGAN_AT ${SLOGAN_AT})`)
+
+      check('it resolves to the whole lockup with the bars gone',
+        !!last && last.word === 1 && last.slogan === 1 && last.leaves.every((o) => o === 1) && last.bars.every((b) => b[0] === 0) && last.stemOp.every((o) => o === 1),
+        last ? `word=${last.word} slogan=${last.slogan} leaves min ${Math.min(...last.leaves)} bars max ${Math.max(...last.bars.map((b) => b[0]))}` : film.error)
+
+      /* And it asked the network for nothing to do it. The montage needed an
+       * image the shell could not paint without; the opening is the document.
+       * Requests here exclude the hung chunks and the document itself. */
+      const media = fetched.filter((f) => /^(image|media|font|stylesheet) /.test(f) && !/favicon|icon/.test(f))
+      check('the opening needs no request beyond the document', media.length === 0,
+        media.length ? media.slice(0, 4).join(', ') : `other requests: ${fetched.join(', ') || 'none'}`)
+    }
     await deadCtx.close()
 
-    /* Reduced motion gets the resting frame and no riffle. Fourteen full-height
-     * figures changing every 70ms is exactly what that setting is asked for. */
+    /* Reduced motion: the resting frame, at once, with nothing moving — never
+     * an empty ink screen. Sampled on the first animation frame the page has,
+     * not after a settle: "eventually shows the brand" is not the property. */
     const rmCtx = await browser.newContext({ reducedMotion: 'reduce' })
     const rmPage = await rmCtx.newPage()
+    await rmPage.route('**/_next/static/chunks/**', () => { /* hang */ })
     await rmPage.goto(base + '/?splash=1', { waitUntil: 'commit' })
-    await rmPage.waitForTimeout(700)
-    const rmState = await rmPage.evaluate(() => {
-      const g = (sel) => {
-        const el = document.querySelector(sel)
-        return el ? Number(getComputedStyle(el).opacity) : null
+    await rmPage.waitForSelector('#cv-boot .op-slogan', { state: 'attached' })
+    const rmState = await rmPage.evaluate(async () => {
+      await new Promise((r) => requestAnimationFrame(r))
+      const root = document.querySelector('#cv-boot')
+      const op = (el) => Number(getComputedStyle(el).opacity)
+      const leaves = [...root.querySelectorAll('.op-leaf')].map(op)
+      const bars = [...root.querySelectorAll('.op-bar')].map(op)
+      return {
+        t: Math.round(performance.now()),
+        word: op(root.querySelector('.op-word')), slogan: op(root.querySelector('.op-slogan')),
+        leafMin: Math.min(...leaves), barMax: Math.max(...bars),
+        anims: document.getAnimations().filter((a) => a.effect?.target?.closest?.('#cv-boot') && !(a instanceof CSSTransition)).length,
       }
-      return { figs: g('#cv-boot .figs'), mark: g('#cv-boot .m'), word: g('#cv-boot .w') }
     })
     check(
-      'reduced motion shows the brand and never riffles',
-      rmState.figs === 0 && rmState.mark === 1 && rmState.word === 1,
+      'reduced motion shows the whole lockup on the first frame, and nothing moves',
+      rmState.word === 1 && rmState.slogan === 1 && rmState.leafMin === 1 && rmState.barMax === 0 && rmState.anims === 0,
       JSON.stringify(rmState),
     )
     await rmCtx.close()
+
+    /* ── The shell holds until the name has landed ──
+     *
+     * The floor (FLOOR_MS in app/layout.tsx) is the earliest the shell may
+     * leave when the app says it is ready. It was one second under the
+     * montage; for the opening it is the name — leaving earlier cuts it off
+     * with the bars in the air. It is asserted as that property, not as a
+     * number read back out of the HTML, which would move with the source and
+     * prove nothing: the app says "ready" at once, and when the shell starts
+     * to leave "Pindar" must already be on screen.
+     *
+     * Twice: once on a fast document, and once with the document held back
+     * 1.2s. The floor used to be measured from navigation start, which was
+     * right for the JS-timed montage and wrong for a CSS opening that only
+     * starts once the document is here — on the slow document the shell left
+     * 767ms into its own animation with the name at opacity 0. The slow
+     * launch is the one somebody is actually watching. */
+    heading('The shell holds until the name has landed')
+    for (const delay of [0, 1200]) {
+      const fctx = await browser.newContext()
+      const fpg = await fctx.newPage()
+      await fpg.route('**/_next/static/chunks/**', () => { /* hang: only our own "ready" below */ })
+      if (delay) await fpg.route((u) => new URL(u).pathname === '/', async (r) => { await new Promise((s) => setTimeout(s, delay)); await r.continue() })
+      await fpg.goto(base + '/?splash=1', { waitUntil: 'commit' })
+      await fpg.waitForSelector('#cv-boot .op-slogan', { state: 'attached' })
+      const fl = await fpg.evaluate(async () => {
+        await new Promise((r) => requestAnimationFrame(r))
+        const word = document.querySelector('#cv-boot .op-word')
+        const a = word.getAnimations()[0]
+        const clock = () => (a && a.startTime !== null ? document.timeline.currentTime - a.startTime : null)
+        const readyAt = a ? a.currentTime : null   // pending on the first frame: 0
+        window.__cvBootLeave()   // the app reports ready immediately
+        while (!document.documentElement.hasAttribute('data-boot-out') && performance.now() < 9000) {
+          await new Promise((r) => requestAnimationFrame(r))
+        }
+        const leftAt = clock()
+        return {
+          readyAt: Math.round(readyAt ?? -1),
+          leftAt: leftAt === null ? null : Math.round(leftAt),
+          word: Number(getComputedStyle(word).opacity),
+          out: document.documentElement.hasAttribute('data-boot-out'),
+        }
+      })
+      check(
+        `${delay ? `document held ${delay}ms` : 'fast document'}: an early "ready" waits for the name, then goes`,
+        fl.out && fl.word >= 0.9 && fl.leftAt !== null && fl.leftAt >= WORD_AT && fl.leftAt < SEQUENCE_MS + 600,
+        `ready at ${fl.readyAt}ms into the opening; began leaving at ${fl.leftAt}ms with "Pindar" at opacity ${fl.word.toFixed(2)} (WORD_AT ${WORD_AT})`,
+      )
+      await fctx.close()
+    }
 
     /* ── nothing scrolls sideways ────────────────────────────────────────────
      *
@@ -1702,7 +2072,7 @@ async function assertBoot(base) {
 
     const SIDEWAYS_ROUTES = [
       { url: '/', settle: 3600, what: 'the intro resolved' },
-      { url: '/?splash=1', settle: 700, what: 'the boot shell mid-montage' },
+      { url: '/?splash=1', settle: 700, what: 'the boot shell mid-opening, bars in flight' },
       { url: '/signup', settle: 500, what: 'the longest form in the app' },
     ]
     const SIDEWAYS_VIEWPORTS = [
@@ -1794,34 +2164,42 @@ async function assertBoot(base) {
     const swState = await swPage.evaluate(async () => {
       const reg = await navigator.serviceWorker.getRegistration('/').catch(() => null)
       if (!reg) return { registered: false }
-      await navigator.serviceWorker.ready
-      // Give the install handler's precache a moment to settle.
-      await new Promise((r) => setTimeout(r, 1200))
-      const keys = await caches.keys()
-      const cache = keys.length ? await caches.open(keys[0]) : null
-      const cached = cache ? (await cache.keys()).map((r) => new URL(r.url).pathname) : []
-      return { registered: true, keys, cached }
+      // Raced, because .ready never settles for a worker that fails to
+      // install, and a hung harness reports nothing at all.
+      const ready = await Promise.race([navigator.serviceWorker.ready.then(() => true), new Promise((r) => setTimeout(() => r(false), 8000))])
+      // .ready resolves while the worker is still 'activating'; give the
+      // activate handler (old caches deleted, clients claimed) time to finish.
+      const t0 = performance.now()
+      while (reg.active && reg.active.state !== 'activated' && performance.now() - t0 < 8000) await new Promise((r) => setTimeout(r, 50))
+      return { registered: true, ready, state: reg.active?.state ?? reg.installing?.state ?? 'none' }
     })
-    check('the worker registers', swState.registered === true, JSON.stringify(swState.keys ?? {}))
-    if (swState.registered) {
-      /* The montage, and not the launch images.
-       *
-       * The launch images used to be precached here and it can never have
-       * done anything: the OS paints those before the webview exists, so this
-       * worker is not in that path. The montage is — it is fetched by the
-       * webview on every cold start and it is the first thing the shell
-       * draws, so a miss is a blank rectangle where the sports should be. */
+    check('the worker registers and activates', swState.registered === true && swState.ready === true && swState.state === 'activated', JSON.stringify(swState))
+    if (swState.ready) {
+      /* With nothing precached, the worker's whole value is the fetch handler
+       * caching the content-hashed assets as the page uses them. A worker that
+       * activates and caches nothing looks exactly like a working one from the
+       * outside, so load the page again under its control and look. */
+      await swPage.reload({ waitUntil: 'load' })
+      await swPage.waitForTimeout(1200)
+      const cacheState = await swPage.evaluate(async () => {
+        const keys = await caches.keys()
+        const cached = []
+        for (const k of keys) for (const r of await (await caches.open(k)).keys()) cached.push(new URL(r.url).pathname)
+        return { controlled: !!navigator.serviceWorker.controller, keys, cached }
+      })
+      const statics = cacheState.cached.filter((p) => p.startsWith('/_next/static/'))
       check(
-        'the montage is precached',
-        (swState.cached ?? []).includes('/splash/montage.svg'),
-        `${(swState.cached ?? []).length} entries: ${(swState.cached ?? []).join(', ').slice(0, 120)}`,
+        'under the worker, the page\'s static assets are cached',
+        cacheState.controlled && statics.length > 0,
+        `controlled=${cacheState.controlled}, caches ${cacheState.keys.join(', ') || 'none'}: ${statics.length} /_next/static entries of ${cacheState.cached.length}`,
       )
+      check('nothing in the cache is the deleted montage sprite', !cacheState.cached.some((p) => p.includes('montage')))
       // The one thing this worker must never do. A cached document names
       // content-hashed chunks that stop existing on the next deploy.
       check(
         'no HTML document was cached',
-        !(swState.cached ?? []).some((p) => p === '/' || p === '/dashboard' || p === '/athlete'),
-        (swState.cached ?? []).join(', ').slice(0, 200),
+        !cacheState.cached.some((p) => p === '/' || p === '/dashboard' || p === '/athlete'),
+        cacheState.cached.filter((p) => !p.startsWith('/_next/static/')).join(', ').slice(0, 200) || 'only /_next/static assets',
       )
     }
     await swCtx.close()
