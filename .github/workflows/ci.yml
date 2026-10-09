@@ -157,6 +157,13 @@ jobs:
       - name: New-icon prompt rig
         run: npm run verify:reinstall
 
+      # An installed iPhone app keeps running the version it opened with until
+      # something reloads it. This holds the watcher that does so to reloading
+      # only at a safe moment — never over a recording, a sheet or typed text —
+      # and to one commit-based version in both the bundle and the manifest.
+      - name: Self-update rig
+        run: npm run verify:update
+
       - name: Video rig
         run: npm run verify:video
 
