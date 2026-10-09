@@ -259,6 +259,31 @@ app writes each athlete their own account of every session.
   offline work), the repo and package name, applied migrations, and the
   historical reports in `product-review/reports/`.
 
+## ⚠️ Installed apps update themselves — never ask anyone to delete the app
+
+Max, 2026-10-09: *"it's becoming increasingly frustrating that we have to keep
+constantly deleting the app … we need to fix that immediately. It's top
+priority."*
+
+iOS never closes a Home Screen app; it freezes it and thaws the same page, old
+JavaScript and all, for days. Nothing asked whether a new version had shipped,
+so deleting the app was the only reliable way to get one.
+`app/components/UpdateWatcher.tsx` (mounted in `app/layout.tsx`) now asks
+`/manifest.webmanifest` for `pindar_version` on every return to the screen and
+every ten minutes, and reloads onto a new deploy at a safe moment: back after a
+real absence with nothing in progress, or on the next page change. The rules
+are `lib/app-update.ts`; `npm run verify:update` holds them.
+
+- **A new recorder, sheet or unsaved-media preview must be visible to
+  `BUSY_SELECTOR`** — use `role="dialog"`, or add its marker there and an anchor
+  in `tools/update-rig.mjs`. Otherwise an update can reload over it.
+- **`NEXT_PUBLIC_APP_VERSION` is the commit** (`next.config.ts`). Never a
+  timestamp: each build worker would mint its own and the app would believe it
+  was always out of date.
+- **What still only changes on a fresh install:** the Home Screen icon, its
+  name and the iOS launch images. Treat them as fixed; changing any of them
+  means a stale copy on every existing iPhone.
+
 ## ⚠️ Startup / first-paint changes must be verified in a browser
 
 `tsc --noEmit`, `eslint` and `next build` **all pass on every startup bug this
@@ -369,6 +394,7 @@ March in London, and every string type-checks.
 | `npm run verify:bodymap` | Every body-map region's rendered size, from the real geometry and the real rendered width | A region too small to tap, which marks the wrong body part rather than failing |
 | `npm run verify:staff` | `lib/coach-scope.ts` and `lib/staff-invite.ts`: whose team a coach is on, and who may accept an invite | A revoked or merely invited assistant resolving onto a team; an invite accepted by the wrong address or an athlete account; a token stored as itself |
 | `npm run verify:wellness` | `wellnessDriver` in `lib/wellness-config.ts`: what pulled a check-in's score down | A two-tap check-in described by derived numbers the athlete was never asked ("Mood 2/5"); an OK answer called low; a roster tile's label too long to fit |
+| `npm run verify:update` | `lib/app-update.ts`: when an installed app reloads itself onto a new deploy, and the markers its "something is in progress" test relies on | A deploy never reaching an iPhone until the app is deleted (Max, 2026-10-09: "we have to keep constantly deleting the app"); or the fix reloading over a recording, a sheet or typed text |
 | `npm run verify:email` | Every real email builder in `lib/notify.ts`, fed hostile text against a stub network; every HTML literal in `app/api/` | An athlete's message, a check-in note or a name arriving as live markup — a working link — in someone's inbox; a name that rewrites the From header. New email HTML: `escapeHtml` every typed value, `renderBrandedEmail` escapes only its text fields |
 | `npm run verify:rls` | Production's schema (`supabase/tests/baseline-033.sql`) plus every later migration, in a throwaway Postgres, then `supabase/tests/*.test.sql` acting as real users | A policy that lets one coach, an assistant, or an athlete read or write another's rows — decided inside Postgres, where every other tool sees only strings. Needs a Postgres (CI runs a service); set `PGHOST`/`PGUSER` locally |
 

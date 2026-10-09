@@ -3,6 +3,7 @@ import { SEQUENCE_MS, WORD_AT, openingCss, fullScreenFrameCss } from '@/lib/open
 import localFont from 'next/font/local'
 import './globals.css'
 import OpeningMark from './components/OpeningMark'
+import UpdateWatcher from './components/UpdateWatcher'
 import './fonts/subsets.css'
 
 /* ── Type ──────────────────────────────────────────────────────────────────
@@ -570,6 +571,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <OpeningMark />
         </div>
         {children}
+        {/* Brings an installed app up to the latest deploy without deleting
+            it from the Home Screen. Renders nothing. lib/app-update.ts. */}
+        <UpdateWatcher />
       </body>
     </html>
   )
