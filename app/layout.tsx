@@ -376,19 +376,25 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
       if (Date.now() - last < 1800000) return
       localStorage.setItem('cv_splash_at', String(Date.now()))
     }
-    // Anchored to when the NAVIGATION started, not to when this script finally
-    // ran. Everything before this line — the "/" hop, the middleware's auth
-    // round trips, the document transfer, the stylesheet this script used to
-    // wait behind — is screen the user has already spent staring at nothing.
-    // performance.now() here is exactly that elapsed time.
+    // The floor is measured on the OPENING's clock, not the navigation's.
     //
-    // Anchoring to parse time made the sequence start afresh at the end of the
-    // wait, so the dead time and the 2.1s sequence added up instead of
-    // overlapping. That is the difference between "3s of black, then the intro
-    // from frame 1" and "the intro is already most of the way through by the
-    // time you see it". Measured against a 2500ms held document: the user
-    // reached the app at 5.8s before, 3.1s after.
-    window.__cvBootAt = Date.now() - Math.round(performance.now())
+    // It used to be anchored to navigation start (window.__cvBootAt), which was
+    // right for the montage: that was timed by JavaScript from the same anchor,
+    // so time already spent waiting for the document was time the montage had
+    // already "played". The opening is CSS, and a CSS animation starts when the
+    // shell is first styled — after the document has arrived, however long that
+    // took. Kept on the navigation clock, every millisecond of document latency
+    // came straight out of the floor: with the document held 1.2s the shell
+    // began to leave 767ms into its own animation, with "Pindar" at opacity 0 —
+    // exactly the cut-off the floor exists to prevent, on exactly the slow
+    // launch where anyone is watching. So the floor reads the name's own
+    // animation clock, and falls back to the moment the shell armed.
+    var armedAt = Date.now()
+    var openingAt = function () {
+      var w = document.querySelector('#cv-boot .op-word')
+      var a = w && w.getAnimations ? w.getAnimations()[0] : null
+      return a && a.currentTime !== null ? a.currentTime : Date.now() - armedAt
+    }
     d.setAttribute('data-boot', '1')
 
     /* ── The only way out ──────────────────────────────────────────────────
@@ -415,7 +421,7 @@ const BOOT_JS = `/* Runs before the body paints, so the shell is either up or ne
     }
     window.__cvBootLeave = function (force, instant) {
       if (gone) return
-      var waited = Date.now() - window.__cvBootAt
+      var waited = openingAt()
       if (!force && waited < FLOOR) {
         setTimeout(function () { window.__cvBootLeave(true) }, FLOOR - waited)
         return

@@ -12,7 +12,7 @@
     "verify:safeguard": "node tools/safeguard-check.mjs",
     "verify:clock": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/clock-rig.mjs",
     "verify:prompt": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/prompt-rig.mjs",
-    "verify:boot": "node tools/boot-smoke.mjs",
+    "verify:boot": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/boot-smoke.mjs",
     "verify:calendar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/calendar-rig.mjs",
     "verify:palette": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/palette-rig.mjs",
     "verify:roster": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tools/alias-register.mjs tools/roster-rig.mjs",
