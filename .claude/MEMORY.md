@@ -927,3 +927,14 @@ changes his mind:
   Inscription" (PINDAR carved letter by letter with a gold sweep). Mock-up page:
   https://claude.ai/artifact/HQKR7zjZFxLW8zFrsnYhde
 - Leaves: laurel (Delphi's wreath) kept; olive (Olympia's) was offered.
+
+## 2026-10-09 — iPhone installs update themselves (no more deleting the app)
+Max: "it's becoming increasingly frustrating that we have to keep constantly
+deleting the app… top priority." Cause: iOS freezes/thaws a Home Screen app and
+keeps running the old JS; nothing checked for a new deploy. Fix: UpdateWatcher
+(app/components) + lib/app-update.ts — reads `pindar_version` from the manifest
+on resume / every 10 min / on page change and reloads when safe (not over a
+dialog, recording, unsent clip or typed text; ≥60s away; loop guard).
+verify:update rig. Phones running a pre-fix build need ONE swipe-close and
+reopen (not a delete) to pick up the watcher. Icon/name/launch images remain
+install-time only on iOS — treat them as fixed.

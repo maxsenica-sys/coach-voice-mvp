@@ -1,7 +1,13 @@
 import { MetadataRoute } from 'next'
+import { VERSION_FIELD } from '@/lib/app-update'
 
 export default function manifest(): MetadataRoute.Manifest {
+  // The deployed version, read by an installed app to learn it is behind —
+  // lib/app-update.ts. Browsers ignore members they do not know, so changing
+  // it on every deploy changes nothing about the install itself.
+  const version = { [VERSION_FIELD]: process.env.NEXT_PUBLIC_APP_VERSION ?? 'dev' }
   return {
+    ...version,
     name: 'Pindar',
     short_name: 'Pindar',
     description: 'The private journal between coach and athlete. Your coach talks; every athlete gets their own words from every session.',
