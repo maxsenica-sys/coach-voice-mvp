@@ -1793,7 +1793,16 @@ async function assertBoot(base) {
       return { ctx, pg, end, seek, shot }
     }
 
-    /* ── Every launch image is the shell's resting frame ──
+    /* ── Every launch image is the shell's FIRST frame ──
+     *
+     * The bare ink ground the opening grows out of, so the iPhone goes from
+     * its launch screen straight into the animation. It used to be the
+     * resting frame — the finished wreath and name — and Max saw exactly what
+     * that does on a phone (2026-10-09): "it opens to Pindar and your training
+     * journal and then goes through the opening … we can't have that
+     * occurring." A whole screen that appears, sits, vanishes and is built
+     * again. This compares at t=0, so a launch image carrying any of the
+     * finished lockup is red.
      *
      * The OS paints the launch image; the webview then paints the shell. They
      * are supposed to be the same picture — tools/build-launch-images.mjs
@@ -1816,8 +1825,8 @@ async function assertBoot(base) {
         // At the device's own pixel ratio, as the generator renders it, so
         // the comparison is pixel for pixel rather than through a resample.
         const pw = d.w * d.dpr, ph = d.h * d.dpr
-        const { ctx, end, seek, shot } = await openShell(d.w, d.h, d.dpr)
-        await seek(end)
+        const { ctx, seek, shot } = await openShell(d.w, d.h, d.dpr)
+        await seek(0)
         const rest = await lumaFrame(await shot(), pw, ph)
         await ctx.close()
         const launch = await lumaFrame(readFileSync(png), pw, ph)
@@ -1835,7 +1844,7 @@ async function assertBoot(base) {
       }
     }
     check(
-      `every one of the ${devices.length} launch images is the boot shell's resting frame`,
+      `every one of the ${devices.length} launch images is the opening's first frame — the bare ground, no lockup to flash before the animation`,
       devices.length > 0 && drift.length === 0,
       drift.length ? drift.slice(0, 4).join('; ') + (drift.length > 4 ? ` (+${drift.length - 4} more) — regenerate with npm run build:splash` : ' — regenerate with npm run build:splash')
         : `worst ${worstDrift.file}: ${(worstDrift.frac * 100).toFixed(2)}% of pixels ≥10% apart, mean ΔL ${worstDrift.mean.toFixed(4)}`,
