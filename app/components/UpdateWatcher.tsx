@@ -10,10 +10,18 @@ import {
 /** The version this bundle was built as; next.config.ts sets it. */
 const RUNNING = process.env.NEXT_PUBLIC_APP_VERSION ?? ''
 
+/** Fields a person has typed into. A field the app filled in itself (an
+ *  athlete's name in an edit form, a saved setting) is not work a reload would
+ *  lose — the server still has it — and counting it would stop an update from
+ *  ever landing on a screen that always shows one. `input` fires only for the
+ *  person's own edits, never for a value set in code. */
+const typedInto = new WeakSet<EventTarget>()
+
 /** Something on screen that a reload would lose. */
 function busyNow(): boolean {
   if (document.querySelector(BUSY_SELECTOR)) return true
   for (const el of document.querySelectorAll<HTMLElement>(TEXT_ENTRY_SELECTOR)) {
+    if (!typedInto.has(el)) continue
     const text = el.isContentEditable ? el.textContent : (el as HTMLInputElement).value
     if (text?.trim()) return true
   }
@@ -56,6 +64,8 @@ export default function UpdateWatcher() {
   useEffect(() => {
     if (!RUNNING || RUNNING === 'dev') return
     let hiddenAt: number | null = null
+    const onInput = (e: Event) => { if (e.target) typedInto.add(e.target) }
+    document.addEventListener('input', onInput, true)
     const run = (moment: Moment, awayMs = 0) => {
       void checkForUpdate(moment, awayMs, pending.current).then((p) => { pending.current = p })
     }
@@ -75,6 +85,7 @@ export default function UpdateWatcher() {
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('pageshow', onPageShow)
     return () => {
+      document.removeEventListener('input', onInput, true)
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('pageshow', onPageShow)
       clearInterval(timer)

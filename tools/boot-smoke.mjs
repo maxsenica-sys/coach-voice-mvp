@@ -50,6 +50,14 @@ await import('./alias-register.mjs')
 const OPENING = await import('../lib/opening.ts')
 const { BAR_COUNT, STEMS_AT, LEAVES_AT, WORD_AT, SLOGAN_AT, SEQUENCE_MS, SLOGAN } = OPENING
 
+/* The update watcher's contract, from the same module the app imports: where
+ * the version is read, what it is called, how long counts as "away", how long
+ * the loop guard holds, and what "busy" means. The busy FIXTURES below are
+ * written out by hand on purpose; see assertUpdates. */
+const {
+  VERSION_FIELD, VERSION_URL, MIN_AWAY_MS, RETRY_AFTER_MS, ATTEMPT_KEY, BUSY_SELECTOR, TEXT_ENTRY_SELECTOR,
+} = await import('../lib/app-update.ts')
+
 /* Placeholders only. The build prerenders /athlete, which builds a Supabase
  * client at module scope and throws without these; nothing here makes a network
  * call, so no real secrets belong in this file or in CI. */
@@ -815,6 +823,385 @@ const atRest = (f) => !!f && f.word === 1 && f.slogan === 1 && f.leafMin === 1 &
 const restDetail = (f) => f
   ? `word=${f.word} slogan=${f.slogan} leaves ${f.leafMin}..${f.leafMax} (${f.leaves}) bars max ${f.barMax} stems ${f.stemMax} data-intro=${f.attr}`
   : 'no frames'
+
+/* ── installed apps update themselves ─────────────────────────────────────
+ *
+ * Max, 2026-10-09: iPhone users had to delete the Home Screen app to get a new
+ * version. iOS never closes a standalone web app — it freezes the page and
+ * thaws the same one, still running the JavaScript it was opened with — and
+ * nothing in the app ever asked whether a deploy had happened.
+ * app/components/UpdateWatcher.tsx now asks /manifest.webmanifest on every
+ * return to the screen and reloads when the answer differs, at a moment when
+ * a reload cannot lose anything (lib/app-update.ts decides).
+ *
+ * tools/update-rig.mjs holds the decision table. What it cannot see is
+ * whether any of that happens in a browser: that the version in the bundle is
+ * the version in the manifest (a timestamp minted separately in two build
+ * workers would make every phone reload on every resume, for ever), that the
+ * watcher is mounted and listening, that "busy" is read off the real DOM, that
+ * a failed request is silent, and that the service worker leaves the answer
+ * alone. Each of those is a property of the running app, so it is asserted on
+ * the production build in Chromium.
+ *
+ * Going away and coming back is simulated in the page: visibilityState is
+ * overridden and visibilitychange dispatched, and Date.now is moved forward
+ * by the time away (kept across a reload in sessionStorage, so the loop
+ * guard's stored timestamp stays in the same timeline). The watcher reads
+ * only Date.now; if it ever stops doing so, the "does reload" checks go red
+ * rather than the "does not" checks going vacuously green.
+ *
+ * Every "does not reload" case also asserts that the watcher DID ask the
+ * manifest. Without that, a watcher that was never mounted would pass every
+ * negative check here, and a newer version is always served with a unique
+ * name so one case's loop-guard entry cannot mask the next.
+ */
+const UPDATE_INIT = `(() => {
+  const realNow = Date.now.bind(Date)
+  let skew = 0
+  try { skew = Number(sessionStorage.getItem('__smoke_skew')) || 0 } catch {}
+  Date.now = () => realNow() + skew
+  window.__smokeAdvance = (ms) => {
+    skew += ms
+    try { sessionStorage.setItem('__smoke_skew', String(skew)) } catch {}
+  }
+  let vis = 'visible'
+  Object.defineProperty(Document.prototype, 'visibilityState', { configurable: true, get: () => vis })
+  Object.defineProperty(Document.prototype, 'hidden', { configurable: true, get: () => vis === 'hidden' })
+  window.__smokeAway = (ms) => {
+    vis = 'hidden'; document.dispatchEvent(new Event('visibilitychange'))
+    window.__smokeAdvance(ms)
+    vis = 'visible'; document.dispatchEvent(new Event('visibilitychange'))
+  }
+})()`
+
+const pause = (ms) => new Promise((r) => setTimeout(r, ms))
+const LONG_AWAY = MIN_AWAY_MS + 1_000
+const GLANCE = MIN_AWAY_MS - 1_000
+
+/** A page on "/" whose manifest answer the test controls through `state`:
+ *  { served: string|null (null = what the server says), mode: 'ok' | 'offline'
+ *  | '500' | 'portal' | 'unversioned' }. */
+async function watchedPage(ctx, base, state) {
+  const page = await ctx.newPage()
+  await page.addInitScript(UPDATE_INIT)
+  const w = { page, state, asked: 0, answered: 0, navs: [], pageErrors: [], consoleErrors: [] }
+  const isCheck = (r) => r.resourceType() === 'fetch' && new URL(r.url()).pathname === VERSION_URL
+  page.on('request', (r) => {
+    if (isCheck(r)) w.asked++
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) w.navs.push(new URL(r.url()).pathname)
+  })
+  page.on('requestfinished', (r) => { if (isCheck(r)) w.answered++ })
+  page.on('requestfailed', (r) => { if (isCheck(r)) w.answered++ })
+  page.on('pageerror', (e) => w.pageErrors.push(e.message))
+  page.on('console', (m) => { if (m.type() === 'error') w.consoleErrors.push(m.text()) })
+  await page.route((u) => u.pathname === VERSION_URL, async (route) => {
+    if (state.mode === 'offline') return route.abort('internetdisconnected')
+    if (state.mode === '500') return route.fulfill({ status: 500, contentType: 'text/plain', body: 'Internal Server Error' })
+    // A captive portal or an expired-session redirect: 200, and not JSON.
+    if (state.mode === 'portal') return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Sign in to Wi-Fi</title>' })
+    const res = await route.fetch()
+    const json = await res.json()
+    if (state.mode === 'unversioned') delete json[VERSION_FIELD]
+    else if (state.served) json[VERSION_FIELD] = state.served
+    return route.fulfill({ response: res, json })
+  })
+  await page.goto(base + '/', { waitUntil: 'networkidle' })
+  await page.evaluate(() => { window.__smokeMarker = true })
+  return w
+}
+
+/** Wait for the document that replaced the marked one to finish loading. */
+async function freshDocument(page) {
+  const t0 = Date.now()
+  while (Date.now() - t0 < 20_000) {
+    const ok = await page.evaluate(() => document.readyState === 'complete' && !window.__smokeMarker).catch(() => false)
+    if (ok) break
+    await pause(100)
+  }
+  await page.waitForLoadState('networkidle').catch(() => {})
+  await page.evaluate(() => { window.__smokeMarker = true }).catch(() => {})
+}
+
+/** Go away for `awayMs`, come back, and report whether the watcher asked
+ *  and whether the page reloaded. `trigger` replaces the away-and-back. */
+async function resume(w, awayMs, trigger) {
+  const asked = w.asked, answered = w.answered, navs = w.navs.length
+  if (trigger) await trigger(w.page)
+  else await w.page.evaluate((ms) => window.__smokeAway(ms), awayMs)
+  let t0 = Date.now()
+  while (w.answered <= answered && Date.now() - t0 < 8_000) await pause(50)
+  // The reload is issued synchronously once the answer is parsed; this is
+  // generous for that, and the "does reload" cases use the same window.
+  t0 = Date.now()
+  while (w.navs.length === navs && Date.now() - t0 < 2_000) await pause(50)
+  const reloaded = w.navs.length > navs
+  if (reloaded) await freshDocument(w.page)
+  return { asked: w.asked > asked && w.answered > answered, reloaded, to: w.navs.slice(navs) }
+}
+const said = (r) => `the watcher ${r.asked ? 'asked the manifest' : 'NEVER asked the manifest'}; ${r.reloaded ? `reloaded (${r.to.join(', ')})` : 'no reload'}`
+const stays = (r) => r.asked && !r.reloaded
+const goes = (r) => r.asked && r.reloaded
+
+async function assertUpdates(base, browser) {
+  heading('Installed apps update themselves — the version')
+  /* 1. The version the manifest serves is the version the bundle runs. */
+  const mres = await fetch(base + VERSION_URL)
+  const served = (await mres.json().catch(() => ({})))[VERSION_FIELD]
+  check(
+    `the served manifest carries ${VERSION_FIELD}`,
+    typeof served === 'string' && served.trim() !== '' && served !== 'dev',
+    `${VERSION_FIELD}=${JSON.stringify(served)} — 'dev' or empty switches the watcher off in production`,
+  )
+  const cc = mres.headers.get('cache-control') || ''
+  check(
+    'the manifest is not cacheable past a deploy',
+    !/immutable/i.test(cc) && !/(^|[,\s])(s-)?max-age=[1-9]/i.test(cc),
+    `cache-control: ${cc || 'none'} — a cached manifest would report the old version after a deploy`,
+  )
+  {
+    const ctx = await browser.newContext({ serviceWorkers: 'block' })
+    const page = await ctx.newPage()
+    await page.goto(base + '/', { waitUntil: 'networkidle' })
+    const scripts = await page.evaluate(() => [...new Set([
+      ...[...document.scripts].map((s) => s.src).filter(Boolean),
+      ...performance.getEntriesByType('resource').map((e) => e.name).filter((n) => /\.js(\?|$)/.test(n)),
+    ])])
+    let holders = []
+    if (typeof served === 'string' && served) {
+      for (const src of scripts) {
+        const body = await (await fetch(src)).text().catch(() => '')
+        // As a whole string literal, so a manifest that serves a prefix of the
+        // bundle's version (a short sha) is not mistaken for a match.
+        if (['"', "'", '`'].some((q) => body.includes(q + served + q))) holders.push(src.replace(base, ''))
+      }
+    }
+    check(
+      'the bundle "/" runs was built as the version the manifest serves',
+      holders.length > 0,
+      holders.length
+        ? `found in ${holders.join(', ')}`
+        : `${VERSION_FIELD}=${served} appears in none of the ${scripts.length} scripts "/" loaded — the bundle and the manifest disagree, so every resume would look like an update`,
+    )
+    const atRest = await page.evaluate(([busySel, textSel]) => ({
+      busy: [...document.querySelectorAll(busySel)].map((e) => e.outerHTML.slice(0, 80)),
+      typed: [...document.querySelectorAll(textSel)].filter((e) => (e.isContentEditable ? e.textContent : e.value)?.trim()).map((e) => e.id || e.tagName),
+      fields: document.querySelectorAll(textSel).length,
+    }), [BUSY_SELECTOR, TEXT_ENTRY_SELECTOR])
+    check(
+      '"/" at rest is not busy (its empty sign-in fields do not hold an update back)',
+      atRest.busy.length === 0 && atRest.typed.length === 0 && atRest.fields > 0,
+      `${atRest.fields} text fields, ${atRest.typed.length} with text; busy elements: ${atRest.busy.join(' | ') || 'none'}`,
+    )
+    await ctx.close()
+  }
+
+  /* 2-4. When it reloads, and when it must not. */
+  heading('Installed apps update themselves — when it reloads')
+  {
+    const ctx = await browser.newContext({ serviceWorkers: 'block' })
+    const w = await watchedPage(ctx, base, { served: null, mode: 'ok' })
+    let r = await resume(w, LONG_AWAY)
+    check('same version served: back after a long absence, no reload', stays(r), said(r))
+
+    w.state.served = 'boot-smoke-newer-a'
+    r = await resume(w, GLANCE)
+    check(`newer version, away ${GLANCE / 1000}s (a glance): no reload`, stays(r), said(r))
+
+    r = await resume(w, LONG_AWAY)
+    check(`newer version, away ${LONG_AWAY / 1000}s: reloads`, goes(r), said(r))
+    const attempt = await w.page.evaluate((k) => localStorage.getItem(k), ATTEMPT_KEY)
+    check(
+      'the reload records its attempt for the loop guard',
+      typeof attempt === 'string' && attempt.startsWith('boot-smoke-newer-a|'),
+      `${ATTEMPT_KEY}=${attempt}`,
+    )
+    await ctx.close()
+  }
+  {
+    /* A glance leaves the update waiting; moving to another page is the
+     * safe moment, so a client-side navigation becomes a full load. */
+    const ctx = await browser.newContext({ serviceWorkers: 'block' })
+    const w = await watchedPage(ctx, base, { served: 'boot-smoke-newer-b', mode: 'ok' })
+    const g = await resume(w, GLANCE)
+    const navs = w.navs.length
+    await w.page.locator('a[href="/signup"]').first().click()
+    await w.page.waitForURL('**/signup', { timeout: 10_000 }).catch(() => {})
+    const t0 = Date.now()
+    while (w.navs.length === navs && Date.now() - t0 < 5_000) await pause(50)
+    const full = w.navs.slice(navs)
+    check(
+      'an update held back by a glance lands on the next page change',
+      stays(g) && full.includes('/signup'),
+      `glance: ${said(g)}; then the link to /signup made ${full.length ? `a full load of ${full.join(', ')}` : 'only a client-side transition — the pending update was never applied'}`,
+    )
+    await ctx.close()
+  }
+  {
+    /* A page restored from the back/forward cache is the same frozen page. */
+    const ctx = await browser.newContext({ serviceWorkers: 'block' })
+    const w = await watchedPage(ctx, base, { served: 'boot-smoke-newer-c', mode: 'ok' })
+    const r = await resume(w, 0, (p) => p.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))))
+    check('newer version, page restored from the back/forward cache: reloads', goes(r), said(r))
+    await ctx.close()
+  }
+
+  /* 5. Nothing in progress is ever thrown away. Each fixture is the markup a
+   * real screen uses, written out here rather than derived from
+   * BUSY_SELECTOR: a selector that lost an entry must turn this red, and a
+   * test generated from the selector would lose the same entry. After each
+   * "no", the fixture is removed and the same page must then reload, which
+   * shows it was the fixture that held it back. */
+  heading('Installed apps update themselves — never over work in progress')
+  const inject = (html) => (p) => p.evaluate((h) => {
+    const t = document.createElement('template'); t.innerHTML = h
+    const el = t.content.firstElementChild; el.setAttribute('data-smoke-busy', '')
+    document.body.appendChild(el)
+  }, html)
+  const injectMedia = (tag) => (p) => p.evaluate((t) => {
+    const el = document.createElement(t); el.setAttribute('data-smoke-busy', '')
+    el.src = URL.createObjectURL(new Blob([new Uint8Array(64)], { type: t === 'audio' ? 'audio/mp4' : 'video/mp4' }))
+    document.body.appendChild(el)
+  }, tag)
+  const removeInjected = (p) => p.evaluate(() => document.querySelectorAll('[data-smoke-busy]').forEach((e) => e.remove()))
+  const BUSY_CASES = [
+    { name: 'an open sheet (role="dialog")', add: inject('<div role="dialog" aria-label="Record a session"><p>Recording</p></div>') },
+    { name: 'a modal (aria-modal="true")', add: inject('<div aria-modal="true"><p>Sheet</p></div>') },
+    { name: 'an open <dialog>', add: (p) => p.evaluate(() => { const d = document.createElement('dialog'); d.setAttribute('data-smoke-busy', ''); d.textContent = 'Sheet'; document.body.appendChild(d); d.show() }) },
+    { name: 'a voice note recording (.recording-dot)', add: inject('<span class="recording-dot" aria-hidden="true"></span>') },
+    { name: 'a voice message recording (Stop recording)', add: inject('<button type="button" aria-label="Stop recording"></button>') },
+    { name: 'an unsent audio clip (<audio src="blob:…">)', add: injectMedia('audio') },
+    { name: 'an unsent video clip (<video src="blob:…">)', add: injectMedia('video') },
+    {
+      name: 'text typed into a textarea',
+      add: async (p) => { await inject('<textarea aria-label="Note"></textarea>')(p); await p.locator('[data-smoke-busy]').pressSequentially('Knee felt tight') },
+    },
+    {
+      name: 'an email typed into the sign-in form',
+      add: (p) => p.locator('#sn-email').pressSequentially('coach@example.com'),
+      remove: (p) => p.locator('#sn-email').fill(''),
+    },
+  ]
+  {
+    const ctx = await browser.newContext({ serviceWorkers: 'block' })
+    let w = null
+    for (const [i, c] of BUSY_CASES.entries()) {
+      if (!w) w = await watchedPage(ctx, base, { served: null, mode: 'ok' })
+      w.state.served = `boot-smoke-busy-${i}`
+      let held, freed, err = ''
+      try {
+        await c.add(w.page)
+        held = await resume(w, LONG_AWAY)
+        if (!held.reloaded) {
+          await (c.remove ?? removeInjected)(w.page)
+          freed = await resume(w, LONG_AWAY)
+        }
+      } catch (e) { err = ` — ${e.message.split('\n')[0]}` }
+      check(
+        `newer version, ${c.name}: no reload`,
+        !!held && stays(held) && !!freed && goes(freed),
+        `${held ? said(held) : 'not run'}; with it removed, ${freed ? said(freed) : 'not run'}${err}`,
+      )
+      // Every case ends on a fresh document: either it reloaded, or it failed.
+      if (!(held && freed && freed.reloaded)) { await w.page.close(); w = null }
+    }
+    await ctx.close()
+  }
+
+  /* 5b. A field the app filled in itself is not work in progress: the server
+   * still has it. Counting it would stop an update from ever landing on a
+   * screen that always shows one (an edit form, a saved setting). */
+  {
+    const ctx = await browser.newContext({ serviceWorkers: 'block' })
+    const w = await watchedPage(ctx, base, { served: 'boot-smoke-prefilled', mode: 'ok' })
+    await w.page.evaluate(() => {
+      const t = document.createElement('textarea'); t.value = 'Saved by the app'
+      const i = document.createElement('input'); i.type = 'text'; i.value = 'Sophie Grabowski'
+      document.body.append(t, i)
+      document.querySelector('#sn-email').value = 'filled@example.com'
+    })
+    const r = await resume(w, LONG_AWAY)
+    check('newer version, fields the app filled in (never typed): still reloads', goes(r), said(r))
+    await ctx.close()
+  }
+
+  /* 6. The loop guard. The page here never catches up: the server keeps
+   * running this build while the manifest says otherwise, which is exactly a
+   * CDN still serving the old page after a deploy. */
+  heading('Installed apps update themselves — the loop guard')
+  {
+    const ctx = await browser.newContext({ serviceWorkers: 'block' })
+    const w = await watchedPage(ctx, base, { served: 'boot-smoke-loop-x', mode: 'ok' })
+    const first = await resume(w, LONG_AWAY)
+    const again = await resume(w, LONG_AWAY)
+    check(
+      `still behind after reloading for a version: no second reload within ${RETRY_AFTER_MS / 60_000} min`,
+      goes(first) && stays(again),
+      `first resume: ${said(first)}; second: ${said(again)}`,
+    )
+    w.state.served = 'boot-smoke-loop-y'
+    const other = await resume(w, LONG_AWAY)
+    check('the guard is per version: a different newer version still reloads', goes(other), said(other))
+    await w.page.evaluate((ms) => window.__smokeAdvance(ms), RETRY_AFTER_MS)
+    const later = await resume(w, LONG_AWAY)
+    check(`the guard expires: still behind ${RETRY_AFTER_MS / 60_000} min later, it tries again`, goes(later), said(later))
+    await ctx.close()
+  }
+
+  /* 7. No answer is no update — quietly. */
+  heading('Installed apps update themselves — offline and failures')
+  {
+    const ctx = await browser.newContext({ serviceWorkers: 'block' })
+    const w = await watchedPage(ctx, base, { served: 'boot-smoke-fail', mode: 'ok' })
+    const errorsBefore = w.consoleErrors.length
+    for (const [mode, name] of [['offline', 'offline'], ['500', 'the manifest answers 500'], ['portal', 'a captive portal answers HTML'], ['unversioned', `the manifest carries no ${VERSION_FIELD}`]]) {
+      w.state.mode = mode
+      const r = await resume(w, LONG_AWAY)
+      check(`${name}: no reload`, stays(r), said(r))
+    }
+    // Chromium itself logs one "Failed to load resource" line for a failed or
+    // non-2xx request; that is the browser, not the app. Anything else is.
+    const appErrors = w.consoleErrors.slice(errorsBefore).filter((t) => !/^Failed to load resource/.test(t))
+    check(
+      'a failed check throws nothing and logs nothing',
+      w.pageErrors.length === 0 && appErrors.length === 0,
+      `${w.pageErrors.length} uncaught: ${w.pageErrors.slice(0, 2).join(' | ') || '-'}; ${appErrors.length} console errors: ${appErrors.slice(0, 2).join(' | ') || '-'}`,
+    )
+    w.state.mode = 'ok'
+    const r = await resume(w, LONG_AWAY)
+    check('once the network is back, the next resume updates', goes(r), said(r))
+    await ctx.close()
+  }
+
+  /* 8. The service worker must not stand between the watcher and the answer:
+   * a cached manifest would report the version the phone already has, for
+   * ever. Checked under a worker that controls the page, with the real
+   * answer, by asking Chromium where each response came from. */
+  heading('Installed apps update themselves — the service worker stays out of it')
+  {
+    const ctx = await browser.newContext()
+    const page = await ctx.newPage()
+    await page.goto(base + '/', { waitUntil: 'load' })
+    await page.evaluate(() => Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(r, 8000))]))
+    await page.reload({ waitUntil: 'networkidle' })
+    const seen = []
+    page.on('response', (res) => { if (new URL(res.url()).pathname === VERSION_URL && res.request().resourceType() === 'fetch') seen.push(res) })
+    const st = await page.evaluate(async (url) => {
+      const controlled = !!navigator.serviceWorker.controller
+      for (let i = 0; i < 2; i++) await (await fetch(url, { cache: 'no-store' })).json()
+      const cached = []
+      for (const k of await caches.keys()) for (const r of await (await caches.open(k)).keys()) cached.push(new URL(r.url).pathname)
+      return { controlled, cached }
+    }, VERSION_URL)
+    await pause(300)
+    const viaWorker = seen.filter((r) => r.fromServiceWorker()).length
+    check(
+      `the service worker neither answers nor caches ${VERSION_URL}`,
+      st.controlled && seen.length === 2 && viaWorker === 0 && !st.cached.includes(VERSION_URL),
+      `controlled=${st.controlled}; ${seen.length} fetches seen, ${viaWorker} answered by the worker; ${st.cached.includes(VERSION_URL) ? 'the manifest IS in the cache' : 'not in the cache'}`,
+    )
+    await ctx.close()
+  }
+}
 
 async function assertBoot(base) {
   let chromium
@@ -2203,6 +2590,8 @@ async function assertBoot(base) {
       )
     }
     await swCtx.close()
+
+    await assertUpdates(base, browser)
 
     /* ── nothing broken on the way in ── */
     heading('Console and network on "/"')
