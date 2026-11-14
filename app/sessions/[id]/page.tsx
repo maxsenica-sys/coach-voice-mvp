@@ -22,6 +22,7 @@ import { SessionSeen } from '@/app/components/AccessLog'
 import { errorMessage } from '@/lib/errors'
 import { preflightVideo } from '@/lib/video-preflight'
 import { uploadSessionVideo } from '@/lib/video-upload'
+import { DELIVERY_LABEL } from '@/lib/session-delivery'
 import { metricColor, metricTint, scoreLabel, type MetricKey } from '@/lib/wellness-config'
 import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/session-response'
 import { formatSessionDate, parseISODate, sessionDate, sessionISODate } from '@/lib/session-date'
@@ -72,6 +73,8 @@ type SessionDetail = {
   id: string
   athlete_id: string
   session_name: string | null
+  /** In person or online (migration 036); null before it, or when not said. */
+  delivery?: 'in_person' | 'online' | null
   title: string | null
   summary: string | null
   transcript: string | null
@@ -1021,6 +1024,11 @@ export default function SessionDetailPage() {
               <div style={{ ...CAST, letterSpacing: '0.26em', color: EMBER, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <i aria-hidden style={{ width: 7, height: 7, background: EMBER, transform: 'skewX(-14deg)', flexShrink: 0 }} />
                 {recorded ? 'Recorded session' : 'Session'}
+                {session.delivery && (
+                  <span style={{ color: session.delivery === 'online' ? 'var(--text)' : 'var(--primary)' }}>
+                    · {DELIVERY_LABEL[session.delivery]}
+                  </span>
+                )}
               </div>
               <h1 style={{
                 fontFamily: 'var(--font-cast)', fontWeight: 700, fontSize: 'clamp(26px, 7.4vw, 40px)',

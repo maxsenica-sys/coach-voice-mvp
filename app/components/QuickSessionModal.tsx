@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect, type CSSProperties } from 'react'
+import { useState, useRef, useEffect, Fragment, type CSSProperties } from 'react'
+import { DELIVERY_LABEL, type Delivery } from '@/lib/session-delivery'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import { MAX_NEXT_LENGTH } from '@/lib/summary-prompt'
 import { formatSessionDate, todayISODate, yesterdayISODate } from '@/lib/session-date'
@@ -63,6 +64,9 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
      (from an athlete's profile, a squad), the sheet behaves as it always has. */
   const hasDefaultTarget = Boolean(defaultAthleteId || defaultGroupId)
   const [sessionName, setSessionName] = useState('')
+  // In person or online (Max, 2026-11-14; migration 036). In person is the
+  // default because it is most of what coaches record; one tap changes it.
+  const [delivery, setDelivery] = useState<Delivery>('in_person')
   // Sessions are often written up after the fact — the day before's training
   // logged over breakfast. Defaults to today; the picker moves it back.
   const [sessionDate, setSessionDate] = useState(todayISODate())
@@ -475,6 +479,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           ? (severalChosen.length ? severalChosen.map((a) => a.first_name).join(', ') : 'Athletes not chosen yet')
           : athlete ? `${athlete.first_name} ${athlete.last_name}` : 'Athlete not chosen yet',
       sessionName,
+      delivery,
       sessionDate,
       coachSport: coachSport || null,
       shareWithAthlete,
@@ -641,6 +646,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
         ready: true,
         transcript: transcript.trim(),
         sessionName,
+        delivery,
         sessionDate,
         shareWithAthlete,
         audioPath,
@@ -705,6 +711,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           body: JSON.stringify({
             athlete_id: athleteId,
             session_name: sessionName.trim() || null,
+            delivery,
             transcript: transcript.trim(),
             /* What the coach actually read and, if they changed it, wrote.
              * The server regenerates only when neither is sent, so an edit
@@ -729,6 +736,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           athlete_id: aid,
           shared_recording_id: sharedRecordingId,
           session_name: sessionName.trim() || null,
+          delivery,
           transcript: transcript.trim(),
           summary: splitDrafts[aid]?.summary.trim() || null,
           next: splitDrafts[aid]?.next.trim() || null,
@@ -755,6 +763,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           // groups rather than trusting it.
           group_id: group.id,
           session_name: sessionName.trim() ? `[${group.name}] ${sessionName.trim()}` : `[${group.name}] Session`,
+          delivery,
           transcript: transcript.trim(),
           shared_with_athlete: shareWithAthlete,
           session_date: sessionDate,
@@ -1115,15 +1124,58 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
                   <span id="qs-date-said" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>{sessionDateLabel}</span>
                 </div>
                 <div style={{ flex: '1 1 100px', minWidth: 0 }}>
-                  <label htmlFor="qs-name" style={LBL}>Name</label>
+                  <label htmlFor="qs-name" style={LBL}>Title</label>
                   <input
                     id="qs-name"
                     className="input"
-                    placeholder="Optional"
+                    placeholder="e.g. Serve receive"
                     value={sessionName}
                     onChange={(e) => setSessionName(e.target.value)}
                     style={{ ...FIELD, width: '100%', minWidth: 0 }}
                   />
+                </div>
+              </div>
+
+              {/* Where (Max, 2026-11-14): one row, two halves with a rule
+                  between them so both read as choices. In person fills green
+                  and online fills white when chosen, so which one is on is
+                  clear at a glance and in sunlight — the fill, the tick and
+                  the icon all change, not the colour alone. */}
+              <div role="radiogroup" aria-labelledby="qs-where" style={{ minWidth: 0 }}>
+                <div id="qs-where" style={LBL}>Where</div>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 1px minmax(0, 1fr)',
+                  border: '1.5px solid var(--border)', borderRadius: 14, overflow: 'hidden', background: 'var(--card)',
+                }}>
+                  {(['in_person', 'online'] as const).map((d, i) => {
+                    const on = delivery === d
+                    const fill = d === 'in_person' ? 'var(--primary)' : 'var(--text)'
+                    return (
+                      <Fragment key={d}>
+                        {i === 1 && <span aria-hidden style={{ background: 'var(--border)' }} />}
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={on}
+                          onClick={() => setDelivery(d)}
+                          style={{
+                            minHeight: 46, minWidth: 0, border: 'none', cursor: 'pointer',
+                            background: on ? fill : 'transparent',
+                            color: on ? 'var(--on-primary)' : 'var(--text-2)',
+                            fontFamily: 'inherit', fontSize: 'var(--t-body)', fontWeight: 700,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                          }}
+                        >
+                          {d === 'in_person' ? (
+                            <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+                          ) : (
+                            <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M8 21h8" /></svg>
+                          )}
+                          {DELIVERY_LABEL[d]}{on ? ' ✓' : ''}
+                        </button>
+                      </Fragment>
+                    )
+                  })}
                 </div>
               </div>
 
