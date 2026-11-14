@@ -473,8 +473,8 @@
       "user_type": "coach",
       "what_it_does": "Audio is written to IndexedDB the moment recording stops; a session that failed to save is retried automatically when back online, resuming from upload or transcript.",
       "pain_removed": "No signal in the sports hall no longer means lost words.",
-      "status": "partial",
-      "status_evidence": "lib/recording-queue.ts (put/patch/delete, stages); lib/recording-sync.ts syncRecording; the PendingRecordings drain runs on mount and on the 'online' event. Rows the coach pressed Save on (ready) complete end to end. GAP: a recording never saved at review (closed sheet, or offline at stop so the transcript was empty and Save disabled) shows 'Recorded, not saved yet' with only Discard and no way to reopen or save it; it is auto-deleted after 14 days (ABANDONED_TTL_MS). Closing the sheet mid-recording discards the audio with no confirmation (queued only at stop)",
+      "status": "shipped",
+      "status_evidence": "lib/recording-queue.ts (put/patch/delete, stages); lib/recording-sync.ts syncRecording; the PendingRecordings drain runs on mount and on the 'online' event. Rows the coach pressed Save on (ready) complete end to end. GAP: a recording never saved at review (closed sheet, or offline at stop so the transcript was empty and Save disabled) shows 'Recorded, not saved yet' with only Discard and no way to reopen or save it; it is auto-deleted after 14 days (ABANDONED_TTL_MS). Closing the sheet mid-recording discards the audio with no confirmation (queued only at stop) Shipped 14 Nov 2026: an unsaved recording can be finished from On this phone (FinishRecordingSheet, lib/recording-finish.ts); the 14-day auto-delete is gone.",
       "surfaces": [
         "Record modal",
         "PendingRecordings",
@@ -484,7 +484,8 @@
       ],
       "demo_state": "Save error '…the recording is saved on this phone and will send when you are back online.'",
       "competitor_gap": true,
-      "competitor_gap_why": "Offline-durable voice capture is rare in web apps"
+      "competitor_gap_why": "Offline-durable voice capture is rare in web apps",
+      "content_exclusion": "Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts."
     },
     {
       "id": "pending-recordings-panel",
@@ -665,14 +666,15 @@
       "user_type": "coach",
       "what_it_does": "After saving, the coach can edit notes, takeaways, share state, images and videos; the summary, title, transcript and date cannot be edited in the UI.",
       "pain_removed": "Partial: fixes are limited to the add-on fields.",
-      "status": "partial",
-      "status_evidence": "PATCH /api/sessions/[id] accepts summary/session_name/title, but no client sends them (grep); there is no UI to edit the transcript or date",
+      "status": "shipped",
+      "status_evidence": "PATCH /api/sessions/[id] accepts summary/session_name/title, but no client sends them (grep); there is no UI to edit the transcript or date Shipped 14 Nov 2026: title, date and summary edit from the session page (SessionManage, lib/session-edit.ts).",
       "surfaces": [
         "/sessions/[id]"
       ],
       "demo_state": "n/a",
       "competitor_gap": false,
-      "competitor_gap_why": "Gap"
+      "competitor_gap_why": "Gap",
+      "content_exclusion": "Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts."
     },
     {
       "id": "session-delete",
@@ -680,14 +682,15 @@
       "user_type": "coach",
       "what_it_does": "Not available; a saved session cannot be deleted or reassigned from the app.",
       "pain_removed": "n/a",
-      "status": "planned",
-      "status_evidence": "No DELETE handler in app/api/sessions/[id]/route.ts; comments in QuickSessionModal.tsx:57,155 and lib/recording-sync.ts:21 say sessions are not deletable",
+      "status": "shipped",
+      "status_evidence": "No DELETE handler in app/api/sessions/[id]/route.ts; comments in QuickSessionModal.tsx:57,155 and lib/recording-sync.ts:21 say sessions are not deletable Shipped 14 Nov 2026: DELETE /api/sessions/[id] with a confirm dialog; files another row still uses are kept, athlete clips detached, athlete notes kept (migration 037).",
       "surfaces": [
         "none"
       ],
       "demo_state": "Do not demo",
       "competitor_gap": false,
-      "competitor_gap_why": "Missing"
+      "competitor_gap_why": "Missing",
+      "content_exclusion": "Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts."
     },
     {
       "id": "home-day-wheel",
@@ -854,14 +857,15 @@
       "user_type": "coach",
       "what_it_does": "With an empty roster, Home shows 3 steps: set an invite code (inline), add the first athlete, and record the first session, plus a share-code card with Copy and QR.",
       "pain_removed": "New coaches get started without needing a guide.",
-      "status": "partial",
-      "status_evidence": "dashboard/page.tsx shows it when athletes.length===0 and the user is not an assistant. Only the code step ever ticks (stepNum(false,2/3) is hardcoded), so progress shows at most '1 of 3'. The card disappears once an athlete exists. Partial: steps two and three never tick, so it reads 1 of 3 for ever.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx shows it when athletes.length===0 and the user is not an assistant. Only the code step ever ticks (stepNum(false,2/3) is hardcoded), so progress shows at most '1 of 3'. The card disappears once an athlete exists. Partial: steps two and three never tick, so it reads 1 of 3 for ever. Shipped 14 Nov 2026: steps tick from real state (lib/onboarding.ts) and the card stays until the first session.",
       "surfaces": [
         "/dashboard (Home, empty roster)"
       ],
       "demo_state": "'You're all set up. 1 of 3 complete' with the code saved and a share card",
       "competitor_gap": false,
-      "competitor_gap_why": "Onboarding checklists are common."
+      "competitor_gap_why": "Onboarding checklists are common.",
+      "content_exclusion": "Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts."
     },
     {
       "id": "roster-status",
@@ -998,14 +1002,15 @@
       "user_type": "coach",
       "what_it_does": "Meant to pop a live 'X accepted your invite' toast when an invited athlete activates.",
       "pain_removed": "Would tell coaches the moment someone joins.",
-      "status": "partial",
-      "status_evidence": "dashboard/page.tsx subscribes to Realtime athletes UPDATE where athlete_user_id goes from null to set. No code path ever does that: the invite sets athlete_user_id at insert, /api/join and /api/complete-signup insert with it already set, and migration 033 blocks client changes. Activation writes first_login_at instead. Realtime publication setup is also not in the migrations. In practice the toast never fires.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx subscribes to Realtime athletes UPDATE where athlete_user_id goes from null to set. No code path ever does that: the invite sets athlete_user_id at insert, /api/join and /api/complete-signup insert with it already set, and migration 033 blocks client changes. Activation writes first_login_at instead. Realtime publication setup is also not in the migrations. In practice the toast never fires. Shipped 14 Nov 2026: Home compares the active roster with the set last seen on this device (lib/athlete-joined.ts) on load, focus and every 60s, and toasts newly active athletes once.",
       "surfaces": [
         "/dashboard"
       ],
       "demo_state": "Toast 'Alex Johnson accepted your invite · View'",
       "competitor_gap": false,
-      "competitor_gap_why": "Join notifications are common."
+      "competitor_gap_why": "Join notifications are common.",
+      "content_exclusion": "Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts."
     },
     {
       "id": "squads-manage",
@@ -1504,7 +1509,7 @@
       "what_it_does": "For an individual shared session, the athlete can stream the coach's original audio recording.",
       "pain_removed": "The athlete can hear the coach's actual tone and words, not only a summary.",
       "status": "shipped",
-      "status_evidence": "app/components/SessionAudioPlayer.tsx (Play recording, preload none, iOS WebM fallback to a download link) → GET app/api/sessions/[id]/audio-url/route.ts (1h signed URL from the private session-audio bucket; for athletes only when shared_with_athlete and no group_id or shared_recording_id). The detail route also returns audio_url, used on app/sessions/[id]/page.tsx. DEFECT: in the Sessions tab, app/athlete/page.tsx renders the player whenever audio_path is set, and /api/athlete/sessions returns audio_path for squad rows too. On squad sessions the button is shown, the route returns 403, and the athlete sees 'You do not have access to that.' The home card also shows an 'Audio' badge on squad sessions. Also: detail route sets athleteMayHearIt = !group_id && !sharedRecording; audio-url route gives athletes access for shared, non-multi recordings; app/athlete/page.tsx:2157 SessionAudioPlayer. GAP: the portal shows an 'Audio' badge and player for every row with audio_path, including squad/several sessions, where playback then fails with 'Forbidden' Shipped for 1:1 sessions, end to end. Defect outside the claim: the portal also shows an Audio badge on squad and several-athlete sessions, which then fails with Forbidden.",
+      "status_evidence": "app/components/SessionAudioPlayer.tsx (Play recording, preload none, iOS WebM fallback to a download link) → GET app/api/sessions/[id]/audio-url/route.ts (1h signed URL from the private session-audio bucket; for athletes only when shared_with_athlete and no group_id or shared_recording_id). The detail route also returns audio_url, used on app/sessions/[id]/page.tsx. DEFECT: in the Sessions tab, app/athlete/page.tsx renders the player whenever audio_path is set, and /api/athlete/sessions returns audio_path for squad rows too. On squad sessions the button is shown, the route returns 403, and the athlete sees 'You do not have access to that.' The home card also shows an 'Audio' badge on squad sessions. Also: detail route sets athleteMayHearIt = !group_id && !sharedRecording; audio-url route gives athletes access for shared, non-multi recordings; app/athlete/page.tsx:2157 SessionAudioPlayer. GAP: the portal shows an 'Audio' badge and player for every row with audio_path, including squad/several sessions, where playback then fails with 'Forbidden' Shipped for 1:1 sessions, end to end. Defect outside the claim: the portal also shows an Audio badge on squad and several-athlete sessions, which then fails with Forbidden. Fixed 14 Nov 2026: the portal shows the Audio badge only on recordings the athlete may hear (lib/athlete-recording.ts).",
       "surfaces": [
         "/sessions/[id]",
         "/athlete portal",
@@ -1647,8 +1652,8 @@
       "user_type": "athlete",
       "what_it_does": "When a session is shared, the athlete gets an email 'Max gave you a nod' with up to 200 characters of their summary, and a push titled 'Max gave you a nod'.",
       "pain_removed": "The athlete knows new feedback is waiting.",
-      "status": "partial",
-      "status_evidence": "Email: lib/notify.ts notifySessionShared, called from POST app/api/sessions/route.ts when shared at save and from PATCH app/api/sessions/[id]/route.ts on the first share. Push: lib/push.ts notifyPushSessionShared is called ONLY from POST /api/sessions, so a session shared later via the toggle sends email but no push. Push also requires VAPID configuration and opt-in. Also: route.ts POST calls notifySessionShared (lib/notify.ts:212) to athletes.email only. GAPS: caretakers are NOT emailed; sharing later via the toggle (PATCH) sends nothing, because the calendar row already exists → outcome 'existed' → no notify Also: route.ts after(() => notifyPushSessionShared); lib/push.ts returns early if pushConfig() is missing. Only on the save path; PATCH share does not push Partial: email and push fire when a session is shared at save. Sharing it later from the toggle sends neither, because the calendar event already exists (syncSessionCalendarEvent returns existed, app/api/sessions/[id]/route.ts:118).",
+      "status": "shipped",
+      "status_evidence": "Email: lib/notify.ts notifySessionShared, called from POST app/api/sessions/route.ts when shared at save and from PATCH app/api/sessions/[id]/route.ts on the first share. Push: lib/push.ts notifyPushSessionShared is called ONLY from POST /api/sessions, so a session shared later via the toggle sends email but no push. Push also requires VAPID configuration and opt-in. Also: route.ts POST calls notifySessionShared (lib/notify.ts:212) to athletes.email only. GAPS: caretakers are NOT emailed; sharing later via the toggle (PATCH) sends nothing, because the calendar row already exists → outcome 'existed' → no notify Also: route.ts after(() => notifyPushSessionShared); lib/push.ts returns early if pushConfig() is missing. Only on the save path; PATCH share does not push Partial: email and push fire when a session is shared at save. Sharing it later from the toggle sends neither, because the calendar event already exists (syncSessionCalendarEvent returns existed, app/api/sessions/[id]/route.ts:118). Shipped 14 Nov 2026: a later share now notifies once too (sessions.first_shared_at, migration 037; the PATCH route claims it with a conditional update and only that request sends the email and push).",
       "surfaces": [
         "Email",
         "Device push",
@@ -1656,7 +1661,8 @@
       ],
       "demo_state": "Email heading 'Max gave you a nod' with a 'Read your nod' button",
       "competitor_gap": false,
-      "competitor_gap_why": "Share notifications are standard."
+      "competitor_gap_why": "Share notifications are standard.",
+      "content_exclusion": "Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts."
     },
     {
       "id": "private-notes-typed",
@@ -1982,14 +1988,15 @@
       "user_type": "both",
       "what_it_does": "Add or edit free-text notes (saves on Save or blur, Cancel discards); NOTE: these are shown to the athlete as 'Notes from your coach' when the session is shared.",
       "pain_removed": "Context lives with the session.",
-      "status": "partial",
-      "status_evidence": "page.tsx saveNotes → PATCH coach_notes (10k cap); the detail route returns coach_notes to athlete viewers; the section renders for the athlete if notes exist Partial: the coach sees these as \"Your notes\", but they are shown to the athlete on a shared session. A coach could write something private and not know the athlete reads it.",
+      "status": "shipped",
+      "status_evidence": "page.tsx saveNotes → PATCH coach_notes (10k cap); the detail route returns coach_notes to athlete viewers; the section renders for the athlete if notes exist Partial: the coach sees these as \"Your notes\", but they are shown to the athlete on a shared session. A coach could write something private and not know the athlete reads it. Shipped 14 Nov 2026: the coach side now reads \"Notes for {name}\" and says who sees them; private notes are pointed to the profile.",
       "surfaces": [
         "/sessions/[id]"
       ],
       "demo_state": "'Your notes' with an Edit notes button",
       "competitor_gap": false,
-      "competitor_gap_why": "Not private notes , do not market as private"
+      "competitor_gap_why": "Not private notes , do not market as private",
+      "content_exclusion": "Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts."
     },
     {
       "id": "session-images",
@@ -2118,14 +2125,15 @@
       "user_type": "both",
       "what_it_does": "Would let athletes answer yes, no or maybe to coach events.",
       "pain_removed": "Would tell coaches who is attending.",
-      "status": "planned",
-      "status_evidence": "migration 006 has calendar_events.rsvp_enabled and event_rsvps, and app/api/rsvp/route.ts exists. No UI ever sets rsvp_enabled, the calendar GET does not select it, and nothing calls GET /api/rsvp (noted in migration 025). The athlete RSVP list never appears. Also: The UI exists in app/athlete/page.tsx (rsvpEvents filtered on e.rsvp_enabled) and POST app/api/rsvp/route.ts exists, but nothing ever writes rsvp_enabled. GET /api/calendar's baseSelect does not even return rsvp_enabled, so the list is always empty and never renders, and GET /api/rsvp has no coach-side caller. supabase/migrations/025_readiness_checkin.sql says the check-in replaced this 'half-built RSVP feature'. Do not market.",
+      "status": "shipped",
+      "status_evidence": "migration 006 has calendar_events.rsvp_enabled and event_rsvps, and app/api/rsvp/route.ts exists. No UI ever sets rsvp_enabled, the calendar GET does not select it, and nothing calls GET /api/rsvp (noted in migration 025). The athlete RSVP list never appears. Also: The UI exists in app/athlete/page.tsx (rsvpEvents filtered on e.rsvp_enabled) and POST app/api/rsvp/route.ts exists, but nothing ever writes rsvp_enabled. GET /api/calendar's baseSelect does not even return rsvp_enabled, so the list is always empty and never renders, and GET /api/rsvp has no coach-side caller. supabase/migrations/025_readiness_checkin.sql says the check-in replaced this 'half-built RSVP feature'. Do not market. Shipped 14 Nov 2026: coaches ask for RSVP when adding an event, athletes answer Going or Can't make it, coaches see names and counts (migration 038, lib/rsvp.ts).",
       "surfaces": [
         "none reachable"
       ],
       "demo_state": "n/a",
       "competitor_gap": false,
-      "competitor_gap_why": "RSVP is standard in TeamSnap and similar apps; this one is missing, not a differentiator."
+      "competitor_gap_why": "RSVP is standard in TeamSnap and similar apps; this one is missing, not a differentiator.",
+      "content_exclusion": "Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts."
     },
     {
       "id": "messaging-text",
@@ -2198,14 +2206,15 @@
       "user_type": "both",
       "what_it_does": "A 'Share with athlete' checkbox on coach notes.",
       "pain_removed": "Would let a written note reach the athlete.",
-      "status": "partial",
-      "status_evidence": "/api/notes saves shared_with_athlete and the coach sees a Shared chip. The athlete portal's 'My Notes' reads /api/athlete-notes (the athlete's own notes), and nothing on the athlete side reads the coach notes table. Shared notes never reach the athlete.",
+      "status": "shipped",
+      "status_evidence": "/api/notes saves shared_with_athlete and the coach sees a Shared chip. The athlete portal's 'My Notes' reads /api/athlete-notes (the athlete's own notes), and nothing on the athlete side reads the coach notes table. Shared notes never reach the athlete. Shipped 14 Nov 2026: GET /api/athlete/coach-notes reads shared notes under RLS and the athlete portal shows them under My Notes, \"From your coach\"; sharing a note runs the content gate.",
       "surfaces": [
         "/athletes/[id]?tab=notes"
       ],
       "demo_state": "n/a , do not market",
       "competitor_gap": false,
-      "competitor_gap_why": "Not functional."
+      "competitor_gap_why": "Not functional.",
+      "content_exclusion": "Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts."
     },
     {
       "id": "understanding-reply",
@@ -2350,7 +2359,7 @@
       "what_it_does": "Checkboxes for 'Notify on session reports', 'Notify on monthly reports' and 'Show in wellness alert list'.",
       "pain_removed": "Would let parents choose what they receive.",
       "status": "partial",
-      "status_evidence": "/api/caretakers POST saves the session and monthly flags, but nothing sends session or monthly reports to caretakers (no consumer of notify_session_reports or notify_monthly_reports). The POST also drops notify_wellness_alerts, so it always takes the DB default true and that checkbox has no effect.",
+      "status_evidence": "/api/caretakers POST saves the session and monthly flags, but nothing sends session or monthly reports to caretakers (no consumer of notify_session_reports or notify_monthly_reports). The POST also drops notify_wellness_alerts, so it always takes the DB default true and that checkbox has no effect. Partly fixed 14 Nov 2026: the wellness-alert checkbox is now saved (lib/caretaker-prefs.ts). Session and monthly reports to caretakers are still not sent, so this stays partial.",
       "surfaces": [
         "/athletes/[id]?tab=profile"
       ],
