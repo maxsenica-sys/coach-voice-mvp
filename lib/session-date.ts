@@ -93,3 +93,37 @@ export function calendarDaysBetween(from: Date, to: Date): number {
 export function yesterdayISODate(now = new Date()): string {
   return new Intl.DateTimeFormat('en-CA').format(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))
 }
+
+/**
+ * The latest calendar date anywhere on earth right now: the date in UTC+14
+ * (Kiritimati), the first place a new day starts.
+ *
+ * The server cannot know a coach's timezone, so "a session date is never in
+ * the future" is held against the earliest place on earth. A date after this
+ * one is in the future for everyone; a coach's own today, wherever they are,
+ * is never after it, so it is never refused. The cost is up to a day of slack
+ * for a coach west of Kiritimati, which the date picker (capped at the
+ * coach's own today) closes on the client.
+ */
+export function latestDateOnEarth(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Kiritimati' }).format(now)
+}
+
+export type SessionDateCheck = { ok: true; date: string } | { ok: false; error: string }
+
+/**
+ * A session date a coach may save: a real `YYYY-MM-DD` day that is not in the
+ * future. "2026-02-30" is refused rather than quietly becoming 2 March.
+ */
+export function checkSessionDate(raw: unknown, now = new Date()): SessionDateCheck {
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return { ok: false, error: 'Session date must be a date.' }
+  }
+  const d = parseISODate(raw)
+  const back = d
+    ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    : null
+  if (back !== raw) return { ok: false, error: 'That date does not exist.' }
+  if (raw > latestDateOnEarth(now)) return { ok: false, error: 'Session date cannot be in the future.' }
+  return { ok: true, date: raw }
+}

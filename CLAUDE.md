@@ -186,6 +186,15 @@ assistant is given access to them.
   their athlete's summary and `transcript_withheld: true`.
 - Assistants now add notes and log, update and clear injuries for their
   athletes; they delete only an injury they logged themselves.
+- **Editing and deleting a saved session (2026-11-14, migration 037).** The
+  head edits or deletes any session of theirs; an assistant only one they
+  recorded, about an athlete still given to them (`DELETE /api/sessions/[id]`,
+  and 037's policy). A delete never removes a file another row plays (one
+  recording split per athlete, or a squad talk) and never an athlete's own clip
+  or notes about the session (`sessionDeletePlan`, `lib/session-edit.ts`).
+- **A later share tells the athlete once.** `sessions.first_shared_at` is
+  claimed with a conditional update; only the request that claims it sends the
+  email and the push. A new share path must claim it the same way.
 
 ## General rules
 
@@ -403,6 +412,7 @@ March in London, and every string type-checks.
 | `npm run verify:bodymap` | Every body-map region's rendered size, from the real geometry and the real rendered width | A region too small to tap, which marks the wrong body part rather than failing |
 | `npm run verify:staff` | `lib/coach-scope.ts` and `lib/staff-invite.ts`: whose team a coach is on, and who may accept an invite | A revoked or merely invited assistant resolving onto a team; an invite accepted by the wrong address or an athlete account; a token stored as itself |
 | `npm run verify:wellness` | `wellnessDriver` in `lib/wellness-config.ts`: what pulled a check-in's score down | A two-tap check-in described by derived numbers the athlete was never asked ("Mood 2/5"); an OK answer called low; a roster tile's label too long to fit |
+| `npm run verify:session` | `lib/session-edit.ts` and the date rule in `lib/session-date.ts`, plus the share, delete and notes wiring | A session shared later telling the athlete nothing, or twice; a date in the future; a five-point cap cutting a coach's words; a delete taking another athlete's recording or the athlete's own clip |
 | `npm run verify:update` | `lib/app-update.ts`: when an installed app reloads itself onto a new deploy, and the markers its "something is in progress" test relies on | A deploy never reaching an iPhone until the app is deleted (Max, 2026-10-09: "we have to keep constantly deleting the app"); or the fix reloading over a recording, a sheet or typed text |
 | `npm run verify:email` | Every real email builder in `lib/notify.ts`, fed hostile text against a stub network; every HTML literal in `app/api/` | An athlete's message, a check-in note or a name arriving as live markup — a working link — in someone's inbox; a name that rewrites the From header. New email HTML: `escapeHtml` every typed value, `renderBrandedEmail` escapes only its text fields |
 | `npm run verify:rls` | Production's schema (`supabase/tests/baseline-033.sql`) plus every later migration, in a throwaway Postgres, then `supabase/tests/*.test.sql` acting as real users | A policy that lets one coach, an assistant, or an athlete read or write another's rows — decided inside Postgres, where every other tool sees only strings. Needs a Postgres (CI runs a service); set `PGHOST`/`PGUSER` locally |
