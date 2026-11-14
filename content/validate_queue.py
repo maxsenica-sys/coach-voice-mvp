@@ -3,9 +3,12 @@
 content/validate_queue.py: checks the Pindar content queue and prints every failure.
 
     python3 content/validate_queue.py
+    python3 content/validate_queue.py --part rows.json   # check a slice's rows only
 
 Exit code 0 when clean, 1 when anything fails. Reads, beside this file:
-    FEATURES.json        the inventory (only `shipped` features may produce posts)
+    FEATURES.json        the inventory (only `shipped` features may produce posts;
+                         a shipped feature with `content_exclusion` gets none, and
+                         is exempt from the three-post minimum)
     CONTENT_QUEUE.csv    one row per post, the headers below exactly
     CONTENT_QUEUE.json   the same rows, for the renderer
 
@@ -69,8 +72,11 @@ def words(s):
     return len(s.split())
 
 
-def main():
+def main(argv):
     failures = []
+    part = None
+    if len(argv) >= 2 and argv[0] == '--part':
+        part = argv[1]
 
     def fail(where, msg):
         failures.append(f'{where}: {msg}')
@@ -99,18 +105,27 @@ def main():
             fail(f'FEATURES.json {fid}', f'user_type {feat.get("user_type")!r}')
         if not feat.get('status_evidence'):
             fail(f'FEATURES.json {fid}', 'no status_evidence')
+        if feat.get('content_exclusion') and feat.get('status') != 'shipped':
+            fail(f'FEATURES.json {fid}', 'content_exclusion only applies to a shipped feature')
     shipped = {fid for fid, feat in by_id.items() if feat.get('status') == 'shipped'}
+    excluded = {fid for fid in shipped if by_id[fid].get('content_exclusion')}
+    marketed = shipped - excluded
 
     # ── CSV ──────────────────────────────────────────────────────────────
-    csv_path = os.path.join(HERE, 'CONTENT_QUEUE.csv')
-    try:
-        with open(csv_path, encoding='utf-8', newline='') as f:
-            reader = csv.DictReader(f)
-            got_headers = reader.fieldnames or []
-            rows = list(reader)
-    except Exception as e:  # noqa: BLE001
-        print(f'FAIL  CONTENT_QUEUE.csv could not be read: {e}')
-        return 1
+    if part:
+        with open(part, encoding='utf-8') as f:
+            rows = [{h: str(r.get(h, '')) for h in HEADERS} for r in json.load(f)]
+        got_headers = HEADERS
+    else:
+        csv_path = os.path.join(HERE, 'CONTENT_QUEUE.csv')
+        try:
+            with open(csv_path, encoding='utf-8', newline='') as f:
+                reader = csv.DictReader(f)
+                got_headers = reader.fieldnames or []
+                rows = list(reader)
+        except Exception as e:  # noqa: BLE001
+            print(f'FAIL  CONTENT_QUEUE.csv could not be read: {e}')
+            return 1
     if got_headers != HEADERS:
         fail('CONTENT_QUEUE.csv', f'headers are not exactly the spec.\n      got:  {",".join(got_headers)}\n      want: {",".join(HEADERS)}')
 
@@ -132,6 +147,8 @@ def main():
             fail(where, f'feature_id {fid!r} is not in FEATURES.json')
         elif fid not in shipped:
             fail(where, f'feature_id {fid!r} is {by_id[fid].get("status")}, not shipped: it cannot be marketed')
+        elif fid in excluded:
+            fail(where, f'feature_id {fid!r} is excluded from content: {by_id[fid]["content_exclusion"]}')
         per_feature[fid] = per_feature.get(fid, 0) + 1
 
         if row.get('format') not in FORMATS:
@@ -180,9 +197,15 @@ def main():
                 if re.search(pattern, low):
                     fail(where, f'{field} uses American spelling ({pattern.strip(chr(92) + "b")}): {value!r}')
 
+    if part:
+        for msg in failures:
+            print(f'FAIL  {msg}')
+        print(f'part: {len(rows)} rows, {len(failures)} failure(s).')
+        return 1 if failures else 0
+
     if len(rows) < MIN_ROWS:
         fail('CONTENT_QUEUE.csv', f'{len(rows)} rows, needs {MIN_ROWS} or more')
-    for fid in sorted(shipped):
+    for fid in sorted(marketed):
         if per_feature.get(fid, 0) < MIN_PER_FEATURE:
             fail('CONTENT_QUEUE.csv', f'shipped feature {fid} has {per_feature.get(fid, 0)} rows, needs at least {MIN_PER_FEATURE}')
 
@@ -206,8 +229,9 @@ def main():
     status_counts = {}
     for feat in by_id.values():
         status_counts[feat.get('status')] = status_counts.get(feat.get('status'), 0) + 1
-    print(f'features: {len(by_id)} ({", ".join(f"{k} {v}" for k, v in sorted(status_counts.items()))})')
-    print(f'queue:    {len(rows)} rows across {len([f for f in per_feature if f in shipped])} shipped features')
+    print(f'features: {len(by_id)} ({", ".join(f"{k} {v}" for k, v in sorted(status_counts.items()))}); '
+          f'{len(marketed)} shipped features marketed, {len(excluded)} excluded with a reason')
+    print(f'queue:    {len(rows)} rows across {len([f for f in per_feature if f in marketed])} marketed features')
     if failures:
         for msg in failures:
             print(f'FAIL  {msg}')
@@ -218,4 +242,4 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
