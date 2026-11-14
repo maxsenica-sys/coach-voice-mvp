@@ -46,6 +46,10 @@ import {
   athleteMayViewVideo, athleteSeesAnnotations,
 } from '@/lib/video-clip'
 import { MAX_VIDEO_BYTES } from '@/lib/video-preflight'
+import {
+  pickScreenMime, extensionFor, shouldStartNewPart, PART_LIMIT_BYTES, partFileName, canRecordScreen,
+  VIDEO_BITS_PER_SECOND, AUDIO_BITS_PER_SECOND,
+} from '@/lib/screen-recording'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', OFF = '\x1b[0m'
@@ -207,6 +211,29 @@ check('V8', 'Clip times read the way a coach says them', () => {
 
 // ── report ────────────────────────────────────────────────────────────────
 console.log(`\n  ${DIM}Video rig — moments, compare and athlete clips, against lib/video-clip.ts${OFF}\n`)
+check('V9', 'A recorded call plays on an iPhone where it can, and never outgrows the upload limit', () => {
+  const p = []
+  const only = (...ok) => (t) => ok.includes(t)
+  // mp4 first: an iPhone cannot play WebM (the same rule as the audio recorders).
+  if (pickScreenMime(() => true) !== 'video/mp4;codecs=avc1.42E01E,mp4a.40.2') p.push('mp4 is not preferred when the browser offers it')
+  if (pickScreenMime(only('video/webm')) !== 'video/webm') p.push('no fallback to plain WebM')
+  if (pickScreenMime(() => false) !== '') p.push('a browser with no supported type must get "" (let it choose)')
+  if (pickScreenMime(() => { throw new Error('x') }) !== '') p.push('a throwing isTypeSupported must not break the pick')
+  // The filename names the container actually used — the transcription rule, for video.
+  if (extensionFor('video/mp4;codecs=avc1') !== 'mp4' || extensionFor('video/webm;codecs=vp9,opus') !== 'webm') p.push('extension does not follow the real container')
+  // Parts: under the bucket limit, with headroom, and a part starts before it is reached.
+  if (!(PART_LIMIT_BYTES < MAX_VIDEO_BYTES)) p.push('a part can reach the upload limit')
+  if (shouldStartNewPart(PART_LIMIT_BYTES - 1) || !shouldStartNewPart(PART_LIMIT_BYTES)) p.push('the new-part threshold is off by one')
+  // A part at the chosen bitrates must last long enough to be useful (> 30 min).
+  const bytesPerSecond = (VIDEO_BITS_PER_SECOND + AUDIO_BITS_PER_SECOND) / 8
+  if (PART_LIMIT_BYTES / bytesPerSecond < 30 * 60) p.push(`a part lasts only ${Math.round(PART_LIMIT_BYTES / bytesPerSecond / 60)} min at these bitrates`)
+  if (partFileName('14 Nov', 1, 1, 'mp4') !== 'Call recording 14 Nov.mp4') p.push('a single part is numbered')
+  if (partFileName('14 Nov', 2, null, 'webm') !== 'Call recording 14 Nov — part 2.webm') p.push('parts are not numbered')
+  if (canRecordScreen(undefined) || canRecordScreen({ mediaDevices: {} })) p.push('offered where the screen cannot be shared (phones)')
+  if (!canRecordScreen({ mediaDevices: { getDisplayMedia: () => {} } })) p.push('not offered where it can be')
+  return p
+})
+
 let failed = 0
 for (const r of results) {
   if (r.problems.length === 0) {
