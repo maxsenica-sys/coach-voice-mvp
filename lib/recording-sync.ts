@@ -170,6 +170,10 @@ export function narrowAfterPartialSave(rec: PendingRecording, results: readonly 
 async function saveSession(rec: PendingRecording, transcript: string, audioPath: string | null) {
   const targets = sessionBodies(rec, transcript, audioPath)
 
+  // The server's own reason is kept: a refusal like the content gate's 422
+  // ("can't be shared with an athlete … untick Share") is something the coach
+  // can act on, and "Could not save" alone left them retrying for ever.
+  const reasons: string[] = []
   const results = await Promise.all(
     targets.map(async (body) => {
       const res = await fetch('/api/sessions', {
@@ -177,12 +181,16 @@ async function saveSession(rec: PendingRecording, transcript: string, audioPath:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        if (typeof json?.error === 'string' && json.error) reasons.push(json.error)
+      }
       return res.ok
     }),
   )
 
   const saved = results.filter(Boolean).length
-  if (saved === 0) throw new Error('Could not save this recording. Nothing was written.')
+  if (saved === 0) throw new Error(reasons[0] ?? 'Could not save this recording. Nothing was written.')
   if (saved < results.length) {
     // Narrow the queued row to the athletes whose save failed before
     // reporting. It used to be left listing every member while still marked

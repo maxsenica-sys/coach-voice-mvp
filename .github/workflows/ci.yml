@@ -167,6 +167,12 @@ jobs:
       - name: Video rig
         run: npm run verify:video
 
+      # A recording stopped but never saved can be finished from "On this
+      # phone", keeps the kind it was made as (a squad talk never becomes one
+      # athlete's transcript), and is never deleted behind the coach's back.
+      - name: Recording rig
+        run: npm run verify:recording
+
       # `next build` prerenders /athlete, which constructs a Supabase client at
       # module scope and throws without these. They are placeholders — the build
       # never makes a network call — so no real secrets belong in CI.

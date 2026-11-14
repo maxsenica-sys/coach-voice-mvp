@@ -1968,7 +1968,7 @@ function DashboardPageInner() {
                   queue is empty, which is almost always — and sits above
                   everything else when it is not, because an unsent recording
                   is more urgent than any summary of past ones. */}
-              <PendingRecordings onSynced={() => { void refreshSessions(); void fetchCoverage() }} />
+              <PendingRecordings onSynced={() => { void refreshSessions(); void fetchCoverage() }} athletes={athletes} groups={groups} coachSport={coachSport || null} />
 
               {/* Who has gone quiet: one row, three faces, and the way in to
                   the full list. Nothing at all when nobody qualifies. */}
