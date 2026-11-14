@@ -27,13 +27,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import { forAthleteList } from '@/lib/athlete-recording'
 import type { CookieToSet } from '@/lib/supabase-route'
 
 export const runtime = 'nodejs'
 
-/** Exactly what the portal list renders. No transcript, no coach_notes. */
+/** Exactly what the portal list renders, plus shared_recording_id, which is
+ *  read only to decide the audio and never sent. No transcript, no coach_notes. */
 const LIST_COLUMNS =
-  'id, session_name, title, summary, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime, group_id, athlete_response'
+  'id, session_name, title, summary, focus_points, shared_with_athlete, session_date, created_at, sport_context, audio_path, audio_mime, group_id, shared_recording_id, athlete_response'
 
 function createSupabase(req: NextRequest) {
   const cookiesToSet: CookieToSet[] = []
@@ -84,5 +86,9 @@ export async function GET(req: NextRequest) {
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 
-  return attach(NextResponse.json({ sessions: data ?? [] }), cookiesToSet)
+  // A squad or several-athlete recording is about other children too, so its
+  // audio is withheld here as it is everywhere else (lib/athlete-recording.ts).
+  // The portal draws an Audio badge and player only where audio_path survives.
+  const sessions = (data ?? []).map((row) => forAthleteList(row))
+  return attach(NextResponse.json({ sessions }), cookiesToSet)
 }
