@@ -1,0 +1,2362 @@
+{
+  "generated": "2026-11-14",
+  "source": "four code audits of main at bd23f75 (platform, recording, coach dashboard, athlete portal), deduplicated",
+  "status_rules": "shipped: a user can complete it end to end today. partial: it renders but a path is stubbed, broken or missing. planned: schema or comment only.",
+  "content_exclusion": "A shipped feature with this field gets no posts of its own; the reason says why (housekeeping, or a facet covered by another feature's posts).",
+  "features": [
+    {
+      "id": "coach-invite-code-qr",
+      "name": "Coach invite code and QR",
+      "user_type": "coach",
+      "what_it_does": "Each coach has an invite code they can rename and show as a full-screen QR code. Scanning it opens sign-up with the athlete role and the code already filled in.",
+      "pain_removed": "A coach adds a whole squad at training without typing anyone's email.",
+      "status": "shipped",
+      "status_evidence": "app/api/coach-code/route.ts (GET, and PUT that is head-only, checks uniqueness, 4-32 chars). app/components/InviteQR.tsx encodes /signup?code=. app/signup/page.tsx reads ?code= and sets role=athlete. complete-signup links the athlete to the coach's roster.",
+      "surfaces": [
+        "/dashboard (invite code, QR modal)",
+        "/signup?code=",
+        "/dashboard (Home)",
+        "/dashboard?tab=settings",
+        "Home onboarding",
+        "Add athlete sheet",
+        "Settings"
+      ],
+      "demo_state": "Full-screen QR held up at practice",
+      "competitor_gap": true,
+      "competitor_gap_why": "Most team apps need emails typed in. Here a squad joins by scanning one QR code."
+    },
+    {
+      "id": "athlete-email-invite",
+      "name": "Coach invites athlete by email",
+      "user_type": "coach",
+      "what_it_does": "The coach adds an athlete by email. The athlete receives a branded 'Set your password' invite link, and the roster shows them as PENDING until they first log in.",
+      "pain_removed": "The coach can enrol athletes who aren't at training.",
+      "status": "shipped",
+      "status_evidence": "app/api/athletes/route.ts POST uses admin generateLink, then renderBrandedEmail and sendEmail. If email isn't configured, a warning returns and the coach can share the link manually. Email goes through Gmail SMTP or Resend (lib/notify.ts).",
+      "surfaces": [
+        "/dashboard roster add athlete",
+        "/dashboard?tab=athletes (Add athlete sheet)"
+      ],
+      "demo_state": "Roster row reading PENDING after the invite",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard.",
+      "content_exclusion": "Covered by the coach-invite-code-qr posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "assistant-coach-invites",
+      "name": "Invite assistant coaches by email",
+      "user_type": "coach",
+      "what_it_does": "The head coach invites up to 10 assistants by email and chooses which athletes each one can see. Invite links are single-use, expire after 7 days and only work for the invited email address. The head coach can edit, cancel or remove assistants.",
+      "pain_removed": "Club staff can share the load without every coach seeing every child.",
+      "status": "shipped",
+      "status_evidence": "app/components/CoachingStaff.tsx (on the dashboard). app/api/staff/route.ts handles GET, POST, PUT and DELETE, stores a hashed token and offers a copy-link fallback. app/api/staff/accept/route.ts and lib/staff-invite.ts acceptBlock (wrong-email, expired, own-roster, ...). app/staff/join/page.tsx. Migrations 034 and 035.",
+      "surfaces": [
+        "/dashboard Coaching staff card",
+        "/staff/join?token=",
+        "/dashboard (Home)",
+        "/dashboard?tab=settings",
+        "/staff/join"
+      ],
+      "demo_state": "Invite card with an athlete picker and a 'Send invite' button",
+      "competitor_gap": true,
+      "competitor_gap_why": "Assistants see only the athletes they are given, not the whole roster."
+    },
+    {
+      "id": "caretaker-contacts",
+      "name": "Parent/caretaker contacts per athlete",
+      "user_type": "coach",
+      "what_it_does": "The head coach saves parents or guardians (name, email, relationship) for each athlete and can send them a confirmed, clearly labelled test email.",
+      "pain_removed": "Parent contacts live with the athlete, not in a separate spreadsheet.",
+      "status": "shipped",
+      "status_evidence": "app/api/caretakers/route.ts handles GET, POST and DELETE (head-only, roster-checked upsert). The CaretakerPanel in app/athletes/[id]/page.tsx sends the test through /api/email, which only sends to a saved caretaker.",
+      "surfaces": [
+        "/athletes/[id] Caretakers panel",
+        "/athletes/[id]?tab=profile"
+      ],
+      "demo_state": "Caretaker row with the 'Send test' confirm dialog",
+      "competitor_gap": false,
+      "competitor_gap_why": "Contact storage is common.",
+      "content_exclusion": "Covered by the wellness-alert-notify-parent posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "coach-wellness-alert-email",
+      "name": "Coach emailed on wellness drop",
+      "user_type": "coach",
+      "what_it_does": "When an athlete's check-in score or 7-day average drops past the alert threshold, the coach automatically gets an email with the metric scores and the athlete's note.",
+      "pain_removed": "The coach finds out about a struggling athlete without opening every check-in.",
+      "status": "shipped",
+      "status_evidence": "app/api/wellness/route.ts (around line 204) calls notifyWellnessAlert in lib/notify.ts, which uses computeWellnessAlert.",
+      "surfaces": [
+        "Email to the coach",
+        "links to /athletes/[id]",
+        "Coach email inbox",
+        "athlete home copy"
+      ],
+      "demo_state": "'⚠️ Wellness alert , Sam' email with today's score and 7-day average tiles",
+      "competitor_gap": false,
+      "competitor_gap_why": "Threshold alerts exist in athlete-monitoring tools.",
+      "content_exclusion": "Covered by the roster-wellness-driver posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "session-pdf",
+      "name": "Printable session report PDF",
+      "user_type": "coach",
+      "what_it_does": "Opens a print-ready, branded A4 session report (summary, focus points, transcript unless withheld) and opens the browser's Print / Save as PDF dialog.",
+      "pain_removed": "The coach gets a clean handout or record without copying and pasting.",
+      "status": "shipped",
+      "status_evidence": "app/pdf/session/[id]/page.tsx calls window.print and respects transcript_withheld. Opened from app/athletes/[id]/page.tsx at line 1788.",
+      "surfaces": [
+        "/pdf/session/[id]"
+      ],
+      "demo_state": "A4 sheet with the PINDAR nameplate and CONFIDENTIAL footer",
+      "competitor_gap": false,
+      "competitor_gap_why": "Export to PDF is common."
+    },
+    {
+      "id": "monthly-report-pdf",
+      "name": "Monthly athlete report PDF",
+      "user_type": "coach",
+      "what_it_does": "A printable monthly report of sessions and wellness check-ins. The coach picks which of the athlete's check-in notes to include; by default none print.",
+      "pain_removed": "The coach has a ready report for a parent meeting that doesn't leak the athlete's private notes.",
+      "status": "shipped",
+      "status_evidence": "app/pdf/monthly/[athleteId]/page.tsx has a per-note include toggle, 'N OF M INCLUDED', and window.print. Opened from app/athletes/[id]/page.tsx at line 1714. Print or save only: the app never emails it.",
+      "surfaces": [
+        "/pdf/monthly/[athleteId]",
+        "/athletes/[id] → /pdf/monthly/[athleteId]"
+      ],
+      "demo_state": "Notes section with the '· will print / · not printed' toggles",
+      "competitor_gap": true,
+      "competitor_gap_why": "Reports where the athlete's notes are left out unless the coach adds each one."
+    },
+    {
+      "id": "quick-session-sheet",
+      "name": "Three-step quick session recorder",
+      "user_type": "coach",
+      "what_it_does": "A bottom sheet goes through three steps, 'Who and when', then 'Recording', then 'Before you send', with one main action at the foot of each step.",
+      "pain_removed": "A coach can record session notes in seconds on a phone instead of writing them up.",
+      "status": "shipped",
+      "status_evidence": "app/components/QuickSessionModal.tsx (phase 1/2/3), opened from app/dashboard/page.tsx:3206 and app/athletes/[id]/page.tsx:1244, saves via POST /api/sessions which inserts into sessions",
+      "surfaces": [
+        "/dashboard",
+        "/athletes/[id] (Quick session sheet)"
+      ],
+      "demo_state": "Step 3 'Before you send' with the transcript, the summary draft and the share checkbox",
+      "competitor_gap": true,
+      "competitor_gap_why": "Spoken notes become an athlete-ready summary, where most coaching apps rely on typed notes"
+    },
+    {
+      "id": "record-first-choose-later",
+      "name": "Record first, pick athlete after",
+      "user_type": "coach",
+      "what_it_does": "Start recording works before any athlete is chosen; Save stays disabled until a target is picked on the review step.",
+      "pain_removed": "The coach doesn't lose the moment while hunting for a name.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx hasTarget is required only by save(); the review step renders targetSection; once a target is chosen, the draft effect writes the summary after the fact",
+      "surfaces": [
+        "Quick session sheet"
+      ],
+      "demo_state": "Recording screen showing 'Choose who this is for when you stop.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Most recorders require choosing the context first"
+    },
+    {
+      "id": "no-silent-misattribution",
+      "name": "No default athlete preselected",
+      "user_type": "coach",
+      "what_it_does": "Opened without a target, the sheet selects nobody rather than defaulting to the newest athlete.",
+      "pain_removed": "Sessions can't be silently filed under, or emailed to, the wrong child.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx:53-60 useState(defaultAthleteId ?? '') with a comment explaining why the fallback was removed",
+      "surfaces": [
+        "Quick session sheet"
+      ],
+      "demo_state": "'Session for' with no athlete chosen and the hint 'Choose now, or after you stop.'",
+      "competitor_gap": false,
+      "competitor_gap_why": "A safety detail, not a headline feature",
+      "content_exclusion": "Covered by the record-first-choose-later posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "live-clock-stall-detect",
+      "name": "Live clock with mic-stall alert",
+      "user_type": "coach",
+      "what_it_does": "An mm:ss clock based on wall time advances only while the mic track is live; if the mic dies, the clock turns red and says 'The microphone stopped'.",
+      "pain_removed": "The coach is never talking to a phone that has stopped listening.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx:114-204 checks recSecs/recStalled every 250ms against MediaRecorder.state and track readyState; role=alert message at :1301",
+      "surfaces": [
+        "Quick session sheet",
+        "recording step"
+      ],
+      "demo_state": "Red '02:14' with 'Recording stopped' alert",
+      "competitor_gap": true,
+      "competitor_gap_why": "Few recorders detect a stall and say so in words",
+      "content_exclusion": "Covered by the quick-session-sheet posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "mic-error-diagnosis",
+      "name": "Specific microphone error messages",
+      "user_type": "coach",
+      "what_it_does": "Distinguishes a denied permission, no mic found, mic in use by another app, and unknown errors, each with its own fix.",
+      "pain_removed": "Coaches aren't sent to browser settings to fix the wrong problem.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx:294-312 maps NotAllowedError, NotFoundError and NotReadableError to separate messages",
+      "surfaces": [
+        "Quick session sheet"
+      ],
+      "demo_state": "'Another app is using the microphone. Close it and try again.'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Polish",
+      "content_exclusion": "Covered by the quick-session-sheet posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "session-date-backdate",
+      "name": "Backdate sessions, never future",
+      "user_type": "coach",
+      "what_it_does": "A date picker defaults to today, shows 'Today'/'Yesterday' labels and blocks future dates on both client and server.",
+      "pain_removed": "Yesterday's training logged over breakfast lands on the right day.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx sessionDate max=today and save() checks; app/api/sessions/route.ts:171-183 rejects future dates; the session_date column is used for list order",
+      "surfaces": [
+        "Quick session sheet steps 1 and 3"
+      ],
+      "demo_state": "Date field reading 'Yesterday'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common",
+      "content_exclusion": "Covered by the quick-session-sheet posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "session-title",
+      "name": "Optional session title",
+      "user_type": "coach",
+      "what_it_does": "A free-text title (e.g. 'Serve receive') is saved as session_name; squad saves are prefixed with '[Squad name]'.",
+      "pain_removed": "Sessions are findable by topic.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx sessionName; route.ts inserts session_name; squad path builds `[${group.name}] ...`",
+      "surfaces": [
+        "Quick session sheet",
+        "session page heading"
+      ],
+      "demo_state": "Session page H1 'SERVE RECEIVE'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common",
+      "content_exclusion": "Covered by the quick-session-sheet posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "delivery-in-person-online",
+      "name": "In person / Online tag",
+      "user_type": "coach",
+      "what_it_does": "A one-tap radio (default In person) records how the session was delivered and shows it on the session page eyebrow.",
+      "pain_removed": "Remote and in-person work can be told apart.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx:1144 radiogroup; route.ts parseDelivery writes delivery (migration 036); sessions/[id]/page.tsx:1035 shows DELIVERY_LABEL",
+      "surfaces": [
+        "Quick session sheet",
+        "/sessions/[id]"
+      ],
+      "demo_state": "Eyebrow 'Recorded session · Online'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Minor metadata",
+      "content_exclusion": "Covered by the quick-session-sheet posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "mode-one-athlete",
+      "name": "One-athlete recording",
+      "user_type": "coach",
+      "what_it_does": "Saves one session for one athlete, using an AthletePicker with search and squad filter.",
+      "pain_removed": "Fast one-to-one feedback.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx mode 'athlete' sends one POST /api/sessions with athlete_id; route.ts checks the athlete is on the coach's roster before insert",
+      "surfaces": [
+        "Quick session sheet"
+      ],
+      "demo_state": "Picker with one athlete selected",
+      "competitor_gap": false,
+      "competitor_gap_why": "Baseline",
+      "content_exclusion": "Covered by the quick-session-sheet posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "mode-several-split",
+      "name": "One recording split per athlete",
+      "user_type": "coach",
+      "what_it_does": "Talk about 2-5 named athletes in one recording; AI splits it into a separate editable summary and takeaway card per athlete, and each athlete gets their own session containing only their card.",
+      "pain_removed": "One talk replaces five separate recordings after a session.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx 'several' mode calls draftSplit → POST /api/sessions/split-summary (name eligibility, guardSummary, reasons); saveEach posts one row per athlete with a shared_recording_id uuid; route.ts never regenerates when that id is set",
+      "surfaces": [
+        "Quick session sheet ('Several' tab)"
+      ],
+      "demo_state": "Three name-headed cards, one reading 'Kai's name wasn't heard in the recording, so nothing was drafted'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Per-athlete splitting of one voice note is unusual"
+    },
+    {
+      "id": "split-empty-reasons",
+      "name": "Explained empty split cards",
+      "user_type": "coach",
+      "what_it_does": "An empty card says why: name not heard, ambiguous shared first name, nothing specific, or the draft named another athlete.",
+      "pain_removed": "The coach knows whether the draft failed or simply had nothing for that athlete.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx SPLIT_REASON_TEXT; lib/split-summary.ts splitEligibility/assembleSplit; 'Split again' button",
+      "surfaces": [
+        "Quick session sheet",
+        "Several review"
+      ],
+      "demo_state": "Card: 'Another athlete here is also called Sam…'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Transparent AI gaps",
+      "content_exclusion": "Covered by the mode-several-split posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "mode-squad",
+      "name": "Squad recording, one per member",
+      "user_type": "coach",
+      "what_it_does": "One recording saves a session for every squad member; the server writes each member's summary at save time, personalised only if their first name was said unambiguously.",
+      "pain_removed": "A whole team gets notes from one talk.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx group branch saveEach(group.member_ids) with group_id; route.ts validates group_id against the coach's groups and calls makeQuickSummary with rosterFirstNames → mayPersonalise. Caveat: the coach does NOT preview squad summaries (no draft shown in review for group mode)",
+      "surfaces": [
+        "Quick session sheet ('Squad N' tab)"
+      ],
+      "demo_state": "'Session will be saved for: Ana Ruiz, Ben Cole, …' and 'Save for 12 Athletes'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Per-member personalised summaries from one team talk"
+    },
+    {
+      "id": "partial-save-retry",
+      "name": "Per-athlete partial-failure retry",
+      "user_type": "coach",
+      "what_it_does": "For squad/several saves, failures are reported by name ('Saved for 9 of 12. Failed for: …') and a retry posts only the missing athletes.",
+      "pain_removed": "No duplicate sessions and no silent failures.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx saveEach + savedIdsRef; lib/recording-sync.ts narrowAfterPartialSave",
+      "surfaces": [
+        "Quick session sheet",
+        "pending panel"
+      ],
+      "demo_state": "Error line naming the two athletes that failed",
+      "competitor_gap": false,
+      "competitor_gap_why": "Reliability detail",
+      "content_exclusion": "Covered by the mode-several-split posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "whisper-transcription",
+      "name": "Automatic speech-to-text transcription",
+      "user_type": "coach",
+      "what_it_does": "On Stop & Transcribe, audio uploads straight to storage by signed URL and OpenAI Whisper transcribes it; an inline upload is the fallback.",
+      "pain_removed": "No typing; long recordings avoid the 4.5MB serverless limit.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx stopAndTranscribe → /api/sessions/audio-upload-url then /api/transcribe (whisper-1, verbose_json, auth required, path must be coach/{uid}/)",
+      "surfaces": [
+        "Quick session sheet"
+      ],
+      "demo_state": "'Transcribing audio…' status",
+      "competitor_gap": false,
+      "competitor_gap_why": "Transcription is common"
+    },
+    {
+      "id": "name-sport-priming",
+      "name": "Athlete names and sport vocabulary",
+      "user_type": "coach",
+      "what_it_does": "Whisper is primed with the first names of only the athletes being recorded, plus sport jargon, so names and terms come back spelled right.",
+      "pain_removed": "Fewer mangled names ('Anna' for 'Ana') and misheard jargon.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx rosterForPrompt sends the 'roster' field; app/api/transcribe/route.ts builds the prompt from roster names, sport and getSportTerminologyHint; the profile sport is used as a fallback",
+      "surfaces": [
+        "Transcription"
+      ],
+      "demo_state": "Transcript correctly spelling 'Siobhan' and 'libero'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Roster-aware transcription",
+      "content_exclusion": "Covered by the whisper-transcription posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "transcript-quality-warning",
+      "name": "Silence and low-confidence warning",
+      "user_type": "coach",
+      "what_it_does": "Whisper's own no-speech and confidence scores produce a ⚠ warning above the transcript in review.",
+      "pain_removed": "A silent or half-heard recording doesn't quietly become a summary sent to a child.",
+      "status": "shipped",
+      "status_evidence": "app/api/transcribe/route.ts assessTranscript returns qualityReason; QuickSessionModal.tsx transcriptWarning shown at :1373",
+      "surfaces": [
+        "Quick session sheet review"
+      ],
+      "demo_state": "⚠ banner over a short transcript",
+      "competitor_gap": true,
+      "competitor_gap_why": "Rarely surfaced",
+      "content_exclusion": "Covered by the whisper-transcription posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "manual-transcript-edit",
+      "name": "Type or edit the transcript",
+      "user_type": "coach",
+      "what_it_does": "'Skip , type transcript manually' opens review with an empty box, and any Whisper transcript can be edited before save.",
+      "pain_removed": "A coach without a mic, or with a mis-heard word, can still save.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx Skip button sets step 'review'; the textarea qs-transcript is the value saved. Caveat: a typed transcript gets no preview draft in one-athlete mode (the draft effect needs heardText); the server then generates the summary at save",
+      "surfaces": [
+        "Quick session sheet"
+      ],
+      "demo_state": "Empty transcript box 'Type or paste transcript here…'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common",
+      "content_exclusion": "Covered by the review-summary-before-send posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "review-summary-before-send",
+      "name": "Review AI summary before sending",
+      "user_type": "coach",
+      "what_it_does": "For one athlete, an AI summary (marked 'Draft') and a 'Take into next session' line with a character limit appear after stopping; both are editable and nothing sends until Save.",
+      "pain_removed": "The coach, not the child, is the first to read what the AI wrote.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx draftSummary → POST /api/sessions/summary (writes nothing, checks the athlete is on the roster); save sends summary/next, which route.ts uses verbatim. Caveats: if the coach clears both fields, the server regenerates a summary they never saw; squad mode has no preview",
+      "surfaces": [
+        "Quick session sheet review"
+      ],
+      "demo_state": "Summary textarea with 'Draft' pill and 'This is the line your athlete reads first.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Human-in-the-loop AI feedback for minors"
+    },
+    {
+      "id": "content-safety-gate",
+      "name": "Inappropriate-content sharing block",
+      "user_type": "coach",
+      "what_it_does": "Sexual, hateful or threatening content gets no summary, unticks Share, and the server refuses to share it, whether at save, when shared later, or when a shared session is edited.",
+      "pain_removed": "Harmful text can't reach a 13-18-year-old.",
+      "status": "shipped",
+      "status_evidence": "lib/content-gate.ts (OpenAI moderation plus a keyword backstop) runs in makeQuickSummary, split-summary, POST /api/sessions (422 when shared) and, from 14 Nov 2026, PATCH /api/sessions/[id]: sharing a saved session later checks everything the athlete would read, and editing a shared session checks the new text (shareGateCheck, tested in tools/prompt-rig.mjs).",
+      "surfaces": [
+        "Quick session sheet",
+        "save API"
+      ],
+      "demo_state": "Review message 'This recording can't be summarised or shared with an athlete.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Built-in safeguarding for minors",
+      "content_exclusion": "Safety rail, not a selling point: marketing that children's content is filtered invites people to test it, and the filter is a backstop, not a guarantee."
+    },
+    {
+      "id": "share-default-on",
+      "name": "Share with athlete toggle",
+      "user_type": "coach",
+      "what_it_does": "A checkbox, ticked by default, decides whether the athlete sees the session; the label changes per mode (in Several mode, 'Share each athlete's own summary with them').",
+      "pain_removed": "Recorded sessions actually reach athletes, while private notes stay possible.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx shareWithAthlete=true by default; route.ts stores shared_with_athlete and sets calendar visible_to_athlete",
+      "surfaces": [
+        "Quick session sheet",
+        "/sessions/[id]",
+        "/athletes/[id]"
+      ],
+      "demo_state": "Ticked 'Share transcript & summary with athlete'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common",
+      "content_exclusion": "Covered by the review-summary-before-send posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "re-record",
+      "name": "Re-record discards everything",
+      "user_type": "coach",
+      "what_it_does": "'← Re-record' throws away the audio, the queued copy, the transcript, the drafts and the split ids, and returns to setup.",
+      "pain_removed": "A fluffed take doesn't leak its summary into the next save.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx:1336-1368 deleteRecording and full state reset",
+      "surfaces": [
+        "Quick session sheet review"
+      ],
+      "demo_state": "Re-record button beside the Transcript label",
+      "competitor_gap": false,
+      "competitor_gap_why": "Basic",
+      "content_exclusion": "Covered by the quick-session-sheet posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "offline-recording-queue",
+      "name": "Recordings survive bad signal",
+      "user_type": "coach",
+      "what_it_does": "Audio is written to IndexedDB the moment recording stops; a session that failed to save is retried automatically when back online, resuming from upload or transcript.",
+      "pain_removed": "No signal in the sports hall no longer means lost words.",
+      "status": "partial",
+      "status_evidence": "lib/recording-queue.ts (put/patch/delete, stages); lib/recording-sync.ts syncRecording; the PendingRecordings drain runs on mount and on the 'online' event. Rows the coach pressed Save on (ready) complete end to end. GAP: a recording never saved at review (closed sheet, or offline at stop so the transcript was empty and Save disabled) shows 'Recorded, not saved yet' with only Discard and no way to reopen or save it; it is auto-deleted after 14 days (ABANDONED_TTL_MS). Closing the sheet mid-recording discards the audio with no confirmation (queued only at stop)",
+      "surfaces": [
+        "Record modal",
+        "PendingRecordings",
+        "athlete check-in",
+        "Quick session sheet",
+        "/dashboard 'On this phone' panel"
+      ],
+      "demo_state": "Save error '…the recording is saved on this phone and will send when you are back online.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Offline-durable voice capture is rare in web apps"
+    },
+    {
+      "id": "pending-recordings-panel",
+      "name": "'On this phone' pending panel",
+      "user_type": "coach",
+      "what_it_does": "The dashboard lists waiting recordings by name and age with a status, the last error, Discard (with confirmation) and 'Try again now'; it is hidden when the queue is empty.",
+      "pain_removed": "The coach can see what hasn't sent instead of trusting a silent queue.",
+      "status": "shipped",
+      "status_evidence": "app/components/PendingRecordings.tsx rendered at dashboard/page.tsx:1951; window.confirm on Discard; drainingRef prevents double posts",
+      "surfaces": [
+        "/dashboard",
+        "/dashboard (Home)"
+      ],
+      "demo_state": "'2 waiting' card with 'Waiting to send' and a red error line",
+      "competitor_gap": true,
+      "competitor_gap_why": "Visible offline queue",
+      "content_exclusion": "Covered by the quick-session-sheet posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "audio-playback-coach",
+      "name": "Replay your original recording",
+      "user_type": "coach",
+      "what_it_does": "The session page streams the saved voice recording on demand, says when the codec can't play on the device, and offers a download link.",
+      "pain_removed": "A mis-heard transcript can be checked against the real audio.",
+      "status": "shipped",
+      "status_evidence": "route.ts stores audio_path/audio_mime (path ownership checked); detail route signs the session-audio URL; app/components/SessionAudioPlayer.tsx uses preload none, canPlayType check and /api/sessions/[id]/audio-url",
+      "surfaces": [
+        "/sessions/[id] Recording band"
+      ],
+      "demo_state": "Recording band 'Streams on demand , nothing downloads until you press play.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "The coach's voice is kept with the notes",
+      "content_exclusion": "Covered by the whisper-transcription posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "last-time-you-said",
+      "name": "'Last time you said' card",
+      "user_type": "coach",
+      "what_it_does": "Before recording one athlete, shows their latest takeaway, its date, and whether they replied 'Got it', 'Working on it' or 'not clear'.",
+      "pain_removed": "Session two starts with memory of session one.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx:230-238 fetch /api/athletes/[id]/last-focus (newest of the last 10 sessions that has a focus point); card at :1193 and a 'Last time' line during recording. One-athlete mode only",
+      "surfaces": [
+        "Quick session sheet steps 1-2"
+      ],
+      "demo_state": "Card: 'Keep elbows high on the set' · '12 Nov. They said it was not clear , worth covering again.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Closes the feedback loop at record time"
+    },
+    {
+      "id": "pre-session-brief",
+      "name": "Pre-session brief, 20 minutes out",
+      "user_type": "coach",
+      "what_it_does": "From 20 minutes before a timed calendar session until 10 minutes after it starts, Home shows each athlete's readiness or 'Not checked in', sore areas, open injuries and last takeaway with its reply; it refreshes every minute.",
+      "pain_removed": "Walk into training knowing who's flat, hurt or confused.",
+      "status": "shipped",
+      "status_evidence": "app/components/PreSessionBrief.tsx UpcomingBrief at dashboard/page.tsx:2042 and a 'Brief' button sheet at :2161; /api/coach/brief; lib/pre-session.ts BRIEF_LEAD_MINUTES=20, GRACE=10, orderBrief puts not-checked-in first",
+      "surfaces": [
+        "/dashboard Home card",
+        "Today 'Brief' sheet",
+        "/dashboard (Home)"
+      ],
+      "demo_state": "Card '3 of 8 not checked in' with flagged rows on top",
+      "competitor_gap": true,
+      "competitor_gap_why": "Readiness, injuries and the last takeaway in one view"
+    },
+    {
+      "id": "save-receipt",
+      "name": "Save receipt toast",
+      "user_type": "coach",
+      "what_it_does": "After saving, Home shows a receipt such as 'Shared with Mia' or 'Saved for 12 athletes · 12 shared', linking to the session if there is one.",
+      "pain_removed": "Confirms what the server actually wrote.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx:3213-3246 compares the session list before and after the refetch",
+      "surfaces": [
+        "/dashboard"
+      ],
+      "demo_state": "Toast 'Shared with Mia'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Polish",
+      "content_exclusion": "Covered by the quick-session-sheet posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "seen-receipt",
+      "name": "'Seen by athlete' read receipt",
+      "user_type": "coach",
+      "what_it_does": "Under a shared session the coach sees 'Seen by Mia · time' or 'Not opened yet', based on the athlete's actual opens.",
+      "pain_removed": "Coaches know whether feedback was read.",
+      "status": "shipped",
+      "status_evidence": "detail route records the access (recordAccess) only for athlete viewers; /api/sessions/[id]/seen for portal views; AccessLog.tsx SessionSeen hides itself if logging is unavailable",
+      "surfaces": [
+        "/sessions/[id] header"
+      ],
+      "demo_state": "'Seen by Mia · Tue 18:04'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Read receipts on feedback"
+    },
+    {
+      "id": "how-they-came-in",
+      "name": "Morning check-in beside session",
+      "user_type": "coach",
+      "what_it_does": "Shows the athlete's energy, sleep and soreness from that day's check-in next to the session (mood and stress excluded); nothing appears if they didn't check in.",
+      "pain_removed": "Performance notes are read in light of readiness.",
+      "status": "shipped",
+      "status_evidence": "detail route loadSessionCheckin (coach-only, scope.can.wellness); page.tsx CHECKIN_METRICS Copy note: the athlete is asked only Flat, OK or Good plus soreness; the energy and sleep values are derived from that answer, so never market sleep, mood or stress tracking.",
+      "surfaces": [
+        "/sessions/[id]"
+      ],
+      "demo_state": "Three tiles, 'Energy 2 · Low'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Wellness joined to session notes"
+    },
+    {
+      "id": "focus-points-edit",
+      "name": "'Take into next session' points",
+      "user_type": "coach",
+      "what_it_does": "The coach adds or removes numbered takeaways (up to 20, 200 characters each); the athlete sees them, plus a shareable FocusCard image of the first one.",
+      "pain_removed": "Forward actions are explicit and editable.",
+      "status": "shipped",
+      "status_evidence": "page.tsx setFocusPoints/addFocus → PATCH focus_points (normalised server-side); FocusCard for athletes",
+      "surfaces": [
+        "/sessions/[id]"
+      ],
+      "demo_state": "Amber-numbered list with an Add input",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common",
+      "content_exclusion": "Covered by the take-into-next-session posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "add-video",
+      "name": "Add video to session",
+      "user_type": "coach",
+      "what_it_does": "Upload a clip (500MB limit with preflight warnings) with percentage and time-left progress, directly on the session page.",
+      "pain_removed": "Video feedback is attached to the right session.",
+      "status": "shipped",
+      "status_evidence": "page.tsx uploadVideo: lib/video-preflight.ts MAX_VIDEO_BYTES, then lib/video-upload.ts → /api/sessions/[id]/videos(upload-url)",
+      "surfaces": [
+        "/sessions/[id] Video section"
+      ],
+      "demo_state": "'Uploading 42% · 1 min left'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common",
+      "content_exclusion": "Covered by the video-annotator posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "record-screen",
+      "name": "Record online call to session",
+      "user_type": "coach",
+      "what_it_does": "On desktop, records a shared browser tab with its audio plus the coach's mic into the session as video, uploading long calls in parts; a consent checkbox (everyone told, parent agreed for under-18s) is required first.",
+      "pain_removed": "Online sessions are captured without separate tools.",
+      "status": "shipped",
+      "status_evidence": "app/components/ScreenRecorder.tsx (consent phase, parts, failed parts kept as downloads); shown only when canRecordScreen()",
+      "surfaces": [
+        "/sessions/[id] (desktop only)"
+      ],
+      "demo_state": "Consent dialog with the under-18 checkbox",
+      "competitor_gap": true,
+      "competitor_gap_why": "Built-in call capture with consent gate"
+    },
+    {
+      "id": "video-compare",
+      "name": "Side-by-side video comparison",
+      "user_type": "coach",
+      "what_it_does": "Play any two of an athlete's videos on one clock, with an adjustable offset to line up the key frame and a playback speed control.",
+      "pain_removed": "Progress is visible a month apart.",
+      "status": "shipped",
+      "status_evidence": "app/components/VideoCompare.tsx (master A, B follows offset, resync, speed); page.tsx Compare section from /api/athletes/[id]/videos",
+      "surfaces": [
+        "/sessions/[id] Compare"
+      ],
+      "demo_state": "Two stacked videos with an offset nudge",
+      "competitor_gap": false,
+      "competitor_gap_why": "Exists in dedicated video apps"
+    },
+    {
+      "id": "session-edit-after-save",
+      "name": "Edit session after saving",
+      "user_type": "coach",
+      "what_it_does": "After saving, the coach can edit notes, takeaways, share state, images and videos; the summary, title, transcript and date cannot be edited in the UI.",
+      "pain_removed": "Partial: fixes are limited to the add-on fields.",
+      "status": "partial",
+      "status_evidence": "PATCH /api/sessions/[id] accepts summary/session_name/title, but no client sends them (grep); there is no UI to edit the transcript or date",
+      "surfaces": [
+        "/sessions/[id]"
+      ],
+      "demo_state": "n/a",
+      "competitor_gap": false,
+      "competitor_gap_why": "Gap"
+    },
+    {
+      "id": "session-delete",
+      "name": "Delete a session",
+      "user_type": "coach",
+      "what_it_does": "Not available; a saved session cannot be deleted or reassigned from the app.",
+      "pain_removed": "n/a",
+      "status": "planned",
+      "status_evidence": "No DELETE handler in app/api/sessions/[id]/route.ts; comments in QuickSessionModal.tsx:57,155 and lib/recording-sync.ts:21 say sessions are not deletable",
+      "surfaces": [
+        "none"
+      ],
+      "demo_state": "Do not demo",
+      "competitor_gap": false,
+      "competitor_gap_why": "Missing"
+    },
+    {
+      "id": "home-day-wheel",
+      "name": "Scrollable day strip on Home",
+      "user_type": "coach",
+      "what_it_does": "Shows a day strip covering 8 weeks back and 8 weeks forward. It opens centred on today, has a Today pill, and marks days with session or other events.",
+      "pain_removed": "Coaches can see what they did and what is booked without opening the calendar.",
+      "status": "shipped",
+      "status_evidence": "app/components/DayWheel.tsx (DAYS_BACK/FORWARD=56). dashboard/page.tsx refreshHomeEvents fetches /api/calendar?mode=personal for each month, and a month that fails to load keeps its old events and shows a Retry banner.",
+      "surfaces": [
+        "/dashboard (Home)"
+      ],
+      "demo_state": "Strip centred on a lit Today cell, with session dots on the days before it",
+      "competitor_gap": false,
+      "competitor_gap_why": "Most coaching apps have a week or agenda strip.",
+      "content_exclusion": "Covered by the calendar-month posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "home-day-panel",
+      "name": "Tap a day for events",
+      "user_type": "coach",
+      "what_it_does": "Tapping a day drops a panel over the page listing that day's events with athlete initials, title and time. Recorded sessions open the session page.",
+      "pain_removed": "Coaches can check a day without leaving Home, and the record button stays visible.",
+      "status": "shipped",
+      "status_evidence": "DayWheel.tsx overlay panel: a Link to /sessions/{session_id} only when session_id exists, otherwise a plain row. dashboard/page.tsx measures dayOverlayH so the panel stops above the Record button.",
+      "surfaces": [
+        "/dashboard (Home)"
+      ],
+      "demo_state": "Panel open on a day with 2 athlete sessions and 1 personal reminder",
+      "competitor_gap": false,
+      "competitor_gap_why": "Day-detail views are standard.",
+      "content_exclusion": "Covered by the calendar-month posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "quiet-athletes-row",
+      "name": "No session in two weeks",
+      "user_type": "coach",
+      "what_it_does": "A single Home row shows up to 3 faces and a count of athletes with no session in 14 days. It opens the Athletes tab with the Inactive filter on.",
+      "pain_removed": "Neglected athletes show up without the coach having to audit the roster.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx quietAthletes (from inactiveIds). lib/attention.ts isQuiet: QUIET_AFTER_DAYS=14, and never-recorded athletes only after a 7-day grace. The data is counted server-side by app/api/athletes/coverage/route.ts over all sessions, with no 50-row cap. The row is hidden until the coverage read succeeds.",
+      "surfaces": [
+        "/dashboard (Home)"
+      ],
+      "demo_state": "Ember row: 3 overlapping monograms, '4 athletes · no session in two weeks · See who ›'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Typical coaching apps do not flag athletes who have gone without coach attention."
+    },
+    {
+      "id": "scoreboard-sessions-week",
+      "name": "Sessions this week and spark",
+      "user_type": "coach",
+      "what_it_does": "A large number shows sessions recorded this calendar week, above a bar chart of up to 12 weeks with a weekly average.",
+      "pain_removed": "Coaches see their coaching volume trend at a glance.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx uses buildSpine and completeSpineWeeks from lib/training-spine.ts over the newest 50 sessions (/api/sessions/all). It shows '50+' and trims weeks the 50-session window only partly covers. The tile opens the Sessions tab.",
+      "surfaces": [
+        "/dashboard (Home)"
+      ],
+      "demo_state": "'7 SESSIONS THIS WEEK' with 12 bars, the current week lit, 'Avg 5 / wk'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Activity counters are common, though this one counts coaching sessions rather than athlete workouts.",
+      "content_exclusion": "Covered by the coverage-insight posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "scoreboard-athletes-active",
+      "name": "Athletes and active count",
+      "user_type": "coach",
+      "what_it_does": "A Home tile shows the roster size and how many athletes have actually opened the app.",
+      "pain_removed": "Coaches can tell who has really joined, not just who was invited.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx activeCount() from lib/athlete-status.ts counts athletes with first_login_at set, which is written by /api/athlete/activate, /api/join and /api/complete-signup.",
+      "surfaces": [
+        "/dashboard (Home)"
+      ],
+      "demo_state": "'12 ATHLETES · 9 active'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard roster stat.",
+      "content_exclusion": "Covered by the quiet-athletes-row posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "scoreboard-roster-wellness",
+      "name": "Roster wellness average",
+      "user_type": "coach",
+      "what_it_does": "Shows the average of each athlete's latest wellness score from the last 14 days (out of 5) and how many athletes checked in.",
+      "pain_removed": "Coaches get one read on how the squad is feeling without comparing individual children.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx fetches /api/wellness?days=14 (coach roster branch in app/api/wellness/route.ts, scoped by coach) and averages overallWellnessScore per athlete.",
+      "surfaces": [
+        "/dashboard (Home)"
+      ],
+      "demo_state": "'3.8/5 WELLNESS', a 5-segment meter, '8 checked in · 14d'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Wellness dashboards exist in athlete-monitoring tools such as TeamBuildr and Bridge.",
+      "content_exclusion": "Covered by the roster-wellness-driver posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "home-latest",
+      "name": "Latest sessions list",
+      "user_type": "coach",
+      "what_it_does": "Lists the 3 newest sessions with athlete, title, Online flag, Shared/Draft chip and time since. Each row opens the session.",
+      "pain_removed": "Coaches can get back to what they just recorded quickly.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx shows recentSessions = homeSessions.slice(0,3) via sessionRow with Link /sessions/{id}. The empty state offers 'Record your first session'.",
+      "surfaces": [
+        "/dashboard (Home)"
+      ],
+      "demo_state": "Three rows, one marked Draft in amber",
+      "competitor_gap": false,
+      "competitor_gap_why": "Recent-activity lists are standard.",
+      "content_exclusion": "Covered by the seen-receipt posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "home-today",
+      "name": "Today's events list",
+      "user_type": "coach",
+      "what_it_does": "Lists today's calendar events by time and type. Session events that have an athlete get a Brief button.",
+      "pain_removed": "Coaches can see today's agenda and prep from one place.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx todayEvents is built from personal-mode calendar events, and the Brief button calls setBriefEvent to open PreSessionBrief. Rows without an athlete link to '#'.",
+      "surfaces": [
+        "/dashboard (Home)"
+      ],
+      "demo_state": "'TODAY · 3 events' with 4:30pm Speed drills [Brief]",
+      "competitor_gap": false,
+      "competitor_gap_why": "Agenda views are common.",
+      "content_exclusion": "Home screen furniture."
+    },
+    {
+      "id": "coverage-insight",
+      "name": "Least attention this month",
+      "user_type": "coach",
+      "what_it_does": "Groups every athlete by how many sessions they had in the last 30 days (none, 1, 2, 3–4, 5+), least attention first, with each name linking to the profile.",
+      "pain_removed": "Coaches can see how their time is spread and who is getting left out.",
+      "status": "shipped",
+      "status_evidence": "app/components/CoverageInsight.tsx calls /api/coach/insights?scope=coverage, which uses lib/insights.ts coverageRows and coverageGroups. Shown only to head coaches with 2 or more athletes. Name tooltips show sessions and word count.",
+      "surfaces": [
+        "/dashboard (Home)"
+      ],
+      "demo_state": "'No sessions: Leo, Mia · 1 session: Sam · 5+ sessions: Ava, Zoe'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Typical tools have no fairness view of how coaching attention is spread across a roster."
+    },
+    {
+      "id": "record-entry-points",
+      "name": "One-tap record from anywhere",
+      "user_type": "coach",
+      "what_it_does": "Opens the session recorder from Home, the mobile middle button, the sidebar, a roster row (athlete preselected), a squad (squad preselected), an athlete profile, or the /dashboard?record=1 shortcut.",
+      "pain_removed": "Coaches can start capturing feedback straight after training with no navigation.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx openRecorder(athleteId?, groupId?) and the wantsRecord effect open QuickSessionModal. athletes/[id]/page.tsx opens setShowQuickSession. The recorder itself is outside this area.",
+      "surfaces": [
+        "/dashboard",
+        "/athletes/[id]"
+      ],
+      "demo_state": "Floodlit 'Record a session · Tap to start' bar with VU meter",
+      "competitor_gap": true,
+      "competitor_gap_why": "Voice-first session capture is not the core of typical coaching apps.",
+      "content_exclusion": "Covered by the quick-session-sheet posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "onboarding-steps",
+      "name": "First-run setup checklist",
+      "user_type": "coach",
+      "what_it_does": "With an empty roster, Home shows 3 steps: set an invite code (inline), add the first athlete, and record the first session, plus a share-code card with Copy and QR.",
+      "pain_removed": "New coaches get started without needing a guide.",
+      "status": "partial",
+      "status_evidence": "dashboard/page.tsx shows it when athletes.length===0 and the user is not an assistant. Only the code step ever ticks (stepNum(false,2/3) is hardcoded), so progress shows at most '1 of 3'. The card disappears once an athlete exists. Partial: steps two and three never tick, so it reads 1 of 3 for ever.",
+      "surfaces": [
+        "/dashboard (Home, empty roster)"
+      ],
+      "demo_state": "'You're all set up. 1 of 3 complete' with the code saved and a share card",
+      "competitor_gap": false,
+      "competitor_gap_why": "Onboarding checklists are common."
+    },
+    {
+      "id": "roster-status",
+      "name": "Active and Pending roster split",
+      "user_type": "coach",
+      "what_it_does": "Splits the roster into Active (has opened the app) and Pending (invited, not arrived) sections with counts, invite date and 'Waiting to arrive'.",
+      "pain_removed": "Coaches know who still needs chasing to join.",
+      "status": "shipped",
+      "status_evidence": "app/api/athletes/route.ts status comes from athleteStatus(first_login_at) in lib/athlete-status.ts. dashboard/page.tsx renders the activeList and pendingList sections.",
+      "surfaces": [
+        "/dashboard?tab=athletes",
+        "/athlete (silent)",
+        "coach roster"
+      ],
+      "demo_state": "'ACTIVE · 9' section above 'PENDING · 3 , Invited, not yet arrived'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Invite status is common.",
+      "content_exclusion": "Roster housekeeping."
+    },
+    {
+      "id": "roster-inactive-filter",
+      "name": "Inactive athletes filter",
+      "user_type": "coach",
+      "what_it_does": "An Inactive filter chip with a count lists athletes with no session in 14 days (or never recorded after 7 days on the roster), next to All, Active and Pending.",
+      "pain_removed": "Coaches can pull up everyone overdue for attention in one tap.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx athleteFilter 'INACTIVE' uses inactiveIds from coverage and isQuiet. The count is hidden until coverage loads, and a failed read says so.",
+      "surfaces": [
+        "/dashboard?tab=athletes"
+      ],
+      "demo_state": "Filter chips 'All 12 · Active 9 · Pending 3 · Inactive 4' with Inactive selected",
+      "competitor_gap": true,
+      "competitor_gap_why": "Filtering the roster by days since coach contact is rare.",
+      "content_exclusion": "Roster housekeeping."
+    },
+    {
+      "id": "roster-search",
+      "name": "Roster name/email search",
+      "user_type": "coach",
+      "what_it_does": "Filters the roster by word-start name matching (accent- and case-insensitive) or email. The search is kept for the browser session.",
+      "pain_removed": "Finding one athlete in a large roster is fast.",
+      "status": "shipped",
+      "status_evidence": "lib/athlete-filter.ts matchesName. dashboard/page.tsx stores the query in sessionStorage 'cv:roster-q'.",
+      "surfaces": [
+        "/dashboard?tab=athletes"
+      ],
+      "demo_state": "'so gr' finds Sophie Grabovac",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard.",
+      "content_exclusion": "Roster housekeeping."
+    },
+    {
+      "id": "roster-sort",
+      "name": "Sort roster by recency",
+      "user_type": "coach",
+      "what_it_does": "Sorts the roster by Name A–Z, Most recent session, or Least recent session (never-coached athletes first). The choice is remembered on the device.",
+      "pain_removed": "Coaches can work through whoever has gone longest without coaching.",
+      "status": "shipped",
+      "status_evidence": "lib/athlete-filter.ts sortRoster and ROSTER_SORT_LABELS. dashboard/page.tsx uses a select stored in localStorage 'pindar_roster_sort', with last-session dates from coverage.",
+      "surfaces": [
+        "/dashboard?tab=athletes"
+      ],
+      "demo_state": "Sort set to 'Least recent' with 'No sessions yet' athletes on top",
+      "competitor_gap": false,
+      "competitor_gap_why": "Sorting is common, though sorting by last coach session is less so.",
+      "content_exclusion": "Roster housekeeping."
+    },
+    {
+      "id": "roster-wellness-driver",
+      "name": "Per-athlete wellness and driver",
+      "user_type": "coach",
+      "what_it_does": "Each roster row shows the latest wellness score (14 days) as a coloured dot. Below 3.5 it names what pulled the score down, e.g. a sore area.",
+      "pain_removed": "Coaches spot struggling athletes from the roster and know why.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx wellnessByAthlete from /api/wellness?days=14, with overallWellnessScore and wellnessDriver from lib/wellness-config.ts using regionLabel.",
+      "surfaces": [
+        "/dashboard?tab=athletes"
+      ],
+      "demo_state": "Row 'Wellness 2.6/5 · Sore left hamstring' in a low colour",
+      "competitor_gap": false,
+      "competitor_gap_why": "Wellness monitoring tools show scores; an inline plain-language reason is a minor differentiator."
+    },
+    {
+      "id": "roster-last-session",
+      "name": "Last session, count, days since",
+      "user_type": "coach",
+      "what_it_does": "Each row shows the last session date, total session count, days since the last session, and a QUIET tag past 14 days.",
+      "pain_removed": "Every athlete's coaching history is visible at a glance and accurate beyond 50 sessions.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx coverageByAthlete from /api/athletes/coverage (counts all sessions server-side, with no cap). Until coverage loads it falls back to the 50 newest sessions.",
+      "surfaces": [
+        "/dashboard?tab=athletes"
+      ],
+      "demo_state": "'Last session 2 Nov · 18 sessions' with '12d' on the right; another row '24d QUIET'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Last-activity columns are common.",
+      "content_exclusion": "Covered by the quiet-athletes-row posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "roster-quick-actions",
+      "name": "Roster row quick actions",
+      "user_type": "coach",
+      "what_it_does": "Each row has buttons to record for that athlete, message them (with an unread dot), open their calendar, or remove them (head only).",
+      "pain_removed": "Common per-athlete jobs happen straight from the list.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx row buttons call openRecorder(a.id), setMsgPreselectedId+setTab('messages'), and showCalendarFor('athlete'). Delete opens a confirmation.",
+      "surfaces": [
+        "/dashboard?tab=athletes"
+      ],
+      "demo_state": "Row with mic, chat (with an ember dot), calendar and trash buttons",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard.",
+      "content_exclusion": "Roster housekeeping."
+    },
+    {
+      "id": "athlete-hard-delete",
+      "name": "Permanently remove athlete",
+      "user_type": "coach",
+      "what_it_does": "After a confirmation, permanently deletes the athlete with all their sessions, videos, audio, notes, events, check-ins, messages and caretakers, including stored files.",
+      "pain_removed": "Coaches can fully honour a family's request to delete a child's data.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx confirmDelete POSTs /api/athletes/[id]/hard-delete (head only, coach_id check), which removes storage objects and rows in order.",
+      "surfaces": [
+        "/dashboard?tab=athletes"
+      ],
+      "demo_state": "Dialog 'Remove athlete? This will permanently delete Mia Lee and all their sessions…'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Deletion is expected.",
+      "content_exclusion": "Admin action, not a selling point."
+    },
+    {
+      "id": "join-toast",
+      "name": "Athlete joined live toast",
+      "user_type": "coach",
+      "what_it_does": "Meant to pop a live 'X accepted your invite' toast when an invited athlete activates.",
+      "pain_removed": "Would tell coaches the moment someone joins.",
+      "status": "partial",
+      "status_evidence": "dashboard/page.tsx subscribes to Realtime athletes UPDATE where athlete_user_id goes from null to set. No code path ever does that: the invite sets athlete_user_id at insert, /api/join and /api/complete-signup insert with it already set, and migration 033 blocks client changes. Activation writes first_login_at instead. Realtime publication setup is also not in the migrations. In practice the toast never fires.",
+      "surfaces": [
+        "/dashboard"
+      ],
+      "demo_state": "Toast 'Alex Johnson accepted your invite · View'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Join notifications are common."
+    },
+    {
+      "id": "squads-manage",
+      "name": "Create and manage squads",
+      "user_type": "coach",
+      "what_it_does": "The head coach creates squads with a name, colour and description, bulk-adds athletes with tick-all and search, removes members, and deletes squads. A partial failure keeps the failed athletes ticked so they can be retried.",
+      "pain_removed": "Coaches can organise athletes into training groups.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx createGroup, SquadAdder, addMembersToGroup (Promise.allSettled, 'Added 2 of 3') and removeMemberFromGroup call /api/groups and /api/groups/[id]/members (head only, roster-checked).",
+      "surfaces": [
+        "/dashboard?tab=groups (via the Athletes/Squads switch on mobile)"
+      ],
+      "demo_state": "'U18 Sprint · 8 athletes' expanded with a 'Tick all 5 / Add 3 to U18 Sprint' list",
+      "competitor_gap": false,
+      "competitor_gap_why": "Groups are standard.",
+      "content_exclusion": "Covered by the mode-squad posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "squad-record",
+      "name": "One recording for a squad",
+      "user_type": "coach",
+      "what_it_does": "The Record button on a squad opens the recorder preselected to that squad, so one talk is saved for every member.",
+      "pain_removed": "Coaches don't record the same team talk once per athlete.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx openRecorder(undefined, g.id) opens QuickSessionModal with defaultGroupId. The squad split and save logic is outside this area. The receipt reports 'Saved for N athletes'.",
+      "surfaces": [
+        "/dashboard?tab=groups"
+      ],
+      "demo_state": "Squad card with a floodlit [Record] button",
+      "competitor_gap": true,
+      "competitor_gap_why": "Turning one spoken talk into per-athlete records is uncommon.",
+      "content_exclusion": "Covered by the mode-squad posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "sessions-tab",
+      "name": "All sessions list and search",
+      "user_type": "coach",
+      "what_it_does": "Lists all sessions newest first, with summary, date, Online flag and Shared/Draft chip. Coaches can search titles, summaries and transcripts, filter by athlete, and load older pages.",
+      "pain_removed": "Coaches can find a past session by what was said in it.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx fetchAllSessions and loadOlderSessions call /api/sessions/all (limit/offset, ilike on session_name, title, summary and transcript; assistants cannot search transcripts).",
+      "surfaces": [
+        "/dashboard?tab=sessions"
+      ],
+      "demo_state": "Search 'follow-through' returning 3 sessions with 'Load older'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Full-text search of spoken coaching transcripts is not typical.",
+      "content_exclusion": "Covered by the last-time-you-said posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "calendar-month",
+      "name": "Month calendar grid",
+      "user_type": "coach",
+      "what_it_does": "A month grid with session and other markers. Selecting a day lists its events; recorded sessions link to the session, and coaches can add or delete events.",
+      "pain_removed": "Planning and history live in one calendar.",
+      "status": "shipped",
+      "status_evidence": "app/components/Calendar.tsx (month owned by the host, lib/calendar-month.ts). dashboard/page.tsx fetchCalendar guards against stale responses and shows an error state.",
+      "surfaces": [
+        "In-app calendar",
+        "Home week wheel",
+        "/dashboard?tab=calendar",
+        "/athletes/[id]?tab=calendar"
+      ],
+      "demo_state": "November grid with marked days and the selected day's list",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard."
+    },
+    {
+      "id": "calendar-targets",
+      "name": "Personal, athlete and squad calendars",
+      "user_type": "coach",
+      "what_it_does": "Coaches switch between My calendar, any athlete's calendar or any squad's calendar. Squad events are created once per member.",
+      "pain_removed": "One place to schedule for yourself, one athlete or a whole squad.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx showCalendarFor and pickCalendar (an AthletePicker on mobile). app/api/calendar/route.ts GET has mode=personal, group_id and athlete_id branches. POST for a group inserts one row per member.",
+      "surfaces": [
+        "/dashboard?tab=calendar"
+      ],
+      "demo_state": "'Showing: U18 Sprint · Event is added for all 8 athletes in this group'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Team and individual calendars are common.",
+      "content_exclusion": "Covered by the calendar-month posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "calendar-add-event",
+      "name": "Add typed calendar events",
+      "user_type": "coach",
+      "what_it_does": "Adds an event with a title, a type (session, homework, goal, reminder or other), an optional time and notes. It can also be copied to the coach's own calendar.",
+      "pain_removed": "Coaches can assign homework, goals and reminders as well as sessions.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx saveEvent POSTs /api/calendar, with a second POST when 'Also add to my personal calendar' is ticked. The route validates validTypes. Events reach the athlete because visible_to_athlete defaults to true (migration 018).",
+      "surfaces": [
+        "/dashboard?tab=calendar"
+      ],
+      "demo_state": "'Add Event , Mia's Calendar' modal with Homework selected and 'Also add to my personal calendar' ticked",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common.",
+      "content_exclusion": "Covered by the calendar-month posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "messaging-unread",
+      "name": "Unread counts and read receipts",
+      "user_type": "coach",
+      "what_it_does": "Shows unread badges in the nav, ticker and roster rows, and 'Read' under coach messages the athlete has opened.",
+      "pain_removed": "No athlete message goes unnoticed.",
+      "status": "shipped",
+      "status_evidence": "/api/messages/unread returns counts per athlete. The read_at PATCH and GET mark messages read. dashboard/page.tsx totalUnreadAll drives the badges.",
+      "surfaces": [
+        "/dashboard (all tabs)"
+      ],
+      "demo_state": "Nav Messages badge '3', with an ember dot on Mia's roster row",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard.",
+      "content_exclusion": "Covered by the messaging-voice posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "coach-profile",
+      "name": "Coach profile and sport",
+      "user_type": "coach",
+      "what_it_does": "View and edit name, login email and sport (wheel picker). Saving closes the form and updates the header and cache.",
+      "pain_removed": "Coaches control how they appear in reports and emails.",
+      "status": "shipped",
+      "status_evidence": "dashboard/page.tsx SettingsTab saveProfile PATCHes /api/coach-profile. An email change calls admin.updateUserById.",
+      "surfaces": [
+        "/dashboard?tab=settings"
+      ],
+      "demo_state": "Read view: Name, Email, 'Sport: Tennis' with Edit profile",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard.",
+      "content_exclusion": "Account housekeeping."
+    },
+    {
+      "id": "athlete-switcher",
+      "name": "Switch athlete from profile",
+      "user_type": "coach",
+      "what_it_does": "Tapping the athlete's name in the profile header opens a searchable, squad-filterable picker that jumps to another athlete and keeps the current tab.",
+      "pain_removed": "Coaches can go down a squad after training without returning to the roster.",
+      "status": "shipped",
+      "status_evidence": "app/components/AthleteSwitcher.tsx. athletes/[id]/page.tsx switchTo calls router.replace with ?tab kept.",
+      "surfaces": [
+        "/athletes/[id]"
+      ],
+      "demo_state": "Sheet over the profile listing the squad, with the current athlete marked",
+      "competitor_gap": false,
+      "competitor_gap_why": "Convenience feature.",
+      "content_exclusion": "Navigation."
+    },
+    {
+      "id": "profile-scoreboard",
+      "name": "Sessions with you and spine",
+      "user_type": "coach",
+      "what_it_does": "Shows the total number of sessions with this athlete, a 12-week bar chart, how many this week, and a warning past a gap ('Last session 19 days ago'). Also shows a shared/private split.",
+      "pain_removed": "Coaches see their history with this athlete at a glance.",
+      "status": "shipped",
+      "status_evidence": "athletes/[id]/page.tsx buildSpine(sessions) with SPINE_GAP_DAYS and spineGap, using all sessions from /api/sessions?athlete_id.",
+      "surfaces": [
+        "/athletes/[id] (Overview)"
+      ],
+      "demo_state": "'24 SESSIONS WITH YOU' with bars and 'Last session 19 days ago' in ember",
+      "competitor_gap": false,
+      "competitor_gap_why": "Activity history is common.",
+      "content_exclusion": "Covered by the last-time-you-said posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "profile-wellness-snapshot",
+      "name": "Wellness snapshot per metric",
+      "user_type": "coach",
+      "what_it_does": "Shows the latest overall score with a 7-check-in bar chart, a bar for each metric, a 'Low:' line in plain words, and 'Needs attention' when an alert is active.",
+      "pain_removed": "Coaches know how this athlete is arriving today.",
+      "status": "shipped",
+      "status_evidence": "athletes/[id]/page.tsx fetches /api/wellness?athlete_id&days=14 (which returns the alert). Uses WELLNESS_METRICS and wellnessDriver. A failed read is shown as distinct from 'no check-ins'.",
+      "surfaces": [
+        "/athletes/[id] (Overview, header chip)"
+      ],
+      "demo_state": "'2.4/5 · Needs attention' with 'Low: sleep, sore right calf'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Wellness monitoring tools do this.",
+      "content_exclusion": "Covered by the roster-wellness-driver posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "wellness-history",
+      "name": "30-day wellness trend graph",
+      "user_type": "coach",
+      "what_it_does": "A line chart of each wellness metric over 30 days with check-in history.",
+      "pain_removed": "Coaches can see trends rather than single bad days.",
+      "status": "shipped",
+      "status_evidence": "app/components/WellnessGraph.tsx fetches /api/wellness?athlete_id&days=30 and draws a pixel-true SVG.",
+      "surfaces": [
+        "/athletes/[id]?tab=wellness"
+      ],
+      "demo_state": "30-day lines for sleep, energy, mood and soreness",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common in monitoring tools.",
+      "content_exclusion": "Covered by the roster-wellness-driver posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "profile-session-history",
+      "name": "Session history with replies",
+      "user_type": "coach",
+      "what_it_does": "Lists all sessions with the summary and the athlete's reply chip (e.g. Got it, Working on it, Not sure) or a Private chip. Expanding a session shows the audio, AI summary and full transcript, plus share/unshare, open, PDF and video upload.",
+      "pain_removed": "Coaches see each session alongside how the athlete took it.",
+      "status": "shipped",
+      "status_evidence": "athletes/[id]/page.tsx uses /api/sessions?athlete_id (no cap), responseOption(athlete_response), toggleShare (PATCH /api/sessions/[id]), SessionAudioPlayer and VideoAnnotator.",
+      "surfaces": [
+        "/athletes/[id] (Overview, Sessions)"
+      ],
+      "demo_state": "Session card expanded with 'AI Summary', a reply chip 'Not sure', and a Share toggle",
+      "competitor_gap": true,
+      "competitor_gap_why": "Athlete comprehension replies attached to each coaching session are rare.",
+      "content_exclusion": "Covered by the last-time-you-said posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "coach-notes",
+      "name": "Private coach notes",
+      "user_type": "coach",
+      "what_it_does": "Free-text dated notes per athlete with a list view.",
+      "pain_removed": "Coaches keep observations and plans next to the athlete.",
+      "status": "shipped",
+      "status_evidence": "athletes/[id]/page.tsx saveNote and loadNotes call /api/notes GET and POST (scope-checked). An error state is distinct from 'No notes yet'.",
+      "surfaces": [
+        "/athletes/[id]?tab=notes"
+      ],
+      "demo_state": "A note card dated 12 Nov",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard.",
+      "content_exclusion": "Private notes are table stakes in every competitor."
+    },
+    {
+      "id": "athlete-profile-fields",
+      "name": "Athlete profile, metrics, photo",
+      "user_type": "coach",
+      "what_it_does": "Edit sport, position, free-text height, goals, sport metrics as key/value pairs, custom fields and a photo. The saved values are shown back read-only.",
+      "pain_removed": "Coaches keep one record of each athlete's details and benchmarks.",
+      "status": "shipped",
+      "status_evidence": "athletes/[id]/page.tsx saveProfile and uploadPhoto call PATCH /api/athletes/[id] (allowed fields list) and /api/athletes/[id]/photo with a signed upload. Head only (the tab is hidden for assistants).",
+      "surfaces": [
+        "/athletes/[id]?tab=profile"
+      ],
+      "demo_state": "Read view: 'Tennis · Baseliner · 172cm', Metrics '40m sprint 5.2s'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard.",
+      "content_exclusion": "Record-keeping fields."
+    },
+    {
+      "id": "insight-recurring-cues",
+      "name": "What you keep repeating",
+      "user_type": "coach",
+      "what_it_does": "Lists up to 5 short phrases (3 words max) the coach said in 3 or more of the last 8 weeks' sessions with this athlete, with counts and links to the sessions. Roster names are ignored.",
+      "pain_removed": "Coaches notice cues that aren't landing because they keep repeating them.",
+      "status": "shipped",
+      "status_evidence": "app/components/CoachInsights.tsx calls /api/coach/insights?athlete_id (head only, roster-checked), which uses lib/insights.ts recurringThemes over transcripts and summaries. Only phrases and counts leave the server.",
+      "surfaces": [
+        "/athletes/[id] (Overview)"
+      ],
+      "demo_state": "'\"follow through\" , you've mentioned it in 5 of the last 7 sessions'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Typical coaching apps do not analyse coach speech for repeated cues."
+    },
+    {
+      "id": "insight-not-sure-signal",
+      "name": "'Not sure' reply signal",
+      "user_type": "coach",
+      "what_it_does": "Counts Got it, Working on it and Not sure replies and unanswered takeaways. Flags when 2 or more of the last 5 replies were 'not sure' ('maybe rephrase') and links to those sessions.",
+      "pain_removed": "Coaches learn when their feedback isn't understood.",
+      "status": "shipped",
+      "status_evidence": "lib/insights.ts replySignal (NOT_SURE_FLAG_AT=2, LOOKBACK=5). Athletes answer via /api/sessions/[id]/respond from app/athlete/page.tsx. Shown in CoachInsights.tsx.",
+      "surfaces": [
+        "/athletes/[id] (Overview)"
+      ],
+      "demo_state": "'Mia said \"not sure\" to 2 of their last 5 takeaways , maybe rephrase.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "A feedback-comprehension signal is novel."
+    },
+    {
+      "id": "access-log",
+      "name": "Athlete access activity log",
+      "user_type": "coach",
+      "what_it_does": "Shows the last 20 times the athlete opened shared sessions or other content, with times. Coaches' own views are not logged.",
+      "pain_removed": "Coaches know whether feedback was actually read.",
+      "status": "shipped",
+      "status_evidence": "app/components/AccessLog.tsx calls /api/coach/access-log (roster-scoped). Writes come from /api/sessions/[id]/detail and /seen via lib/access-log.ts recordAccess (migration 030). Head only. Also: lib/access-log.ts. Migration 030. app/api/sessions/[id]/detail (session_opened) and /seen (summary_viewed, called from app/athlete/page.tsx). app/api/coach/access-log. app/components/AccessLog.tsx. Disclosure at app/athlete/page.tsx line 2051. The video_viewed, audio_played and report_viewed kinds are defined but no client records them. Shipped for session opens and summary views. The video_viewed, audio_played and report_viewed kinds are defined but nothing records them.",
+      "surfaces": [
+        "/athletes/[id] Activity",
+        "/sessions/[id] 'Seen by'",
+        "/athletes/[id] (Overview)"
+      ],
+      "demo_state": "'Opened \"Serve mechanics\" · Fri 4:12pm'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Per-item read audit trails are uncommon in coaching apps.",
+      "content_exclusion": "Covered by the seen-receipt posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "athlete-calendar-tab",
+      "name": "Athlete calendar and upcoming",
+      "user_type": "coach",
+      "what_it_does": "Shows this athlete's month calendar, upcoming booked sessions for the next 2 months with check-in status, and a jump to the month of their most recent session.",
+      "pain_removed": "Coaches don't misread an empty month as 'no sessions'.",
+      "status": "shipped",
+      "status_evidence": "athletes/[id]/page.tsx fetches /api/calendar?athlete_id&month, keeps a separate 2-month upcoming window, and has the 'Jump to their most recent session →' button.",
+      "surfaces": [
+        "/athletes/[id]?tab=calendar"
+      ],
+      "demo_state": "'Mia's calendar · 24 sessions recorded · most recent 2 Nov 2026' with the upcoming list",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common.",
+      "content_exclusion": "Covered by the calendar-month posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "profile-message-link",
+      "name": "Message from athlete profile",
+      "user_type": "coach",
+      "what_it_does": "The Message button on the profile opens Messages with this athlete's thread preselected.",
+      "pain_removed": "Coaches go from reviewing an athlete straight to contacting them.",
+      "status": "shipped",
+      "status_evidence": "athletes/[id]/page.tsx links to /dashboard?tab=messages&athlete={id}. dashboard/page.tsx reads urlAthlete into msgPreselectedId.",
+      "surfaces": [
+        "/athletes/[id] → /dashboard?tab=messages"
+      ],
+      "demo_state": "Thread open on Mia",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard.",
+      "content_exclusion": "Covered by the messaging-voice posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "athlete-join-by-code",
+      "name": "Athlete joins coach by code",
+      "user_type": "athlete",
+      "what_it_does": "An athlete who signed up without a code types one into the athlete portal and goes onto that coach's roster as active straight away.",
+      "pain_removed": "An athlete who registered before getting the code can still link to the coach without starting over.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx (around line 1291) POSTs to /api/join. app/api/join/route.ts checks the athlete role, looks up the coach by invite_code, rejects duplicates and inserts an athletes row with activationFields. Sign-up shows an 'unlinked code' state if the code fails.",
+      "surfaces": [
+        "/athlete (unlinked state)",
+        "/signup",
+        "/signup?code=…",
+        "/athlete (join card)"
+      ],
+      "demo_state": "'Your account isn't linked to a coach yet' with the code field",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common pattern.",
+      "content_exclusion": "Covered by the coach-invite-code-qr posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "assistant-access-notice",
+      "name": "Athletes told about new assistant",
+      "user_type": "athlete",
+      "what_it_does": "When an assistant gets access to an athlete, a message from the head coach appears in that athlete's thread saying who the assistant is and what they can see.",
+      "pain_removed": "A teen athlete isn't surprised to find a new adult reading their sessions and check-ins.",
+      "status": "shipped",
+      "status_evidence": "lib/staff-notice.ts noticeAssignedAthletes inserts the messages. It is called from app/api/staff/route.ts (on assignment) and app/api/staff/accept/route.ts. The wording is lib/staff-invite.ts assignedNoticeText.",
+      "surfaces": [
+        "Athlete messages thread",
+        "/athlete Messages"
+      ],
+      "demo_state": "Thread message: '<Name> is an assistant coach on <Head>'s team… can now see your sessions'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Telling the athlete when someone new gets access is rare in coaching apps.",
+      "content_exclusion": "Covered by the assistant-coach-invites posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "athlete-weekly-digest",
+      "name": "Athlete weekly digest in-app",
+      "user_type": "athlete",
+      "what_it_does": "An in-app look back at the week: what the coach shared, takeaways, the athlete's replies, check-in days and changes to availability. No streaks or scores.",
+      "pain_removed": "Athletes see the whole week at a glance without scrolling through every session.",
+      "status": "shipped",
+      "status_evidence": "app/components/AthleteDigest.tsx and lib/digest.ts buildDigest/isDigestDay, rendered in app/athlete/page.tsx. In-app only: no email or push (lib/push.ts header).",
+      "surfaces": [
+        "/athlete",
+        "/athlete Today"
+      ],
+      "demo_state": "Digest card: week range, takeaways, 'checked in on 4 days'",
+      "competitor_gap": true,
+      "competitor_gap_why": "A no-streak, no-score weekly recap aimed at teen wellbeing.",
+      "content_exclusion": "Covered by the training-rhythm posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "nod-naming",
+      "name": "Shared feedback called a 'nod'",
+      "user_type": "athlete",
+      "what_it_does": "Shared session feedback is called a 'nod' everywhere the athlete sees it: 'Nods from your coach', 'Max gave you a nod', 'Read your nod'.",
+      "pain_removed": "Feedback reads as encouragement, not a report card.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx lines 1867 and 2040. app/sessions/[id]/page.tsx line 988. lib/notify.ts notifySessionShared. lib/push.ts line 109.",
+      "surfaces": [
+        "/athlete",
+        "/sessions/[id]",
+        "email",
+        "push"
+      ],
+      "demo_state": "'Nods from your coach' section header on the athlete home",
+      "competitor_gap": true,
+      "competitor_gap_why": "A distinctive, warm name for feedback.",
+      "content_exclusion": "Brand vocabulary, used inside posts rather than as one."
+    },
+    {
+      "id": "multi-athlete-privacy",
+      "name": "Group transcript and audio withheld",
+      "user_type": "athlete",
+      "what_it_does": "For squad and several-athlete recordings, the athlete gets only their own summary; the transcript and audio are never sent to their device.",
+      "pain_removed": "Children don't read or hear what the coach said about teammates.",
+      "status": "shipped",
+      "status_evidence": "detail route nulls the transcript/audio when group_id or shared_recording_id is set; audio-url route returns 403; /api/athlete/sessions list omits transcript; migration 033 narrows RLS. UI caveat: the portal's 'View full transcript' says 'No transcript was saved' for several-mode sessions",
+      "surfaces": [
+        "/sessions/[id]",
+        "/athlete",
+        "/athlete Sessions tab"
+      ],
+      "demo_state": "Portal note 'This was a squad session. Your summary above is yours…'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Safeguarding for youth groups"
+    },
+    {
+      "id": "first-login-welcome",
+      "name": "First-login welcome screen",
+      "user_type": "athlete",
+      "what_it_does": "On first visit, a linked athlete sees a three-step explainer (check in daily, view your sessions, message your coach) before reaching the portal.",
+      "pain_removed": "A new teenage user learns what the app is for in one screen.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx: shown when hasOnboarded===false, there are no sessions, athleteId is set and no join just happened. Dismissal is stored in localStorage cv_onboarded_<uid>.",
+      "surfaces": [
+        "/athlete"
+      ],
+      "demo_state": "'Welcome to Pindar, Mia.' with three cards and a 'Let's go →' button",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common onboarding pattern.",
+      "content_exclusion": "First-run furniture."
+    },
+    {
+      "id": "nods-feed",
+      "name": "Nods from your coach feed",
+      "user_type": "athlete",
+      "what_it_does": "Home shows the newest shared session as a featured card marked NEWEST, then the two before it as rows; the Sessions tab lists every shared session as an expandable card.",
+      "pain_removed": "The athlete has one place for the coach's feedback instead of hunting through texts and voice memos.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx (home section titled 'Nods from your coach'; Sessions tab list) ← GET /api/athlete/sessions (app/api/athlete/sessions/route.ts: service role, the caller's athlete rows, shared_with_athlete=true, fixed column list with no transcript) ← sessions table written by POST /api/sessions.",
+      "surfaces": [
+        "/athlete (Today and Sessions tabs)"
+      ],
+      "demo_state": "Home card with the NEWEST badge, title, bullet summary and a 'Read session →' footer",
+      "competitor_gap": true,
+      "competitor_gap_why": "Feedback comes from the coach's spoken recording, rewritten for the athlete, rather than a typed note or a raw file.",
+      "content_exclusion": "Covered by the ai-session-summary posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "ai-session-summary",
+      "name": "AI summary of coach's talk",
+      "user_type": "athlete",
+      "what_it_does": "Each shared session shows at most five bullet points summarising what the coach said in the recording, written for the athlete.",
+      "pain_removed": "The athlete reads the coaching points in seconds instead of replaying several minutes of audio.",
+      "status": "shipped",
+      "status_evidence": "lib/quick-summary.ts + lib/summary-prompt.ts (gpt-4o-mini, capped at 5 bullets, guardSummary drops anything the coach did not say, body/weight comments stripped, content gate) called from app/api/sessions/route.ts, or the coach's edited draft is used as sent. Rendered in app/athlete/page.tsx (home bullets, 'Coach Summary' in the Sessions tab) and on app/sessions/[id]/page.tsx under 'Session summary'.",
+      "surfaces": [
+        "/athlete",
+        "/sessions/[id]"
+      ],
+      "demo_state": "Session page 'Session summary' with 3 bullets",
+      "competitor_gap": true,
+      "competitor_gap_why": "A voice recording becomes an athlete-safe summary with guardrails; most team apps only carry typed notes."
+    },
+    {
+      "id": "take-into-next-session",
+      "name": "Take into next session",
+      "user_type": "athlete",
+      "what_it_does": "Shows the coach's one forward-looking instruction, extracted from the recording or typed by the coach, as the highlighted 'Take into next session' line.",
+      "pain_removed": "The athlete knows the one thing to work on next time without re-reading everything.",
+      "status": "shipped",
+      "status_evidence": "focus_points[0] (NEXT: line, at most MAX_NEXT_LENGTH) saved in app/api/sessions/route.ts. Home .ah-take block in app/athlete/page.tsx; numbered list on app/sessions/[id]/page.tsx (the coach can add or remove points there).",
+      "surfaces": [
+        "/athlete home card",
+        "/sessions/[id]"
+      ],
+      "demo_state": "Ember-edged box 'TAKE INTO NEXT SESSION , Keep your elbow high on the follow-through'",
+      "competitor_gap": true,
+      "competitor_gap_why": "The single next action is pulled automatically from what the coach said."
+    },
+    {
+      "id": "takeaway-reminder",
+      "name": "Training-day takeaway reminder",
+      "user_type": "athlete",
+      "what_it_does": "On a day the coach has planned a session, the latest takeaway (from an earlier day) is pinned at the top of Home as 'Today: remember ,' with the training time and the reply chips.",
+      "pain_removed": "The athlete is reminded of last session's instruction on the day it matters.",
+      "status": "shipped",
+      "status_evidence": "lib/digest.ts trainingToday and takeawayPlacement (returns 'top' when trainsToday and the takeaway is older than today). app/components/TakeawayReminder.tsx. Calendar data comes from GET /api/calendar. This is in-app only; there is no push or email.",
+      "surfaces": [
+        "/athlete Today"
+      ],
+      "demo_state": "'TODAY: REMEMBER , Training at 4:30pm today' card with the takeaway",
+      "competitor_gap": true,
+      "competitor_gap_why": "Ties the last feedback to the next scheduled session automatically."
+    },
+    {
+      "id": "coach-recording-playback",
+      "name": "Replay coach's voice (1:1 only)",
+      "user_type": "athlete",
+      "what_it_does": "For an individual shared session, the athlete can stream the coach's original audio recording.",
+      "pain_removed": "The athlete can hear the coach's actual tone and words, not only a summary.",
+      "status": "shipped",
+      "status_evidence": "app/components/SessionAudioPlayer.tsx (Play recording, preload none, iOS WebM fallback to a download link) → GET app/api/sessions/[id]/audio-url/route.ts (1h signed URL from the private session-audio bucket; for athletes only when shared_with_athlete and no group_id or shared_recording_id). The detail route also returns audio_url, used on app/sessions/[id]/page.tsx. DEFECT: in the Sessions tab, app/athlete/page.tsx renders the player whenever audio_path is set, and /api/athlete/sessions returns audio_path for squad rows too. On squad sessions the button is shown, the route returns 403, and the athlete sees 'You do not have access to that.' The home card also shows an 'Audio' badge on squad sessions. Also: detail route sets athleteMayHearIt = !group_id && !sharedRecording; audio-url route gives athletes access for shared, non-multi recordings; app/athlete/page.tsx:2157 SessionAudioPlayer. GAP: the portal shows an 'Audio' badge and player for every row with audio_path, including squad/several sessions, where playback then fails with 'Forbidden' Shipped for 1:1 sessions, end to end. Defect outside the claim: the portal also shows an Audio badge on squad and several-athlete sessions, which then fails with Forbidden.",
+      "surfaces": [
+        "/sessions/[id]",
+        "/athlete portal",
+        "/athlete Sessions tab (inline)"
+      ],
+      "demo_state": "Recording band with a round play button labelled 'PLAY RECORDING'",
+      "competitor_gap": true,
+      "competitor_gap_why": "The athlete gets the coach's own voice alongside a written summary."
+    },
+    {
+      "id": "transcript-view",
+      "name": "Full transcript (1:1 only)",
+      "user_type": "athlete",
+      "what_it_does": "On individual sessions, the athlete can expand 'View full transcript' and read the coach's words verbatim.",
+      "pain_removed": "The athlete can check exactly what was said without listening again.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx loadTranscript → GET app/api/sessions/[id]/detail/route.ts (the transcript is null for an athlete on group_id or shared_recording_id rows). app/sessions/[id]/page.tsx 'Full transcript' with word count. Caveat: on a 'several athletes' shared recording, the Sessions tab still offers 'View full transcript' and then shows 'No transcript was saved for this session.', which is misleading.",
+      "surfaces": [
+        "/athlete Sessions tab",
+        "/sessions/[id]"
+      ],
+      "demo_state": "Expanded transcript panel",
+      "competitor_gap": false,
+      "competitor_gap_why": "Transcripts are common in voice-note tools.",
+      "content_exclusion": "Covered by the coach-recording-playback posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "focus-card",
+      "name": "Save takeaway as image",
+      "user_type": "athlete",
+      "what_it_does": "Turns the session's first takeaway into a branded 1080×1350 PNG showing only the sentence, the date and the wordmark, and opens the phone's share sheet or downloads it.",
+      "pain_removed": "The athlete can keep the instruction as a wallpaper or story without exposing personal details.",
+      "status": "shipped",
+      "status_evidence": "app/components/FocusCard.tsx (canvas render, navigator.share with files, download fallback 'focus.png') rendered only for !isCoach in app/sessions/[id]/page.tsx when focus_points exist. Client-only; no server.",
+      "surfaces": [
+        "/sessions/[id] ('Save this as an image')"
+      ],
+      "demo_state": "Generated card image with the takeaway sentence",
+      "competitor_gap": true,
+      "competitor_gap_why": "A shareable artefact for minors that deliberately carries no identifying data."
+    },
+    {
+      "id": "training-rhythm",
+      "name": "12-week training rhythm bars",
+      "user_type": "athlete",
+      "what_it_does": "Under the check-in card, bars show shared sessions per week over 12 weeks, with this week highlighted, once there are at least 3 sessions.",
+      "pain_removed": "The athlete can see their training add up over time.",
+      "status": "shipped",
+      "status_evidence": "lib/training-spine.ts buildSpine, SPINE_MIN_SESSIONS, SPINE_WEEKS. app/athlete/page.tsx .ah-spine.",
+      "surfaces": [
+        "/athlete Today"
+      ],
+      "demo_state": "Bar strip captioned 'Training rhythm · 9 sessions over 12 weeks · 1 this week'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Activity charts are common, though this one deliberately has no streaks."
+    },
+    {
+      "id": "two-tap-checkin",
+      "name": "Two-tap daily readiness check-in",
+      "user_type": "athlete",
+      "what_it_does": "The athlete picks Flat, OK or Good, leaves 'Nothing sore' (the default) or switches to 'Something's sore', and taps Done. Each day's answer is one row and can be redone.",
+      "pain_removed": "Replaces an 8–11 tap, five-slider form that teenagers abandon.",
+      "status": "shipped",
+      "status_evidence": "app/components/CheckIn.tsx → POST app/api/wellness/route.ts (upsert on athlete_id,check_date using the phone's date). lib/readiness.ts maps Flat/OK/Good to 2/3/4 for energy, mood and stress; soreness comes from the marked areas; sleep_q is left NULL. NOTE: the current form does NOT ask about energy, mood, sleep or stress separately. Those are derived (or null for sleep) and only legacy rows contain real five-metric answers. Do not market it as tracking sleep, mood or stress.",
+      "surfaces": [
+        "/athlete 'Check in' tab",
+        "Home card"
+      ],
+      "demo_state": "Three-way control with OK selected, 'Nothing sore' pressed, and a DONE button",
+      "competitor_gap": true,
+      "competitor_gap_why": "Much lighter than the multi-question wellness forms in AMS tools (TeamBuildr, Smartabase)."
+    },
+    {
+      "id": "checkin-history",
+      "name": "Your 14-day check-in strip",
+      "user_type": "athlete",
+      "what_it_does": "Shows the athlete's own last 14 days as coloured cells plus one plain sentence, for example the biggest drop in energy, sleep or soreness on legacy rows, or 'You checked in on N of the last 14 days'.",
+      "pain_removed": "The athlete gets something back for checking in.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx WellnessHistory ← GET /api/wellness?athlete_id&days=21 (RLS limits it to the athlete's own rows). Mood and stress are deliberately never put into words for the athlete.",
+      "surfaces": [
+        "/athlete Check in tab ('Trends →' from Home)"
+      ],
+      "demo_state": "14 coloured cells with today ringed, 'You checked in on 9 of the last 14 days.'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Personal trend views are common.",
+      "content_exclusion": "Covered by the two-tap-checkin posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "offline-checkin-queue",
+      "name": "Check-in saved without signal",
+      "user_type": "athlete",
+      "what_it_does": "If the check-in POST fails because the phone is offline, the answer is stored on the phone (IndexedDB) and sent automatically when signal returns. Answers older than the server's one-day window are dropped with a visible note.",
+      "pain_removed": "A check-in made at the side of a pitch with no signal is not lost.",
+      "status": "shipped",
+      "status_evidence": "lib/checkin-queue.ts (putCheckin, drainCheckins, sendability, classifyResponse). app/components/CheckIn.tsx ('Saved on this phone. It'll send when you have signal.', drains on mount and on 'online'). app/athlete/page.tsx drains on load. Caveat: public/sw.js never caches HTML, so the portal cannot be opened offline. The queue covers losing signal while the page is open, not offline launch. It does nothing in private mode.",
+      "surfaces": [
+        "/athlete Check in tab"
+      ],
+      "demo_state": "'Checked in.' with the note 'Saved on this phone. It'll send when you have signal.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Few wellness apps handle loss of signal mid-submit.",
+      "content_exclusion": "Reliability rail. Marketing \"works with no signal\" invites the recording case, which is partial."
+    },
+    {
+      "id": "availability-view",
+      "name": "See your injury availability",
+      "user_type": "athlete",
+      "what_it_does": "Home shows, read-only, any open injury the coach logged: the body area, status (Out = not training this, Modified = training with changes) and expected return date.",
+      "pain_removed": "The athlete does not find out from a team sheet that they have been marked unavailable.",
+      "status": "shipped",
+      "status_evidence": "GET app/api/injuries/route.ts (the athlete may read only their own; writes are coach-only, enforced by the route and the migration 025 RLS). app/athlete/page.tsx 'Your availability' with 'Your coach set this. Talk to them if it does not match how you feel.' lib/injury.ts statuses.",
+      "surfaces": [
+        "/athlete Today"
+      ],
+      "demo_state": "'Your availability , Left ankle [Training, with changes] · Your coach has you back around Fri 10 Oct.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Shows the injury record to the minor it describes, who cannot clear themselves to play.",
+      "content_exclusion": "Covered by the injury-body-map posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "athlete-calendar",
+      "name": "Calendar: coach plus personal events",
+      "user_type": "athlete",
+      "what_it_does": "A month calendar shows the coach's shared events and sessions plus the athlete's own reminders and goals, which they can add (title, type, time, notes) and delete.",
+      "pain_removed": "The athlete has training and personal plans in one place.",
+      "status": "shipped",
+      "status_evidence": "app/components/Calendar.tsx (role athlete; an event can be deleted only by the role that created it). app/athlete/page.tsx saveCalendarEvent and deleteCalEvent → app/api/calendar/route.ts (athlete GET returns coach events with visible_to_athlete plus their own; POST verifies athlete_user_id; DELETE by creator only). Coach GET branches filter created_by_role='coach', so coaches never see athletes' personal events, matching the on-screen copy.",
+      "surfaces": [
+        "/athlete Calendar tab"
+      ],
+      "demo_state": "Month grid with a coach session marked 'From coach' and a 'My event' reminder",
+      "competitor_gap": false,
+      "competitor_gap_why": "Team calendars are standard.",
+      "content_exclusion": "Covered by the calendar-month posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "nod-notification",
+      "name": "'Coach gave you a nod' alerts",
+      "user_type": "athlete",
+      "what_it_does": "When a session is shared, the athlete gets an email 'Max gave you a nod' with up to 200 characters of their summary, and a push titled 'Max gave you a nod'.",
+      "pain_removed": "The athlete knows new feedback is waiting.",
+      "status": "partial",
+      "status_evidence": "Email: lib/notify.ts notifySessionShared, called from POST app/api/sessions/route.ts when shared at save and from PATCH app/api/sessions/[id]/route.ts on the first share. Push: lib/push.ts notifyPushSessionShared is called ONLY from POST /api/sessions, so a session shared later via the toggle sends email but no push. Push also requires VAPID configuration and opt-in. Also: route.ts POST calls notifySessionShared (lib/notify.ts:212) to athletes.email only. GAPS: caretakers are NOT emailed; sharing later via the toggle (PATCH) sends nothing, because the calendar row already exists → outcome 'existed' → no notify Also: route.ts after(() => notifyPushSessionShared); lib/push.ts returns early if pushConfig() is missing. Only on the save path; PATCH share does not push Partial: email and push fire when a session is shared at save. Sharing it later from the toggle sends neither, because the calendar event already exists (syncSessionCalendarEvent returns existed, app/api/sessions/[id]/route.ts:118).",
+      "surfaces": [
+        "Email",
+        "Device push",
+        "lock screen"
+      ],
+      "demo_state": "Email heading 'Max gave you a nod' with a 'Read your nod' button",
+      "competitor_gap": false,
+      "competitor_gap_why": "Share notifications are standard."
+    },
+    {
+      "id": "private-notes-typed",
+      "name": "Private typed notes",
+      "user_type": "athlete",
+      "what_it_does": "The athlete writes, edits and deletes (with confirmation) private notes, either general or attached to a session, and can filter them by session. Coaches cannot read them.",
+      "pain_removed": "The athlete has a personal training journal next to the coach's feedback.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx saveNote, updateNote, deleteNote and NoteCard → app/api/athlete-notes/route.ts (filters on athlete_user_id) → the athlete_notes RLS policy 'owner full access' (supabase/migrations/017). No coach code reads athlete_notes.",
+      "surfaces": [
+        "/athlete Notes tab (desktop tab",
+        "reached on mobile from the Home 'Add a private note' button)",
+        "the session card in the Sessions tab"
+      ],
+      "demo_state": "'Your notes are 100% private , coaches cannot see them.' with a note card",
+      "competitor_gap": false,
+      "competitor_gap_why": "Journals exist in training apps.",
+      "content_exclusion": "Table stakes."
+    },
+    {
+      "id": "voice-private-notes",
+      "name": "Voice-to-text private notes",
+      "user_type": "athlete",
+      "what_it_does": "The athlete taps 'Voice note', speaks, and the recording is transcribed into a private text note tagged as Voice. The audio itself is not kept.",
+      "pain_removed": "Reflecting after training without typing on a phone.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx startNoteRecording (MediaRecorder with SUPPORTED_RECORDING_TYPES, mp4 first) → POST /api/transcribe (Whisper) → POST /api/athlete-notes note_type 'voice'. Errors are shown for a denied microphone, no microphone, or empty audio.",
+      "surfaces": [
+        "/athlete Notes tab"
+      ],
+      "demo_state": "Note card with a '🎙️ Voice' badge",
+      "competitor_gap": false,
+      "competitor_gap_why": "Dictation is common.",
+      "content_exclusion": "Athlete-only journalling; real, but off the coach-athlete story the 30 days tell. Candidate for a later run."
+    },
+    {
+      "id": "privacy-boundaries",
+      "name": "What athletes cannot see",
+      "user_type": "athlete",
+      "what_it_does": "Withholds on the server: unshared sessions, unshared videos, coach drawings on the athlete's clips until sent back, squad and multi-athlete transcripts and audio, the coach-only 'How they came in' wellness panel, and clip file names. Push payloads name only the sender.",
+      "pain_removed": "Coach-private material and teammates' information do not reach a teenager's phone.",
+      "status": "shipped",
+      "status_evidence": "app/api/athlete/sessions/route.ts (shared only, no transcript column). app/api/sessions/[id]/detail/route.ts (transcript and audio rules; checkin null for athletes). lib/video-clip.ts athleteMayViewVideo and athleteSeesAnnotations. app/api/share/clip/[videoId]/route.ts (file_name null for athletes). lib/push.ts (payload keys title, url, tag only). Respond and seen routes return 404 for unshared sessions. Caveats as noted: the squad audio button is broken, and generic squad summaries can include names.",
+      "surfaces": [
+        "All athlete surfaces"
+      ],
+      "demo_state": "Squad session showing a summary but no transcript, with an explanation",
+      "competitor_gap": true,
+      "competitor_gap_why": "Built specifically for 13–18 year olds.",
+      "content_exclusion": "Covered by multi-athlete-privacy and safeguarding-rls-gate posts."
+    },
+    {
+      "id": "push-deep-link-tabs",
+      "name": "Deep links to portal tabs",
+      "user_type": "athlete",
+      "what_it_does": "/athlete?tab=messages (and sessions, calendar, notes, wellness) opens that tab directly, which is used by push notification taps.",
+      "pain_removed": "Tapping a notification lands on the right screen.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx useState initialiser reads ?tab=. lib/push.ts url '/athlete?tab=messages'.",
+      "surfaces": [
+        "/athlete?tab=…"
+      ],
+      "demo_state": "Messages tab opened from a notification",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard.",
+      "content_exclusion": "Navigation."
+    },
+    {
+      "id": "safe-signout",
+      "name": "Two-step sign out",
+      "user_type": "athlete",
+      "what_it_does": "'Out' asks 'Sign out of Pindar?' (Stay / Sign out), and signing out also stops push to that phone.",
+      "pain_removed": "No accidental logouts from a stray tap.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx confirmOut and logout → forgetPushOnSignOut (lib/push-client.ts), clearCachedProfile.",
+      "surfaces": [
+        "/athlete header"
+      ],
+      "demo_state": "Confirmation strip under the header",
+      "competitor_gap": false,
+      "competitor_gap_why": "Minor UX detail.",
+      "content_exclusion": "Housekeeping."
+    },
+    {
+      "id": "daily-quote",
+      "name": "Daily motivational quote",
+      "user_type": "athlete",
+      "what_it_does": "Shows a rotating quote at the top of the athlete's Calendar tab.",
+      "pain_removed": "A small daily touch of motivation.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx getDailyQuote('athlete') from lib/quotes.ts.",
+      "surfaces": [
+        "/athlete Calendar tab"
+      ],
+      "demo_state": "Quote strip above the calendar",
+      "competitor_gap": false,
+      "competitor_gap_why": "Cosmetic.",
+      "content_exclusion": "Decoration; a post about it would undersell the product."
+    },
+    {
+      "id": "signup-role-onboarding",
+      "name": "Coach or athlete guided sign-up",
+      "user_type": "both",
+      "what_it_does": "Sign-up in several steps: pick coach or athlete, enter name, sport (wheel picker), level and goals, with optional email confirmation.",
+      "pain_removed": "Each account starts with a profile that fits its role, and nobody has to set it up later.",
+      "status": "shipped",
+      "status_evidence": "app/signup/page.tsx uses supabase.auth.signUp with metadata. Confirmation returns through app/auth/callback/route.ts (next=/signup?finish=1). app/api/complete-signup/route.ts writes the profile and generates the coach invite_code.",
+      "surfaces": [
+        "/signup",
+        "/signup/confirm"
+      ],
+      "demo_state": "Role step with the two cards, Coach and Athlete",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard onboarding.",
+      "content_exclusion": "Account housekeeping: sign-up is expected of any app, not a reason to choose one."
+    },
+    {
+      "id": "signin-password-reset",
+      "name": "Sign in and password reset",
+      "user_type": "both",
+      "what_it_does": "Sign in with email and password. 'Forgot password' sends an emailed link that opens /reset to set a new password.",
+      "pain_removed": "A user who forgets their password gets back in without contacting the coach or support.",
+      "status": "shipped",
+      "status_evidence": "app/page.tsx: signInWithPassword and resetPasswordForEmail (redirect /auth/callback?next=/reset). app/auth/callback/route.ts exchanges the PKCE code and blocks open redirects. app/reset/page.tsx calls updateUser({password}) and shows a 'link didn't work' state.",
+      "surfaces": [
+        "/",
+        "/reset",
+        "/auth/callback"
+      ],
+      "demo_state": "Reset link sent: 'check your inbox' confirmation",
+      "competitor_gap": false,
+      "competitor_gap_why": "Table stakes.",
+      "content_exclusion": "Account housekeeping."
+    },
+    {
+      "id": "assistant-scope-transcript-withholding",
+      "name": "Scoped access and transcript withholding",
+      "user_type": "both",
+      "what_it_does": "Athletes never receive raw transcripts or audio of squad or multi-athlete recordings, only their own summary. Assistants don't get transcripts that cover athletes they weren't assigned. The data is withheld by the server, not just hidden in the page.",
+      "pain_removed": "A coach's remark about one child doesn't reach other children or unassigned staff.",
+      "status": "shipped",
+      "status_evidence": "app/api/sessions/[id]/detail/route.ts nulls transcript and audio for group or shared recordings and sets transcript_withheld. app/api/sessions/route.ts recordingsWithheld. The withheld notice shows in app/athletes/[id]/page.tsx, app/sessions/[id]/page.tsx and app/pdf/session. lib/coach-scope.ts.",
+      "surfaces": [
+        "/sessions/[id]",
+        "/athletes/[id]",
+        "/pdf/session/[id]",
+        "save API"
+      ],
+      "demo_state": "'The full transcript is not shown: this recording is about athletes who have not been given to you.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Few apps handle what a group recording reveals about each child.",
+      "content_exclusion": "Covered by the assistant-coach-invites posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "safeguarding-rls-gate",
+      "name": "Child-safe data rules enforced",
+      "user_type": "both",
+      "what_it_does": "Database row-level security plus server-side role and roster checks on every route. A safeguarding scanner runs as a build gate. (The content gate on recordings is a separate feature: content-safety-gate.)",
+      "pain_removed": "Coaches and clubs can trust the app with minors' data.",
+      "status": "shipped",
+      "status_evidence": "supabase/migrations 001, 017, 033 (security_integrity) and 034/035. tools/safeguard-check.mjs rules SG1-SG11. lib/content-gate.ts (OpenAI moderation plus a fixed word list that always runs). Caretaker and email routes check roster ownership.",
+      "surfaces": [
+        "Cross-cutting"
+      ],
+      "demo_state": "Hard to show on screen. Use a 'built for 13-18 year olds' trust panel",
+      "competitor_gap": true,
+      "competitor_gap_why": "Explicit safeguarding for minors with build-time enforcement is rare."
+    },
+    {
+      "id": "email-notifications",
+      "name": "Email notifications for key events",
+      "user_type": "both",
+      "what_it_does": "Branded emails go out for: session shared (a 'nod'), new message (sent once per unread backlog, not per message), calendar event added (with a check-in request variant), and invites. Replies go to the coach's own inbox.",
+      "pain_removed": "Athletes who don't open the app every day still learn something is waiting.",
+      "status": "shipped",
+      "status_evidence": "lib/notify.ts sends through Gmail SMTP or Resend. Callers: app/api/sessions, sessions/[id], messages, calendar, athletes, staff. Needs GMAIL_* or RESEND_API_KEY to be set.",
+      "surfaces": [
+        "Email inbox",
+        "links to /athlete and /dashboard"
+      ],
+      "demo_state": "'Coach Max gave you a nod' email with a 'Read your nod' button",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common, though batching messages into one email per unread backlog is thoughtful.",
+      "content_exclusion": "Plumbing behind other features; each notification is marketed with the feature that sends it."
+    },
+    {
+      "id": "push-notifications",
+      "name": "Privacy-safe push notifications",
+      "user_type": "both",
+      "what_it_does": "Opt-in web push for new messages and shared sessions. The lock screen shows only who it is from (e.g. 'Max gave you a nod'), never message content, scores or summaries.",
+      "pain_removed": "A notification on a teen's lock screen never shows private content to a parent or teammate holding the phone.",
+      "status": "shipped",
+      "status_evidence": "lib/push.ts (closed list of kinds, title-only payload). lib/push-client.ts and app/api/push/subscribe handle subscribing and unsubscribing. public/sw.js handles push and notificationclick. app/components/PushOptIn.tsx on the dashboard and athlete page includes iOS 'Add to Home Screen' guidance. Needs VAPID env keys.",
+      "surfaces": [
+        "/dashboard and /athlete opt-in card",
+        "lock screen",
+        "/dashboard?tab=settings"
+      ],
+      "demo_state": "Lock screen showing 'Max gave you a nod' with no other content",
+      "competitor_gap": true,
+      "competitor_gap_why": "Content-free lock-screen notifications designed for minors.",
+      "content_exclusion": "Plumbing behind other features; also depends on VAPID set-up and per-device opt-in."
+    },
+    {
+      "id": "clip-share-link",
+      "name": "Timestamped annotated clip link",
+      "user_type": "both",
+      "what_it_does": "Copies a link to a session video at the current timecode, with the coach's drawings. Only the owning coach or that athlete can open it.",
+      "pain_removed": "The coach points an athlete to the exact moment in a video in one link.",
+      "status": "shipped",
+      "status_evidence": "app/components/VideoAnnotator.tsx copyShareLink builds /share/clip/[videoId]?session&t. app/share/clip/[videoId]/page.tsx. app/api/share/clip/[videoId]/route.ts returns 401 when signed out and checks coach or athlete access.",
+      "surfaces": [
+        "/share/clip/[videoId]"
+      ],
+      "demo_state": "Clip paused at the timecode with the drawing overlay",
+      "competitor_gap": false,
+      "competitor_gap_why": "Video tools offer timestamp links, but these links are private to coach and athlete.",
+      "content_exclusion": "Covered by the video-moments posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "pwa-install",
+      "name": "Installable home-screen app",
+      "user_type": "both",
+      "what_it_does": "Installs to the home screen as 'Pindar' and runs full screen, with maskable icons and iOS launch images.",
+      "pain_removed": "Feels like a native app with no app store download.",
+      "status": "shipped",
+      "status_evidence": "app/manifest.ts (standalone, icons). public/sw.js registered in app/layout.tsx. public/splash. There is no beforeinstallprompt button; only the iOS Add-to-Home-Screen text inside PushOptIn.",
+      "surfaces": [
+        "Browser install",
+        "home screen"
+      ],
+      "demo_state": "Pindar laurel icon on an iPhone home screen",
+      "competitor_gap": false,
+      "competitor_gap_why": "PWAs are common.",
+      "content_exclusion": "Distribution detail. Worth a line in a bio, not a post."
+    },
+    {
+      "id": "auto-update",
+      "name": "Safe automatic app updates",
+      "user_type": "both",
+      "what_it_does": "An installed app checks the deployed version every 10 minutes and on return. It reloads to the new version only at a safe moment, never while recording or while there is typed text.",
+      "pain_removed": "No stale installs, and no lost work from a forced reload.",
+      "status": "shipped",
+      "status_evidence": "app/components/UpdateWatcher.tsx (mounted in app/layout.tsx) with lib/app-update.ts (BUSY_SELECTOR, updateDecision). The version comes from app/manifest.ts pindar_version.",
+      "surfaces": [
+        "Global (invisible)"
+      ],
+      "demo_state": "Not visual. State it as a benefit line",
+      "competitor_gap": false,
+      "competitor_gap_why": "An internal reliability feature.",
+      "content_exclusion": "Internal: fixes our own deploy problem, not a coach problem."
+    },
+    {
+      "id": "reinstall-nudge",
+      "name": "iOS reinstall-for-new-icon nudge",
+      "user_type": "both",
+      "what_it_does": "A one-time card asks iPhone users who installed the app under its old name (CoachVoice) to reinstall it to get the new Pindar icon, after checking nothing is still waiting to upload.",
+      "pain_removed": "Old installs get the current branding because iOS never refreshes home-screen icons itself.",
+      "status": "shipped",
+      "status_evidence": "app/components/ReinstallNudge.tsx and lib/reinstall-nudge.ts (iOS only, pre-rename installs, 3-day snooze). Used on /dashboard and /athlete.",
+      "surfaces": [
+        "/dashboard",
+        "/athlete",
+        "/dashboard (Home)",
+        "/athlete Today (iOS standalone only)"
+      ],
+      "demo_state": "Not marketing-relevant (migration chore)",
+      "competitor_gap": false,
+      "competitor_gap_why": "Internal migration aid.",
+      "content_exclusion": "Internal: migration aid for the rename."
+    },
+    {
+      "id": "opening-animation",
+      "name": "'Voice becomes the wreath' opening",
+      "user_type": "both",
+      "what_it_does": "The branded launch animation: voice bars fly up into a laurel wreath, then 'Pindar' and 'Hear it. Own it.' appear. It plays before the app loads and respects reduced motion.",
+      "pain_removed": "The cold start is no longer a blank screen and it shows the brand.",
+      "status": "shipped",
+      "status_evidence": "lib/opening.ts, app/layout.tsx boot shell CSS, app/components/OpeningMark.tsx and IntroSequence.tsx on '/'. Plays on first visit and again after 30 minutes away.",
+      "surfaces": [
+        "App launch",
+        "/"
+      ],
+      "demo_state": "Mid-frame: bars turning into laurel leaves",
+      "competitor_gap": false,
+      "competitor_gap_why": "Brand polish, not a capability.",
+      "content_exclusion": "Brand moment, not a feature with a pain behind it."
+    },
+    {
+      "id": "summary-grounding-guard",
+      "name": "Grounded five-bullet summary cap",
+      "user_type": "both",
+      "what_it_does": "Summaries are capped at 5 bullets, and any bullet or takeaway the coach didn't actually say is removed in code.",
+      "pain_removed": "No invented advice or padded lists reach athletes.",
+      "status": "shipped",
+      "status_evidence": "lib/summary-guard.ts guardSummary/capBullets (GROUNDING_RATIO 0.6) used in lib/quick-summary.ts and split-summary route; capBullets applied again on save in route.ts:308",
+      "surfaces": [
+        "All summaries"
+      ],
+      "demo_state": "Empty draft: 'No summary drafted: nothing in this recording matched a coaching point you made.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Enforced grounding, not just prompting"
+    },
+    {
+      "id": "session-page",
+      "name": "Dedicated session page",
+      "user_type": "both",
+      "what_it_does": "/sessions/[id] shows a dateline masthead, title, athlete, a Shared/Private chip, the summary as bullets, and the transcript collapsed at the bottom with a word count.",
+      "pain_removed": "A session is a place to revisit, not an accordion row.",
+      "status": "shipped",
+      "status_evidence": "app/sessions/[id]/page.tsx reads one request from /api/sessions/[id]/detail; serves both roles; back goes to the previous in-app page",
+      "surfaces": [
+        "/sessions/[id]"
+      ],
+      "demo_state": "Masthead '14 / Fri Nov' with ember bullets",
+      "competitor_gap": false,
+      "competitor_gap_why": "Expected",
+      "content_exclusion": "Covered by the ai-session-summary posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "session-notes",
+      "name": "Coach notes on a session",
+      "user_type": "both",
+      "what_it_does": "Add or edit free-text notes (saves on Save or blur, Cancel discards); NOTE: these are shown to the athlete as 'Notes from your coach' when the session is shared.",
+      "pain_removed": "Context lives with the session.",
+      "status": "partial",
+      "status_evidence": "page.tsx saveNotes → PATCH coach_notes (10k cap); the detail route returns coach_notes to athlete viewers; the section renders for the athlete if notes exist Partial: the coach sees these as \"Your notes\", but they are shown to the athlete on a shared session. A coach could write something private and not know the athlete reads it.",
+      "surfaces": [
+        "/sessions/[id]"
+      ],
+      "demo_state": "'Your notes' with an Edit notes button",
+      "competitor_gap": false,
+      "competitor_gap_why": "Not private notes , do not market as private"
+    },
+    {
+      "id": "session-images",
+      "name": "Attach images to session",
+      "user_type": "both",
+      "what_it_does": "Upload whiteboard shots or diagrams, remove them with a confirmation; the athlete sees them on shared sessions.",
+      "pain_removed": "Visuals sit with the feedback.",
+      "status": "shipped",
+      "status_evidence": "page.tsx uploadImage → signed URL from /api/sessions/[id]/attachments, then POST; DELETE with confirm(); images only",
+      "surfaces": [
+        "/sessions/[id]"
+      ],
+      "demo_state": "Empty state 'Add a whiteboard shot, a still from video, or a drill diagram.'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common",
+      "content_exclusion": "Covered by the ai-session-summary posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "video-annotator",
+      "name": "Draw on video, timed strokes",
+      "user_type": "both",
+      "what_it_does": "Pause and draw on a video in 5 colours and 4 widths; each stroke appears at its timestamp and is permanent or fades after 2, 4 or 8 seconds; undo and clear; saved and shown to the athlete.",
+      "pain_removed": "Show exactly what's wrong instead of describing it.",
+      "status": "shipped",
+      "status_evidence": "app/components/VideoAnnotator.tsx; page.tsx saveVideoAnnotations → PATCH /api/sessions/[id]/videos annotations; read-only for athletes",
+      "surfaces": [
+        "/sessions/[id]",
+        "athlete clip inbox",
+        "/athlete Sessions tab"
+      ],
+      "demo_state": "Paused frame with an ember arrow and the 'DRAWING' badge",
+      "competitor_gap": false,
+      "competitor_gap_why": "Telestration exists in video tools"
+    },
+    {
+      "id": "video-moments",
+      "name": "Mark moments, attach to takeaway",
+      "user_type": "both",
+      "what_it_does": "The coach marks start and end (or ±N seconds around now) with a label and attaches it to a takeaway; the athlete sees a 'Watch the moment' button that plays only that range with the drawings.",
+      "pain_removed": "Each takeaway has its video evidence beside it.",
+      "status": "shipped",
+      "status_evidence": "page.tsx ClipMarker → POST /api/sessions/[id]/clips (validateClipRange); MomentPlayer with VideoAnnotator start/endTime; delete with confirm; athleteMayViewVideo filter",
+      "surfaces": [
+        "/sessions/[id]"
+      ],
+      "demo_state": "Takeaway row with 'Watch the moment 0:12–0:18'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Clips tied to action items"
+    },
+    {
+      "id": "session-sort-order",
+      "name": "Sessions ordered by session date",
+      "user_type": "both",
+      "what_it_does": "Session lists sort newest first by the day the session happened (backdated ones slot in place), then by creation time; the coach's all-sessions list is paged 50 at a time.",
+      "pain_removed": "The timeline reads correctly.",
+      "status": "shipped",
+      "status_evidence": "route.ts GET, /api/sessions/all (range, limit≤100) and /api/athlete/sessions all order by session_date desc, then created_at desc",
+      "surfaces": [
+        "/athletes/[id]",
+        "/dashboard Sessions",
+        "/athlete"
+      ],
+      "demo_state": "A session backdated to last Tuesday listed under Tuesday",
+      "competitor_gap": false,
+      "competitor_gap_why": "Basic",
+      "content_exclusion": "Correctness detail."
+    },
+    {
+      "id": "empty-states",
+      "name": "Honest empty states",
+      "user_type": "both",
+      "what_it_does": "Explicit copy instead of blanks: 'No athletes yet , add one first', 'No squads yet' (tab disabled, not hidden), 'No summary was generated for this session', image and video prompts, the brief's 'No athletes are on this session'.",
+      "pain_removed": "Users always know why something is missing.",
+      "status": "shipped",
+      "status_evidence": "QuickSessionModal.tsx:943-991; sessions/[id]/page.tsx:1140,1469,1569; PreSessionBrief.tsx:228",
+      "surfaces": [
+        "Recorder",
+        "session page",
+        "brief"
+      ],
+      "demo_state": "Squad tab shown dashed and disabled with 'No squads yet' hint",
+      "competitor_gap": false,
+      "competitor_gap_why": "Polish",
+      "content_exclusion": "Correctness detail."
+    },
+    {
+      "id": "calendar-event-email",
+      "name": "Athlete emailed on new event",
+      "user_type": "both",
+      "what_it_does": "When a coach adds an event to an athlete or squad calendar, each athlete gets an email naming the event, date and notes.",
+      "pain_removed": "Athletes learn about new homework or sessions without opening the app.",
+      "status": "shipped",
+      "status_evidence": "app/api/calendar/route.ts calls notifyCalendarEventCreated (lib/notify.ts) for the single-athlete and group branches. It depends on Gmail or Resend being configured and fails silently otherwise.",
+      "surfaces": [
+        "Athlete inbox"
+      ],
+      "demo_state": "Email 'Coach Jo added Speed drills to your calendar'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Event notifications are standard.",
+      "content_exclusion": "Covered by the calendar-month posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "checkin-requested",
+      "name": "Ask for pre-session check-in",
+      "user_type": "both",
+      "what_it_does": "When booking an upcoming session on an athlete's profile, the coach can ask the athlete to check in on the day. The athlete gets a 'Check in before your session' email, and the coach sees 'Checked in · feeling 4/5 · soreness 3/10' or 'not completed yet'.",
+      "pain_removed": "Coaches know how an athlete's body is before they start.",
+      "status": "shipped",
+      "status_evidence": "athletes/[id]/page.tsx addUpcomingSession sends checkin_requested to /api/calendar, which only sets it for a single-athlete session event. The email copy is in lib/notify.ts. Status is read from /api/wellness for that date. Not offered in the dashboard Calendar's add-event modal.",
+      "surfaces": [
+        "Pre-session brief",
+        "/athletes/[id]?tab=calendar",
+        "Athlete email",
+        "/athlete Today and Check in",
+        "coach /athletes/[id]",
+        "dashboard brief"
+      ],
+      "demo_state": "Upcoming list: 'Thu 14 Nov · 16:30 · Coaching session , Check-in asked for · not completed yet'",
+      "competitor_gap": true,
+      "competitor_gap_why": "Tying a readiness check-in to a specific booked session is uncommon.",
+      "content_exclusion": "Covered by the pre-session-brief posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "event-rsvp",
+      "name": "Event RSVP",
+      "user_type": "both",
+      "what_it_does": "Would let athletes answer yes, no or maybe to coach events.",
+      "pain_removed": "Would tell coaches who is attending.",
+      "status": "planned",
+      "status_evidence": "migration 006 has calendar_events.rsvp_enabled and event_rsvps, and app/api/rsvp/route.ts exists. No UI ever sets rsvp_enabled, the calendar GET does not select it, and nothing calls GET /api/rsvp (noted in migration 025). The athlete RSVP list never appears. Also: The UI exists in app/athlete/page.tsx (rsvpEvents filtered on e.rsvp_enabled) and POST app/api/rsvp/route.ts exists, but nothing ever writes rsvp_enabled. GET /api/calendar's baseSelect does not even return rsvp_enabled, so the list is always empty and never renders, and GET /api/rsvp has no coach-side caller. supabase/migrations/025_readiness_checkin.sql says the check-in replaced this 'half-built RSVP feature'. Do not market.",
+      "surfaces": [
+        "none reachable"
+      ],
+      "demo_state": "n/a",
+      "competitor_gap": false,
+      "competitor_gap_why": "RSVP is standard in TeamSnap and similar apps; this one is missing, not a differentiator."
+    },
+    {
+      "id": "messaging-text",
+      "name": "Coach–athlete direct messages",
+      "user_type": "both",
+      "what_it_does": "One-to-one threads per athlete with search, per-conversation drafts, live updates and date dividers.",
+      "pain_removed": "Coaching communication stays off personal phone numbers.",
+      "status": "shipped",
+      "status_evidence": "app/components/MessagingPanel.tsx calls /api/messages GET, POST and PATCH and uses Supabase Realtime channels. Realtime setup is not in the repo's migrations; threads still load on open.",
+      "surfaces": [
+        "/dashboard?tab=messages",
+        "/athlete Messages tab"
+      ],
+      "demo_state": "Thread with Mia showing a 'Read' receipt under the coach's last message",
+      "competitor_gap": false,
+      "competitor_gap_why": "In-app messaging is standard.",
+      "content_exclusion": "Covered by the messaging-voice posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "messaging-voice",
+      "name": "Voice messages",
+      "user_type": "coach",
+      "what_it_does": "The coach records a voice note in the browser, previews it and sends it into the athlete's thread, where the athlete plays it. Athletes can attach audio files but have no in-app voice recorder.",
+      "pain_removed": "Coaches can talk instead of typing from the field.",
+      "status": "shipped",
+      "status_evidence": "MessagingPanel.tsx records with MediaRecorder (SUPPORTED_RECORDING_TYPES), uploads to the messages-media bucket, then POSTs msg_type 'audio'. A failed upload keeps the recording. Athlete side: no recorder in the portal composer; athletes play coach voice notes and attach files.",
+      "surfaces": [
+        "/dashboard?tab=messages",
+        "/athlete Messages"
+      ],
+      "demo_state": "Recorded clip preview with Send and Discard",
+      "competitor_gap": false,
+      "competitor_gap_why": "Voice notes are common in chat apps and in some coaching apps (e.g. CoachNow)."
+    },
+    {
+      "id": "messaging-media",
+      "name": "Photo, video, audio attachments",
+      "user_type": "both",
+      "what_it_does": "Send images, videos or audio files in a thread. They play inline from signed URLs.",
+      "pain_removed": "Coaches can share technique clips and photos in context.",
+      "status": "shipped",
+      "status_evidence": "MessagingPanel.tsx file input accept='image/*,video/*,audio/*' and uploadMedia. /api/messages signs media_path on read (migration 024). Generic files such as PDFs are NOT supported.",
+      "surfaces": [
+        "/dashboard?tab=messages",
+        "/athlete Messages (paperclip)"
+      ],
+      "demo_state": "Inline video bubble from the coach",
+      "competitor_gap": false,
+      "competitor_gap_why": "Common.",
+      "content_exclusion": "Covered by the messaging-voice posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "injury-body-map",
+      "name": "Injury availability with body map",
+      "user_type": "both",
+      "what_it_does": "The coach records an injury by tapping a body-map region and sets availability (Out, Modified or Cleared, with a confirmation for Cleared). Cleared injuries can be reopened. The athlete sees the same information read-only.",
+      "pain_removed": "Everyone knows what a child can do today, without amateur medical notes.",
+      "status": "shipped",
+      "status_evidence": "app/components/InjuryPanel.tsx with BodyMap calls /api/injuries GET, POST and PATCH (migration 025). Availability statuses come from lib/injury.ts, and there is no diagnosis field by design.",
+      "surfaces": [
+        "/athletes/[id] (Overview)"
+      ],
+      "demo_state": "'Left knee · Modified since 3 Nov' with the body map highlighted",
+      "competitor_gap": false,
+      "competitor_gap_why": "Injury tracking exists in team platforms, though most are clinical rather than availability-only."
+    },
+    {
+      "id": "coach-note-share",
+      "name": "Share note with athlete",
+      "user_type": "both",
+      "what_it_does": "A 'Share with athlete' checkbox on coach notes.",
+      "pain_removed": "Would let a written note reach the athlete.",
+      "status": "partial",
+      "status_evidence": "/api/notes saves shared_with_athlete and the coach sees a Shared chip. The athlete portal's 'My Notes' reads /api/athlete-notes (the athlete's own notes), and nothing on the athlete side reads the coach notes table. Shared notes never reach the athlete.",
+      "surfaces": [
+        "/athletes/[id]?tab=notes"
+      ],
+      "demo_state": "n/a , do not market",
+      "competitor_gap": false,
+      "competitor_gap_why": "Not functional."
+    },
+    {
+      "id": "understanding-reply",
+      "name": "One-tap 'did it land?' reply",
+      "user_type": "both",
+      "what_it_does": "The athlete answers the takeaway with Got it, Working on it, or Not sure what you mean, can tap again to undo, and the coach sees the answer on several screens.",
+      "pain_removed": "The coach learns whether feedback was understood, and a shy teenager can say 'unclear' without writing a message.",
+      "status": "shipped",
+      "status_evidence": "lib/session-response.ts (labels and coachLabels). app/athlete/page.tsx respondToSession (optimistic, shown on the newest session's home card). app/components/TakeawayReminder.tsx. app/sessions/[id]/page.tsx 'Tell your coach' section (any session). POST app/api/sessions/[id]/respond/route.ts writes sessions.athlete_response and athlete_responded_at after checking ownership and that the session is shared. The coach reads it in app/sessions/[id]/page.tsx 'What they said back', app/athletes/[id]/page.tsx session chips, app/components/PreSessionBrief.tsx, QuickSessionModal last-focus line and CoachInsights. The coach gets no notification when an answer arrives.",
+      "surfaces": [
+        "/sessions/[id]",
+        "/athlete",
+        "/sessions/[id] (athlete)",
+        "/athletes/[id]",
+        "dashboard pre-session brief",
+        "recorder (coach)"
+      ],
+      "demo_state": "Three full-width chips with 'Not sure what you mean' selected, and the coach's badge 'Not clear to them , worth a word before the next session.'",
+      "competitor_gap": true,
+      "competitor_gap_why": "A structured comprehension check on coaching feedback is uncommon; most apps offer likes or free-text comments."
+    },
+    {
+      "id": "seen-transparency",
+      "name": "Told coach sees opens",
+      "user_type": "both",
+      "what_it_does": "Opening a session is logged for the coach, and the athlete is told so on screen.",
+      "pain_removed": "The coach knows feedback reached the athlete, and the athlete is not surprised to learn they were tracked.",
+      "status": "shipped",
+      "status_evidence": "app/athlete/page.tsx openSessionToggle → POST app/api/sessions/[id]/seen/route.ts (kind summary_viewed). The detail route records session_opened via after(). lib/access-log.ts dedupes within 10 minutes. Copy: 'Your coach can see when you've opened a session…'. The coach sees SessionSeen on /sessions/[id] and AccessLog on /athletes/[id] (head only).",
+      "surfaces": [
+        "/athlete Sessions tab",
+        "coach /sessions/[id]",
+        "/athletes/[id]"
+      ],
+      "demo_state": "Coach session header showing 'Mia opened this 2h ago'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Read receipts are common; telling the athlete openly is the differentiator.",
+      "content_exclusion": "Covered by the seen-receipt posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "body-map-soreness",
+      "name": "Tap-to-mark body map",
+      "user_type": "both",
+      "what_it_does": "Behind 'Something's sore', a front and back silhouette lets the athlete tap each sore region, with left and right sides. The coach sees the region names.",
+      "pain_removed": "The athlete can say where it hurts without writing a description.",
+      "status": "shipped",
+      "status_evidence": "app/components/BodyMap.tsx and lib/body-map.ts (a fixed region vocabulary of 31 base regions × L/R; isBodyRegion validated on the server). Stored in wellness_checkins.sore_areas. Shown back as 'Sore: Left hamstring…' on the athlete home and in the coach's PreSessionBrief.",
+      "surfaces": [
+        "/athlete Check in tab"
+      ],
+      "demo_state": "Back view with the left hamstring and lower back highlighted, 'Marked: …'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Body maps exist in AMS tools; this one is a lightweight version for minors."
+    },
+    {
+      "id": "injury-followup",
+      "name": "Injury follow-up in check-in",
+      "user_type": "both",
+      "what_it_does": "Only when an injury is open on file, the check-in asks 'How is your [area] today? Anything changed?' as an optional field of up to 500 characters that goes to the coaching team only.",
+      "pain_removed": "The coach gets injury progress without adding a daily question for everyone.",
+      "status": "shipped",
+      "status_evidence": "app/components/CheckIn.tsx (openInjuries prop, injury_update) → app/api/wellness/route.ts stores injury_update → the coach sees it in app/components/WellnessGraph.tsx. Copy: 'Only your coaching team sees this'.",
+      "surfaces": [
+        "/athlete Check in tab"
+      ],
+      "demo_state": "Text box under 'How is your left ankle today?'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Injury notes exist elsewhere; making the question conditional is the nuance.",
+      "content_exclusion": "Covered by the body-map-soreness posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "message-notifications",
+      "name": "Message alerts: email and push",
+      "user_type": "both",
+      "what_it_does": "When the coach messages, the athlete gets an email (debounced per unread backlog) and, if they opted in, a push titled 'New message from Max' that opens /athlete?tab=messages.",
+      "pain_removed": "The athlete does not miss a coach message.",
+      "status": "shipped",
+      "status_evidence": "lib/notify.ts notifyNewMessage (only if athletes.email is set). lib/push.ts buildPushPayload 'message-to-athlete' (title only, never content). public/sw.js push and notificationclick handlers. app/components/PushOptIn.tsx on the athlete Messages tab (renders nothing unless VAPID keys are configured; iOS requires Home Screen install and 16.4+). Whether the deployment has VAPID keys could not be verified from code.",
+      "surfaces": [
+        "Email",
+        "Lock screen and email",
+        "opt-in card on /athlete Messages"
+      ],
+      "demo_state": "Opt-in card 'Get a notification when your coach messages you … never what they wrote.'",
+      "competitor_gap": false,
+      "competitor_gap_why": "Standard, apart from the content-free payload.",
+      "content_exclusion": "Covered by the messaging-voice posts: a facet of that feature rather than a post of its own."
+    },
+    {
+      "id": "athlete-clip-upload",
+      "name": "Send coach a clip, get markup",
+      "user_type": "both",
+      "what_it_does": "The athlete uploads a clip of up to 60 seconds, either general or about one session, with an optional question. The coach is told in the thread, draws on it and 'sends it back', and the athlete then sees the coach's drawings with the status 'Coach marked it up'.",
+      "pain_removed": "The athlete can ask 'is my elbow dropping?' with video and get a visual answer.",
+      "status": "shipped",
+      "status_evidence": "app/components/AthleteClipUpload.tsx (duration checked in the browser, signed PUT) → app/api/athlete/clips/upload-url and POST app/api/athlete/clips/route.ts (verifies athlete_user_id and the 60s limit, inserts session_videos with uploaded_by_role 'athlete', posts a thread message 'Mia sent you a clip…' plus email). The coach marks it up on app/sessions/[id]/page.tsx ('Send back to …'). The athlete GET returns annotations only when shared_with_athlete is true (athleteSeesAnnotations).",
+      "surfaces": [
+        "/sessions/[id]",
+        "/athlete Sessions tab ('Clips for your coach', and 'Show your coach' inside each session)"
+      ],
+      "demo_state": "'My clips (2)' with one row showing 'Coach marked it up', expanded with drawings",
+      "competitor_gap": true,
+      "competitor_gap_why": "A two-way video question-and-answer loop for youth athletes, inside the coach's feedback tool."
+    },
+    {
+      "id": "parent-session-monthly-auto-reports",
+      "name": "Automatic parent session/monthly reports",
+      "user_type": "parent",
+      "what_it_does": "Caretaker form toggles labelled 'Notify on session reports' and 'Notify on monthly reports'.",
+      "pain_removed": "Would keep parents updated without the coach doing anything.",
+      "status": "planned",
+      "status_evidence": "The flags exist (migration 006, saved by app/api/caretakers) but nothing sends to caretakers on share or monthly. notifySessionShared emails only the athlete, and there is no scheduled job. .claude/MEMORY.md line 546 confirms nothing sends. Also: The toggle only PATCHes athletes.auto_monthly_report (athletes/[id]/page.tsx:2326; api/athletes/[id]/route.ts). No sender found: no cron in vercel.json and no use of the flag in any email route Also: athletes/[id]/page.tsx PATCHes auto_monthly_report, which /api/athletes/[id] saves (migration 006). No cron, scheduler or sender reads auto_monthly_report or notify_monthly_reports anywhere, and vercel.json has no crons. Nothing is ever sent.",
+      "surfaces": [
+        "/athletes/[id] Caretakers form (toggles only)",
+        "/athletes/[id] Caretakers",
+        "/athletes/[id]?tab=profile (Caretakers)"
+      ],
+      "demo_state": "Do not demo",
+      "competitor_gap": false,
+      "competitor_gap_why": "Not built. Do not market."
+    },
+    {
+      "id": "wellness-alert-notify-parent",
+      "name": "Wellness alert, notify parent",
+      "user_type": "parent",
+      "what_it_does": "When today's score or the 7-day average is low, the head coach can email a wellness update to a saved caretaker (or any typed address). The button then shows a receipt to prevent double sends.",
+      "pain_removed": "Coaches can loop in a parent quickly when a child is struggling.",
+      "status": "shipped",
+      "status_evidence": "athletes/[id]/page.tsx sendWellnessAlert POSTs /api/wellness/alert (head only, roster-checked, recomputes the alert, buildWellnessAlertHtml). Requires email to be configured. Coaches are also auto-emailed on alerts via notifyWellnessAlert. Also: app/api/wellness/alert/route.ts uses buildWellnessAlertHtml with audience 'parent' and no notes. The UI in app/athletes/[id]/page.tsx (around lines 886-1960) offers a caretaker picker or a typed email. Sending works end to end. Bug: POST /api/caretakers ignores notify_wellness_alerts, so the 'Show in notify parent list' checkbox is never saved. Shipped: the send works end to end. Defect beside it: the \"Show in notify parent list\" checkbox is never saved (POST /api/caretakers drops notify_wellness_alerts).",
+      "surfaces": [
+        "/athletes/[id] wellness alert card",
+        "/athletes/[id]?tab=wellness"
+      ],
+      "demo_state": "Red 'Wellness alert' card with a caretaker picker and '✓ Sent to mum@…'",
+      "competitor_gap": true,
+      "competitor_gap_why": "A coach-controlled parent escalation built on wellness data is uncommon."
+    },
+    {
+      "id": "caretaker-notify-prefs",
+      "name": "Caretaker notification preferences",
+      "user_type": "parent",
+      "what_it_does": "Checkboxes for 'Notify on session reports', 'Notify on monthly reports' and 'Show in wellness alert list'.",
+      "pain_removed": "Would let parents choose what they receive.",
+      "status": "partial",
+      "status_evidence": "/api/caretakers POST saves the session and monthly flags, but nothing sends session or monthly reports to caretakers (no consumer of notify_session_reports or notify_monthly_reports). The POST also drops notify_wellness_alerts, so it always takes the DB default true and that checkbox has no effect.",
+      "surfaces": [
+        "/athletes/[id]?tab=profile"
+      ],
+      "demo_state": "n/a , do not market",
+      "competitor_gap": false,
+      "competitor_gap_why": "Not functional."
+    }
+  ]
+}
