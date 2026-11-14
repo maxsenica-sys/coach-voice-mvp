@@ -29,6 +29,7 @@ import { readCachedProfile, writeCachedProfile, displayName, clearCachedProfile 
 import { formatSessionDate, parseISODate, sessionISODate, todayISODate } from '@/lib/session-date'
 import { errorMessage } from '@/lib/errors'
 import type { MessageRow, RsvpEvent } from '@/lib/api-types'
+import { RSVP_ANSWERS, rsvpLabel } from '@/lib/rsvp'
 import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/session-response'
 import { injuryStatusOption, openInjuries, type Injury } from '@/lib/injury'
 import { regionLabel } from '@/lib/body-map'
@@ -69,6 +70,9 @@ type SessionRow = {
   audio_path?: string | null
   audio_mime?: string | null
 }
+
+/** A note the coach shared from the athlete's profile. Text and date only. */
+type CoachSharedNote = { id: string; summary: string | null; created_at: string | null }
 
 type AthleteNote = {
   id: string
@@ -692,6 +696,12 @@ export default function AthletePage() {
   const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [notesError, setNotesError] = useState<string | null>(null)
 
+  // Notes the coach ticked "Share with athlete" on (GET /api/athlete/coach-notes).
+  // null until loaded, so "nothing shared yet" is never said before we know.
+  const [coachNotes, setCoachNotes] = useState<CoachSharedNote[] | null>(null)
+  const [coachNotesError, setCoachNotesError] = useState<string | null>(null)
+  const [coachNotesReload, setCoachNotesReload] = useState(0)
+
   // ── Boot ──────────────────────────────────────────────────
   /* A named function rather than the body of the effect, so joining a coach
    * from inside the portal can run it again. Before, a successful join set an
@@ -924,6 +934,26 @@ export default function AthletePage() {
     msgBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // ── Load the notes the coach shared ───────────────────────
+  // On opening My Notes, and again on Retry. Until 2026-11-14 a note the coach
+  // ticked "Share with athlete" on reached nobody: nothing here read it.
+  useEffect(() => {
+    if (tab !== 'notes' || !athleteId) return
+    let stale = false
+    void (async () => {
+      try {
+        const j = await apiJson<{ notes?: CoachSharedNote[] }>('/api/athlete/coach-notes', { cache: 'no-store' })
+        if (stale) return
+        setCoachNotes(j.notes ?? [])
+        setCoachNotesError(null)
+      } catch (e: unknown) {
+        if (stale) return
+        setCoachNotesError(errorMessage(e, "Could not load your coach's notes."))
+      }
+    })()
+    return () => { stale = true }
+  }, [tab, athleteId, coachNotesReload])
+
   // ── Load RSVP events ──────────────────────────────────────
   useEffect(() => {
     if (tab !== 'calendar' || !athleteId) return
@@ -942,9 +972,17 @@ export default function AthletePage() {
         // which it now does, because the arrows work — would otherwise ask a
         // fourteen-year-old to RSVP to something last March.
         const today = todayISODate()
-        setRsvpEvents((j.events ?? []).filter(
+        const asking = (j.events ?? []).filter(
           (e) => e.created_by_role === 'coach' && e.rsvp_enabled && e.event_date >= today,
-        ))
+        )
+        setRsvpEvents(asking)
+        // What they already said, from the server, so a saved answer still
+        // shows as chosen after the app is reopened.
+        setRsvpMap((prev) => {
+          const next = { ...prev }
+          for (const e of asking) if (e.rsvp_status) next[e.id] = e.rsvp_status
+          return next
+        })
       } catch {
         if (seq !== rsvpReqRef.current) return
         // The grid's own error line already reports a failed month. An RSVP
@@ -999,7 +1037,10 @@ export default function AthletePage() {
       setActionError(errorMessage(e, 'Could not send your reply — your coach did not get it.'))
       return
     }
+    // Only once the server has it: the calendar's pressed answer and the list
+    // below it are both the saved answer, never a hopeful one.
     setRsvpMap((prev) => ({ ...prev, [eventId]: status }))
+    setCalEvents((prev) => prev.map((e) => (e.id === eventId ? { ...e, rsvp_status: status } : e)))
   }
 
   const uploadMsgMedia = async (file: File) => {
@@ -2555,6 +2596,7 @@ export default function AthletePage() {
                 loading={calLoading}
                 onAddEvent={(date) => setAddEventModal(date)}
                 onDeleteEvent={deleteCalEvent}
+                onRsvp={(id, answer) => { void sendRsvp(id, answer) }}
                 onMonthChange={setCalMonth}
               />
             )}
@@ -2580,23 +2622,29 @@ export default function AthletePage() {
                           <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, overflowWrap: 'anywhere' }}>{evt.title}</div>
                           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-1)', color: 'var(--text-2)' }}>{(parseISODate(evt.event_date) ?? new Date(evt.event_date)).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}{evt.event_time ? ` at ${evt.event_time}` : ''}</div>
                         </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {(['yes', 'maybe', 'no'] as const).map((s) => (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }} role="group" aria-label={`Are you going to ${evt.title}?`}>
+                          {/* Two answers (lib/rsvp.ts). An older "Maybe" still
+                              reads as Maybe below; it is just not offered. */}
+                          {RSVP_ANSWERS.map(({ value: s, label }) => (
                             <button
                               key={s}
                               onClick={() => sendRsvp(evt.id, s)}
+                              aria-pressed={status === s}
                               style={{
                                 padding: '5px 12px', minHeight: 44, flexShrink: 0, whiteSpace: 'nowrap',
                                 borderRadius: 6, border: '1.5px solid',
-                                borderColor: status === s ? (s === 'yes' ? 'var(--success)' : s === 'no' ? 'var(--danger)' : 'var(--warning)') : 'var(--border)',
-                                background: status === s ? (s === 'yes' ? 'var(--success-light)' : s === 'no' ? 'var(--danger-light)' : 'var(--warning-light)') : 'transparent',
-                                color: status === s ? (s === 'yes' ? 'var(--success)' : s === 'no' ? 'var(--danger)' : 'var(--warning)') : 'var(--text-2)',
+                                borderColor: status === s ? (s === 'yes' ? 'var(--success)' : 'var(--danger)') : 'var(--border)',
+                                background: status === s ? (s === 'yes' ? 'var(--success-light)' : 'var(--danger-light)') : 'transparent',
+                                color: status === s ? (s === 'yes' ? 'var(--success)' : 'var(--danger)') : 'var(--text-2)',
                                 fontWeight: status === s ? 700 : 400, fontSize: 'var(--fs-2)', cursor: 'pointer',
                               }}
                             >
-                              {s === 'yes' ? '✓ Going' : s === 'maybe' ? '? Maybe' : '✗ No'}
+                              {s === 'yes' ? `✓ ${label}` : `✗ ${label}`}
                             </button>
                           ))}
+                        </div>
+                        <div style={{ flexBasis: '100%', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
+                          {status ? `You said: ${rsvpLabel(status)}` : 'No reply yet'}
                         </div>
                       </div>
                     )
@@ -2675,6 +2723,46 @@ export default function AthletePage() {
 
             {/* Notes list */}
             <div>
+              {/* From your coach: notes shared from the athlete's profile.
+                  Above the athlete's own notes and visibly separate from them,
+                  because those are private and these are not theirs. */}
+              <section className="card" aria-labelledby="coach-notes-title" style={{ padding: 20, marginBottom: 16 }}>
+                <div id="coach-notes-title" className="section-title" style={{ marginBottom: 6, fontSize: 'var(--fs-4)' }}>From your coach</div>
+                <div className="section-sub" style={{ marginBottom: 12 }}>
+                  Notes your coach chose to share with you.
+                </div>
+                {coachNotesError ? (
+                  <ListState
+                    loading={false}
+                    error={coachNotesError}
+                    isEmpty={false}
+                    emptyTitle=""
+                    onRetry={() => { setCoachNotesError(null); setCoachNotesReload((n) => n + 1) }}
+                  />
+                ) : coachNotes === null ? (
+                  <div style={{ color: 'var(--text-2)', fontSize: 'var(--t-body-tight)' }}>Loading…</div>
+                ) : coachNotes.length === 0 ? (
+                  <div style={{ color: 'var(--text-2)', fontSize: 'var(--t-body-tight)', lineHeight: 1.5 }}>
+                    Your coach hasn&apos;t shared a note with you yet. When they do, it appears here.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {coachNotes.map((n) => (
+                      <article key={n.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', background: 'var(--bg)' }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', marginBottom: 6 }}>
+                          {n.created_at
+                            ? new Date(n.created_at).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+                            : 'Date not recorded'}
+                        </div>
+                        <div style={{ fontSize: 'var(--t-body)', color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                          {n.summary ?? ''}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+
               {/* Add note form */}
               <div className="card" style={{ padding: 20, marginBottom: 16 }}>
                 <div className="section-title" style={{ marginBottom: 6, fontSize: 'var(--fs-4)' }}>Add a note</div>

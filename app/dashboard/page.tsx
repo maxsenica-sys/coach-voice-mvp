@@ -968,6 +968,8 @@ function DashboardPageInner() {
   const [eventForm, setEventForm] = useState({ title: '', description: '', event_type: 'session', event_time: '' })
   const [eventSaving, setEventSaving] = useState(false)
   const [alsoAddToCoach, setAlsoAddToCoach] = useState(false)
+  // Ask the athlete, or every squad member, whether they are coming (lib/rsvp.ts).
+  const [askRsvp, setAskRsvp] = useState(false)
 
   // Today's events for home tab
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
@@ -1503,6 +1505,7 @@ function DashboardPageInner() {
       const body: Record<string, unknown> = { ...base }
       if (calMode === 'athlete') body.athlete_id = calTargetId
       else if (calMode === 'group') body.group_id = calTargetId
+      if (calMode === 'athlete' || calMode === 'group') body.rsvp_enabled = askRsvp
 
       const res = await fetch('/api/calendar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1532,6 +1535,7 @@ function DashboardPageInner() {
       setAddEventModal(null)
       setEventForm({ title: '', description: '', event_type: 'session', event_time: '' })
       setAlsoAddToCoach(false)
+      setAskRsvp(false)
       await fetchCalendar(calMode, calTargetId, calMonth)
 
       // Refresh the wheel so a new event shows without a page reload.
@@ -3116,9 +3120,16 @@ function DashboardPageInner() {
                   <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--text-2)' }}>prevents double-booking</span>
                 </label>
               )}
+              {(calMode === 'athlete' || calMode === 'group') && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', cursor: 'pointer', fontSize: 'var(--fs-3)', minHeight: 44, padding: '10px 12px', background: askRsvp ? 'var(--primary-light)' : 'var(--bg)', border: `1.5px solid ${askRsvp ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 8 }}>
+                  <input type="checkbox" checked={askRsvp} onChange={e => setAskRsvp(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
+                  <span style={{ fontWeight: askRsvp ? 700 : 400 }}>Ask athletes to RSVP</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--text-2)' }}>they answer Going or Can&apos;t make it</span>
+                </label>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
-              <button className="btn btn-ghost" onClick={() => { setAddEventModal(null); setAlsoAddToCoach(false) }} style={{ flex: '1 1 120px', minHeight: 44 }}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setAddEventModal(null); setAlsoAddToCoach(false); setAskRsvp(false) }} style={{ flex: '1 1 120px', minHeight: 44 }}>Cancel</button>
               <button className="btn btn-primary btn-lg" onClick={saveEvent} disabled={eventSaving || !eventForm.title.trim()} style={{ flex: '2 1 180px' }}>
                 {eventSaving ? 'Saving…' : calMode === 'group' ? 'Add for Group' : 'Add to Calendar'}
               </button>

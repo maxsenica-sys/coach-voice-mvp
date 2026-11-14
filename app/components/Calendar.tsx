@@ -6,6 +6,7 @@ import {
   carrySelection, currentMonth, daysInMonth, firstWeekday, parseMonth,
   shiftMonth, toDateStr, todayDateStr, toMonthStr, type MonthStr,
 } from '@/lib/calendar-month'
+import { RSVP_ANSWERS, rsvpCounts, rsvpLabel, summariseRsvps, type RsvpAnswer } from '@/lib/rsvp'
 
 export type CalendarEvent = {
   id: string
@@ -24,6 +25,10 @@ export type CalendarEvent = {
    *  the day (migration 028). Whether they did is answered by their wellness
    *  check-in for `event_date`, never stored on the event. */
   checkin_requested?: boolean | null
+  /** The coach asked this athlete whether they are coming (migration 038). */
+  rsvp_enabled?: boolean | null
+  /** This event's athlete's answer, attached by GET /api/calendar; null = no reply yet. */
+  rsvp_status?: string | null
   /** Joined athlete on coach-facing queries; null for the coach's own events. */
   athletes?: { first_name: string; last_name: string } | null
 }
@@ -46,6 +51,11 @@ type Props = {
   onMonthChange: (monthStr: MonthStr) => void
   onAddEvent?: (date: string) => void
   onDeleteEvent?: (id: string) => void
+  /**
+   * The athlete answers an event that asked for an RSVP. Given only on the
+   * athlete's calendar; the coach reads answers and never gives them.
+   */
+  onRsvp?: (eventId: string, answer: RsvpAnswer) => void
   /**
    * Dim and disable rather than disappear. Hosts must pass this instead of
    * swapping the calendar out for a "Loading…" line — that unmount is the bug
@@ -143,7 +153,7 @@ function formatTime(time: string | null | undefined) {
   return `${hour}:${String(m).padStart(2, '0')}${period}`
 }
 
-export default function Calendar({ events, role, month, onMonthChange, onAddEvent, onDeleteEvent, loading }: Props) {
+export default function Calendar({ events, role, month, onMonthChange, onAddEvent, onDeleteEvent, onRsvp, loading }: Props) {
   // Derived from the prop every render — no copy, nothing to fall out of step,
   // and an unmount cannot lose it.
   const ym = parseMonth(month)
@@ -368,6 +378,25 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
             </div>
           ) : (
             <div>
+              {/* Who is coming, for each event on this day that asked. A
+                  squad event is one row per member, so this is where the
+                  coach sees the whole squad's answer at once: counts, then
+                  every name under its answer, in full. */}
+              {role === 'coach' && summariseRsvps(selectedEvents).map((s) => (
+                <div key={s.key} style={{ borderTop: '1px solid var(--text-muted)', padding: '11px 0' }}>
+                  <div style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+                    RSVP · {s.title}{s.event_time ? ` · ${formatTime(s.event_time)}` : ''}
+                  </div>
+                  <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', marginTop: 2 }}>{rsvpCounts(s)}</div>
+                  {([['Going', s.going], ["Can't make it", s.cant], ['Maybe', s.maybe], ['No reply yet', s.waiting]] as const)
+                    .filter(([, names]) => names.length > 0)
+                    .map(([label, names]) => (
+                      <div key={label} style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text)', marginTop: 6, lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+                        <span style={{ fontWeight: 600 }}>{label}:</span> {names.join(', ')}
+                      </div>
+                    ))}
+                </div>
+              ))}
               {selectedEvents.map((ev, idx) => {
                 const session = isSessionType(ev.event_type)
                 /* A recorded session: who, what it was called, when — and the
@@ -437,7 +466,47 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
                         {/* "My event" only to the athlete who made it — a coach reading
                             their calendar is looking at someone else's. */}
                         {ev.created_by_role === 'athlete' && <Tag tone="plain">{role === 'athlete' ? 'My event' : "Athlete's event"}</Tag>}
+                        {ev.rsvp_enabled && role === 'coach' && (
+                          // Not a Tag: Tag is nowrap, and a full name must wrap
+                          // rather than be cut off past the edge at 320px.
+                          <span style={{
+                            fontSize: 'var(--t-furniture)', lineHeight: 1.3, padding: '4px 10px', borderRadius: 999,
+                            border: '1px solid var(--border)', color: 'var(--text-2)', overflowWrap: 'anywhere', maxWidth: '100%',
+                          }}>
+                            {ev.athletes ? `${`${ev.athletes.first_name} ${ev.athletes.last_name}`.trim()}: ` : ''}{rsvpLabel(ev.rsvp_status)}
+                          </span>
+                        )}
                       </div>
+                      {/* The athlete's answer, on the event itself. Two answers,
+                          each a 44px target; the chosen one is pressed. */}
+                      {ev.rsvp_enabled && role === 'athlete' && ev.created_by_role === 'coach' && onRsvp && (
+                        <div role="group" aria-label={`Are you going to ${ev.title}?`} style={{ marginTop: 10 }}>
+                          <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', marginBottom: 6 }}>
+                            Your coach asked if you&apos;re coming. {ev.rsvp_status ? `You said: ${rsvpLabel(ev.rsvp_status)}.` : 'No reply yet.'}
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {RSVP_ANSWERS.map((a) => {
+                              const on = ev.rsvp_status === a.value
+                              return (
+                                <button
+                                  key={a.value}
+                                  onClick={() => onRsvp(ev.id, a.value)}
+                                  aria-pressed={on}
+                                  style={{
+                                    minHeight: 44, padding: '0 16px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap',
+                                    fontSize: 'var(--t-body-tight)', fontWeight: on ? 700 : 500,
+                                    border: `1.5px solid ${on ? (a.value === 'yes' ? 'var(--success)' : 'var(--danger)') : 'var(--border)'}`,
+                                    background: on ? (a.value === 'yes' ? 'var(--success-light)' : 'var(--danger-light)') : 'transparent',
+                                    color: on ? (a.value === 'yes' ? 'var(--success)' : 'var(--danger)') : 'var(--text)',
+                                  }}
+                                >
+                                  {a.label}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {onDeleteEvent && ev.created_by_role === role ? (
                       <button
