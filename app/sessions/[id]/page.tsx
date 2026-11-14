@@ -23,6 +23,8 @@ import { errorMessage } from '@/lib/errors'
 import { preflightVideo } from '@/lib/video-preflight'
 import { uploadSessionVideo } from '@/lib/video-upload'
 import { DELIVERY_LABEL } from '@/lib/session-delivery'
+import { canRecordScreen } from '@/lib/screen-recording'
+import ScreenRecorder from '@/app/components/ScreenRecorder'
 import { metricColor, metricTint, scoreLabel, type MetricKey } from '@/lib/wellness-config'
 import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/session-response'
 import { formatSessionDate, parseISODate, sessionDate, sessionISODate } from '@/lib/session-date'
@@ -699,6 +701,12 @@ export default function SessionDetailPage() {
    * as a button on each session in the athlete's profile. Same checks and the
    * same upload path: lib/video-preflight.ts, then lib/video-upload.ts. */
   const videoFileRef = useRef<HTMLInputElement | null>(null)
+  /* Record screen: only where the browser can share a screen at all — a
+   * computer. Asked after mount, so the server HTML and the first client render
+   * agree. */
+  const [screenOK, setScreenOK] = useState(false)
+  const [screenOpen, setScreenOpen] = useState(false)
+  useEffect(() => { setScreenOK(canRecordScreen(typeof navigator === 'undefined' ? undefined : navigator)) }, [])
   const [videoUpload, setVideoUpload] = useState<{ pct: number; eta: string } | null>(null)
   const [videoUploadNote, setVideoUploadNote] = useState('')
   const uploadVideo = async (file: File) => {
@@ -1542,6 +1550,11 @@ export default function SessionDetailPage() {
                     style={{ ...toolButton, cursor: videoUpload ? 'progress' : 'pointer' }}>
                     <Icon name="plus" size={12} /> {videoUpload ? `Uploading ${videoUpload.pct}%` : 'Add video'}
                   </button>
+                  {screenOK && (
+                    <button onClick={() => setScreenOpen(true)} style={{ ...toolButton, cursor: 'pointer' }}>
+                      <span aria-hidden style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--danger)', display: 'inline-block' }} /> Record screen
+                    </button>
+                  )}
                 </>
               ) : undefined}
             >
@@ -1556,7 +1569,15 @@ export default function SessionDetailPage() {
               {isCoach && vids.length === 0 && !videoUpload && (
                 <div style={{ ...panel, padding: 14, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
                   Add a clip from your phone or computer, or film one now.
+                  {screenOK ? ' Coaching online? Record screen records the call into this session.' : ''}
                 </div>
+              )}
+              {screenOpen && (
+                <ScreenRecorder
+                  sessionId={sessionId}
+                  onClose={() => setScreenOpen(false)}
+                  onUploaded={() => { if (data) void loadVideoFeatures(data.viewerRole, data.athlete?.id ?? null) }}
+                />
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {vids.map((v) => {
