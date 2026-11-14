@@ -251,6 +251,52 @@ async function main() {
     )
   }
 
+  /* ── 3. RSVP: reachable, and honest about who said what ────────────────
+   *
+   * 2026-11-14: rsvp_enabled existed and nothing ever set it, so no athlete
+   * was ever asked. lib/rsvp.ts is run for real here, and the joins that make
+   * it reachable are asserted against the source, because each was the
+   * missing piece once: the coach's form never sent the flag, the route never
+   * stored it, and GET /api/calendar never selected it, so the portal's
+   * "needing your response" filter matched nothing. */
+  {
+    const R = await import(pathToFileURL(path.join(ROOT, 'lib/rsvp.ts')).href)
+    check(JSON.stringify(R.RSVP_ANSWERS.map((a) => a.value)) === '["yes","no"]', 'RSVP: the athlete is offered exactly Going and Can\'t make it')
+    check(R.rsvpLabel('yes') === 'Going' && R.rsvpLabel('no') === "Can't make it", 'RSVP: the two answers read as offered')
+    check(R.rsvpLabel(null) === 'No reply yet' && R.rsvpLabel('pending') === 'No reply yet', 'RSVP: no answer reads as no reply, never as an answer')
+    check(R.rsvpLabel('maybe') === 'Maybe', 'RSVP: an older Maybe is still shown as what it was')
+    check(!R.isRsvpStatus('perhaps') && R.isRsvpStatus('yes'), 'RSVP: only the four stored values are accepted')
+
+    const ev = (first, status, over = {}) => ({
+      title: 'Saturday training', event_date: '2026-12-05', event_time: '09:00:00', rsvp_enabled: true,
+      rsvp_status: status, athletes: { first_name: first, last_name: 'Grabowski' }, ...over,
+    })
+    const squad = [ev('Sophie', 'yes'), ev('Sophia', 'no'), ev('Mia', null), ev('Ana', 'maybe'), ev('Zoe', 'yes'),
+      ev('Kai', null, { rsvp_enabled: false, title: 'Gym' })]
+    const s = R.summariseRsvps(squad)
+    check(s.length === 1, 'RSVP: one squad event (a row per member) is summarised as one event, and an event that did not ask is left out', JSON.stringify(s.map((x) => x.title)))
+    const one = s[0] ?? { going: [], cant: [], maybe: [], waiting: [] }
+    const all = [...one.going, ...one.cant, ...one.maybe, ...one.waiting]
+    check(all.length === 5 && new Set(all).size === 5, 'RSVP: every asked athlete is in exactly one list', JSON.stringify(one))
+    check(one.going.join() === 'Sophie Grabowski,Zoe Grabowski', 'RSVP: names are full, never shortened, in order', one.going.join())
+    check(one.waiting.join() === 'Mia Grabowski', 'RSVP: an athlete who has not answered is listed as waiting, not dropped', one.waiting.join())
+    check(R.rsvpCounts(one) === "2 going · 1 can't make it · 1 maybe · 1 no reply yet", 'RSVP: the counts line', R.rsvpCounts(one))
+    const twoTimes = R.summariseRsvps([ev('A', 'yes'), ev('B', 'no', { event_time: '17:00:00' })])
+    check(twoTimes.length === 2, 'RSVP: the same title at two times is two events')
+
+    const route = code(read('app/api/calendar/route.ts'))
+    check(/baseSelect = '[^']*\brsvp_enabled\b/.test(route), 'RSVP: GET /api/calendar selects rsvp_enabled (the portal filters on it)')
+    check((route.match(/withRsvps\(admin,/g) ?? []).length >= 4, 'RSVP: every calendar read (athlete, personal, squad, athlete view) attaches the answers')
+    check(/rsvp_enabled = role !== 'athlete' && Boolean\(athlete_id \|\| group_id\)/.test(route), 'RSVP: POST /api/calendar stores the flag only on a coach event for an athlete or squad')
+    check((route.match(/\brsvp_enabled,\n/g) ?? []).length >= 2, 'RSVP: both the squad and the single-athlete insert write the flag')
+    const dash = code(read('app/dashboard/page.tsx'))
+    check(/body\.rsvp_enabled = askRsvp/.test(dash) && /Ask athletes to RSVP/.test(dash), 'RSVP: the coach\'s add-event form can ask')
+    const portal = code(read('app/athlete/page.tsx'))
+    check(/onRsvp=\{/.test(portal), 'RSVP: the athlete\'s calendar is given the answer handler')
+    const rsvpRoute = code(read('app/api/rsvp/route.ts'))
+    check(/\.eq\('rsvp_enabled', true\)/.test(rsvpRoute) && /resolveCoachScope\(/.test(rsvpRoute), 'RSVP: the route answers only an event that asked, and reads through the coach\'s scope')
+  }
+
   /* ── report ────────────────────────────────────────────────────────────*/
   console.log('')
   if (failures.length === 0) {

@@ -65,6 +65,8 @@ export interface RsvpEvent {
   event_time: string | null
   created_by_role?: string | null
   rsvp_enabled?: boolean | null
+  /** The athlete's own answer, attached by GET /api/calendar; null = no reply yet. */
+  rsvp_status?: string | null
 }
 
 /** A video attached to a session, as the session pages read it. */

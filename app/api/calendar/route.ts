@@ -35,6 +35,27 @@ function attach(res: NextResponse, cookies: CookieToSet[]) {
   return res
 }
 
+/**
+ * Each event that asked for an RSVP, with its athlete's answer (null = no
+ * reply yet). An event row is one athlete's, so it has at most one answer.
+ * Called only on events this route has already decided the caller may see,
+ * so the answers read are exactly those events' (lib/rsvp.ts, migration 038).
+ * A failed read leaves every answer null rather than failing the calendar.
+ */
+async function withRsvps<E extends { id: string; rsvp_enabled?: boolean | null }>(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  events: E[],
+): Promise<(E & { rsvp_status: string | null })[]> {
+  const asked = events.filter((e) => e.rsvp_enabled).map((e) => e.id)
+  const status = new Map<string, string>()
+  if (asked.length > 0) {
+    const { data, error } = await admin.from('event_rsvps').select('event_id, status').in('event_id', asked)
+    if (error) console.error('[calendar] rsvp read failed', error.message)
+    for (const r of (data ?? []) as { event_id: string; status: string }[]) status.set(r.event_id, r.status)
+  }
+  return events.map((e) => ({ ...e, rsvp_status: e.rsvp_enabled ? status.get(e.id) ?? null : null }))
+}
+
 function monthRange(month: string | null): { from: string; to: string } | null {
   if (!month) return null
   const [year, mon] = month.split('-').map(Number)
@@ -65,7 +86,7 @@ export async function GET(req: NextRequest) {
   const admin = createSupabaseAdminClient()
   const range = monthRange(month)
 
-  const baseSelect = 'id, athlete_id, session_id, created_by_user_id, created_by_role, title, description, event_type, event_date, event_time, checkin_requested, created_at'
+  const baseSelect = 'id, athlete_id, session_id, created_by_user_id, created_by_role, title, description, event_type, event_date, event_time, checkin_requested, rsvp_enabled, created_at'
 
   // ── ATHLETE ROLE ────────────────────────────────────────────
   if (role === 'athlete') {
@@ -83,7 +104,8 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await q
     if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
-    return attach(NextResponse.json({ events: data ?? [] }), cookiesToSet)
+    // Their own answers, so the portal shows what they already said.
+    return attach(NextResponse.json({ events: await withRsvps(admin, data ?? []) }), cookiesToSet)
   }
 
   // ── COACH ROLE ──────────────────────────────────────────────
@@ -111,7 +133,7 @@ export async function GET(req: NextRequest) {
     // An assistant's calendar holds the athletes they were given, and their
     // own appointments — not the team's events for everyone else.
     const events = (data ?? []).filter((e: { athlete_id: string | null }) => e.athlete_id === null || canSeeAthlete(scope, e.athlete_id))
-    return attach(NextResponse.json({ events }), cookiesToSet)
+    return attach(NextResponse.json({ events: await withRsvps(admin, events) }), cookiesToSet)
   }
 
   // Group calendar (all athletes in group)
@@ -135,13 +157,15 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await q
     if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
-    return attach(NextResponse.json({ events: data ?? [] }), cookiesToSet)
+    return attach(NextResponse.json({ events: await withRsvps(admin, data ?? []) }), cookiesToSet)
   }
 
   // Single athlete calendar
   if (athleteIdP) {
     if (!canSeeAthlete(scope, athleteIdP)) return attach(NextResponse.json({ error: 'Athlete not found.' }, { status: 404 }), cookiesToSet)
-    let q = admin.from('calendar_events').select(baseSelect)
+    // The athlete joined, as in the other coach modes, so an RSVP answer is
+    // shown against a name rather than "This athlete".
+    let q = admin.from('calendar_events').select(`${baseSelect}, athletes(first_name, last_name)`)
       .eq('athlete_id', athleteIdP)
       .in('created_by_user_id', team)
       .eq('created_by_role', 'coach')
@@ -150,7 +174,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await q
     if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
-    return attach(NextResponse.json({ events: data ?? [] }), cookiesToSet)
+    return attach(NextResponse.json({ events: await withRsvps(admin, data ?? []) }), cookiesToSet)
   }
 
   return attach(NextResponse.json({ error: 'Provide mode=personal, athlete_id, or group_id' }, { status: 400 }), cookiesToSet)
@@ -176,6 +200,12 @@ export async function POST(req: NextRequest) {
   // different consent question; both fail closed rather than silently
   // half-working.
   const checkin_requested = event_type === 'session' && Boolean(body?.checkin_requested)
+
+  // Ask the athlete, or each squad member, whether they are coming (migration
+  // 038, lib/rsvp.ts). Only on a coach's event for an athlete or a squad: an
+  // RSVP is an athlete's answer, so it means nothing on a coach's own
+  // appointment or on an event an athlete made for themself.
+  const rsvp_enabled = role !== 'athlete' && Boolean(athlete_id || group_id) && body?.rsvp_enabled === true
 
   if (!title?.trim() || !event_date) {
     return attach(NextResponse.json({ error: 'title and event_date are required.' }, { status: 400 }), cookiesToSet)
@@ -250,6 +280,7 @@ export async function POST(req: NextRequest) {
       event_type: safeType,
       event_date,
       event_time: event_time ?? null,
+      rsvp_enabled,
     }))
 
     const { error } = await admin.from('calendar_events').insert(rows)
@@ -284,7 +315,8 @@ export async function POST(req: NextRequest) {
     event_date,
     event_time: event_time ?? null,
     checkin_requested: safeType === 'session' ? checkin_requested : false,
-  }).select('id, athlete_id, created_by_role, title, description, event_type, event_date, event_time, checkin_requested, created_at').single()
+    rsvp_enabled,
+  }).select('id, athlete_id, created_by_role, title, description, event_type, event_date, event_time, checkin_requested, rsvp_enabled, created_at').single()
 
   if (error) return attach(NextResponse.json({ error: error.message }, { status: 500 }), cookiesToSet)
 
