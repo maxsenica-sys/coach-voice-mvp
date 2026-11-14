@@ -25,11 +25,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   deleteRecording,
-  isAbandoned,
   listRecordings,
+  patchRecording,
   type PendingRecording,
 } from '@/lib/recording-queue'
 import { syncRecording } from '@/lib/recording-sync'
+import { describePending, type FinishAthlete, type FinishGroup } from '@/lib/recording-finish'
+import FinishRecordingSheet, { type FinishOutcome } from '@/app/components/FinishRecordingSheet'
 
 function ago(ts: number): string {
   const mins = Math.floor((Date.now() - ts) / 60000)
@@ -40,30 +42,26 @@ function ago(ts: number): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-function describe(rec: PendingRecording): string {
-  if (!rec.ready) return 'Recorded, not saved yet'
-  if (!rec.transcript) return 'Waiting to transcribe'
-  return 'Waiting to send'
-}
-
-export default function PendingRecordings({ onSynced }: { onSynced?: () => void }) {
+export default function PendingRecordings({ onSynced, athletes = [], groups = [], coachSport = null }: {
+  onSynced?: () => void
+  /** Who an unsaved recording can be finished for. */
+  athletes?: FinishAthlete[]
+  groups?: FinishGroup[]
+  coachSport?: string | null
+}) {
   const [pending, setPending] = useState<PendingRecording[]>([])
   const [busy, setBusy] = useState(false)
+  const [finishing, setFinishing] = useState<PendingRecording | null>(null)
   // Guards against two drains overlapping — the online event and the mount
   // effect can fire within milliseconds of each other, and a double drain
   // could attempt the same non-idempotent save twice.
   const drainingRef = useRef(false)
 
   const refresh = useCallback(async () => {
-    const all = await listRecordings()
-    // Sweep recordings the coach abandoned long ago before showing anything,
-    // so a forgotten blob does not sit in the panel forever asking to be dealt
-    // with. Only ever applies to rows that were never marked ready.
-    const live: PendingRecording[] = []
-    for (const rec of all) {
-      if (isAbandoned(rec)) await deleteRecording(rec.id)
-      else live.push(rec)
-    }
+    // Nothing is swept. Recordings nobody saved used to be deleted after 14
+    // days, which threw away the only copy of something a coach said. They
+    // now stay until the coach finishes or discards them (lib/recording-finish.ts).
+    const live = await listRecordings()
     setPending(live)
     return live
   }, [])
@@ -97,6 +95,36 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
       setBusy(false)
     }
   }, [refresh])
+
+  /* Finishing a recording runs under the same lock as the drain, so the two
+   * can never send the same row at once: saving is not idempotent, and a
+   * double send is a duplicate session an athlete can see. */
+  const exclusive = async <T,>(fn: () => Promise<T>, whenBusy: T): Promise<T> => {
+    if (drainingRef.current) return whenBusy
+    drainingRef.current = true
+    setBusy(true)
+    try { return await fn() } finally { drainingRef.current = false; setBusy(false) }
+  }
+
+  const transcribeOne = (id: string) => exclusive(async () => {
+    const rec = (await listRecordings()).find((r) => r.id === id)
+    if (!rec) return { rec: null, error: 'This recording is no longer on this phone.' }
+    // Not ready, so syncRecording uploads and transcribes and stops there.
+    const out = await syncRecording(rec)
+    const after = (await listRecordings()).find((r) => r.id === id) ?? null
+    await refresh()
+    return { rec: after, error: out.error }
+  }, { rec: null, error: 'Another recording is sending. Try again in a moment.' })
+
+  const finishOne = (id: string, patch: Partial<PendingRecording>) => exclusive<FinishOutcome>(async () => {
+    await patchRecording(id, patch)
+    const rec = (await listRecordings()).find((r) => r.id === id)
+    if (!rec) return { done: false, error: 'This recording is no longer on this phone.' }
+    const out = await syncRecording(rec)
+    await refresh()
+    if (out.done) onSyncedRef.current?.()
+    return { done: out.done, error: out.error }
+  }, { done: false, error: 'Another recording is sending. Try again in a moment.' })
 
   useEffect(() => {
     void drain()
@@ -132,7 +160,8 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
       <div className="card" style={{ padding: 16, borderRadius: 'var(--radius-lg)' }}>
         <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 12, lineHeight: 1.5 }}>
           {pending.length === 1 ? 'One recording is' : `${pending.length} recordings are`} saved
-          on this device and not sent yet. They send themselves when you have signal.
+          on this device and not sent yet. Ones you saved send themselves when you have signal;
+          ones you did not can be finished here.
         </div>
 
         {pending.map((rec) => (
@@ -171,7 +200,7 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
                 </span>
               </div>
               <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 5 }}>
-                {describe(rec)}
+                {describePending(rec)}
               </div>
               {rec.lastError && (
                 // `overflowWrap: anywhere` only ever acts on a token that
@@ -201,6 +230,16 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
                 </div>
               )}
             </div>
+            {!rec.ready && (
+              <button
+                className="btn btn-primary"
+                onClick={() => setFinishing(rec)}
+                disabled={busy}
+                style={{ minHeight: 44, padding: '0 16px', borderRadius: 999, fontSize: 'var(--fs-2)', marginLeft: 'auto', flexShrink: 0 }}
+              >
+                Finish
+              </button>
+            )}
             <button
               className="btn btn-ghost"
               onClick={async () => {
@@ -212,7 +251,7 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
               }}
               style={{
                 minHeight: 44, padding: '0 16px', borderRadius: 999,
-                fontSize: 'var(--fs-2)', marginLeft: 'auto', flexShrink: 0,
+                fontSize: 'var(--fs-2)', marginLeft: rec.ready ? 'auto' : 0, flexShrink: 0,
               }}
             >
               Discard
@@ -235,6 +274,18 @@ export default function PendingRecordings({ onSynced }: { onSynced?: () => void 
           {busy ? 'Sending…' : 'Try again now'}
         </button>
       </div>
+      {finishing && (
+        <FinishRecordingSheet
+          rec={finishing}
+          athletes={athletes}
+          groups={groups}
+          coachSport={coachSport}
+          busy={busy}
+          onTranscribe={() => transcribeOne(finishing.id)}
+          onSave={(patch) => finishOne(finishing.id, patch)}
+          onClose={() => setFinishing(null)}
+        />
+      )}
     </section>
   )
 }

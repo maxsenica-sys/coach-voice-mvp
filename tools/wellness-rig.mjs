@@ -14,6 +14,9 @@
  *   W2  the low bucket widened from `< 3` to `<= 3`
  *   W3  the sort dropped (worst no longer first)
  *   W4  the short form given the full list
+ *   W5  notify_wellness_alerts dropped from caretakerPrefs (a parent switched
+ *       off still listed); the picker's filter changed to `=== true`
+ *   W6  the caretakers route reading the switches by hand again
  *
  * Usage:  npm run verify:wellness
  */
@@ -21,6 +24,8 @@
 import { wellnessDriver, WELLNESS_METRICS } from '@/lib/wellness-config'
 import { readinessToMetrics } from '@/lib/readiness'
 import { regionLabel } from '@/lib/body-map'
+import { caretakerPrefs, wellnessAlertRecipients } from '@/lib/caretaker-prefs'
+import { readFileSync } from 'node:fs'
 
 const GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', BOLD = '\x1b[1m', OFF = '\x1b[0m'
 const results = []
@@ -76,6 +81,33 @@ check('W4', 'The short form fits under a roster tile (76px) in every case', () =
     if (!d) { bad.push(`no cause for ${JSON.stringify(c)}`); continue }
     if (d.short.length > 11) bad.push(`"${d.short}" is ${d.short.length} characters — it wraps under a 76px tile`)
   }
+  return bad
+})
+
+check('W5', 'A caretaker switched off for wellness alerts is saved off, and is not offered in the alert', () => {
+  const bad = []
+  const off = caretakerPrefs({ notify_wellness_alerts: false, notify_session_reports: false, notify_monthly_reports: false })
+  if (off.notify_wellness_alerts !== false) bad.push('notify_wellness_alerts: false was not kept (the bug: the route dropped it and the default made it true)')
+  if (off.notify_session_reports !== false || off.notify_monthly_reports !== false) bad.push('a session or monthly switch turned off was not kept')
+  const unsent = caretakerPrefs({})
+  if (!unsent.notify_wellness_alerts || !unsent.notify_session_reports || !unsent.notify_monthly_reports) bad.push('a switch the client did not send should be on, as the form defaults it')
+  if (caretakerPrefs({ notify_wellness_alerts: 'false' }).notify_wellness_alerts !== true) bad.push('a non-boolean was read as a decision')
+  const list = wellnessAlertRecipients([
+    { id: 'on', notify_wellness_alerts: true },
+    { id: 'off', notify_wellness_alerts: false },
+    { id: 'old', notify_wellness_alerts: null },
+  ]).map((c) => c.id)
+  if (list.includes('off')) bad.push('a caretaker switched off is offered in the alert')
+  if (!list.includes('on') || !list.includes('old')) bad.push(`expected on and old (null = never asked) to be offered, got ${JSON.stringify(list)}`)
+  return bad
+})
+
+check('W6', 'The caretakers route and the alert picker use those two functions, not their own copy', () => {
+  const bad = []
+  const route = readFileSync(new URL('../app/api/caretakers/route.ts', import.meta.url), 'utf8')
+  if (!/caretakerPrefs\(/.test(route) || !/\.\.\.prefs/.test(route)) bad.push('app/api/caretakers/route.ts does not save caretakerPrefs(body): a switch can be dropped again')
+  const page = readFileSync(new URL('../app/athletes/[id]/page.tsx', import.meta.url), 'utf8')
+  if (!/wellnessAlertRecipients\(/.test(page)) bad.push('the athlete page filters the alert picker itself')
   return bad
 })
 
