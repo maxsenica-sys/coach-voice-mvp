@@ -84,3 +84,70 @@ export async function checkContent(text: string): Promise<GateResult> {
 /** What the coach is told. Plain, and not an accusation. */
 export const BLOCKED_MESSAGE =
   "This recording can't be summarised or shared with an athlete: it contains content that isn't appropriate for them. You can still keep it as a private note by unticking Share."
+
+/* ── Sharing or editing a session that is already saved ──────────────────
+ *
+ * Found 2026-11-14: the gate ran only when a session was shared at save. A
+ * session saved private and shared later from the toggle, or a shared
+ * session whose summary or notes were edited afterwards, reached the athlete
+ * unchecked (PATCH /api/sessions/[id]). That was the whole of the hole: save
+ * private, then tap Share.
+ *
+ * Only future actions are checked. A session that is already shared stays
+ * shared; nothing is re-judged retroactively. */
+
+/** The session fields an athlete reads, and the transcript (1:1 sessions). */
+export const ATHLETE_VISIBLE_FIELDS = ['session_name', 'title', 'summary', 'coach_notes', 'focus_points'] as const
+
+export interface SessionText {
+  shared_with_athlete?: boolean | null
+  transcript?: string | null
+  session_name?: string | null
+  title?: string | null
+  summary?: string | null
+  coach_notes?: string | null
+  focus_points?: unknown
+}
+
+export interface ShareGateCheck {
+  /** 'share': the session is becoming shared, so everything an athlete would
+   *  read is checked. 'edit': it is already shared and athlete-visible text is
+   *  changing, so the new text is checked. */
+  kind: 'share' | 'edit'
+  text: string
+}
+
+function textOf(value: unknown): string[] {
+  if (typeof value === 'string') return value.trim() ? [value] : []
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+  return []
+}
+
+/**
+ * What a PATCH must have checked before it is written, or null when nothing
+ * new reaches an athlete (unsharing, editing a private session, a sport tag).
+ * Pure.
+ */
+export function shareGateCheck(current: SessionText, updates: Record<string, unknown>): ShareGateCheck | null {
+  const wasShared = current.shared_with_athlete === true
+  const willBeShared = 'shared_with_athlete' in updates ? updates.shared_with_athlete === true : wasShared
+  if (!willBeShared) return null
+
+  if (!wasShared) {
+    const after: Record<string, unknown> = { ...current, ...updates }
+    const text = ['transcript', ...ATHLETE_VISIBLE_FIELDS].flatMap((f) => textOf(after[f])).join('\n')
+    return { kind: 'share', text }
+  }
+
+  const changed = ATHLETE_VISIBLE_FIELDS.filter((f) => f in updates)
+  if (changed.length === 0) return null
+  return { kind: 'edit', text: changed.flatMap((f) => textOf(updates[f])).join('\n') }
+}
+
+/** Told to the coach when sharing a saved session is refused. */
+export const SHARE_BLOCKED_MESSAGE =
+  "This session can't be shared with an athlete: it contains content that isn't appropriate for them. It stays private."
+
+/** Told to the coach when an edit to a shared session is refused. */
+export const EDIT_BLOCKED_MESSAGE =
+  "That can't be saved on a shared session: it contains content that isn't appropriate for an athlete. Nothing was changed."

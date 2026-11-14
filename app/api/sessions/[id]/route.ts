@@ -5,6 +5,13 @@ import { notifySessionShared } from '@/lib/notify'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { resolveCoachScope } from '@/lib/coach-scope'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
+import {
+  ATHLETE_VISIBLE_FIELDS,
+  checkContent,
+  EDIT_BLOCKED_MESSAGE,
+  SHARE_BLOCKED_MESSAGE,
+  shareGateCheck,
+} from '@/lib/content-gate'
 
 
 function createSupabase(req: NextRequest) {
@@ -73,6 +80,33 @@ export async function PATCH(
    * recorded. An assistant may edit only what they recorded themselves — the
    * same rule migration 034's "staff edit own recordings" policy enforces. */
   const scope = await resolveCoachScope(supabase, user.id)
+
+  /* Nothing sexual, hateful or threatening reaches an athlete by being shared
+   * later or edited after sharing (lib/content-gate.ts, shareGateCheck). Read
+   * under the same ownership rules as the edit below, and judged before
+   * anything is written, so a refusal changes nothing. */
+  if ('shared_with_athlete' in updates || ATHLETE_VISIBLE_FIELDS.some((f) => f in updates)) {
+    let read = supabase
+      .from('sessions')
+      .select('shared_with_athlete, transcript, session_name, title, summary, coach_notes, focus_points')
+      .eq('id', id)
+      .eq('coach_id', scope.headId)
+    if (!scope.isHead) read = read.eq('recorded_by', user.id)
+    const { data: current, error: readError } = await read.maybeSingle()
+    if (readError) return attach(NextResponse.json({ error: readError.message }, { status: 500 }), cookiesToSet)
+    if (!current) return attach(NextResponse.json({ error: 'Session not found.' }, { status: 404 }), cookiesToSet)
+
+    const pending = shareGateCheck(current, updates)
+    if (pending) {
+      const gate = await checkContent(pending.text)
+      if (gate.blocked) {
+        console.warn(`[sessions PATCH] ${pending.kind} refused:`, gate.reasons.join(', '))
+        const message = pending.kind === 'share' ? SHARE_BLOCKED_MESSAGE : EDIT_BLOCKED_MESSAGE
+        return attach(NextResponse.json({ error: message, blocked: true }, { status: 422 }), cookiesToSet)
+      }
+    }
+  }
+
   let edit = supabase
     .from('sessions')
     .update(updates)

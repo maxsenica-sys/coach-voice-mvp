@@ -111,7 +111,7 @@ const { buildSplitSummaryPrompt, parseSplitSummaryResponse, splitEligibility, as
 const { guardSummary, isGrounded, transcriptStems, capBullets, MAX_BULLETS, NO_COACHING_LINE } =
   await import(pathToFileURL(path.join(ROOT, 'lib/summary-guard.ts')).href)
 
-const { keywordGate, moderationDecision } =
+const { keywordGate, moderationDecision, shareGateCheck } =
   await import(pathToFileURL(path.join(ROOT, 'lib/content-gate.ts')).href)
 
 const { sessionBodies, narrowAfterPartialSave } =
@@ -807,6 +807,29 @@ console.log(`\n   ${BOLD}Content gate${OFF} ${DIM}— some recordings must never
   g(!moderationDecision({ violence: true }).blocked, 'moderation: plain violence alone does not block (contact sport)')
   g(!moderationDecision(null).blocked && !moderationDecision(undefined).blocked, 'moderation: no answer is not a block')
 
+  // Sharing or editing a session after it was saved (PATCH /api/sessions/[id]).
+  // Found 2026-11-14: save private, then tap Share, and nothing was checked.
+  const priv = { shared_with_athlete: false, transcript: 'TRANSCRIPT', summary: 'SUMMARY', coach_notes: 'NOTES', focus_points: ['FOCUS'], title: 'TITLE', session_name: null }
+  const shared = { ...priv, shared_with_athlete: true }
+  const s1 = shareGateCheck(priv, { shared_with_athlete: true })
+  g(s1?.kind === 'share', 'share later: sharing a private session is checked', JSON.stringify(s1))
+  for (const part of ['TRANSCRIPT', 'SUMMARY', 'NOTES', 'FOCUS', 'TITLE']) {
+    g(Boolean(s1?.text.includes(part)), 'share later: everything the athlete would read is checked', part)
+  }
+  const s2 = shareGateCheck(priv, { shared_with_athlete: true, summary: 'NEW SUMMARY' })
+  g(Boolean(s2?.text.includes('NEW SUMMARY')) && !s2?.text.includes('\nSUMMARY'), 'share later: the text after the edit is what is checked', JSON.stringify(s2))
+  const e1 = shareGateCheck(shared, { coach_notes: 'EDITED NOTES' })
+  g(e1?.kind === 'edit' && e1.text === 'EDITED NOTES', 'edit after sharing: the new text is checked', JSON.stringify(e1))
+  const e2 = shareGateCheck(shared, { focus_points: ['A', 'B'] })
+  g(e2?.kind === 'edit' && e2.text.includes('A') && e2.text.includes('B'), 'edit after sharing: focus points are checked', JSON.stringify(e2))
+  g(shareGateCheck(shared, { shared_with_athlete: false }) === null, 'unsharing is never blocked')
+  g(shareGateCheck(priv, { coach_notes: 'anything' }) === null, 'editing a private session is not checked (it is the coach\'s own)')
+  g(shareGateCheck(shared, { sport_context: 'volleyball' }) === null, 'a field the athlete does not read is not checked')
+  g(shareGateCheck(shared, { shared_with_athlete: true }) === null, 'a re-toggle on an already-shared session re-judges nothing')
+  g(shareGateCheck({ ...priv, shared_with_athlete: null }, { shared_with_athlete: true })?.kind === 'share', 'a session with no share value is treated as private')
+  const blocked = shareGateCheck(priv, { shared_with_athlete: true, coach_notes: 'he sent her a nude' })
+  g(Boolean(blocked) && keywordGate(blocked.text).blocked, 'share later: a blocked word in the notes stops the share')
+
   if (gateFails.length === 0) console.log(`   ${GREEN}PASS${OFF}  blocks what it must, and nothing a coach says about sport`)
   else for (const f of gateFails) console.log(`   ${RED}FAIL${OFF}  ${f}`)
 }
@@ -814,15 +837,18 @@ console.log(`\n   ${BOLD}Content gate${OFF} ${DIM}— some recordings must never
 // Every path that produces or shares a NEW summary goes through both. A route
 // that forgets is invisible to tsc — the join between files, again.
 //
-// Editing or re-sharing a session that is already saved (PATCH
-// /api/sessions/[id]) is deliberately left as it was. Max, 2026-09-26: "don't
-// change anything that's currently deployed, just change future events."
+// Sharing a saved session later, or editing one already shared (PATCH
+// /api/sessions/[id]), is gated too (Max, 2026-11-14). Until then it was left
+// out under "don't change anything that's currently deployed, just change
+// future events" (2026-09-26), which the fix still honours: only a future
+// share or edit is judged, and nothing already shared is unshared.
 {
   const src = (f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')
   const wired = [
     ['lib/quick-summary.ts', /guardSummary\(/, /checkContent\(/, 'the single summary is guarded and gated'],
     ['app/api/sessions/split-summary/route.ts', /guardSummary\(/, /checkContent\(/, 'each split section is guarded and the recording gated'],
     ['app/api/sessions/route.ts', /capBullets\(/, /checkContent\(/, 'the save route caps and gates a shared session'],
+    ['app/api/sessions/[id]/route.ts', /shareGateCheck\(/, /checkContent\(/, 'sharing later and editing a shared session are gated'],
   ]
   for (const [file, guard, gate, name] of wired) {
     const code = src(file)
