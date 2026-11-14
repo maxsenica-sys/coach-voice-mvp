@@ -451,6 +451,32 @@ export function coverageRows(
   return { window_days: windowDays, rows, median_words: median(rows.map((r) => r.words)) }
 }
 
+/**
+ * The card's groups: athletes with the same amount of time together, roped in
+ * as one line (Max, 2026-11-14: "if the athletes have had 0 sessions … they
+ * could probably be roped in together as the same"). Every athlete lands in
+ * exactly one group — the card lists everyone, packed, never a top ten — and
+ * keeps its least-attention-first order inside the group.
+ */
+export const COVERAGE_GROUPS: ReadonlyArray<{ label: string; min: number; max: number }> = [
+  { label: 'No sessions', min: 0, max: 0 },
+  { label: '1 session', min: 1, max: 1 },
+  { label: '2 sessions', min: 2, max: 2 },
+  { label: '3–4 sessions', min: 3, max: 4 },
+  { label: '5+ sessions', min: 5, max: Infinity },
+]
+
+export interface CoverageGroup {
+  label: string
+  rows: CoverageInsightRow[]
+}
+
+export function coverageGroups(rows: CoverageInsightRow[]): CoverageGroup[] {
+  return COVERAGE_GROUPS
+    .map((g) => ({ label: g.label, rows: rows.filter((r) => r.sessions >= g.min && r.sessions <= g.max) }))
+    .filter((g) => g.rows.length > 0)
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Wire shapes (what the route returns)
 // ═══════════════════════════════════════════════════════════════════════════

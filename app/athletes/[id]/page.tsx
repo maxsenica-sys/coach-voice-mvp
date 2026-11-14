@@ -34,6 +34,7 @@ import { getTeam, type Team } from '@/lib/team-client'
 import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 import { escapeHtml } from '@/lib/escape-html'
 import { regionLabel } from '@/lib/body-map'
+import { uploadSessionVideo } from '@/lib/video-upload'
 
 interface Athlete {
   id: string; first_name: string; last_name: string
@@ -987,56 +988,12 @@ export default function AthleteDetailPage() {
 
     const doUpload = async () => {
       try {
-        // Step 1: get a signed upload URL from our server (fast — no file transfer)
-        const urlRes = await fetch(
-          `/api/sessions/${sessionId}/videos/upload-url?` +
-          new URLSearchParams({ file_name: file.name, mime_type: file.type || 'video/mp4' })
-        )
-        if (!urlRes.ok) {
-          const j = await urlRes.json().catch(() => ({}))
-          throw new Error(j?.error ?? 'Failed to prepare upload')
-        }
-        const { signedUrl, path } = await urlRes.json()
-
-        // Step 2: upload directly to Supabase via PUT (browser → Supabase, no Next.js middleman)
-        // PUT with direct file body is the correct method for Supabase signed upload URLs —
-        // it skips multipart parsing overhead and is significantly faster than POST + FormData.
-        const startTime = Date.now()
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest()
-          xhr.upload.onprogress = e => {
-            if (!e.lengthComputable) return
-            const pct = Math.round((e.loaded / e.total) * 100)
-            setVideoProgress(prev => ({ ...prev, [sessionId]: pct }))
-            const elapsed = (Date.now() - startTime) / 1000
-            const rate = e.loaded / elapsed
-            const remaining = (e.total - e.loaded) / rate
-            const mbps = (rate / (1024 * 1024)).toFixed(1)
-            const timeStr = remaining < 5 ? 'Almost done…' : remaining < 60 ? `~${Math.ceil(remaining)}s left` : `~${Math.ceil(remaining / 60)}min left`
-            setVideoEta(prev => ({ ...prev, [sessionId]: `${mbps} MB/s · ${timeStr}` }))
-          }
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) resolve()
-            else reject(new Error(`Upload failed (${xhr.status})`))
-          }
-          xhr.onerror = () => reject(new Error('Upload failed — check your connection.'))
-          xhr.open('PUT', signedUrl)
-          xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
-          xhr.setRequestHeader('x-upsert', 'false')
-          xhr.send(file)
+        // Signed URL, direct PUT to storage, register — lib/video-upload.ts,
+        // shared with the session page's own Add video button.
+        const video = await uploadSessionVideo<SessionVideo>(sessionId, file, ({ pct, eta }) => {
+          setVideoProgress(prev => ({ ...prev, [sessionId]: pct }))
+          setVideoEta(prev => ({ ...prev, [sessionId]: eta }))
         })
-
-        // Step 3: register the video row in our database
-        const regRes = await fetch(`/api/sessions/${sessionId}/videos`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path, file_name: file.name, mime_type: file.type || 'video/mp4' }),
-        })
-        if (!regRes.ok) {
-          const j = await regRes.json().catch(() => ({}))
-          throw new Error(j?.error ?? 'Video uploaded but failed to save record')
-        }
-        const { video } = await regRes.json()
         setSessionVideos(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), video] }))
       } catch (err: unknown) {
         // Next to the clip that failed, not in a page-level banner at the top of

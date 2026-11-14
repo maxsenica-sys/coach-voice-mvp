@@ -2,15 +2,18 @@
 
 // CoverageInsight — "Least attention this month", for the coach's dashboard.
 //
-// Every athlete on the roster, least recorded attention first, over the last
-// 30 days: sessions saved for them and words spoken in those sessions, with the
-// roster median marked. Nobody is left off — the athlete at the bottom of a
-// coach's attention is the one this card exists for, and a list that stopped
-// at ten would stop before them on a big roster.
+// Every athlete on the roster over the last 30 days, grouped by how many
+// sessions were saved for them ("No sessions", "1 session" … "5+ sessions"),
+// least attention first inside each group. Nobody is left off — the athlete at
+// the bottom of a coach's attention is the one this card exists for, and a
+// list that stopped at ten would stop before them on a big roster. Each name
+// is a link to the athlete; its tooltip carries the sessions and words.
 //
-// Words spoken is a proxy for attention, not a measure of it, and the card
-// says so on its face. The wording is neutral on purpose: a part-time coach
-// with twenty athletes will always have a tail, and a scold is not a gift.
+// Until 2026-11-14 it was one row per athlete with a words bar, the roster
+// median and a paragraph explaining that words are only a proxy. Max: "it's a
+// lot of text" — so the groups replaced it. The wording stays neutral: a
+// part-time coach with twenty athletes will always have a tail, and a scold is
+// not a gift.
 //
 // Self-contained: it fetches its own data. Mount it with no props.
 //
@@ -23,6 +26,7 @@ import Link from 'next/link'
 import { apiJson } from '@/lib/api-client'
 import { errorMessage } from '@/lib/errors'
 import { todayISODate } from '@/lib/session-date'
+import { coverageGroups } from '@/lib/insights'
 import type { CoverageInsightResponse, CoverageInsight as Coverage } from '@/lib/insights'
 
 const CAST: React.CSSProperties = {
@@ -56,11 +60,6 @@ export default function CoverageInsight({ athleteHref = (id: string) => `/athlet
 
   useEffect(() => { void load() }, [load])
 
-  const maxWords = data ? Math.max(1, data.median_words, ...data.rows.map((r) => r.words)) : 1
-  const medianPct = data ? (data.median_words / maxWords) * 100 : 0
-  // The median line sits above the first athlete at or over it.
-  const medianAt = data ? data.rows.findIndex((r) => r.words >= data.median_words) : -1
-
   return (
     <section aria-labelledby="coverage-insight-h" style={{ minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', minHeight: 44, marginBottom: 2 }}>
@@ -69,7 +68,7 @@ export default function CoverageInsight({ athleteHref = (id: string) => `/athlet
         </h2>
       </div>
 
-      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+      <div>
         {loading && !data ? (
           <p style={BODY} aria-live="polite">Adding up the last 30 days…</p>
         ) : error ? (
@@ -82,62 +81,46 @@ export default function CoverageInsight({ athleteHref = (id: string) => `/athlet
         ) : data && data.rows.length === 0 ? (
           <p style={BODY}>No athletes on your roster yet. Once you add some, this shows how your recorded time is spread across them.</p>
         ) : data ? (
-          <>
-            <p style={{ ...BODY, marginBottom: 10 }}>
-              Last 30 days, least first. Words spoken is a rough stand-in for attention — it can&rsquo;t see
-              watching, a quick word between reps, or anything you didn&rsquo;t record. Squad recordings are
-              shared evenly across the athletes they were saved for.
-            </p>
-
-            <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {data.rows.map((r, i) => {
-                const name = `${r.first_name} ${r.last_name}`.trim() || 'Unnamed athlete'
-                const pct = (r.words / maxWords) * 100
-                return (
-                  <li key={r.athlete_id}>
-                    {i === medianAt && (
-                      <div
-                        role="separator"
-                        aria-label={`Roster median: ${nf.format(Math.round(data.median_words))} words`}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}
-                      >
-                        <span aria-hidden style={{ flex: '1 1 12px', minWidth: 12, borderTop: '1px dashed var(--text-muted)' }} />
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', textAlign: 'center' }}>
-                          Roster median · {nf.format(Math.round(data.median_words))} words
-                        </span>
-                        <span aria-hidden style={{ flex: '1 1 12px', minWidth: 12, borderTop: '1px dashed var(--text-muted)' }} />
-                      </div>
-                    )}
-                    <Link
-                      href={athleteHref(r.athlete_id)}
-                      style={{
-                        display: 'block', minHeight: 44, padding: '10px 0', borderTop: '1px solid var(--border)',
-                        textDecoration: 'none', color: 'inherit',
-                      }}
-                    >
-                      <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 10, rowGap: 2 }}>
-                        <span style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text)', overflowWrap: 'anywhere', minWidth: 0 }}>
+          <div>
+            {/* Grouped by how many sessions, every athlete named (Max,
+                2026-11-14): the explanation paragraph, the bars and the median
+                line made this the busiest thing on the home screen. Least
+                attention first inside each group, as before. */}
+            {coverageGroups(data.rows).map((g) => (
+              <div key={g.label} style={{
+                display: 'grid', gridTemplateColumns: 'minmax(84px, 96px) minmax(0, 1fr)', gap: 10,
+                alignItems: 'start', padding: '10px 0', borderTop: '1px solid var(--border)',
+              }}>
+                <div style={{ minWidth: 0, paddingTop: 10 }}>
+                  <div style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.25 }}>{g.label}</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)' }}>
+                    {g.rows.length} athlete{g.rows.length === 1 ? '' : 's'}
+                  </div>
+                </div>
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 6, minWidth: 0 }}>
+                  {g.rows.map((r) => {
+                    const name = `${r.first_name} ${r.last_name}`.trim() || 'Unnamed athlete'
+                    return (
+                      <li key={r.athlete_id} style={{ minWidth: 0, maxWidth: '100%' }}>
+                        <Link
+                          href={athleteHref(r.athlete_id)}
+                          title={`${r.sessions} session${r.sessions === 1 ? '' : 's'} · ${nf.format(r.words)} words`}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 12px',
+                            borderRadius: 999, background: 'var(--panel)', border: '1px solid var(--border-soft)',
+                            color: 'var(--text)', textDecoration: 'none', fontSize: 'var(--t-body-tight)',
+                            overflowWrap: 'anywhere', maxWidth: '100%', boxSizing: 'border-box',
+                          }}
+                        >
                           {name}
-                        </span>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
-                          {r.sessions} session{r.sessions === 1 ? '' : 's'} · {nf.format(r.words)} words
-                        </span>
-                      </span>
-                      <span aria-hidden style={{ position: 'relative', display: 'block', height: 6, marginTop: 7, borderRadius: 3, background: 'var(--border)' }}>
-                        {r.words > 0 && (
-                          <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.max(2, pct)}%`, borderRadius: 3, background: 'var(--primary)' }} />
-                        )}
-                        <span style={{ position: 'absolute', top: -3, bottom: -3, left: `calc(${medianPct}% - 1px)`, width: 2, background: 'var(--text)' }} />
-                      </span>
-                    </Link>
-                  </li>
-                )
-              })}
-            </ol>
-            <p style={{ ...BODY, marginTop: 8, fontSize: 'var(--t-data)' }}>
-              The upright tick on each bar marks the roster median. Only you can see this.
-            </p>
-          </>
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
         ) : null}
       </div>
     </section>

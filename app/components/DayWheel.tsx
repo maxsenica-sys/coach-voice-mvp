@@ -23,6 +23,15 @@ export type WheelEvent = {
   athletes?: { first_name: string; last_name: string } | null
 }
 
+/* The panel drops from under the strip; the blur fades in. Motion only when
+ * the person allows it — without it, both simply appear. */
+const DROP_CSS = `@media (prefers-reduced-motion: no-preference) {
+  @keyframes dw-drop { from { opacity: 0; transform: translateY(-10px) } to { opacity: 1; transform: none } }
+  @keyframes dw-fade { from { opacity: 0 } to { opacity: 1 } }
+  .dw-drop { animation: dw-drop 180ms cubic-bezier(.22,1,.36,1) both }
+  .dw-fade { animation: dw-fade 180ms ease-out both }
+}`
+
 const DAYS_BACK = 56
 const DAYS_FORWARD = 56
 const DAY_LETTERS = 'SMTWTFS'
@@ -51,9 +60,19 @@ type Props = {
   /** Rendered at the end of the header row — kept inside the wheel's own flex
    *  row so it can never be overlapped by the Today pill. */
   headerAction?: React.ReactNode
+  /**
+   * When set, a tapped day opens as a panel dropping down OVER the page below
+   * the strip, blurring what it covers, instead of pushing everything down.
+   * The number is how far down it may reach, in px: the dashboard measures the
+   * gap to its Record button, so the panel and its blur stop above it and
+   * recording is never behind anything (Max, 2026-11-14: "there's a lot of
+   * movement … everything gets pushed down and I can't record straight
+   * away"). A longer day scrolls inside the panel; no row is dropped.
+   */
+  overlayHeight?: number
 }
 
-export default function DayWheel({ events, selectedDay, onSelectDay, headerAction }: Props) {
+export default function DayWheel({ events, selectedDay, onSelectDay, headerAction, overlayHeight }: Props) {
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const todayRef = useRef<HTMLButtonElement | null>(null)
   const [todayOffScreen, setTodayOffScreen] = useState<'left' | 'right' | null>(null)
@@ -117,9 +136,18 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
   }, [])
 
   const dayEvents = selectedDay ? events.filter((e) => e.event_date === selectedDay) : []
+  const overlay = overlayHeight !== undefined
+
+  // The overlay panel closes on Escape, like any other popover.
+  useEffect(() => {
+    if (!overlay || !selectedDay) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onSelectDay(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [overlay, selectedDay, onSelectDay])
 
   return (
-    <div style={{ minWidth: 0 }}>
+    <div style={{ minWidth: 0, position: overlay ? 'relative' : undefined, zIndex: overlay && selectedDay ? 40 : undefined }}>
       {/* One flex row: label, then the Today pill, then whatever the page wants
           at the end. The pill used to be absolutely the same corner as the
           dashboard's Calendar link and covered it whenever it appeared. */}
@@ -245,13 +273,51 @@ export default function DayWheel({ events, selectedDay, onSelectDay, headerActio
         })}
       </div>
 
+      {selectedDay && overlay && (
+        <>
+          <style>{DROP_CSS}</style>
+          {/* The blur: from the strip down to just above Record, never over it.
+              Tapping it closes the day. */}
+          <div
+            aria-hidden
+            onClick={() => onSelectDay(null)}
+            className="dw-fade"
+            style={{
+              position: 'absolute', left: -16, right: -16, top: '100%', height: Math.max(0, overlayHeight),
+              backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+              background: 'linear-gradient(180deg, rgba(31,36,33,.86) 0%, rgba(31,36,33,.55) 75%, rgba(31,36,33,.3) 100%)',
+              cursor: 'pointer',
+            }}
+          />
+        </>
+      )}
+
       {selectedDay && (
-        <div style={{ marginTop: 12 }}>
+        <div
+          role={overlay ? 'dialog' : undefined}
+          aria-label={overlay ? new Date(`${selectedDay}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }) : undefined}
+          className={overlay ? 'dw-drop' : undefined}
+          style={overlay ? {
+            position: 'absolute', left: -8, right: -8, top: 'calc(100% + 4px)',
+            maxHeight: Math.max(140, (overlayHeight ?? 0) - 12), overflowY: 'auto',
+            background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px 14px 22px 22px',
+            padding: '4px 16px 10px', boxShadow: '0 18px 40px rgba(0,0,0,.4)', boxSizing: 'border-box',
+          } : { marginTop: 12 }}
+        >
           <div style={{
             fontFamily: 'var(--font-cast)', fontSize: 15, fontWeight: 700, color: 'var(--text)',
             marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.14em',
+            display: 'flex', alignItems: 'center', gap: 8, minHeight: overlay ? 44 : undefined,
           }}>
-            {new Date(`${selectedDay}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+            <span style={{ flex: 1, minWidth: 0 }}>
+              {new Date(`${selectedDay}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+            </span>
+            {overlay && (
+              <button onClick={() => onSelectDay(null)} aria-label="Close" style={{
+                width: 44, height: 44, flex: 'none', border: 'none', background: 'transparent',
+                color: 'var(--text-2)', fontSize: 22, lineHeight: 1, cursor: 'pointer', marginRight: -10,
+              }}>×</button>
+            )}
           </div>
           {dayEvents.length === 0 ? (
             <div style={{

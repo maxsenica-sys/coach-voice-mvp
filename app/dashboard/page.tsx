@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback, useMemo, useId, Suspense, Fragment } from 'react'
-import { byName, matchesName } from '@/lib/athlete-filter'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useId, Suspense, Fragment } from 'react'
+import { byName, matchesName, sortRoster, ROSTER_SORT_LABELS, type RosterSort } from '@/lib/athlete-filter'
 import CoverageInsight from '@/app/components/CoverageInsight'
 import PushOptIn from '@/app/components/PushOptIn'
 import { forgetPushOnSignOut } from '@/lib/push-client'
@@ -866,6 +866,18 @@ function DashboardPageInner() {
   // question about the same roster, not another value of the same field. The
   // rule and its thresholds are in lib/attention.ts.
   const [athleteFilter, setAthleteFilter] = useState<'all' | 'ACTIVE' | 'INVITED' | 'INACTIVE'>('all')
+  // The roster's Sort control. Remembered on this device only — a convenience,
+  // so a coach who always wants "longest without a session" keeps it.
+  const [rosterSort, setRosterSortState] = useState<RosterSort>(() => {
+    try {
+      const v = typeof window !== 'undefined' ? localStorage.getItem('pindar_roster_sort') : null
+      return v === 'recent' || v === 'longest' ? v : 'name'
+    } catch { return 'name' }
+  })
+  const setRosterSort = (v: RosterSort) => {
+    setRosterSortState(v)
+    try { localStorage.setItem('pindar_roster_sort', v) } catch { /* the choice still applies */ }
+  }
   const [addForm, setAddForm] = useState({ firstName: '', lastName: '', email: '' })
   const [addMsg, setAddMsg] = useState('')
   const [addLoading, setAddLoading] = useState(false)
@@ -959,6 +971,24 @@ function DashboardPageInner() {
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [homeWeekEvents, setHomeWeekEvents] = useState<CalendarEvent[]>([])
   const [homeSelectedDay, setHomeSelectedDay] = useState<string | null>(null)
+  /* A tapped day drops down over the home column and must stop above the
+   * Record button (Max, 2026-11-14: no barrier in front of recording). So the
+   * gap from the bottom of the day strip to the top of that button is measured
+   * whenever a day opens, and on resize. */
+  const homeWheelRef = useRef<HTMLDivElement | null>(null)
+  const homeRecordRef = useRef<HTMLButtonElement | null>(null)
+  const [dayOverlayH, setDayOverlayH] = useState(320)
+  useLayoutEffect(() => {
+    if (!homeSelectedDay) return
+    const measure = () => {
+      const w = homeWheelRef.current, r = homeRecordRef.current
+      if (!w || !r) return
+      setDayOverlayH(Math.max(140, Math.round(r.getBoundingClientRect().top - w.getBoundingClientRect().bottom - 10)))
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [homeSelectedDay])
 
   const [homeEventsError, setHomeEventsError] = useState<string | null>(null)
   /** What the wheel last showed, so a month that fails to load keeps it. */
@@ -1581,7 +1611,7 @@ function DashboardPageInner() {
     [coverage],
   )
 
-  const filteredAthletes = athletes.filter(a => {
+  const filteredAthletesUnsorted = athletes.filter(a => {
     // The fallback used to be `a.athlete_user_id ? 'ACTIVE' : 'INVITED'` — the
     // old, wrong definition kept as a default in three places on this screen.
     // `athlete_user_id` is written at invite time, so it made "we have not heard
@@ -1596,6 +1626,12 @@ function DashboardPageInner() {
     const s = athleteSearch.trim()
     return !s || matchesName(a, s) || a.email.toLowerCase().includes(s.toLowerCase())
   })
+  // The last session date the roster row shows, so the sort and the row agree.
+  const lastSessionOf = (a: Athlete): string | null => {
+    const cov = coverageByAthlete.get(a.id)
+    return cov ? cov.last_session_date : homeSessions.find(s => s.athlete_id === a.id)?.session_date ?? null
+  }
+  const filteredAthletes = sortRoster(filteredAthletesUnsorted, rosterSort, lastSessionOf)
 
   const recentSessions = homeSessions.slice(0, 3)
   const totalUnreadAll = Object.values(unreadCounts).reduce((a: number, b: number) => a + b, 0)
@@ -1615,10 +1651,6 @@ function DashboardPageInner() {
     : calMode === 'group'
       ? `Event is added for all ${groups.find(g => g.id === calTargetId)?.member_count ?? 0} athletes in this group`
       : 'Only what you add here is visible to the athlete'
-
-  const hour = new Date().getHours()
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-  const firstName = coachName.split(' ')[0]
 
   // ── The scoreboard's numbers ──────────────────────────────────
   /* The big number and its twelve-week spark both come from buildSpine
@@ -1663,18 +1695,16 @@ function DashboardPageInner() {
    * lib/attention.ts, and worded as a fact about sessions rather than a
    * verdict on the coach. It names nobody when nobody qualifies, and it says
    * nothing at all until the coverage read has landed — or if it failed —
-   * because "nobody is quiet" is a claim, and the greeting is not. */
+   * because "nobody is quiet" is a claim. Since 2026-11-14 it is one compact
+   * row rather than a 30px headline listing every first name (Max: "I
+   * wouldn't list all 10 because it takes up quite a lot of space"); the row
+   * opens the Athletes tab filtered to exactly those athletes. */
   const quietAthletes = coverageLoaded && !coverageFailed ? athletes.filter((a) => inactiveIds.has(a.id)) : []
   const NUMBER_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve']
-  const quietWord = NUMBER_WORDS[quietAthletes.length] ?? String(quietAthletes.length)
   const quietWeeks: number = QUIET_AFTER_DAYS / 7
   const quietSpan = Number.isInteger(quietWeeks)
     ? `${(NUMBER_WORDS[quietWeeks] ?? String(quietWeeks)).toLowerCase()} week${quietWeeks === 1 ? '' : 's'}`
     : `${QUIET_AFTER_DAYS} days`
-  const quietNames = (() => {
-    const names = quietAthletes.map((a) => a.first_name)
-    return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-  })()
 
   const ROLECAP: Record<Tab, string> = {
     home: 'Coach desk', athletes: 'Athletes', groups: 'Squads', sessions: 'Sessions',
@@ -1854,35 +1884,11 @@ function DashboardPageInner() {
 
         <div style={{ padding: tab === 'messages' ? 0 : isMobile ? `12px ${GUTTER} 0` : '28px' }}>
 
-          {/* Day wheel, first thing on the coach's home (Max, 2026-10-05: "the
-              calendar should actually sit above all that stuff"). Scrolls back
-              through what you've done and forward through what's booked, with a
-              Today control. */}
-          {/* iPhones installed as CoachVoice: once, how to get the new icon. */}
-          {tab === 'home' && <ReinstallNudge />}
-          {tab === 'home' && (
-              <div style={{ marginBottom: 14 }}>
-                {homeEventsError && (
-                  <div role="alert" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8, padding: '6px 6px 6px 12px', borderRadius: 8, background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 'var(--fs-2)', fontWeight: 600 }}>
-                    <span style={{ flex: '1 1 160px', minWidth: 0, overflowWrap: 'anywhere' }}>{homeEventsError} Events below may be missing or out of date.</span>
-                    <button onClick={() => void refreshHomeEvents()} className="btn btn-ghost" style={{ minHeight: 44, padding: '0 14px' }}>Retry</button>
-                  </div>
-                )}
-                <DayWheel
-                  events={homeWeekEvents as WheelEvent[]}
-                  selectedDay={homeSelectedDay}
-                  onSelectDay={setHomeSelectedDay}
-                  headerAction={
-                    <button onClick={() => setTab('calendar')} style={{ ...cast(13, 700, '.12em'), color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: 0, minHeight: 44, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                      Calendar <Icon name="arrow" size={13} />
-                    </button>
-                  }
-                />
-              </div>
-          )}
-
+          {/* Date, coach and sport directly under the top bar, above the
+              day strip (Max, 2026-11-14: "Pindar, Coach Desk, and then I
+              would put the date and who I am"). */}
           {tab !== 'messages' && (
-            <div style={{ marginBottom: 18 }}>
+            <div style={{ marginBottom: 14 }}>
               <Ticker>
                 <span>{tickerDate}</span>
                 {coachName && <><TickSep /><span style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{coachName}</span></>}
@@ -1898,6 +1904,35 @@ function DashboardPageInner() {
             </div>
           )}
 
+          {/* Day wheel, first thing on the coach's home (Max, 2026-10-05: "the
+              calendar should actually sit above all that stuff"). Scrolls back
+              through what you've done and forward through what's booked, with a
+              Today control. */}
+          {/* iPhones installed as CoachVoice: once, how to get the new icon. */}
+          {tab === 'home' && <ReinstallNudge />}
+          {tab === 'home' && (
+              <div ref={homeWheelRef} style={{ marginBottom: 14, position: 'relative', zIndex: homeSelectedDay ? 40 : undefined }}>
+                {homeEventsError && (
+                  <div role="alert" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8, padding: '6px 6px 6px 12px', borderRadius: 8, background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 'var(--fs-2)', fontWeight: 600 }}>
+                    <span style={{ flex: '1 1 160px', minWidth: 0, overflowWrap: 'anywhere' }}>{homeEventsError} Events below may be missing or out of date.</span>
+                    <button onClick={() => void refreshHomeEvents()} className="btn btn-ghost" style={{ minHeight: 44, padding: '0 14px' }}>Retry</button>
+                  </div>
+                )}
+                <DayWheel
+                  events={homeWeekEvents as WheelEvent[]}
+                  selectedDay={homeSelectedDay}
+                  onSelectDay={setHomeSelectedDay}
+                  overlayHeight={dayOverlayH}
+                  headerAction={
+                    <button onClick={() => setTab('calendar')} style={{ ...cast(13, 700, '.12em'), color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: 0, minHeight: 44, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                      Calendar <Icon name="arrow" size={13} />
+                    </button>
+                  }
+                />
+              </div>
+          )}
+
+
           {/* ════ HOME TAB ════ */}
           {tab === 'home' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: isMobile ? undefined : 760 }}>
@@ -1908,36 +1943,37 @@ function DashboardPageInner() {
                   is more urgent than any summary of past ones. */}
               <PendingRecordings onSynced={() => { void refreshSessions(); void fetchCoverage() }} />
 
-              {/* Attention headline, or the greeting when there is nothing to say. */}
-              <section>
-                {quietAthletes.length > 0 ? (
-                  <>
-                    {/* No "Inactive" label over it (Max, 2026-10-05): the
-                        sentence says it, and Open goes to that filter. */}
-                    <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, lineHeight: 1.12, letterSpacing: -0.6, color: 'var(--text)' }}>
-                      {quietWord} athlete{quietAthletes.length === 1 ? ' hasn’t' : 's haven’t'} had a session in{' '}
-                      <em style={{ fontStyle: 'italic', fontWeight: 500, background: `linear-gradient(transparent 68%, ${tint('var(--primary)', 26)} 68%)` }}>{quietSpan}</em>.
-                    </h1>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 11, flexWrap: 'wrap' }}>
-                      <div aria-hidden style={{ display: 'flex' }}>
-                        {quietAthletes.slice(0, 3).map((a, i) => (
-                          <div key={a.id} style={{ marginLeft: i === 0 ? 0 : -8 }}>
-                            <Mono initials={initialsOf(a.first_name, a.last_name)} pending={statusOf(a) === 'INVITED'} size={30} ring="var(--bg)" />
-                          </div>
-                        ))}
-                      </div>
-                      <p style={{ flex: '1 1 120px', minWidth: 0, margin: 0, fontSize: 'var(--fs-2)', color: 'var(--text-2)', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{quietNames}</p>
-                      <button onClick={() => { setAthleteFilter('INACTIVE'); setTab('athletes') }} style={{ minHeight: 44, background: 'none', border: 'none', padding: '0 0 0 6px', color: 'var(--primary)', fontWeight: 700, fontSize: 'var(--fs-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                        Open <Icon name="arrow" size={13} />
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 30, lineHeight: 1.12, letterSpacing: -0.6, color: 'var(--text)' }}>
-                    {greeting}, <em style={{ fontStyle: 'italic', fontWeight: 500 }}>{firstName || 'Coach'}.</em>
-                  </h1>
-                )}
-              </section>
+              {/* Who has gone quiet: one row, three faces, and the way in to
+                  the full list. Nothing at all when nobody qualifies. */}
+              {quietAthletes.length > 0 && (
+                <button
+                  onClick={() => { setAthleteFilter('INACTIVE'); setTab('athletes') }}
+                  aria-label={`${quietAthletes.length} athlete${quietAthletes.length === 1 ? ' has' : 's have'} had no session in ${quietSpan}. See who.`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 56,
+                    padding: '10px 12px', borderRadius: 16, cursor: 'pointer', textAlign: 'left',
+                    background: tint('var(--coach-on-light)', 8), border: '1px solid var(--coach-border)',
+                    color: 'var(--text)', font: 'inherit',
+                  }}
+                >
+                  <span aria-hidden style={{ display: 'flex', flex: 'none' }}>
+                    {quietAthletes.slice(0, 3).map((a, i) => (
+                      <span key={a.id} style={{ marginLeft: i === 0 ? 0 : -8 }}>
+                        <Mono initials={initialsOf(a.first_name, a.last_name)} pending={statusOf(a) === 'INVITED'} size={30} ring="var(--bg)" />
+                      </span>
+                    ))}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 'var(--t-body)', fontWeight: 600 }}>
+                      {quietAthletes.length} athlete{quietAthletes.length === 1 ? '' : 's'}
+                    </span>
+                    <span style={{ display: 'block', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
+                      no session in {quietSpan}
+                    </span>
+                  </span>
+                  <span style={{ ...cast(13, 700, '.16em'), color: 'var(--coach-on-light)', whiteSpace: 'nowrap', flex: 'none' }}>See who ›</span>
+                </button>
+              )}
 
               {/* The scoreboard. One enormous number: sessions this week. */}
               <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0, 1.32fr) minmax(0, 1fr)', gap: 9 }}>
@@ -1999,7 +2035,7 @@ function DashboardPageInner() {
               <UpcomingBrief events={homeWeekEvents} />
 
               {/* Record — the floodlight is spent here. */}
-              <button onClick={() => openRecorder()} style={{
+              <button ref={homeRecordRef} onClick={() => openRecorder()} style={{
                 position: 'relative', minHeight: 64, borderRadius: 18, overflow: 'hidden', background: 'var(--flood)',
                 border: 'none', display: 'flex', alignItems: 'stretch', cursor: 'pointer', padding: 0, width: '100%', textAlign: 'left',
               }}>
@@ -2379,6 +2415,28 @@ function DashboardPageInner() {
                       </span>
                       <input className="input" placeholder="Search…" aria-label="Search athletes" type="search" autoCorrect="off" autoCapitalize="none" spellCheck={false} value={athleteSearch} onChange={e => setAthleteSearch(e.target.value)} style={{ minWidth: 0, minHeight: 44, paddingLeft: 36, borderRadius: 12, border: HAIR_2, background: tint('var(--text)', 4) }} />
                     </div>
+                    {/* Sort (Max, 2026-11-14). A native select: on a phone it
+                        opens the system picker, which is the easiest target. */}
+                    <label style={{ position: 'relative', flex: 'none', minWidth: 0, display: 'flex' }}>
+                      <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Sort athletes</span>
+                      <span aria-hidden style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)', display: 'flex', pointerEvents: 'none' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4" /></svg>
+                      </span>
+                      <select
+                        value={rosterSort}
+                        onChange={e => setRosterSort(e.target.value as RosterSort)}
+                        style={{
+                          minWidth: 0, minHeight: 44, padding: '0 12px 0 32px', borderRadius: 12, cursor: 'pointer',
+                          border: `1.5px solid ${tint('var(--primary)', 55)}`, background: tint('var(--primary)', 9),
+                          color: 'var(--primary)', fontSize: 'var(--t-body-tight)', fontWeight: 600, fontFamily: 'inherit',
+                          appearance: 'none', WebkitAppearance: 'none',
+                        }}
+                      >
+                        {(Object.keys(ROSTER_SORT_LABELS) as RosterSort[]).map(k => (
+                          <option key={k} value={k}>{ROSTER_SORT_LABELS[k]}</option>
+                        ))}
+                      </select>
+                    </label>
                     <button onClick={fetchAthletes} disabled={loadingAthletes} style={{ ...ICON_BTN, opacity: loadingAthletes ? 0.5 : 1 }} title="Refresh" aria-label="Refresh the roster">
                       <Icon name="refresh" size={15} />
                     </button>
@@ -2632,8 +2690,11 @@ function DashboardPageInner() {
 
           {/* ════ CALENDAR TAB ════ */}
           {tab === 'calendar' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <TabTitle title="Calendar" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 10 : 16 }}>
+              {/* The top bar already says Calendar on a phone; the room goes to
+                  the month (Max, 2026-11-14: "see the entire calendar within
+                  one glance"). */}
+              {!isMobile && <TabTitle title="Calendar" />}
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '220px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
                 {/* On a phone the sidebar stacked every athlete as a 44px row
                     ABOVE the calendar — about a thousand pixels at twenty
@@ -2641,54 +2702,7 @@ function DashboardPageInner() {
                     long scroll below the list they chose it from. One line
                     says whose calendar this is; the full choice opens on
                     demand, with search and squad filtering from AthletePicker. */}
-                {isMobile ? (
-                  <div className="card" style={{ padding: 10, minWidth: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => setCalPickerOpen(o => !o)}
-                      aria-expanded={calPickerOpen}
-                      aria-controls="cal-target-picker"
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 44, padding: '6px 8px', border: 'none', background: 'none', color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}
-                    >
-                      <span style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', flexShrink: 0 }}>Showing</span>
-                      <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 'var(--fs-3)', overflowWrap: 'anywhere' }}>{calTargetLabel}</span>
-                      <span style={{ ...cast(13, 700, '.12em'), color: 'var(--primary)', flexShrink: 0 }}>{calPickerOpen ? 'Close' : 'Change'}</span>
-                    </button>
-                    {calPickerOpen && (
-                      <div id="cal-target-picker" style={{ borderTop: HAIR, marginTop: 6, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <button onClick={() => pickCalendar('personal', '')} aria-pressed={calMode === 'personal'} style={sideItem(calMode === 'personal', 'var(--primary)')}>
-                          <Icon name="calendar" size={15} /> My calendar
-                        </button>
-                        {groups.length > 0 && (
-                          <>
-                            <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '10px 12px 2px' }}>Squad calendars</div>
-                            {groups.map(g => (
-                              <button key={g.id} onClick={() => pickCalendar('group', g.id)} aria-pressed={calMode === 'group' && calTargetId === g.id} style={sideItem(calMode === 'group' && calTargetId === g.id, g.color)}>
-                                <span style={{ width: 12, height: 12, borderRadius: '50%', background: g.color, flexShrink: 0, boxShadow: '0 0 0 1.5px var(--text-muted)' }} />
-                                {g.name}
-                              </button>
-                            ))}
-                          </>
-                        )}
-                        {athletes.length > 0 && (
-                          <>
-                            <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '10px 12px 0' }}>An athlete&apos;s calendar</div>
-                            {/* value="" so it opens straight onto the list rather
-                                than folded onto the current athlete behind a
-                                second Change; "Showing" above already says who. */}
-                            <AthletePicker
-                              athletes={athletes}
-                              squads={groups.map(g => ({ id: g.id, name: g.name, member_ids: g.member_ids }))}
-                              value={calMode === 'athlete' ? calTargetId : ''}
-                              foldOnPick={false}
-                              onChange={id => pickCalendar('athlete', id)}
-                            />
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
+                {isMobile ? null : (
                   <div className="card" style={{ padding: 10, minWidth: 0 }}>
                     <button onClick={() => showCalendarFor('personal', '')} style={sideItem(calMode === 'personal', 'var(--primary)')}>
                       <Icon name="calendar" size={15} /> My Calendar
@@ -2717,11 +2731,63 @@ function DashboardPageInner() {
                     )}
                   </div>
                 )}
-                <div className="card" style={{ padding: 18, minWidth: 0 }}>
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ ...cast(19, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere' }}>{calTitle}</div>
-                    <div className="section-sub" style={{ color: 'var(--text-2)' }}>{calSubtitle}</div>
-                  </div>
+                {/* One box round the whole calendar (Max, 2026-11-14), with
+                    whose calendar it is as its first line on a phone. */}
+                <div className="card" style={{ padding: isMobile ? '6px 10px 12px' : 16, minWidth: 0 }}>
+                  {isMobile ? (
+                    <div style={{ marginBottom: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setCalPickerOpen(o => !o)}
+                          aria-expanded={calPickerOpen}
+                          aria-controls="cal-target-picker"
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 44, padding: '6px 8px', border: 'none', background: 'none', color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}
+                        >
+                          <span style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', flexShrink: 0 }}>Showing</span>
+                          <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 'var(--fs-3)', overflowWrap: 'anywhere' }}>{calTargetLabel}</span>
+                          <span style={{ ...cast(13, 700, '.12em'), color: 'var(--primary)', flexShrink: 0 }}>{calPickerOpen ? 'Close' : 'Change'}</span>
+                        </button>
+                        {calPickerOpen && (
+                          <div id="cal-target-picker" style={{ borderTop: HAIR, marginTop: 6, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <button onClick={() => pickCalendar('personal', '')} aria-pressed={calMode === 'personal'} style={sideItem(calMode === 'personal', 'var(--primary)')}>
+                              <Icon name="calendar" size={15} /> My calendar
+                            </button>
+                            {groups.length > 0 && (
+                              <>
+                                <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '10px 12px 2px' }}>Squad calendars</div>
+                                {groups.map(g => (
+                                  <button key={g.id} onClick={() => pickCalendar('group', g.id)} aria-pressed={calMode === 'group' && calTargetId === g.id} style={sideItem(calMode === 'group' && calTargetId === g.id, g.color)}>
+                                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: g.color, flexShrink: 0, boxShadow: '0 0 0 1.5px var(--text-muted)' }} />
+                                    {g.name}
+                                  </button>
+                                ))}
+                              </>
+                            )}
+                            {athletes.length > 0 && (
+                              <>
+                                <div style={{ ...cast(13, 700, '.16em'), color: 'var(--text-2)', padding: '10px 12px 0' }}>An athlete&apos;s calendar</div>
+                                {/* value="" so it opens straight onto the list rather
+                                    than folded onto the current athlete behind a
+                                    second Change; "Showing" above already says who. */}
+                                <AthletePicker
+                                  athletes={athletes}
+                                  squads={groups.map(g => ({ id: g.id, name: g.name, member_ids: g.member_ids }))}
+                                  value={calMode === 'athlete' ? calTargetId : ''}
+                                  foldOnPick={false}
+                                  onChange={id => pickCalendar('athlete', id)}
+                                />
+                              </>
+                            )}
+                          </div>
+                        )}
+                      <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', padding: '0 8px', overflowWrap: 'anywhere' }}>{calSubtitle}</div>
+                    </div>
+                  ) : (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ ...cast(19, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere' }}>{calTitle}</div>
+                      <div className="section-sub" style={{ color: 'var(--text-2)' }}>{calSubtitle}</div>
+                    </div>
+                  )}
                   {calError && (
                     <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 12 }}>
                       {calError}

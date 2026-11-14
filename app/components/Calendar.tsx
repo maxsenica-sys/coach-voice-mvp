@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import Link from 'next/link'
 import {
   carrySelection, currentMonth, daysInMonth, firstWeekday, parseMonth,
   shiftMonth, toDateStr, todayDateStr, toMonthStr, type MonthStr,
@@ -110,6 +111,15 @@ function Mark({ session, dim }: { session: boolean; dim?: boolean }) {
   )
 }
 
+/** Initials for a session's athlete, for the month grid. Null when the event
+ *  has no athlete attached (the coach's own events, and an athlete's own
+ *  calendar, where every event is theirs). */
+function initialsFor(ev: CalendarEvent): string | null {
+  if (!ev.athletes) return null
+  const i = `${ev.athletes.first_name?.[0] ?? ''}${ev.athletes.last_name?.[0] ?? ''}`.toUpperCase()
+  return i || null
+}
+
 /* The arrow buttons and the Today control: 44px targets, hairline, no fill
  * louder than the ground they sit on. */
 const NAV_BTN: React.CSSProperties = {
@@ -187,12 +197,12 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
   return (
     <div style={{ fontFamily: 'inherit', minWidth: 0 }}>
       {/* Month band: the count, the month, the year, the arrows. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 180px', minWidth: 0 }}>
           <span
             aria-label={loading ? undefined : `${sessionCount} session${sessionCount === 1 ? '' : 's'} in ${formatMonthYear(ym)}`}
             style={{
-              fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 48, lineHeight: 0.85,
+              fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 36, lineHeight: 0.85,
               letterSpacing: '-0.04em', color: 'var(--text)', fontVariantNumeric: 'tabular-nums',
               opacity: loading ? 0.35 : 1,
             }}
@@ -203,7 +213,7 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
             <span style={{ ...CAST, display: 'block', fontSize: 'var(--t-furniture)', letterSpacing: '0.2em', color: 'var(--text-2)' }}>
               Session{sessionCount === 1 && !loading ? '' : 's'} · <span style={{ ...MONO, letterSpacing: '0.04em' }}>{ym.year}</span>
             </span>
-            <span style={{ ...CAST, display: 'block', fontSize: 26, letterSpacing: '0.05em', color: 'var(--text)', lineHeight: 1, marginTop: 3, overflowWrap: 'anywhere' }}>
+            <span style={{ ...CAST, display: 'block', fontSize: 22, letterSpacing: '0.05em', color: 'var(--text)', lineHeight: 1, marginTop: 3, overflowWrap: 'anywhere' }}>
               {monthName}
             </span>
           </span>
@@ -224,14 +234,14 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
           The hosts used to render `{calLoading ? <div>Loading…</div> :
           <Calendar/>}`, which threw away the month the user had just chosen —
           see lib/calendar-month.ts. */}
-      <div aria-live="polite" style={{ ...MONO, height: 18, lineHeight: '18px', marginBottom: 2, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+      <div aria-live="polite" style={{ ...MONO, height: 16, lineHeight: '16px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
         {loading ? 'Loading…' : ''}
       </div>
 
       {/* Weekday rail */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 2, marginBottom: 2 }}>
         {DAY_LABELS.map((d) => (
-          <div key={d} style={{ ...CAST, minWidth: 0, textAlign: 'center', fontSize: 'var(--t-furniture)', letterSpacing: '0.1em', color: 'var(--text-2)', padding: '4px 0 6px' }}>{d}</div>
+          <div key={d} style={{ ...CAST, minWidth: 0, textAlign: 'center', fontSize: 'var(--t-furniture)', letterSpacing: '0.1em', color: 'var(--text-2)', padding: '2px 0 4px' }}>{d}</div>
         ))}
       </div>
 
@@ -268,12 +278,12 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
               aria-label={`${new Date(ym.year, ym.month, dayNum).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}${hasEvents ? `, ${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}` : ''}`}
               style={{
                 ...rule,
-                minHeight: 56, borderRadius: 0,
+                minHeight: 50, borderRadius: 0,
                 // The selected day is a panel fill and an inset hairline —
                 // never colour — so it can never be mistaken for today.
                 ...(isSelected ? { background: 'var(--surface-2)', boxShadow: 'inset 0 0 0 1px var(--text-muted)' } : null),
-                cursor: 'pointer', padding: '7px 2px 8px',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                cursor: 'pointer', padding: '4px 1px 5px',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                 color: 'inherit',
               }}
             >
@@ -289,23 +299,42 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
               }}>
                 {dayNum}
               </span>
-              {hasEvents && (
-                <span style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', maxWidth: '100%' }}>
-                  {dayEvents.slice(0, 3).map((ev) => (
-                    <Mark key={ev.id} session={isSessionType(ev.event_type)} dim={ev.created_by_role === 'athlete'} />
-                  ))}
-                  {dayEvents.length > 3 && (
-                    <span style={{ ...MONO, lineHeight: 1, color: 'var(--text-2)' }}>+{dayEvents.length - 3}</span>
-                  )}
-                </span>
-              )}
+              {/* Who it was with, at a glance (Max, 2026-11-14): the first
+                  session's athlete as initials, then "+N" for the rest of the
+                  day. Days without a named athlete keep the shape marks. The
+                  full names and titles are in the day list below. */}
+              {hasEvents && (() => {
+                const named = dayEvents.find((ev) => isSessionType(ev.event_type) && initialsFor(ev))
+                if (!named) return (
+                  <span style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', maxWidth: '100%' }}>
+                    {dayEvents.slice(0, 3).map((ev) => (
+                      <Mark key={ev.id} session={isSessionType(ev.event_type)} dim={ev.created_by_role === 'athlete'} />
+                    ))}
+                    {dayEvents.length > 3 && (
+                      <span style={{ ...MONO, lineHeight: 1, color: 'var(--text-2)' }}>+{dayEvents.length - 3}</span>
+                    )}
+                  </span>
+                )
+                return (
+                  <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, maxWidth: '100%' }}>
+                    <span style={{
+                      fontFamily: 'var(--font-sans)', fontSize: 'var(--t-data)', fontWeight: 700, lineHeight: 1,
+                      padding: '3px 4px', borderRadius: 5, letterSpacing: '0.02em',
+                      background: isSelected ? 'var(--bg)' : 'var(--primary-light)', color: 'var(--primary)',
+                    }}>{initialsFor(named)}</span>
+                    {dayEvents.length > 1 && (
+                      <span style={{ ...MONO, lineHeight: 1, color: 'var(--text-2)' }}>+{dayEvents.length - 1}</span>
+                    )}
+                  </span>
+                )
+              })()}
             </button>
           )
         })}
       </div>
 
       {/* Legend — shape is the whole code, so the legend is two shapes. */}
-      <div style={{ ...CAST, display: 'flex', gap: '8px 16px', flexWrap: 'wrap', alignItems: 'center', marginTop: 12, fontSize: 'var(--t-furniture)', letterSpacing: '0.12em', color: 'var(--text-2)' }}>
+      <div style={{ ...CAST, display: 'flex', gap: '6px 16px', flexWrap: 'wrap', alignItems: 'center', marginTop: 8, fontSize: 'var(--t-furniture)', letterSpacing: '0.12em', color: 'var(--text-2)' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><Mark session /> {EVENT_TYPE_LABEL.session}</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
           <Mark session={false} /> {['homework', 'goal', 'reminder', 'other'].map((t) => EVENT_TYPE_LABEL[t]).join(', ')}
@@ -314,8 +343,8 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
 
       {/* Selected day events */}
       {selected && (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', paddingBottom: 10 }}>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', paddingBottom: 8 }}>
             <span style={{ ...CAST, fontSize: 17, letterSpacing: '0.14em', color: 'var(--text)', minWidth: 0 }}>
               {new Date(selected + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric' })}
             </span>
@@ -341,6 +370,45 @@ export default function Calendar({ events, role, month, onMonthChange, onAddEven
             <div>
               {selectedEvents.map((ev, idx) => {
                 const session = isSessionType(ev.event_type)
+                /* A recorded session: who, what it was called, when — and the
+                 * whole row opens it. Its AI summary used to print here under
+                 * the title (up to five bullet points per session); Max
+                 * (2026-11-14): "I wouldn't be putting the 5 points in there".
+                 * The summary is one tap away, on the session itself. Coach only:
+                 * an athlete's calendar can hold a session not shared with them. */
+                if (session && ev.session_id && role === 'coach') {
+                  const who = ev.athletes ? `${ev.athletes.first_name} ${ev.athletes.last_name}`.trim() : null
+                  const ini = initialsFor(ev)
+                  return (
+                    <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 4, borderTop: `1px solid ${idx === 0 ? 'var(--text-muted)' : 'var(--border)'}` }}>
+                      <Link href={`/sessions/${ev.session_id}`} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, minHeight: 56, padding: '8px 0', color: 'inherit', textDecoration: 'none' }}>
+                        <span aria-hidden style={{
+                          width: 36, height: 36, borderRadius: '50%', flex: 'none',
+                          background: 'var(--primary-light)', color: 'var(--primary)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontFamily: 'var(--font-sans)', fontSize: 'var(--t-data)', fontWeight: 700,
+                        }}>{ini ?? EVENT_TYPE_GLYPH.session}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+                            {who ?? ev.title}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                            {[who ? ev.title : null, formatTime(ev.event_time) || null].filter(Boolean).join(' · ') || 'Session'}
+                          </span>
+                        </span>
+                        <span aria-hidden style={{ fontSize: 20, color: 'var(--primary)', lineHeight: 1, flex: 'none' }}>›</span>
+                      </Link>
+                      {onDeleteEvent && ev.created_by_role === role && (
+                        <button
+                          onClick={() => onDeleteEvent(ev.id)}
+                          aria-label={`Remove ${ev.title} from the calendar`}
+                          title="Remove from calendar"
+                          style={{ width: 44, height: 44, flex: 'none', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-2)', fontSize: 20, lineHeight: 1 }}
+                        >×</button>
+                      )}
+                    </div>
+                  )
+                }
                 return (
                   <div
                     key={ev.id}
