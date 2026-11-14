@@ -54,3 +54,44 @@ export function filterAthletes<T extends NamedAthlete>(
     .filter((a) => (!inSquad || inSquad.has(a.id)) && matchesName(a, query))
     .sort(byName)
 }
+
+/**
+ * The roster's Sort button (Max, 2026-11-14: "alphabetical and then most recent
+ * session and the opposite"). Only the order changes; every athlete the
+ * filters let through is still in the list.
+ *
+ *   name     A–Z, as byName.
+ *   recent   Most recent session first. Athletes with no session yet go last.
+ *   longest  Longest without a session first, so never-coached athletes lead,
+ *            then the oldest last session. The one to reach for after a gap.
+ *
+ * Ties, and athletes with no session in either mode, fall back to A–Z so the
+ * order never shuffles between renders. `lastSession` returns a YYYY-MM-DD
+ * date (compared as text, which orders correctly) or null.
+ */
+export type RosterSort = 'name' | 'recent' | 'longest'
+
+/** Short enough to sit beside the search box on a 320px phone without being
+ *  cut off; Max's own words for the two date orders. */
+export const ROSTER_SORT_LABELS: Record<RosterSort, string> = {
+  name: 'Name A–Z',
+  recent: 'Most recent',
+  longest: 'Least recent',
+}
+
+export function sortRoster<T extends NamedAthlete>(
+  athletes: readonly T[],
+  mode: RosterSort,
+  lastSession: (a: T) => string | null,
+): T[] {
+  if (mode === 'name') return [...athletes].sort(byName)
+  return [...athletes].sort((a, b) => {
+    const da = lastSession(a), db = lastSession(b)
+    if (da !== db) {
+      if (da === null) return mode === 'recent' ? 1 : -1
+      if (db === null) return mode === 'recent' ? -1 : 1
+      return mode === 'recent' ? (da < db ? 1 : -1) : (da < db ? -1 : 1)
+    }
+    return byName(a, b)
+  })
+}

@@ -50,7 +50,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join, relative } from 'node:path'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { athleteStatus, activeCount, activationFields } from '../lib/athlete-status.ts'
-import { filterAthletes, matchesName } from '../lib/athlete-filter.ts'
+import { filterAthletes, matchesName, sortRoster } from '../lib/athlete-filter.ts'
 import { ACCESS_KINDS, isSessionAccessKind, shouldRecordAccess, formatAccessTime, DUPLICATE_WINDOW_MS } from '../lib/access-log.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -323,6 +323,33 @@ check(
 )
 
 console.log(`\n  ${DIM}Roster rig — does the roster tell the truth about who has arrived?${OFF}\n`)
+
+check(
+  'R-SORT',
+  'The roster Sort button reorders and never drops anyone',
+  'Max, 2026-11-14: sort by name, by most recent session, and by longest without one. A sort that lost the athletes with no session yet would hide exactly the children the "longest without" view exists to show.',
+  () => {
+    const p = []
+    const A = (id, first, last, d) => ({ id, first_name: first, last_name: last, d })
+    const roster = [
+      A('1', 'Zoe', 'Ash', '2026-11-10'), A('2', 'Ana', 'Lee', null), A('3', 'Ben', 'Ortiz', '2026-10-20'),
+      A('4', 'Cara', 'Diaz', '2026-11-10'), A('5', 'Dev', 'Ng', null),
+    ]
+    const last = (a) => a.d
+    const ids = (xs) => xs.map((x) => x.id).join('')
+    const name = sortRoster(roster, 'name', last)
+    const recent = sortRoster(roster, 'recent', last)
+    const longest = sortRoster(roster, 'longest', last)
+    if (ids(name) !== '23451') p.push(`name order ${ids(name)}, want 23451`)
+    if (ids(recent) !== '41325') p.push(`recent order ${ids(recent)}, want 41325 (newest first, ties A–Z, none last)`)
+    if (ids(longest) !== '25341') p.push(`longest order ${ids(longest)}, want 25341 (never first, then oldest)`)
+    for (const [m, xs] of [['name', name], ['recent', recent], ['longest', longest]]) {
+      if (xs.length !== roster.length || new Set(xs.map((x) => x.id)).size !== roster.length) p.push(`${m} lost or duplicated an athlete`)
+    }
+    if (roster.map((x) => x.id).join('') !== '12345') p.push('sortRoster mutated its input')
+    return p
+  },
+)
 
 let failed = 0
 for (const r of results) {

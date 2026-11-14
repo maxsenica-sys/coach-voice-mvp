@@ -20,6 +20,8 @@ import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import FocusCard from '@/app/components/FocusCard'
 import { SessionSeen } from '@/app/components/AccessLog'
 import { errorMessage } from '@/lib/errors'
+import { preflightVideo } from '@/lib/video-preflight'
+import { uploadSessionVideo } from '@/lib/video-upload'
 import { metricColor, metricTint, scoreLabel, type MetricKey } from '@/lib/wellness-config'
 import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/session-response'
 import { formatSessionDate, parseISODate, sessionDate, sessionISODate } from '@/lib/session-date'
@@ -688,6 +690,28 @@ export default function SessionDetailPage() {
     setData((d) => (d ? { ...d, session: { ...d.session, shared_with_athlete: next } } : d))
     const ok = await patchSession({ shared_with_athlete: next }, next ? 'Shared with athlete' : 'Set to private')
     if (!ok) setData((d) => (d ? { ...d, session: { ...d.session, shared_with_athlete: !next } } : d))
+  }
+
+  /* Add video, right on the session (Max, 2026-11-14). It used to exist only
+   * as a button on each session in the athlete's profile. Same checks and the
+   * same upload path: lib/video-preflight.ts, then lib/video-upload.ts. */
+  const videoFileRef = useRef<HTMLInputElement | null>(null)
+  const [videoUpload, setVideoUpload] = useState<{ pct: number; eta: string } | null>(null)
+  const [videoUploadNote, setVideoUploadNote] = useState('')
+  const uploadVideo = async (file: File) => {
+    const verdict = preflightVideo(file)
+    if (!verdict.ok) { setVideoUploadNote(verdict.reason); return }
+    setVideoUploadNote(verdict.warning ?? '')
+    setVideoUpload({ pct: 0, eta: 'Preparing…' })
+    try {
+      await uploadSessionVideo(sessionId, file, (p) => setVideoUpload(p))
+      if (data) await loadVideoFeatures(data.viewerRole, data.athlete?.id ?? null)
+      flash('Video added')
+    } catch (e: unknown) {
+      setVideoUploadNote(errorMessage(e, 'That clip did not upload. Try again.'))
+    } finally {
+      setVideoUpload(null)
+    }
   }
 
   const uploadImage = async (file: File) => {
@@ -1491,11 +1515,40 @@ export default function SessionDetailPage() {
             lib/video-clip.ts athleteMayViewVideo. */}
         {(() => {
           const vids = videoList ?? data?.videos ?? []
-          if (vids.length === 0 && !videoNote) return null
+          if (vids.length === 0 && !videoNote && !isCoach) return null
           return (
-            <Section label="Video" meta={vids.length || undefined}>
+            <Section
+              label="Video"
+              meta={vids.length || undefined}
+              action={isCoach ? (
+                <>
+                  <input
+                    ref={videoFileRef}
+                    type="file"
+                    accept="video/*"
+                    style={{ display: 'none' }}
+                    onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadVideo(f) }}
+                  />
+                  <button disabled={videoUpload !== null}
+                    onClick={() => videoFileRef.current?.click()}
+                    style={{ ...toolButton, cursor: videoUpload ? 'progress' : 'pointer' }}>
+                    <Icon name="plus" size={12} /> {videoUpload ? `Uploading ${videoUpload.pct}%` : 'Add video'}
+                  </button>
+                </>
+              ) : undefined}
+            >
               {videoNote && (
                 <div style={{ ...panel, padding: 12, marginBottom: 10, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>{videoNote}</div>
+              )}
+              {(videoUpload || videoUploadNote) && (
+                <div role="status" style={{ ...panel, padding: 12, marginBottom: 10, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                  {videoUpload ? `Uploading… ${videoUpload.pct}% · ${videoUpload.eta}` : videoUploadNote}
+                </div>
+              )}
+              {isCoach && vids.length === 0 && !videoUpload && (
+                <div style={{ ...panel, padding: 14, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
+                  Add a clip from your phone or computer, or film one now.
+                </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {vids.map((v) => {

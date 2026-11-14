@@ -44,6 +44,7 @@ import {
   recurringThemes,
   replySignal,
   coverageRows,
+  coverageGroups,
   phrasesIn,
   median,
   isoDaysBefore,
@@ -257,6 +258,24 @@ check('I10', 'Coverage: least attention first, median marked, squad talk shared'
     return p
   })
 
+check('I14', 'Coverage groups: every athlete in exactly one group, least first inside it',
+  'The home card ropes athletes with the same number of sessions into one line (Max, 2026-11-14). A bucket boundary that skipped a count would drop a child off the card without a trace — the "never remove data" rule, broken by arithmetic.',
+  () => {
+    const p = []
+    const R = (id, sessions, words) => ({ athlete_id: id, first_name: id, last_name: '', sessions, words })
+    const rows = []
+    for (let s = 0; s <= 40; s++) rows.push(R(`a${s}`, s, s * 10))
+    const groups = coverageGroups(rows)
+    const seen = groups.flatMap((g) => g.rows.map((r) => r.athlete_id))
+    eq(p, seen.length, rows.length, 'every athlete is in a group')
+    eq(p, new Set(seen).size, rows.length, 'and in only one')
+    eq(p, groups.map((g) => g.label), ['No sessions', '1 session', '2 sessions', '3–4 sessions', '5+ sessions'], 'group order')
+    const mixed = [R('z', 0, 0), R('y', 1, 40), R('x', 1, 90), R('w', 0, 0)]
+    eq(p, coverageGroups(mixed).map((g) => g.rows.map((r) => r.athlete_id)), [['z', 'w'], ['y', 'x']], 'input order kept inside a group')
+    eq(p, coverageGroups([R('q', 2, 5)]).map((g) => g.label), ['2 sessions'], 'empty groups are not drawn')
+    return p
+  })
+
 check('I11', 'Empty inputs give empty answers, not errors',
   'A new coach, a new athlete, a quiet month. Each renders an empty state; none may throw.',
   () => {
@@ -345,7 +364,7 @@ for (const r of results) {
 console.log(`\n  ${BOLD}KNOWN GAPS${OFF} ${DIM}— what this rig cannot see${OFF}`)
 for (const gap of [
   'Whether a theme is a good one. The rig proves the counting; it cannot tell a coaching cue from a word the filler list has not met yet. New filler is added to FILLER in lib/insights.ts with the transcript that surfaced it.',
-  'Words spoken is a proxy for attention, not a measure of it. A coach who says little and watches closely reads as "least attention". The card says so on its face; nothing here can check that it still does.',
+  'Words spoken is a proxy for attention, not a measure of it. A coach who says little and watches closely reads as "least attention". Since 2026-11-14 the card groups by sessions and no longer carries the explanation (Max: less text on the home screen); the order inside each group is still by words.',
   'Squad recordings saved before migration 023 have no group_id, so their transcripts count in full for every member and read as one-to-one words.',
   'I13 reads app/athlete/ only. A coach-only component mounted inside a shared component that an athlete page also renders would not be seen.',
 ]) {
