@@ -172,6 +172,16 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
    * that survives needs resuming rather than replacing. */
   const audioCtxRef = useRef<AudioContext | null>(null)
 
+  /* Closing while the recorder is running throws the audio away: it is only
+   * written to this phone's queue when the recording stops. So that one case
+   * asks first. After Stop, closing loses nothing (the recording waits under
+   * "On this phone" on Home, where it can be finished later). UI only; the
+   * recorder functions are untouched. */
+  const requestClose = () => {
+    if (recording && !window.confirm('Close and lose this recording? It is still recording and has not been kept anywhere. Press Stop first to keep it.')) return
+    onClose()
+  }
+
   useEffect(() => {
     return () => {
       cancelAnimationFrame(animFrameRef.current)
@@ -1072,7 +1082,7 @@ export default function QuickSessionModal({ athletes, groups, defaultAthleteId, 
           {/* 44px square: it was a 26px glyph, which is a miss-and-lose-your-place
               on a phone. */}
           <button
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close"
             style={{
               width: 44, height: 44, flexShrink: 0, borderRadius: 12,

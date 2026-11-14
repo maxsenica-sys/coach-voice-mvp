@@ -849,6 +849,9 @@ console.log(`\n   ${BOLD}Content gate${OFF} ${DIM}— some recordings must never
     ['app/api/sessions/split-summary/route.ts', /guardSummary\(/, /checkContent\(/, 'each split section is guarded and the recording gated'],
     ['app/api/sessions/route.ts', /capBullets\(/, /checkContent\(/, 'the save route caps and gates a shared session'],
     ['app/api/sessions/[id]/route.ts', /shareGateCheck\(/, /checkContent\(/, 'sharing later and editing a shared session are gated'],
+    // A profile note ticked "Share with athlete" reaches the athlete's My Notes
+    // tab (2026-11-14); it is gated on the way in, as a shared session is.
+    ['app/api/notes/route.ts', /if \(shared_with_athlete\)\s*\{\s*const gate = await checkContent\(/, /status: 422/, 'a note shared with an athlete is gated'],
   ]
   for (const [file, guard, gate, name] of wired) {
     const code = src(file)

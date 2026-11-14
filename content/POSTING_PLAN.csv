@@ -1,0 +1,138 @@
+day,week,slot,format,post_id,feature_id,user_type,hook
+1,Week 1: the notes problem,morning,carousel,P054,quick-session-sheet,coach,Three steps. One thumb. Session recorded.
+1,Week 1: the notes problem,midday,still,P013,whisper-transcription,coach,You talk. Pindar types it.
+1,Week 1: the notes problem,evening,reel,P100,review-summary-before-send,coach,Change the tone before it reaches a teenager.
+2,Week 1: the notes problem,morning,carousel,P056,whisper-transcription,coach,It knows your athletes' names and volleyball words.
+2,Week 1: the notes problem,midday,still,P057,review-summary-before-send,coach,One line they take into next session.
+2,Week 1: the notes problem,evening,reel,P101,summary-grounding-guard,parent,No invented advice reaches your child.
+3,Week 1: the notes problem,morning,carousel,P001,understanding-reply,coach,You said it. Did it actually land?
+3,Week 1: the notes problem,midday,still,P058,summary-grounding-guard,athlete,Five bullets at most. No padding.
+3,Week 1: the notes problem,evening,reel,P090,ai-session-summary,athlete,Don't replay eight minutes to find one cue.
+4,Week 1: the notes problem,morning,carousel,P014,review-summary-before-send,parent,The coach reads the AI summary before your child.
+4,Week 1: the notes problem,midday,still,P048,ai-session-summary,both,Nothing in the summary your coach didn't say.
+4,Week 1: the notes problem,evening,reel,P021,coach-recording-playback,athlete,Hear how your coach actually said it.
+5,Week 1: the notes problem,morning,carousel,P015,summary-grounding-guard,coach,The summary only says what you actually said.
+5,Week 1: the notes problem,midday,still,P064,coach-recording-playback,athlete,Replay the one-on-one before you train.
+5,Week 1: the notes problem,evening,reel,P091,take-into-next-session,both,Feedback that points forward.
+6,Week 1: the notes problem,morning,carousel,P006,ai-session-summary,athlete,The whole session in five bullet points.
+6,Week 1: the notes problem,midday,still,P007,take-into-next-session,athlete,One thing to take into next session.
+6,Week 1: the notes problem,evening,reel,P102,last-time-you-said,athlete,Your coach remembers what they told you.
+7,Week 1: the notes problem,morning,carousel,P107,coach-recording-playback,coach,Your voice reaches them. Only when it's theirs.
+7,Week 1: the notes problem,midday,still,P059,last-time-you-said,coach,Know if last week's cue landed before you speak.
+7,Week 1: the notes problem,evening,reel,P097,quick-session-sheet,athlete,"Feedback from today, not from last week."
+8,Week 2: many athletes at once,morning,carousel,P002,mode-several-split,coach,Talk about five athletes. Each gets only theirs.
+8,Week 2: many athletes at once,midday,still,P045,mode-squad,both,Say their name and the note is theirs.
+8,Week 2: many athletes at once,evening,reel,P012,record-first-choose-later,coach,Hit record before you pick a name.
+9,Week 2: many athletes at once,morning,carousel,P003,mode-squad,coach,One team talk. Every player gets a session.
+9,Week 2: many athletes at once,midday,still,P055,record-first-choose-later,coach,Pindar never guesses who a recording is for.
+9,Week 2: many athletes at once,evening,reel,P112,multi-athlete-privacy,parent,Your child reads about their game. Nobody else's.
+10,Week 2: many athletes at once,morning,carousel,P098,record-first-choose-later,coach,"Mid drill, you see it. Say it now."
+10,Week 2: many athletes at once,midday,still,P005,understanding-reply,coach,"""Not sure"" is an answer worth getting."
+10,Week 2: many athletes at once,evening,reel,P121,assistant-coach-invites,coach,Invite links that cannot be passed around
+11,Week 2: many athletes at once,morning,carousel,P069,multi-athlete-privacy,coach,Talk about the whole squad. Freely.
+11,Week 2: many athletes at once,midday,still,P078,assistant-coach-invites,coach,Your assistant sees only who you tick
+11,Week 2: many athletes at once,evening,reel,P036,coach-invite-code-qr,coach,Your whole squad joins from one QR
+12,Week 2: many athletes at once,morning,carousel,P035,assistant-coach-invites,coach,Add your assistant coaches in one email
+12,Week 2: many athletes at once,midday,still,P079,coach-invite-code-qr,coach,A join code your squad can remember
+12,Week 2: many athletes at once,evening,reel,P088,pre-session-brief,coach,Ask the team to check in before training.
+13,Week 2: many athletes at once,morning,carousel,P122,coach-invite-code-qr,athlete,Scan once and you are on the team
+13,Week 2: many athletes at once,midday,still,P046,pre-session-brief,coach,The athletes who didn't check in show first.
+13,Week 2: many athletes at once,evening,reel,P103,how-they-came-in,athlete,Two taps in the morning help your coach.
+14,Week 2: many athletes at once,morning,carousel,P004,pre-session-brief,coach,"Twenty minutes out, know who's flat or sore."
+14,Week 2: many athletes at once,midday,still,P017,how-they-came-in,coach,A bad session reads differently next to 'Flat'.
+14,Week 2: many athletes at once,evening,reel,P128,mode-several-split,coach,"When a card is empty, it says why."
+15,Week 3: tracking and video,morning,carousel,P008,coverage-insight,coach,Who did you coach least this month
+15,Week 3: tracking and video,midday,still,P028,quiet-athletes-row,coach,Two weeks without a word from you
+15,Week 3: tracking and video,evening,reel,P125,calendar-month,athlete,"Your training week, in one calendar"
+16,Week 3: tracking and video,morning,carousel,P071,quiet-athletes-row,coach,"Faces on your home screen, not a spreadsheet"
+16,Week 3: tracking and video,midday,still,P082,calendar-month,coach,"Add the event once, the squad sees it"
+16,Week 3: tracking and video,evening,reel,P031,video-annotator,coach,Pause it and draw the line
+17,Week 3: tracking and video,morning,carousel,P039,calendar-month,coach,Every recorded session sits on its day
+17,Week 3: tracking and video,midday,still,P117,video-annotator,both,Your coach drew on your serve
+17,Week 3: tracking and video,evening,reel,P042,understanding-reply,athlete,Didn't get it. Didn't want to say so.
+18,Week 3: tracking and video,morning,carousel,P074,video-annotator,coach,Drawings that fade so the clip keeps playing
+18,Week 3: tracking and video,midday,still,P118,video-moments,athlete,One tap to the rep that matters
+18,Week 3: tracking and video,evening,reel,P033,video-compare,coach,"Week one against week eight, side by side"
+19,Week 3: tracking and video,morning,carousel,P032,video-moments,both,"Three seconds of video, not thirty minutes"
+19,Week 3: tracking and video,midday,still,P119,video-compare,athlete,Proof you are getting better
+19,Week 3: tracking and video,evening,reel,P105,record-screen,coach,"Long calls are saved in parts, not lost."
+20,Week 3: tracking and video,morning,carousel,P076,video-compare,coach,"Line up the contact point, then compare"
+20,Week 3: tracking and video,midday,still,P062,record-screen,parent,Online sessions are recorded only after consent is ticked.
+20,Week 3: tracking and video,evening,reel,P040,messaging-voice,coach,Say it in ten seconds instead
+21,Week 3: tracking and video,morning,carousel,P019,record-screen,coach,Coaching online. Record the call into the session.
+21,Week 3: tracking and video,midday,still,P083,messaging-voice,coach,Feedback that stays out of the group chat
+21,Week 3: tracking and video,evening,reel,P027,athlete-clip-upload,athlete,Film it. Ask your coach. Get it marked up.
+22,"Week 4: the athlete side, and parents",morning,carousel,P043,understanding-reply,both,A nod is not a yes.
+22,"Week 4: the athlete side, and parents",midday,still,P073,insight-not-sure-signal,coach,The nod at training is not proof
+22,"Week 4: the athlete side, and parents",evening,reel,P104,seen-receipt,coach,Chase only the athletes who haven't opened it.
+23,"Week 4: the athlete side, and parents",morning,carousel,P030,insight-not-sure-signal,coach,When they say not sure twice
+23,"Week 4: the athlete side, and parents",midday,still,P047,understanding-reply,athlete,"""Working on it"" is a real answer."
+23,"Week 4: the athlete side, and parents",evening,reel,P106,takeaway-reminder,athlete,Answer your takeaway before you train.
+24,"Week 4: the athlete side, and parents",morning,carousel,P061,seen-receipt,athlete,Your coach can see when you open it.
+24,"Week 4: the athlete side, and parents",midday,still,P020,takeaway-reminder,athlete,"Your last takeaway, on the day you train."
+24,"Week 4: the athlete side, and parents",evening,reel,P053,understanding-reply,coach,Start every session with their last answer.
+25,"Week 4: the athlete side, and parents",morning,carousel,P085,understanding-reply,coach,Walk into training knowing who's unsure.
+25,"Week 4: the athlete side, and parents",midday,still,P110,two-tap-checkin,athlete,Feeling different by afternoon. Redo it.
+25,"Week 4: the athlete side, and parents",evening,reel,P111,body-map-soreness,athlete,Say it's sore without making it a thing.
+26,"Week 4: the athlete side, and parents",morning,carousel,P063,takeaway-reminder,coach,Make last week's cue reach this week's session.
+26,"Week 4: the athlete side, and parents",midday,still,P089,understanding-reply,athlete,"Said ""Got it"" too soon. Tap again."
+26,"Week 4: the athlete side, and parents",evening,reel,P108,focus-card,coach,"Your cue, kept by the athlete."
+27,"Week 4: the athlete side, and parents",morning,carousel,P067,two-tap-checkin,coach,Know who's flat before warm-up.
+27,"Week 4: the athlete side, and parents",midday,still,P068,body-map-soreness,coach,Left shoulder or right. Now you know.
+27,"Week 4: the athlete side, and parents",evening,reel,P095,understanding-reply,athlete,No awkward message to your coach.
+28,"Week 4: the athlete side, and parents",morning,carousel,P096,understanding-reply,coach,Hear from the quiet one at the back.
+28,"Week 4: the athlete side, and parents",midday,still,P022,focus-card,athlete,Put your takeaway on your lock screen.
+28,"Week 4: the athlete side, and parents",evening,reel,P066,training-rhythm,athlete,Spot the quiet week before it becomes a month.
+29,"Week 4: the athlete side, and parents",morning,carousel,P025,body-map-soreness,athlete,Show where it's sore. Tap it.
+29,"Week 4: the athlete side, and parents",midday,still,P131,understanding-reply,coach,See every answer an athlete has given you.
+29,"Week 4: the athlete side, and parents",evening,reel,P052,wellness-alert-notify-parent,parent,Hear from the coach when it matters
+30,"Week 4: the athlete side, and parents",morning,carousel,P065,focus-card,athlete,"Share the cue, not the conversation."
+30,"Week 4: the athlete side, and parents",midday,still,P023,training-rhythm,athlete,Watch your sessions add up.
+30,"Week 4: the athlete side, and parents",evening,reel,P137,understanding-reply,both,Feedback that comes back to the coach.
+,Backlog: trial reels and month two,,carousel,P009,monthly-report-pdf,coach,A month of coaching in one report
+,Backlog: trial reels and month two,,carousel,P010,wellness-alert-notify-parent,coach,You decide when a parent should know
+,Backlog: trial reels and month two,,still,P011,quick-session-sheet,coach,"Your session notes, done before you leave court."
+,Backlog: trial reels and month two,,carousel,P016,last-time-you-said,coach,"Before you record, see what you said last time."
+,Backlog: trial reels and month two,,still,P018,seen-receipt,coach,See whether they opened your feedback.
+,Backlog: trial reels and month two,,reel,P024,two-tap-checkin,athlete,Check in with two taps.
+,Backlog: trial reels and month two,,still,P026,multi-athlete-privacy,athlete,Squad session. You get your part.
+,Backlog: trial reels and month two,,carousel,P029,insight-recurring-cues,coach,You have said this three weeks running
+,Backlog: trial reels and month two,,still,P034,session-pdf,coach,Some athletes want it on paper
+,Backlog: trial reels and month two,,carousel,P037,injury-body-map,coach,"Out, modified or cleared, in one place"
+,Backlog: trial reels and month two,,carousel,P038,roster-wellness-driver,coach,"Not just a score, the reason"
+,Backlog: trial reels and month two,,carousel,P041,safeguarding-rls-gate,parent,Your child sees only their own sessions
+,Backlog: trial reels and month two,,still,P044,mode-several-split,athlete,"Your feedback, not the whole team's."
+,Backlog: trial reels and month two,,carousel,P049,take-into-next-session,coach,Choose the one line they walk away with.
+,Backlog: trial reels and month two,,still,P050,coverage-insight,coach,Your attention is a team resource
+,Backlog: trial reels and month two,,still,P051,monthly-report-pdf,coach,Their check-in notes stay off the page
+,Backlog: trial reels and month two,,carousel,P060,how-they-came-in,coach,Sore calf on the check-in. It's beside the session.
+,Backlog: trial reels and month two,,carousel,P070,athlete-clip-upload,coach,Answer a technique question by drawing on it.
+,Backlog: trial reels and month two,,still,P072,insight-recurring-cues,coach,"Audit your cues, not your athletes"
+,Backlog: trial reels and month two,,reel,P075,video-moments,coach,Attach the proof to the feedback
+,Backlog: trial reels and month two,,carousel,P077,session-pdf,parent,What did the coach actually say
+,Backlog: trial reels and month two,,still,P080,injury-body-map,coach,Clearing an injury takes one deliberate tap
+,Backlog: trial reels and month two,,still,P081,roster-wellness-driver,coach,Your whole squad's check-ins at a glance
+,Backlog: trial reels and month two,,still,P084,safeguarding-rls-gate,parent,Your child is told who can see them
+,Backlog: trial reels and month two,,carousel,P086,mode-several-split,coach,Five cards from one talk. You check each.
+,Backlog: trial reels and month two,,carousel,P087,mode-squad,parent,The team talk summary goes out. The recording doesn't.
+,Backlog: trial reels and month two,,reel,P092,coverage-insight,coach,Check this before you pick the team
+,Backlog: trial reels and month two,,reel,P093,monthly-report-pdf,parent,See your child's month of training
+,Backlog: trial reels and month two,,still,P094,wellness-alert-notify-parent,parent,"One clear update, not five worried texts"
+,Backlog: trial reels and month two,,reel,P099,whisper-transcription,coach,A long debrief transcribes like a short one.
+,Backlog: trial reels and month two,,carousel,P109,training-rhythm,both,Progress you can see without a scoreboard.
+,Backlog: trial reels and month two,,still,P113,athlete-clip-upload,both,"Get coached between sessions, on your own clip."
+,Backlog: trial reels and month two,,reel,P114,quiet-athletes-row,coach,Fourteen days is long for a teenager
+,Backlog: trial reels and month two,,reel,P115,insight-recurring-cues,coach,"Your own words, counted back to you"
+,Backlog: trial reels and month two,,reel,P116,insight-not-sure-signal,coach,No reply is an answer too
+,Backlog: trial reels and month two,,reel,P120,session-pdf,coach,"A record of every session, printable"
+,Backlog: trial reels and month two,,reel,P123,injury-body-map,athlete,Know what you are allowed to do
+,Backlog: trial reels and month two,,reel,P124,roster-wellness-driver,coach,"They said fine, the check-in said sore"
+,Backlog: trial reels and month two,,carousel,P126,messaging-voice,athlete,"Hear your coach, not just read them"
+,Backlog: trial reels and month two,,reel,P127,safeguarding-rls-gate,coach,"You see your athletes, nobody else's"
+,Backlog: trial reels and month two,,reel,P129,mode-squad,athlete,Missed the team talk. It's on your phone.
+,Backlog: trial reels and month two,,carousel,P130,pre-session-brief,coach,"Their last takeaway, right there before training starts."
+,Backlog: trial reels and month two,,carousel,P132,ai-session-summary,coach,You talk. They get it in writing.
+,Backlog: trial reels and month two,,carousel,P133,take-into-next-session,both,The coach and the athlete see the same line.
+,Backlog: trial reels and month two,,still,P134,coverage-insight,coach,End of term: who did you miss
+,Backlog: trial reels and month two,,still,P135,monthly-report-pdf,parent,Your teenager's notes are theirs
+,Backlog: trial reels and month two,,carousel,P136,wellness-alert-notify-parent,parent,Based on what your child told the coach

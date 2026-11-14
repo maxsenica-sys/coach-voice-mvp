@@ -20,11 +20,14 @@
  *   S9  athleteFilter sending an empty list (PostgREST's `in ()`) for nobody
  *   S10 mayHearRecording ignoring the recording's other athletes
  *   S11 parseAthleteIds keeping the valid part of a malformed list
+ *   S12 forAthleteList passing a squad recording's audio to the portal
  *
  * Usage:  npm run verify:staff
  */
 
+import { readFileSync } from 'node:fs'
 import { scopeFromStaffRow, HEAD_ONLY_MESSAGE, canSeeAthlete, athleteFilter, mayHearRecording, NO_ATHLETE } from '@/lib/coach-scope'
+import { athleteMayHearRecording, forAthleteList } from '@/lib/athlete-recording'
 import {
   acceptBlock, ACCEPT_MESSAGES, newInviteToken, hashInviteToken, isInviteTokenShape,
   normaliseEmail, maskEmail, escapeHtml, INVITE_TTL_DAYS, inviteExpiry,
@@ -211,6 +214,33 @@ check('S11', 'Which athletes an assistant gets is exactly what the head ticked â
   if (same.add.length || same.remove.length) bad.push(`an unchanged list (different case and order) diffed as ${JSON.stringify(same)} â€” the athlete would be told twice`)
   const text = assignedNoticeText('Sam Reid', 'Jordan Lee')
   if (!text.includes('Sam Reid') || !text.includes('Jordan Lee') || !/check-ins/.test(text)) bad.push(`the athlete's notice does not say who, whose team and what they see: "${text}"`)
+  return bad
+})
+
+check('S12', 'An athlete hears only a one-to-one recording, and the portal list carries no audio for any other', () => {
+  const bad = []
+  const solo = { id: 's', group_id: null, shared_recording_id: null, audio_path: 'coach/h/s.mp4', audio_mime: 'audio/mp4' }
+  const squad = { ...solo, group_id: 'g1' }
+  const split = { ...solo, shared_recording_id: 'r1' }
+  if (!athleteMayHearRecording(solo)) bad.push('refused a one-to-one recording')
+  if (athleteMayHearRecording(squad)) bad.push('let an athlete hear a squad talk')
+  if (athleteMayHearRecording(split)) bad.push('let an athlete hear a recording about several athletes')
+  const listed = forAthleteList(solo)
+  if (listed.audio_path !== solo.audio_path) bad.push('the list withheld audio from a one-to-one')
+  for (const [name, r] of [['squad', squad], ['several-athlete', split]]) {
+    const l = forAthleteList(r)
+    if (l.audio_path !== null || l.audio_mime !== null) bad.push(`the list sent audio for a ${name} session, so the portal draws a player that fails`)
+  }
+  for (const r of [solo, squad, split]) {
+    if ('shared_recording_id' in forAthleteList(r)) bad.push('the list sent shared_recording_id, which links the row to other children\'s')
+  }
+  if (forAthleteList(squad).group_id !== 'g1') bad.push('the list dropped group_id, which the portal uses to label a squad session')
+  // One rule, three places. The list route calls the lib; the detail and
+  // audio-url routes predate it and must still say the same thing.
+  const src = (f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')
+  if (!/forAthleteList\(/.test(src('app/api/athlete/sessions/route.ts'))) bad.push('app/api/athlete/sessions no longer decides the audio with forAthleteList')
+  if (!/athleteMayHearIt = !session\.group_id && !sharedRecording/.test(src('app/api/sessions/[id]/detail/route.ts'))) bad.push('the detail route\'s athlete audio rule changed; keep it equal to athleteMayHearRecording')
+  if (!/multiAthleteRecording = Boolean\(session\.group_id \|\| session\.shared_recording_id\)/.test(src('app/api/sessions/[id]/audio-url/route.ts'))) bad.push('the audio-url route\'s athlete rule changed; keep it equal to athleteMayHearRecording')
   return bad
 })
 

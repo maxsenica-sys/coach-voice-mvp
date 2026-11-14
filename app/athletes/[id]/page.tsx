@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -35,6 +35,7 @@ import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 import { escapeHtml } from '@/lib/escape-html'
 import { regionLabel } from '@/lib/body-map'
 import { uploadSessionVideo } from '@/lib/video-upload'
+import { wellnessAlertRecipients } from '@/lib/caretaker-prefs'
 
 interface Athlete {
   id: string; first_name: string; last_name: string
@@ -302,6 +303,9 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
                 )}
                 <div style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text)', overflowWrap: 'break-word' }}>{c.caretaker_name} <span style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.14em', color: 'var(--text-muted)' }}>{c.relationship}</span></div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', overflowWrap: 'anywhere', marginTop: 2 }}>{c.caretaker_email}</div>
+                <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 2 }}>
+                  {c.notify_wellness_alerts === false ? 'Not offered for wellness alerts' : 'Offered for wellness alerts'}
+                </div>
               </div>
               <button
                 className="btn btn-ghost"
@@ -883,7 +887,14 @@ export default function AthleteDetailPage() {
   const wellnessScore = overallWellnessScore(wellnessLatest)
 
   // ── Notify parent (wellness alert) ────────────────────────────────
-  const [alertCaretakers, setAlertCaretakers] = useState<{ id: string; caretaker_name: string; caretaker_email: string; notify_wellness_alerts: boolean | null }[]>([])
+  const [alertCaretakers, setAlertCaretakers] = useState<Caretaker[]>([])
+  /* The Caretakers panel and this picker read the same rows. The picker used
+   * to load them once, so a parent added, or switched off for alerts, in the
+   * panel was not reflected here until the page was reloaded. */
+  const setCaretakersEverywhere = useCallback((v: Caretaker[]) => {
+    setCaretakers(v)
+    setAlertCaretakers(v)
+  }, [])
   useEffect(() => {
     if (!athleteId) return
     // `res.ok ? json : { caretakers: [] }` made a server error look identical to
@@ -1922,8 +1933,13 @@ export default function AthleteDetailPage() {
                     missing, not empty — refresh before assuming there is nobody on file.
                   </div>
                 )}
+                {!caretakersUnavailable && alertCaretakers.length > 0 && wellnessAlertRecipients(alertCaretakers).length === 0 && (
+                  <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', marginBottom: 8, lineHeight: 1.5 }}>
+                    No saved caretaker is set to appear here for wellness alerts. Turn it on for one in Caretakers, or type an address.
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {alertCaretakers.filter(c => c.notify_wellness_alerts !== false).length > 0 && (
+                  {wellnessAlertRecipients(alertCaretakers).length > 0 && (
                     <select
                       className="input"
                       style={{ fontSize: 'var(--t-body-tight)', width: 'auto', maxWidth: '100%', minWidth: 0, minHeight: 44 }}
@@ -1931,8 +1947,8 @@ export default function AthleteDetailPage() {
                       onChange={e => setAlertSendTo(e.target.value)}
                     >
                       <option value="">Choose a caretaker…</option>
-                      {alertCaretakers.filter(c => c.notify_wellness_alerts !== false).map(c => (
-                        <option key={c.id} value={c.caretaker_email}>{c.caretaker_name} ({c.caretaker_email})</option>
+                      {wellnessAlertRecipients(alertCaretakers).map(c => (
+                        <option key={c.id} value={c.caretaker_email}>{c.caretaker_name ?? 'Caretaker'} ({c.caretaker_email})</option>
                       ))}
                     </select>
                   )}
@@ -2340,7 +2356,7 @@ export default function AthleteDetailPage() {
                           </div>
                         </label>
                       </div>
-                      <CaretakerPanel athleteId={athleteId} athleteName={`${athlete.first_name} ${athlete.last_name}`} caretakers={caretakers} setCaretakers={setCaretakers} form={caretakerForm} setForm={setCaretakerForm} saving={caretakerSaving} setSaving={setCaretakerSaving} msg={caretakerMsg} setMsg={setCaretakerMsg} emailSending={emailSending} setEmailSending={setEmailSending} emailMsg={emailMsg} setEmailMsg={setEmailMsg} />
+                      <CaretakerPanel athleteId={athleteId} athleteName={`${athlete.first_name} ${athlete.last_name}`} caretakers={caretakers} setCaretakers={setCaretakersEverywhere} form={caretakerForm} setForm={setCaretakerForm} saving={caretakerSaving} setSaving={setCaretakerSaving} msg={caretakerMsg} setMsg={setCaretakerMsg} emailSending={emailSending} setEmailSending={setEmailSending} emailMsg={emailMsg} setEmailMsg={setEmailMsg} />
                     </div>
                   )}
                 </div>

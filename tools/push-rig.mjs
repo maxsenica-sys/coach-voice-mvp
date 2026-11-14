@@ -173,6 +173,9 @@ const stripComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(
 const NOTIFIER_CALLERS = {
   'app/api/messages/route.ts': 'notifyPushNewMessage',
   'app/api/sessions/route.ts': 'notifyPushSessionShared',
+  // A session saved private and shared later (2026-11-14): the same push, the
+  // first time it is shared, never on a re-toggle (migration 037).
+  'app/api/sessions/[id]/route.ts': 'notifyPushSessionShared',
 }
 
 function scanCallers(files) {

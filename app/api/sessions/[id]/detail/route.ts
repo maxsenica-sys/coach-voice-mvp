@@ -153,7 +153,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const { data: session } = await admin
     .from('sessions')
-    .select('id, coach_id, athlete_id, session_name, title, summary, transcript, coach_notes, focus_points, shared_with_athlete, sport_context, audio_path, audio_mime, session_date, created_at, group_id, athlete_response, athlete_responded_at, delivery')
+    .select('id, coach_id, athlete_id, session_name, title, summary, transcript, coach_notes, focus_points, shared_with_athlete, sport_context, audio_path, audio_mime, session_date, created_at, group_id, shared_recording_id, recorded_by, athlete_response, athlete_responded_at, delivery')
     .eq('id', id)
     .maybeSingle()
 
@@ -274,6 +274,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         created_at: session.created_at,
         audio_url: audioUrl,
         audio_mime: session.audio_mime,
+        // Coach-only facts for the edit and delete controls. A head edits and
+        // deletes any session of theirs; an assistant only what they recorded
+        // (PATCH and DELETE apply the same rule, and the database again).
+        can_edit: isCoach && (scope.isHead || session.recorded_by === user.id),
+        // One row of a squad talk or of one recording split per athlete:
+        // deleting it leaves the other athletes' rows, and the dialog says so.
+        part_of_group: isCoach ? Boolean(session.group_id || session.shared_recording_id) : undefined,
       },
       athlete: athlete ?? null,
       // Coach-only, and null for an athlete viewer — see loadSessionCheckin.

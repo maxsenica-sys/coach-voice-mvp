@@ -25,6 +25,7 @@ import { uploadSessionVideo } from '@/lib/video-upload'
 import { DELIVERY_LABEL } from '@/lib/session-delivery'
 import { canRecordScreen } from '@/lib/screen-recording'
 import ScreenRecorder from '@/app/components/ScreenRecorder'
+import { SessionDeleteDialog, SessionEditSheet } from '@/app/components/SessionManage'
 import { metricColor, metricTint, scoreLabel, type MetricKey } from '@/lib/wellness-config'
 import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/session-response'
 import { formatSessionDate, parseISODate, sessionDate, sessionISODate } from '@/lib/session-date'
@@ -90,6 +91,10 @@ type SessionDetail = {
   created_at: string
   audio_url: string | null
   audio_mime: string | null
+  /** Coach only: may this coach edit and delete it (the head, or the assistant who recorded it). */
+  can_edit?: boolean
+  /** Coach only: one row of a squad talk or of one recording split per athlete. */
+  part_of_group?: boolean
 }
 
 type AthleteLite = {
@@ -509,6 +514,8 @@ export default function SessionDetailPage() {
   /** What is in the textarea right now, readable after an await. */
   const notesLatestRef = useRef('')
   const [newFocus, setNewFocus] = useState('')
+  const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
@@ -1097,6 +1104,12 @@ export default function SessionDetailPage() {
                       {session.shared_with_athlete ? 'Shared' : 'Private'}
                     </span>
                   </button>
+
+                  {session.can_edit && (
+                    <button onClick={() => setEditOpen(true)} style={toolButton}>
+                      Edit
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1384,11 +1397,30 @@ export default function SessionDetailPage() {
         {/* ── Coach notes ── */}
         {(isCoach || session.coach_notes) && (
           <Section
-            label={isCoach ? 'Your notes' : 'Notes from your coach'}
+            label={isCoach ? (athleteFirst ? `Notes for ${athleteFirst}` : 'Notes for the athlete') : 'Notes from your coach'}
             action={isCoach && !notesEditing && session.coach_notes?.trim() ? (
               <button onClick={openNotes} style={toolButton}>Edit notes</button>
             ) : undefined}
           >
+            {/* These notes are shown to the athlete on a shared session (they
+                were designed as "Notes from your coach", 2026-09-09). The
+                coach's side said "Your notes" and invited private context, so
+                a coach could write something meant for themselves and not know
+                the athlete reads it (found 2026-11-14). Who sees them is now
+                said in plain words, and the private place is named. Per row:
+                a squad or split session's notes go to that row's athlete. */}
+            {isCoach && (
+              <p style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text-2)', margin: '0 0 10px', overflowWrap: 'anywhere' }}>
+                {session.shared_with_athlete
+                  ? `${athleteFirst || 'The athlete'} sees these.`
+                  : `${athleteFirst || 'The athlete'} will see these if you share this session.`}
+                {' '}Private notes go on {athlete ? (
+                  <Link href={`/athletes/${athlete.id}`} style={{ color: 'var(--text)', textDecoration: 'underline' }}>
+                    {athleteFirst ? `${athleteFirst}'s profile` : 'their profile'}
+                  </Link>
+                ) : 'their profile'}.
+              </p>
+            )}
             {isCoach && notesEditing ? (
               <>
                 <textarea
@@ -1397,7 +1429,7 @@ export default function SessionDetailPage() {
                   onChange={(e) => { setNotesDraft(e.target.value); notesLatestRef.current = e.target.value; setNotesDirty(true) }}
                   onFocus={() => { notesCancellingRef.current = false }}
                   onBlur={() => { if (notesDirty && !notesCancellingRef.current) void saveNotes() }}
-                  placeholder="Anything worth remembering — context, what you tried, what to watch for."
+                  placeholder={`Written for ${athleteFirst || 'the athlete'}: what to work on, what went well, what to watch for.`}
                   rows={4}
                   style={{
                     display: 'block', width: '100%', border: `1px solid ${LINE_2}`, borderRadius: 16,
@@ -1793,7 +1825,57 @@ export default function SessionDetailPage() {
             </div>
           </details>
         )}
+
+        {/* ── Delete, last and apart: the one action on this page that cannot be undone. ── */}
+        {session.can_edit && (
+          <div style={{ marginTop: 40, paddingTop: 16, borderTop: `1px solid ${LINE}` }}>
+            <button
+              onClick={() => setDeleteOpen(true)}
+              style={{ ...toolButton, color: 'var(--danger)', border: '1px solid color-mix(in srgb, var(--danger) 45%, transparent)' }}
+            >
+              Delete session
+            </button>
+          </div>
+        )}
       </div>
+
+      {editOpen && session.can_edit && (
+        <SessionEditSheet
+          session={{
+            id: session.id,
+            session_name: session.session_name,
+            session_date: sessionISODate(session),
+            summary: session.summary,
+          }}
+          onClose={() => setEditOpen(false)}
+          onSaved={(warnings) => {
+            setEditOpen(false)
+            if (warnings.length) setActionError(warnings.join(' '))
+            else flash('Session updated')
+            void load()
+          }}
+        />
+      )}
+
+      {deleteOpen && session.can_edit && (() => {
+        const all = videoList ?? []
+        return (
+          <SessionDeleteDialog
+            sessionId={session.id}
+            facts={{
+              athleteFirst,
+              hasRecording: recorded,
+              coachVideoCount: all.filter((v) => v.uploaded_by_role !== 'athlete').length,
+              imageCount: data?.attachments.length ?? 0,
+              athleteClipCount: all.filter((v) => v.uploaded_by_role === 'athlete').length,
+              partOfGroup: Boolean(session.part_of_group),
+              shared: session.shared_with_athlete,
+            }}
+            onClose={() => setDeleteOpen(false)}
+            onDeleted={() => router.replace(athlete ? `/athletes/${athlete.id}` : '/dashboard')}
+          />
+        )
+      })()}
     </div>
   )
 }

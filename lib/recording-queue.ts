@@ -218,20 +218,5 @@ export function newRecordingId(): string {
   return `rec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-/**
- * How long a recording nobody ever saved is kept.
- *
- * A coach who records, abandons the modal and never comes back leaves a blob
- * on their phone. Keeping it forever is a slow storage leak; deleting it
- * quickly throws away the exact thing this file exists to protect. Two weeks
- * is long enough to cover a holiday and short enough not to accumulate.
- *
- * Only ever applied to recordings the coach never marked ready. A `ready`
- * recording is one they asked to save, and it is kept until it saves or they
- * discard it by hand.
- */
-export const ABANDONED_TTL_MS = 14 * 24 * 60 * 60 * 1000
-
-export function isAbandoned(rec: PendingRecording, now = Date.now()): boolean {
-  return !rec.ready && now - rec.createdAt > ABANDONED_TTL_MS
-}
+// Recordings nobody saved are no longer deleted after a time limit: see
+// isStale in lib/recording-finish.ts. Only the coach discards a recording.

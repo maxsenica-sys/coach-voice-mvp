@@ -4,6 +4,11 @@ import { createRouteClient } from '@/lib/supabase-route'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { errorMessage } from '@/lib/errors'
 import { resolveCoachScope, canSeeAthlete } from '@/lib/coach-scope'
+import { checkContent } from '@/lib/content-gate'
+
+/** Told to the coach when a note is refused as shared. Plain, not an accusation. */
+const NOTE_SHARE_BLOCKED_MESSAGE =
+  "This note can't be shared with an athlete: it contains content that isn't appropriate for them. Untick Share with athlete to keep it as a private note."
 
 // GET /api/notes?athlete_id=...
 export async function GET(req: Request) {
@@ -93,6 +98,19 @@ export async function POST(req: Request) {
 
     if (athleteErr || !athleteRow) {
       return NextResponse.json({ error: 'Athlete not found (or not yours)' }, { status: 404 })
+    }
+
+    /* A shared note is read by the athlete, who is 13 to 18, on the My Notes
+     * tab of their portal (GET /api/athlete/coach-notes). Nothing sexual,
+     * hateful or threatening reaches them that way any more than through a
+     * session (lib/content-gate.ts). A private note is the coach's own record
+     * and is not checked, exactly as an unshared session is not. */
+    if (shared_with_athlete) {
+      const gate = await checkContent(summary)
+      if (gate.blocked) {
+        console.warn('[notes] share refused:', gate.reasons.join(', '))
+        return NextResponse.json({ error: NOTE_SHARE_BLOCKED_MESSAGE, blocked: true }, { status: 422 })
+      }
     }
 
     const { data, error } = await admin
