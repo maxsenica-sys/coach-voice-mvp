@@ -111,3 +111,27 @@ export async function syncSessionCalendarEvent({
 
   return error ? { outcome: 'failed', error: error.message } : { outcome: 'inserted' }
 }
+
+/**
+ * Move a session's calendar entry to a new date or title after the session
+ * was edited (PATCH /api/sessions/[id]). Only the fields given change. A
+ * session with no calendar entry is not an error: there is nothing to move.
+ */
+export async function moveSessionCalendarEvent({
+  supabase,
+  sessionId,
+  eventDate,
+  title,
+}: {
+  supabase: SupabaseClient
+  sessionId: string
+  eventDate?: string | null
+  title?: string | null
+}): Promise<{ outcome: 'moved' } | { outcome: 'failed'; error: string }> {
+  const changes: Record<string, string> = {}
+  if (eventDate) changes.event_date = eventDate
+  if (title !== undefined) changes.title = title?.trim() || 'Coaching Session'
+  if (Object.keys(changes).length === 0) return { outcome: 'moved' }
+  const { error } = await supabase.from('calendar_events').update(changes).eq('session_id', sessionId)
+  return error ? { outcome: 'failed', error: error.message } : { outcome: 'moved' }
+}

@@ -10,6 +10,7 @@ import { notifyPushSessionShared } from '@/lib/push'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { resolveCoachScope, canSeeAthlete, recordingsWithheld } from '@/lib/coach-scope'
 import { parseDelivery } from '@/lib/session-delivery'
+import { checkSessionDate } from '@/lib/session-date'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 
@@ -172,12 +173,13 @@ export async function POST(req: NextRequest) {
     ? body.session_date
     : null
   // A session is something that already happened, so a future date is a
-  // mistake rather than a plan. The picker caps at today; the one-day slack
-  // here is for coaches whose local date is already tomorrow in UTC terms.
+  // mistake rather than a plan. The picker caps at the coach's own today; the
+  // server, which cannot know their timezone, holds it to the latest date on
+  // earth (lib/session-date.ts, the same rule as editing the date later).
   if (session_date) {
-    const tomorrow = new Date(Date.now() + 86400000)
-    if (session_date > new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(tomorrow)) {
-      const res = NextResponse.json({ error: 'Session date cannot be in the future.' }, { status: 400 })
+    const dateCheck = checkSessionDate(session_date)
+    if (!dateCheck.ok) {
+      const res = NextResponse.json({ error: dateCheck.error }, { status: 400 })
       return attachCookies(res, cookiesToSet)
     }
   }
@@ -338,6 +340,10 @@ export async function POST(req: NextRequest) {
       // it on the session page like any focus point they typed themselves.
       focus_points: nextFocus ? [nextFocus] : [],
       shared_with_athlete,
+      // Shared at save is the first share: the athlete is told below, and a
+      // later re-toggle finds it claimed and does not tell them twice
+      // (migration 037, PATCH /api/sessions/[id]).
+      ...(shared_with_athlete ? { first_shared_at: new Date().toISOString() } : {}),
       sport_context: resolvedSport,
       // The date the session happened. Null only if the client sent nothing,
       // in which case it happened today.
