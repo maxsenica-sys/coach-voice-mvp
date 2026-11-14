@@ -2,6 +2,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useId, Suspense, Fragment } from 'react'
 import { byName, matchesName, sortRoster, ROSTER_SORT_LABELS, type RosterSort } from '@/lib/athlete-filter'
+import { onboardingSteps } from '@/lib/onboarding'
+import { newlyActive, parseSeenActive, seenActiveKey } from '@/lib/athlete-joined'
 import CoverageInsight from '@/app/components/CoverageInsight'
 import PushOptIn from '@/app/components/PushOptIn'
 import { forgetPushOnSignOut } from '@/lib/push-client'
@@ -570,7 +572,7 @@ function JoinToast({ data, onDismiss }: { data: JoinToastData; onDismiss: () => 
         <Mono initials={initialsOf(data.athlete.first_name, data.athlete.last_name)} size={38} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...cast(17, 700, '.04em'), overflowWrap: 'anywhere' }}>{data.athlete.first_name} {data.athlete.last_name}</div>
-          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 3 }}>accepted your invite</div>
+          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 3 }}>just joined: they&apos;ve opened Pindar</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <Link href={`/athletes/${data.athlete.id}`} style={{ fontSize: 'var(--fs-2)', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none', background: tint('var(--primary)', 12), padding: '0 12px', minHeight: 44, borderRadius: 8, display: 'inline-flex', alignItems: 'center' }}>
@@ -886,7 +888,6 @@ function DashboardPageInner() {
   const [showAddAthlete, setShowAddAthlete] = useState(false)
   /** The invite that has just gone, shown at the top of the sheet until it closes. */
   const [lastInvite, setLastInvite] = useState<{ firstName: string; lastName: string; email: string; at: Date } | null>(null)
-  const [onboardStep, setOnboardStep] = useState({ code: false, athlete: false, session: false })
 
   const [groups, setGroups] = useState<Group[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
@@ -902,6 +903,9 @@ function DashboardPageInner() {
    * list both screens read, so searching "serve" and going back to Home turned
    * "sessions this week", the spark and Latest into counts of the matches. */
   const [homeSessions, setHomeSessions] = useState<Session[]>([])
+  /** Home's session read has come back at least once. Until then the count is
+   *  unknown, which the first-run checklist must not read as zero. */
+  const [homeSessionsLoaded, setHomeSessionsLoaded] = useState(false)
   const [coverage, setCoverage] = useState<CoverageRow[]>([])
   /* Whether the coverage read has come back at all — not the same question as
    * whether it is empty.
@@ -935,7 +939,9 @@ function DashboardPageInner() {
 
   // Join notifications
   const [joinToasts, setJoinToasts] = useState<JoinToastData[]>([])
-  const athletesRef = useRef<Athlete[]>([])
+  /** Successful roster reads so far. The arrival check waits for the first, so
+   *  the empty list before it is never stored as "nobody active". */
+  const [rosterReads, setRosterReads] = useState(0)
   const [coachUserId, setCoachUserId] = useState<string | null>(null)
 
   // Simple toasts (success/error)
@@ -1110,9 +1116,11 @@ function DashboardPageInner() {
     return () => { cancelled = true }
   }, [])
 
-  const fetchAthletes = async () => {
-    setLoadingAthletes(true)
-    setAthletesError(null)
+  /** quiet: a background re-read. It neither shows the loading state nor
+   *  replaces the roster with an error banner if it fails; the next read will
+   *  try again. */
+  const fetchAthletes = async ({ quiet = false }: { quiet?: boolean } = {}) => {
+    if (!quiet) { setLoadingAthletes(true); setAthletesError(null) }
     try {
       const json = await apiJson<{ athletes?: Athlete[] }>('/api/athletes', { cache: 'no-store' })
       // The route always answers { athletes: [...] }. Anything else is an error,
@@ -1123,9 +1131,11 @@ function DashboardPageInner() {
       // every list on this screen, the recorder and Messages inherited that
       // accident: twenty names in the order they were invited.
       setAthletes([...json.athletes].sort(byName))
+      if (quiet) setAthletesError(null)
+      setRosterReads(n => n + 1)
     } catch (e) {
-      setAthletesError(e instanceof Error ? e.message : 'Could not load your athletes.')
-    } finally { setLoadingAthletes(false); markAppReady() }
+      if (!quiet) setAthletesError(e instanceof Error ? e.message : 'Could not load your athletes.')
+    } finally { if (!quiet) setLoadingAthletes(false); markAppReady() }
   }
 
   const fetchUnreadCounts = async () => {
@@ -1185,7 +1195,7 @@ function DashboardPageInner() {
     try {
       const json = await getSessionsPage(search, athleteId, 0)
       const rows: Session[] = json.sessions ?? []
-      if (homeSeq !== null && homeSeq === homeSessionsReqRef.current) setHomeSessions(rows)
+      if (homeSeq !== null && homeSeq === homeSessionsReqRef.current) { setHomeSessions(rows); setHomeSessionsLoaded(true) }
       if (seq === sessionsReqRef.current) {
         setAllSessions(rows)
         setSessionsHasMore(json.hasMore === true)
@@ -1211,7 +1221,7 @@ function DashboardPageInner() {
     try {
       const json = await getSessionsPage('', '', 0)
       const rows: Session[] = json.sessions ?? []
-      if (seq === homeSessionsReqRef.current) setHomeSessions(rows)
+      if (seq === homeSessionsReqRef.current) { setHomeSessions(rows); setHomeSessionsLoaded(true) }
       return rows
     } catch {
       // Home keeps what it had. The Sessions list refresh that runs beside
@@ -1355,44 +1365,48 @@ function DashboardPageInner() {
     }
   }, [])
 
-  // Keep ref in sync so Realtime closure always sees fresh athletes
-  useEffect(() => { athletesRef.current = athletes }, [athletes])
 
-  // Realtime: detect when invited athlete accepts and becomes active
+  /* An athlete arriving: "Leo accepted your invite" (lib/athlete-joined.ts).
+   * Compared on every successful roster read against what this device last
+   * showed this coach, so it needs no Realtime and no migration. The old
+   * Realtime listener waited for a change no code path ever makes. */
   useEffect(() => {
-    if (!coachUserId) return
-    const channel = supabase
-      .channel(`athlete-joins-${coachUserId}`)
-      // Supabase types the realtime payload generically; this names only the
-      // two columns the handler reads. Both sides are partial because an UPDATE
-      // payload carries whatever the replica identity includes, not the row.
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'athletes' }, (payload: {
-        old?: { athlete_user_id?: string | null }
-        new?: { id?: string; athlete_user_id?: string | null }
-      }) => {
-        const prev = payload.old
-        const next = payload.new
-        // Athlete just activated: had no user_id before, now has one
-        if (!prev?.athlete_user_id && next?.athlete_user_id) {
-          const match = athletesRef.current.find(a => a.id === next.id)
-          if (match) {
-            setJoinToasts(t => [...t, { toastId: `${next.id}-${Date.now()}`, athlete: match }])
-            void fetchAthletes() // refresh status
-          }
-        }
-      })
-      .subscribe()
-    return () => { void supabase.removeChannel(channel) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coachUserId])
+    if (!coachUserId || rosterReads === 0) return
+    const key = seenActiveKey(coachUserId)
+    let seen: string[] | null = null
+    try { seen = parseSeenActive(localStorage.getItem(key)) } catch { /* private window: announce nobody */ }
+    const { joined, nextSeen } = newlyActive(athletes, seen)
+    try { localStorage.setItem(key, JSON.stringify(nextSeen)) } catch { /* the toast still shows once */ }
+    if (joined.length > 0) {
+      const at = Date.now()
+      setJoinToasts(t => [...t, ...joined.map(a => ({ toastId: `${a.id}-${at}`, athlete: a }))])
+    }
+  }, [athletes, coachUserId, rosterReads])
+
+  /* Re-read the roster quietly on return to the screen and once a minute
+   * while it is in view, so an athlete who signs up during training shows as
+   * active, and is announced, without the coach reloading. */
+  useEffect(() => {
+    let last = Date.now()
+    const reread = () => {
+      if (document.visibilityState !== 'visible') return
+      if (Date.now() - last < 30_000) return
+      last = Date.now()
+      void fetchAthletes({ quiet: true })
+    }
+    const timer = window.setInterval(reread, 60_000)
+    document.addEventListener('visibilitychange', reread)
+    window.addEventListener('focus', reread)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', reread)
+      window.removeEventListener('focus', reread)
+    }
+  }, [])
 
   useEffect(() => {
     if (tab === 'calendar') void fetchCalendar(calMode, calTargetId, calMonth)
   }, [tab, calMode, calTargetId, calMonth, fetchCalendar])
-
-  useEffect(() => {
-    setOnboardStep(prev => ({ ...prev, code: !!inviteCode }))
-  }, [inviteCode])
 
   const saveCode = async () => {
     setCodeSaving(true); setCodeMsg('')
@@ -1636,6 +1650,12 @@ function DashboardPageInner() {
   const filteredAthletes = sortRoster(filteredAthletesUnsorted, rosterSort, lastSessionOf)
 
   const recentSessions = homeSessions.slice(0, 3)
+  const onboarding = onboardingSteps({
+    hasInviteCode: !!inviteCode,
+    athleteCount: athletes.length,
+    sessionsKnown: homeSessionsLoaded,
+    sessionCount: homeSessions.length,
+  })
   const totalUnreadAll = Object.values(unreadCounts).reduce((a: number, b: number) => a + b, 0)
 
   const calTitle = calMode === 'personal'
@@ -2183,8 +2203,10 @@ function DashboardPageInner() {
                   {team.role === 'assistant' ? team.headName : 'Your head coach'} has not given you any athletes yet. They choose who you coach, and the athletes will appear here when they do.
                 </p>
               )}
-              {athletes.length === 0 && !loadingAthletes && !isAssistant && (() => {
-                const completedCount = onboardStep.code ? 1 : 0
+              {/* Stays until the first session is recorded, each step ticked
+                  from real state (lib/onboarding.ts). */}
+              {!loadingAthletes && !isAssistant && onboarding.show && (() => {
+                const completedCount = onboarding.completed
                 const stepNum = (done: boolean, n: number) => (
                   <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', ...cast(15, 800, '0'), lineHeight: 1, ...(done ? { background: 'var(--primary)', color: 'var(--on-primary)' } : { border: HAIR_2, color: 'var(--text-2)' }) }}>
                     {done ? '✓' : n}
@@ -2207,11 +2229,11 @@ function DashboardPageInner() {
 
                     {/* Step 1 — Set invite code */}
                     <div style={{ ...stepRow, borderTop: HAIR_2 }}>
-                      {stepNum(onboardStep.code, 1)}
+                      {stepNum(onboarding.code, 1)}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ ...cast(17, 700, '.04em'), color: 'var(--text)', marginBottom: 4 }}>Set your invite code</div>
                         <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>Athletes enter this code when signing up to join your roster automatically.</div>
-                        {onboardStep.code ? (
+                        {onboarding.code ? (
                           <div style={{ ...MONO, fontWeight: 700, fontSize: 'var(--fs-4)', letterSpacing: '.1em', color: 'var(--text)', background: PANEL_2, border: HAIR_2, borderRadius: 10, padding: '8px 12px', display: 'inline-block', maxWidth: '100%', overflowWrap: 'anywhere' }}>{inviteCode}</div>
                         ) : (
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -2234,19 +2256,27 @@ function DashboardPageInner() {
 
                     {/* Step 2 — Add first athlete */}
                     <div style={stepRow}>
-                      {stepNum(false, 2)}
+                      {stepNum(onboarding.athlete, 2)}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ ...cast(17, 700, '.04em'), color: 'var(--text)', marginBottom: 4 }}>Add your first athlete</div>
-                        <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>Invite them by email — they&apos;ll get a link to set up their account.</div>
-                        <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6, minHeight: 44 }}>
-                          <Icon name="plus" size={14} /> Add Athlete →
-                        </button>
+                        {onboarding.athlete ? (
+                          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>
+                            {athletes.length === 1 ? 'One athlete' : `${athletes.length} athletes`} on your roster.
+                          </div>
+                        ) : (
+                          <>
+                            <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>Invite them by email — they&apos;ll get a link to set up their account.</div>
+                            <button className="btn btn-primary" onClick={() => setShowAddAthlete(true)} style={{ gap: 6, minHeight: 44 }}>
+                              <Icon name="plus" size={14} /> Add Athlete →
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
                     {/* Step 3 — Record first session */}
                     <div style={stepRow}>
-                      {stepNum(false, 3)}
+                      {stepNum(onboarding.session, 3)}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ ...cast(17, 700, '.04em'), color: 'var(--text)', marginBottom: 4 }}>Record your first session</div>
                         <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', marginBottom: 10 }}>After a training session, hit record and speak your notes. AI transcribes and summarises.</div>
@@ -2444,7 +2474,7 @@ function DashboardPageInner() {
                         ))}
                       </select>
                     </label>
-                    <button onClick={fetchAthletes} disabled={loadingAthletes} style={{ ...ICON_BTN, opacity: loadingAthletes ? 0.5 : 1 }} title="Refresh" aria-label="Refresh the roster">
+                    <button onClick={() => void fetchAthletes()} disabled={loadingAthletes} style={{ ...ICON_BTN, opacity: loadingAthletes ? 0.5 : 1 }} title="Refresh" aria-label="Refresh the roster">
                       <Icon name="refresh" size={15} />
                     </button>
                   </div>

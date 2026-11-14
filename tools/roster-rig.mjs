@@ -51,6 +51,8 @@ import { dirname, join, relative } from 'node:path'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { athleteStatus, activeCount, activationFields } from '../lib/athlete-status.ts'
 import { filterAthletes, matchesName, sortRoster } from '../lib/athlete-filter.ts'
+import { onboardingSteps } from '../lib/onboarding.ts'
+import { newlyActive, parseSeenActive } from '../lib/athlete-joined.ts'
 import { ACCESS_KINDS, isSessionAccessKind, shouldRecordAccess, formatAccessTime, DUPLICATE_WINDOW_MS } from '../lib/access-log.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -347,6 +349,66 @@ check(
       if (xs.length !== roster.length || new Set(xs.map((x) => x.id)).size !== roster.length) p.push(`${m} lost or duplicated an athlete`)
     }
     if (roster.map((x) => x.id).join('') !== '12345') p.push('sortRoster mutated its input')
+    return p
+  },
+)
+
+check(
+  'R-ONBOARD',
+  'The first-run checklist ticks each step from real state, and stays until the first session',
+  'Found 2026-11-14: steps two and three were drawn hardcoded as not done, and the card vanished the moment an athlete was added, so it read "1 of 3" for ever and never reached the step that mattered.',
+  () => {
+    const p = []
+    const o = (code, athletes, known, sessions) => onboardingSteps({ hasInviteCode: code, athleteCount: athletes, sessionsKnown: known, sessionCount: sessions })
+    const fresh = o(false, 0, true, 0)
+    if (!fresh.show || fresh.completed !== 0) p.push(`a new coach: ${JSON.stringify(fresh)}`)
+    const coded = o(true, 0, true, 0)
+    if (!coded.code || coded.completed !== 1) p.push(`invite code set should be 1 of 3: ${JSON.stringify(coded)}`)
+    const added = o(true, 2, true, 0)
+    if (!added.show) p.push('the card disappeared once an athlete was added, before any session')
+    if (!added.athlete || added.completed !== 2) p.push(`an athlete added should tick step two (2 of 3): ${JSON.stringify(added)}`)
+    const recorded = o(true, 2, true, 1)
+    if (recorded.show) p.push('the card is still shown after the first session')
+    if (!recorded.session || recorded.completed !== 3) p.push(`a recorded session should tick step three: ${JSON.stringify(recorded)}`)
+    if (o(false, 5, false, 0).show) p.push('a coach with athletes was shown the checklist before Home knew their session count (it would flash at every established coach)')
+    if (!o(false, 0, false, 0).show) p.push('an empty roster is always a new coach, sessions loaded or not')
+    if (o(false, 3, true, 4).show) p.push('a coach with sessions and no invite code was shown the checklist')
+    return p
+  },
+)
+
+check(
+  'R-JOIN',
+  'An athlete arriving is announced once, on the device that saw them arrive, and nobody else is',
+  'Found 2026-11-14: the "accepted your invite" toast waited on a Realtime change no code path makes. It now compares the ACTIVE set with what this device last showed.',
+  () => {
+    const p = []
+    const A = (id, first_login_at = null) => ({ id, first_login_at })
+    const first = newlyActive([A('a', '2026-11-01T00:00:00Z'), A('b')], null)
+    if (first.joined.length !== 0) p.push('the first look on a device announced athletes the coach has had all along')
+    if (first.nextSeen.join() !== 'a') p.push(`the first look should remember the active set, got ${JSON.stringify(first.nextSeen)}`)
+    const later = newlyActive([A('a', '2026-11-01T00:00:00Z'), A('b', '2026-11-14T09:00:00Z'), A('c')], first.nextSeen)
+    if (later.joined.map((x) => x.id).join() !== 'b') p.push(`b became active and should be announced alone, got ${JSON.stringify(later.joined.map((x) => x.id))}`)
+    const again = newlyActive([A('a', '2026-11-01T00:00:00Z'), A('b', '2026-11-14T09:00:00Z')], later.nextSeen)
+    if (again.joined.length !== 0) p.push('an athlete already announced was announced again')
+    const invitedOnly = newlyActive([A('a', '2026-11-01T00:00:00Z'), A('z')], ['a'])
+    if (invitedOnly.joined.length !== 0) p.push('an invited athlete who has not opened the app was announced as joined')
+    if (parseSeenActive('not json') !== null || parseSeenActive('{"a":1}') !== null || parseSeenActive(null) !== null) p.push('unreadable storage should read as "never looked"')
+    if (JSON.stringify(parseSeenActive('["a","b"]')) !== '["a","b"]') p.push('a stored set did not read back')
+    return p
+  },
+)
+
+check(
+  'R-HOME',
+  'Home draws the checklist and the arrival toast from those two functions',
+  'A pure function nobody calls proves nothing about the screen. Both bugs were in the screen: a hardcoded step and a listener for an event that never comes.',
+  () => {
+    const p = []
+    const dash = readFileSync(join(ROOT, 'app/dashboard/page.tsx'), 'utf8')
+    if (!/onboardingSteps\(/.test(dash)) p.push('app/dashboard/page.tsx does not use onboardingSteps')
+    if (/stepNum\(false,/.test(dash)) p.push('a checklist step is hardcoded as not done again')
+    if (!/newlyActive\(/.test(dash)) p.push('app/dashboard/page.tsx does not use newlyActive for the arrival toast')
     return p
   },
 )
