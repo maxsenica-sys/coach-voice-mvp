@@ -258,7 +258,7 @@ check('I10', 'Coverage: least attention first, median marked, squad talk shared'
     return p
   })
 
-check('I14', 'Coverage groups: every athlete in exactly one group, least first inside it',
+check('I15', 'Coverage groups: every athlete in exactly one group, least first inside it',
   'The home card ropes athletes with the same number of sessions into one line (Max, 2026-11-14). A bucket boundary that skipped a count would drop a child off the card without a trace — the "never remove data" rule, broken by arithmetic.',
   () => {
     const p = []

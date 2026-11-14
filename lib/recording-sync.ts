@@ -83,6 +83,7 @@ export interface SessionBody {
   audio_path: string | null
   audio_mime: string | null
   session_name: string | null
+  delivery: 'in_person' | 'online' | null
   group_id?: string | null
   shared_recording_id?: string
   summary?: string | null
@@ -106,6 +107,8 @@ export function sessionBodies(rec: PendingRecording, transcript: string, audioPa
     sport_context: rec.coachSport || null,
     audio_path: audioPath,
     audio_mime: audioPath ? rec.mimeType : null,
+    // Absent on recordings queued before 036; the server stores null then.
+    delivery: rec.delivery ?? null,
   }
 
   if (rec.mode === 'group') {

@@ -56,6 +56,8 @@ interface Group {
 interface Session {
   id: string; session_name: string | null; summary: string | null
   shared_with_athlete: boolean; session_date?: string | null; created_at: string
+  /** In person or online (migration 036); null when not said. */
+  delivery?: 'in_person' | 'online' | null
   athlete_id: string; athletes?: { id: string; first_name: string; last_name: string; email: string }
 }
 
@@ -1756,7 +1758,12 @@ function DashboardPageInner() {
         </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ ...cast(19, 700, '.04em'), lineHeight: 1.05, color: 'var(--text)', overflowWrap: 'anywhere' }}>{a ? `${a.first_name} ${a.last_name}` : 'Unknown'}</div>
-          <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 400, fontSize: 'var(--t-body)', lineHeight: 1.4, color: 'var(--text-2)', marginTop: 5, overflowWrap: 'anywhere' }}>{s.session_name ?? 'Session'}</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 400, fontSize: 'var(--t-body)', lineHeight: 1.4, color: 'var(--text-2)', marginTop: 5, overflowWrap: 'anywhere' }}>
+            {s.session_name ?? 'Session'}
+            {/* Online is the exception worth flagging; in person is most of
+                what is recorded, so it stays quiet here. */}
+            {s.delivery === 'online' && <span style={{ fontStyle: 'normal', fontFamily: 'var(--font-sans)', fontWeight: 700, color: 'var(--text)' }}> · Online</span>}
+          </div>
           {opts.summary && s.summary && (
             <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>{s.summary}</div>
           )}

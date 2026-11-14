@@ -102,6 +102,9 @@ export interface PendingRecording {
   targetLabel: string
 
   sessionName: string
+  /** In person or online (migration 036). Optional: recordings queued before
+   *  the switch existed have none, and must still replay — as "not recorded". */
+  delivery?: 'in_person' | 'online' | null
   sessionDate: string
   coachSport: string | null
   shareWithAthlete: boolean

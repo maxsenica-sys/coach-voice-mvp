@@ -9,6 +9,7 @@ import { notifySessionShared } from '@/lib/notify'
 import { notifyPushSessionShared } from '@/lib/push'
 import type { CookieToSet } from '@/lib/supabase-route'
 import { resolveCoachScope, canSeeAthlete, recordingsWithheld } from '@/lib/coach-scope'
+import { parseDelivery } from '@/lib/session-delivery'
 import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 
 
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
     // athlete_response is the athlete's one-tap reply to the takeaway. The
     // coach already sees it on the session page; the athlete profile's session
     // list shows it too, and could not while this select left it out.
-    .select('id, athlete_id, group_id, shared_recording_id, recorded_by, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime, athlete_response')
+    .select('id, athlete_id, group_id, shared_recording_id, recorded_by, session_name, summary, transcript, focus_points, shared_with_athlete, session_date, created_at, audio_path, audio_mime, athlete_response, delivery')
     .eq('coach_id', scope.headId)
     .eq('athlete_id', athlete_id)
     // Newest session first by the date it happened, not the date it was typed
@@ -121,6 +122,9 @@ export async function POST(req: NextRequest) {
 
   const athlete_id = body?.athlete_id as string | undefined
   const session_name = (body?.session_name as string | undefined) ?? null
+  // In person or online (migration 036). Null when the client did not say —
+  // an older app, or a recording queued before the switch existed.
+  const delivery = parseDelivery(body?.delivery)
   const transcript = (body?.transcript as string | undefined) ?? ''
   const shared_with_athlete = Boolean(body?.shared_with_athlete)
 
@@ -323,6 +327,9 @@ export async function POST(req: NextRequest) {
       recorded_by: user.id,
       athlete_id,
       session_name: session_name?.trim() ? session_name.trim() : null,
+      // Only written when the client said, so a save without it is exactly
+      // the insert it was before 036.
+      ...(delivery ? { delivery } : {}),
       transcript: transcript.trim(),
       summary, // quick scan summary for list
       // The one thing to carry into the next session, lifted out of the same
