@@ -268,6 +268,22 @@ app writes each athlete their own account of every session.
   offline work), the repo and package name, applied migrations, and the
   historical reports in `product-review/reports/`.
 
+## The content engine: `content/`
+
+Max's Instagram system (2026-11-14). `content/FEATURES.json` is the feature
+inventory read from the code, `CONTENT_QUEUE.csv` the posts, `POSTING_PLAN.csv`
+the 30 days, and `content/studio/` renders posts from the queue (`npm run
+content:render`, see its README). Two rules:
+
+- **A post only claims what the code does.** `python3 content/validate_queue.py`
+  refuses a post about a feature that is not shipped. When a feature changes,
+  update its inventory entry, and its phone screen in `content/studio/studio.js`,
+  in the same PR.
+- **The characters are code, not generated images** (`content/studio/cast.js`), so
+  they cannot drift between posts. Max is reviewing some of the character models
+  (2026-11-15); change a pose or costume there and check it with
+  `npm run content:poses` before rendering.
+
 ## ⚠️ Installed apps update themselves — never ask anyone to delete the app
 
 Max, 2026-10-09: *"it's becoming increasingly frustrating that we have to keep

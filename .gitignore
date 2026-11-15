@@ -47,3 +47,6 @@ next-env.d.ts
 
 __pycache__/
 *.pyc
+
+# Content studio renders (content/studio/README.md)
+/content/studio/out/
