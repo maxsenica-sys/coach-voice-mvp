@@ -32,10 +32,10 @@ A carousel renders in seconds and a reel in under a minute.
 
 ## How it is built
 
-- **`cast.js`: the characters.** One rigged skeleton, three costumes (the coach,
-  athlete A, athlete B). A pose is about ten joint angles, so faces and proportions
-  cannot drift between posts, and moving between two poses is the animation.
-  The 24 poses are the brief's pose library, by the same names the queue uses.
+- **`cast.js`: the characters.** One rigged skeleton, six costumes. A pose is a
+  set of joint angles, so faces and proportions cannot drift between posts, and
+  moving between two poses is the animation. The 40 poses are the pose library,
+  by the same names the queue and `validate_queue.py` use.
 - **`studio.js`: the five templates and the phone screens.** Hook, problem,
   mechanic, outcome and call to action, in four colours and one typeface at two
   sizes. A queue row's `ui_card` picks one of six screens, and the feature picks
@@ -49,6 +49,52 @@ A carousel renders in seconds and a reel in under a minute.
 
 **Truth.** A screen shows only what the app does for that feature. If a feature
 changes, change its screen here in the same PR, as you would its copy.
+
+## The cast
+
+Four colours only, so each character is told apart by silhouette as much as kit.
+
+| Who | Reads as | Poses |
+|---|---|---|
+| The coach | cap, polo, whistle, track pants with a stripe | 10: `coach-*` |
+| Athlete A, outside hitter | ponytail, cream jersey 7 | 8: `athlete-*` |
+| Athlete B, middle blocker | curls and headband, moss jersey 12 | 6: `athlete-b-*` |
+| Athlete C, libero and setter | crop, the off-colour ink jersey 4, arm sleeves | 6: `athlete-c-*` |
+| The parent | bun, glasses, long cardigan, bag | 6: `parent-*` |
+| The assistant coach | beard, no cap, lanyard | 4: `assistant-*` |
+
+### Where the poses come from
+
+Max, 2026-11-16: the figures must "mimic human behavior", move the way a
+volleyballer and a coach actually do, and not hold "awkward poses". So a pose is
+built from how the skill is performed, then checked on the sheet:
+
+- **The rig can only do what a body does.** The spine has two segments (it arches
+  in a swing and slumps in a bad moment), shoulders turn against the hips, a knee
+  bends one way only, and a foot is planted flat unless the pose lifts it.
+- **The pass** follows the coaching cue "shoulders over knees, knees over toes":
+  feet a little wider than the shoulders, arms long and locked, the ball met on
+  the forearms.
+- **The swing** is the cocked position from match photographs: the back arched
+  right through, head back on the ball, hitting elbow high above the shoulder
+  with the hand laid back behind the head, the other arm already pulling in.
+- **The block** has the arms long and angled forward over the tape, fingers
+  spread wide, shoulders shrugged to the ears.
+- **The coach** does what coaches do: dictates into a phone held flat at the chin,
+  watches with a hand on the chin, kneels to the athletes' eye level in a
+  timeout with the board on the thigh, covers the eyes when it goes wrong.
+- **Athletes off the ball** stand the way players stand: hands on hips, ball on
+  the hip, forearms on the thighs on the bench.
+
+Sources: forearm-pass posture from provincial and national coaching handouts
+(Sask Volleyball, Volleyball Ireland LTPD); the swing's phases from the Journal
+of Sports Science and Medicine (2022, 21:465) and Frontiers in Psychology
+(2022, 10.3389/fpsyg.2022.1041871); reference photographs from Wikimedia
+Commons (`Volleyball spike.jpg`, `Volleyball kill.jpg`). The photographs were
+looked at for position only; none is copied, traced or stored in this repo.
+
+To change a character: edit the pose or the costume in `cast.js`, run
+`npm run content:poses -- <name>`, look, then render.
 
 The wreath is read from `lib/brand-mark.ts` and the type from `app/fonts/`, so a
 brand change reaches every post on the next render.
