@@ -50,8 +50,9 @@
   const f1 = (n) => n.toFixed(1)
   const pts = (arr) => arr.map((p) => `${f1(p[0])},${f1(p[1])}`).join(' ')
 
+  // Round ends unless `extra` sets its own (a hem or a sock top is cut square).
   const stroke = (points, color, w, extra = '') =>
-    `<polyline points="${pts(points)}" fill="none" stroke="${color}" stroke-width="${f1(w)}" stroke-linecap="round" stroke-linejoin="round"${extra}/>`
+    `<polyline points="${pts(points)}" fill="none" stroke="${color}" stroke-width="${f1(w)}"${extra.includes('stroke-linecap') ? '' : ' stroke-linecap="round"'} stroke-linejoin="round"${extra}/>`
   /** A stroke with an ink outline. */
   const part = (points, color, w) => stroke(points, C.ink, w + L.line * 2) + stroke(points, color, w)
   /** A thin ink detail line. */
@@ -125,8 +126,11 @@
     const long = cos.legs === 'long'
     let s = ''
     s += stroke([hip, knee], C.ink, W.thigh + (long ? 2 : 0) + L.line * 2) + stroke([knee, ankle], C.ink, W.shin + (long ? 3 : 0) + L.line * 2)
-    const shortsEnd = lerp(hip, knee, 0.42)
-    if (!long) s += stroke([hip, shortsEnd], C.ink, W.thigh + 5 + L.line * 2)
+    // shorts end in a straight hem, so the leg of the shorts is cut square
+    const shortsEnd = lerp(hip, knee, 0.4)
+    const square = ' stroke-linecap="butt"'
+    const dot = (c, r, fill) => `<circle cx="${f1(c[0])}" cy="${f1(c[1])}" r="${f1(r)}" fill="${fill}"/>`
+    if (!long) s += dot(hip, (W.thigh + 5) / 2 + L.line, C.ink) + stroke([hip, lerp(hip, knee, 0.4 + 2.6 / L.thigh)], C.ink, W.thigh + 5 + L.line * 2, square)
     s += stroke([hip, knee], long ? cos.bottom : C.cream, W.thigh + (long ? 2 : 0)) + stroke([knee, ankle], long ? cos.bottom : C.cream, W.shin + (long ? 3 : 0))
     if (long) {
       if (cos.stripe) s += stroke([lerp(hip, knee, 0.1), knee, lerp(knee, ankle, 0.94)], cos.stripe, 2.2)
@@ -134,16 +138,15 @@
       const cuff = lerp(knee, ankle, 0.95)
       s += detail([add(cuff, n), add(cuff, [-n[0], -n[1]])], 2)
     } else {
-      s += stroke([hip, shortsEnd], cos.bottom, W.thigh + 5)
-      const n = at([0, 0], a[0] + 90, (W.thigh + 5) / 2)
-      s += detail([add(shortsEnd, n), add(shortsEnd, [-n[0], -n[1]])], 2.2)
+      // round over the hip, square at the hem
+      s += dot(hip, (W.thigh + 5) / 2, cos.bottom) + stroke([hip, shortsEnd], cos.bottom, W.thigh + 5, square)
       if (cos.sock) {
         const top = lerp(knee, ankle, 0.78)
         s += stroke([top, ankle], cos.sock, W.shin + 0.6, ' stroke-linecap="butt"')
         const m = at([0, 0], sa + 90, (W.shin + 0.6) / 2)
         s += detail([add(top, m), add(top, [-m[0], -m[1]])], 2)
       }
-      if (cos.kneepads) s += stroke([lerp(hip, knee, 0.88), knee, lerp(knee, ankle, 0.12)], C.ink, W.thigh + 3)
+      if (cos.kneepads) s += stroke([lerp(hip, knee, 0.9), knee, lerp(knee, ankle, 0.1)], C.ink, W.thigh + 1.2)
     }
     // the shoe turns about the ankle: flat unless the pose gives it an angle
     const f = a[2] ?? 0
@@ -211,10 +214,11 @@
     const cap = (frontX, frontY, backY) =>
       `<path d="M${f1(x + frontX)},${f1(y + frontY)} A${rx + 1},${ry + 1} 0 0 0 ${f1(x - rx - 0.8)},${f1(y + backY)} L${f1(x - rx + 3)},${f1(y + backY + 0.5)} Q${f1(x - 4)},${f1(y - 5)} ${f1(x + frontX)},${f1(y + frontY)} Z" fill="${ink}"/>`
     if (cos.hair === 'cap') {
-      s += `<path d="M${f1(x - rx - 1)},${f1(y - 2.5)} A${rx + 1},${ry + 1} 0 0 1 ${f1(x + rx + 0.6)},${f1(y - 4.5)} Z" fill="${ink}"/>`
-      s += stroke([[x + 8, y - 5], [x + rx + 12, y - 2.6]], ink, 4.8)
-      s += `<path d="M${f1(x - rx + 0.5)},${f1(y - 1.5)} q-0.5,6 3,9.5 l2.5,-9.5 z" fill="${ink}"/>`
-      s += `<circle cx="${f1(x - 0.5)}" cy="${f1(y - ry - 0.6)}" r="1.9" fill="${ink}"/>`
+      // crown and the hair under it at the back, one shape; then the brim,
+      // set high enough that the eye is clear of it
+      s += cap(13.2, -7.4, 4)
+      s += stroke([[x + 8.5, y - 8.2], [x + rx + 12.5, y - 6.4]], ink, 4.6)
+      s += `<circle cx="${f1(x - 0.5)}" cy="${f1(y - ry - 0.8)}" r="1.9" fill="${ink}"/>`
     } else if (cos.hair === 'pony') {
       s += cap(10.5, -9.5, 5)
       s += `<circle cx="${f1(x - 10.8)}" cy="${f1(y - 9.6)}" r="2.7" fill="${C.sage}" stroke="${ink}" stroke-width="1.4"/>`
@@ -455,7 +459,7 @@
     // The swing, cocked: the whole body a bow, head right back on the ball,
     // hitting elbow high above the shoulder with the hand laid back behind
     // the head, the other arm already pulling in to the chest.
-    'athlete-spiking': { who: 'athleteA', lean: -10, bend: -22, head: -16, twist: 8, lift: 62, pony: 70, armF: [184, 78], handF: 'flat', armB: [38, 98], handB: 'relaxed', legF: [-22, -34, 106], legB: [4, -80, 124], face: 'shout',
+    'athlete-spiking': { who: 'athleteA', lean: -10, bend: -22, head: -16, twist: 8, lift: 62, pony: 70, armF: [186, 106], handF: 'flat', armB: [38, 98], handB: 'relaxed', legF: [-22, -34, 106], legB: [4, -80, 124], face: 'shout',
       props: [{ type: 'ball', at: 'chest', dx: 34, dy: -74, layer: 'front' }] },
     // The pass: shoulders over knees, knees over toes, arms long and locked,
     // the ball met on the forearms.
