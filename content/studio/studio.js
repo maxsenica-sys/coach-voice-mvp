@@ -361,8 +361,8 @@
     const col = textOn(bg)
     const tt = t === Infinity ? 9 : t
     return frame(H, bg,
-      `<svg width="${W}" height="${H}" style="position:absolute;inset:0">${figureIn(row.pose_1, 250, HB - 230, 3.3, tt)}</svg>` +
-      textBox(470, T + (HB - T) * 0.24, 560, HOOK, col, typed(row.hook, t, 0.15, 0.8)) + lockup(bg, 64, null, HB))
+      `<svg width="${W}" height="${H}" style="position:absolute;inset:0">${figureIn(row.pose_1, 190, HB - 230, 3.0, tt)}</svg>` +
+      textBox(500, T + (HB - T) * 0.2, 530, HOOK, col, typed(row.hook, t, 0.15, 0.8)) + lockup(bg, 64, null, HB))
   }
   function slideProblem(row, text, pose, H, t = Infinity) {
     const { T, B } = SAFE(H), HB = H - B
@@ -402,7 +402,7 @@
     const tt = t === Infinity ? 9 : t
     return frame(H, bg,
       textBox(64, T + 120, 952, BODY, col, typed(row.change, t, 0.1, 0.8)) +
-      `<svg width="${W}" height="${H}" style="position:absolute;inset:0">${figureIn(a, two ? 360 : W / 2, HB - 200, 3.4, tt)}${two ? figureIn(b, 720, HB - 200, 3.4, tt, -1, 0.2) : ''}</svg>` + lockup(bg, 64, null, HB))
+      `<svg width="${W}" height="${H}" style="position:absolute;inset:0">${figureIn(a, two ? 270 : W / 2, HB - 200, two ? 3.1 : 3.4, tt)}${two ? figureIn(b, 810, HB - 200, 3.1, tt, -1, 0.2) : ''}</svg>` + lockup(bg, 64, null, HB))
   }
   function slideCta(row, H, t = Infinity) {
     const { T, B } = SAFE(H), HB = H - B

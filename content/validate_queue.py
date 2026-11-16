@@ -42,6 +42,16 @@ POSES = {
     # Athlete B
     'athlete-b-beside', 'athlete-b-group', 'athlete-b-jumping', 'athlete-b-blocking',
     'athlete-b-reading-phone', 'athlete-b-celebrating',
+    # Added 16 Nov 2026 (Max: "create more characters so that they can fit more
+    # content"). Every name here must be a pose in content/studio/cast.js.
+    # Athlete C: libero and setter
+    'athlete-c-setting', 'athlete-c-digging', 'athlete-c-serving', 'athlete-c-ready',
+    'athlete-c-high-five', 'athlete-c-filming',
+    # The parent
+    'parent-reading-phone', 'parent-watching', 'parent-talking', 'parent-relieved',
+    'parent-worried', 'parent-waving',
+    # The assistant coach
+    'assistant-clipboard', 'assistant-watching', 'assistant-reading-phone', 'assistant-feeding',
 }
 UI_CARDS = {
     'ui-recording', 'ui-transcript', 'ui-athlete-list', 'ui-calendar-week',
