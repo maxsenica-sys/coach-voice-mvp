@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
+import VideoGrid from '@/app/components/VideoGrid'
 import { apiJson } from '@/lib/api-client'
 import { fetchWithRetry } from '@/lib/video-upload'
 import { isNetworkError } from '@/lib/video-queue'
@@ -40,7 +41,16 @@ type Props = {
   sessionId?: string | null
   /** When set, the list shows only this session's clips. */
   listScope?: 'session' | 'all'
+  /**
+   * For a page that tucks this away in a closed row: how many clips there are
+   * (null until the list has loaded), how many the coach has marked up, and
+   * whether something here needs to be seen now (a picked clip, a send in
+   * progress, an error, "Sent"). The page opens the row while `active`.
+   */
+  onStatus?: (status: ClipStatus) => void
 }
+
+export type ClipStatus = { count: number | null; replied: number; active: boolean }
 
 /**
  * How long is this clip? From the file's own metadata, in the browser.
@@ -79,7 +89,6 @@ function readDuration(file: File): Promise<number | null> {
   })
 }
 
-const LINE = 'color-mix(in srgb, var(--text) 11%, transparent)'
 const LINE_2 = 'color-mix(in srgb, var(--text) 19%, transparent)'
 
 const primaryBtn: React.CSSProperties = {
@@ -93,7 +102,7 @@ const ghostBtn: React.CSSProperties = {
   background: 'transparent', color: 'var(--text)', fontWeight: 600, fontSize: 'var(--t-body-tight)',
 }
 
-export default function AthleteClipUpload({ athleteId, sessionId = null, listScope = sessionId ? 'session' : 'all' }: Props) {
+export default function AthleteClipUpload({ athleteId, sessionId = null, listScope = sessionId ? 'session' : 'all', onStatus }: Props) {
   const fileRef = useRef<HTMLInputElement | null>(null)
   const [picked, setPicked] = useState<{ file: File; duration: number } | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
@@ -121,6 +130,17 @@ export default function AthleteClipUpload({ athleteId, sessionId = null, listSco
   }, [athleteId, sessionId, listScope])
 
   useEffect(() => { void load() }, [load])
+
+  // A ref, not a dependency: the page passes an inline function, which is a
+  // new one every render and would re-fire this effect each time.
+  const onStatusRef = useRef(onStatus)
+  useEffect(() => { onStatusRef.current = onStatus }, [onStatus])
+  const count = clips ? clips.length : null
+  const replied = clips ? clips.filter((c) => c.shared_with_athlete).length : 0
+  const active = Boolean(picked || checking || sending || sent || error || warning || listError)
+  useEffect(() => {
+    onStatusRef.current?.({ count, replied, active })
+  }, [count, replied, active])
 
   const onPick = async (file: File) => {
     setError(null); setWarning(null); setSent(false); setPicked(null)
@@ -187,7 +207,9 @@ export default function AthleteClipUpload({ athleteId, sessionId = null, listSco
   if (!athleteId) return null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+    // data-uploading while a clip is on its way: the app-update check
+    // (BUSY_SELECTOR in lib/app-update.ts) must not reload over a send.
+    <div {...(sending ? { 'data-uploading': '' } : {})} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
       <input
         ref={fileRef}
         type="file"
@@ -253,42 +275,48 @@ export default function AthleteClipUpload({ athleteId, sessionId = null, listSco
         <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>{listError}</div>
       )}
       {clips && clips.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4, minWidth: 0 }}>
           <div className="ah-eyebrow">My clips ({clips.length})</div>
-          {clips.map((c) => {
-            const replied = c.shared_with_athlete
-            const isOpen = open === c.id
-            return (
-              <div key={c.id} style={{ borderTop: `1px solid ${LINE}`, paddingTop: 8, minWidth: 0 }}>
-                <button
-                  type="button"
-                  onClick={() => setOpen(isOpen ? null : c.id)}
-                  aria-expanded={isOpen}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 44, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', color: 'var(--text)', flexWrap: 'wrap' }}
-                >
-                  <span style={{ flex: '1 1 160px', minWidth: 0, fontSize: 'var(--t-body-tight)', overflowWrap: 'anywhere' }}>
-                    {c.note ?? c.file_name ?? 'Clip'}
-                    <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', marginTop: 2 }}>
-                      {new Date(c.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
-                      {c.duration_s ? ` · ${formatClipTime(c.duration_s)}` : ''}
+          {/* Stills, three across; tapping one opens it under its row with
+              everything its row used to carry: what was asked, the date, where
+              it is up to, and the coach's drawings. */}
+          <VideoGrid
+            videos={clips}
+            openId={open}
+            onOpen={setOpen}
+            marks={(c) => [c.shared_with_athlete ? { text: 'Marked up', tone: 'on' } : { text: 'With your coach' }]}
+            nameFor={(c) => c.note ?? c.file_name ?? 'Clip'}
+            renderOpen={(c) => {
+              const replied = c.shared_with_athlete
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, padding: '4px 0 8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
+                    <span style={{ flex: '1 1 160px', minWidth: 0, fontSize: 'var(--t-body-tight)', color: 'var(--text)', overflowWrap: 'anywhere' }}>
+                      {c.note ?? c.file_name ?? 'Clip'}
+                      <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', marginTop: 2 }}>
+                        {new Date(c.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                        {c.duration_s ? ` · ${formatClipTime(c.duration_s)}` : ''}
+                      </span>
                     </span>
-                  </span>
-                  <span style={{
-                    flexShrink: 0, padding: '4px 10px', borderRadius: 999, fontSize: 'var(--t-furniture)', fontWeight: 700,
-                    color: replied ? 'var(--primary)' : 'var(--text-2)',
-                    border: `1px solid ${replied ? 'color-mix(in srgb, var(--primary) 45%, transparent)' : LINE_2}`,
-                  }}>
-                    {replied ? 'Coach marked it up' : 'With your coach'}
-                  </span>
-                </button>
-                {isOpen && c.signedUrl && (
-                  <div style={{ marginTop: 8 }}>
-                    <VideoAnnotator videoUrl={c.signedUrl} initialAnnotations={c.annotations ?? []} readOnly />
+                    <span style={{
+                      flexShrink: 0, padding: '4px 10px', borderRadius: 999, fontSize: 'var(--t-furniture)', fontWeight: 700,
+                      color: replied ? 'var(--primary)' : 'var(--text-2)',
+                      border: `1px solid ${replied ? 'color-mix(in srgb, var(--primary) 45%, transparent)' : LINE_2}`,
+                    }}>
+                      {replied ? 'Coach marked it up' : 'With your coach'}
+                    </span>
                   </div>
-                )}
-              </div>
-            )
-          })}
+                  {c.signedUrl ? (
+                    <VideoAnnotator videoUrl={c.signedUrl} initialAnnotations={c.annotations ?? []} readOnly />
+                  ) : (
+                    <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text-2)' }}>
+                      This clip could not be opened. Close it and try again in a moment.
+                    </div>
+                  )}
+                </div>
+              )
+            }}
+          />
         </div>
       )}
     </div>

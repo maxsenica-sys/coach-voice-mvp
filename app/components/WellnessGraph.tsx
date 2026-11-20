@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import {
-  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor,
+  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, wellnessDriver,
   type MetricKey, type WellnessCheckin as Checkin,
 } from '@/lib/wellness-config'
 import { fmtShortDate as fmtDate } from '@/lib/date-utils'
 import { apiJson } from '@/lib/api-client'
 import { errorMessage } from '@/lib/errors'
+import { regionLabel } from '@/lib/body-map'
 
 interface Props {
   athleteId: string
@@ -310,6 +311,20 @@ export default function WellnessGraph({ athleteId }: Props) {
               />
             ))}
           </div>
+
+          {(() => {
+            // In words, what the bars above say is low. A two-tap check-in
+            // derives three of these bars from one answer, so for it this
+            // names what the athlete actually said. It used to sit on the
+            // overview under a second copy of these bars; the bars are here
+            // once now, and the sentence came with them.
+            const driver = wellnessDriver(latest, regionLabel)
+            return driver ? (
+              <div style={{ marginTop: 12, fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                <span style={{ color: 'var(--text)', fontWeight: 600 }}>Low:</span> {driver.full}
+              </div>
+            ) : null
+          })()}
 
           {latest.notes && (
             <div style={{ marginTop: 14, padding: '11px 13px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border-soft)', fontSize: 'var(--t-body)', lineHeight: 1.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>

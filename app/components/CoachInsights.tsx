@@ -7,6 +7,11 @@
 //   Replies          What the athlete has tapped back, and a nudge when
 //                    "Not sure what you mean" keeps coming up.
 //
+// Both are closed rows on the profile (app/components/Disclosure.tsx): a coach
+// reads these weekly at most, so each takes one line that says how much is
+// inside. Two things are never tucked away, because they are waiting on the
+// coach: a failed read, and the nudge that 'not sure' keeps coming up.
+//
 // Framed as a mirror, not a verdict: a repeated cue can be a priority or a
 // sign it has not landed yet, and the copy says both. All counting is in
 // lib/insights.ts (proved by tools/insights-rig.mjs); this file only draws.
@@ -20,13 +25,11 @@ import { apiJson } from '@/lib/api-client'
 import { errorMessage } from '@/lib/errors'
 import { todayISODate, parseISODate } from '@/lib/session-date'
 import { SESSION_RESPONSES } from '@/lib/session-response'
+import Disclosure from '@/app/components/Disclosure'
 import { NOT_SURE_LOOKBACK, REPLY_SESSIONS_READ, type AthleteInsightsResponse, type ThemeSessionRef } from '@/lib/insights'
 
 const CAST: React.CSSProperties = {
   fontFamily: 'var(--font-cast)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.16em',
-}
-const EYEBROW: React.CSSProperties = {
-  ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.22em', color: 'var(--text-2)', margin: 0,
 }
 const BODY: React.CSSProperties = { fontSize: 'var(--t-body-tight)', lineHeight: 1.55, color: 'var(--text-2)', margin: 0 }
 
@@ -60,7 +63,6 @@ export default function CoachInsights({ athleteId, athleteName }: { athleteId: s
   const [data, setData] = useState<AthleteInsightsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [open, setOpen] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -80,105 +82,92 @@ export default function CoachInsights({ athleteId, athleteName }: { athleteId: s
   useEffect(() => { void load() }, [load])
 
   const name = athleteName || 'This athlete'
+  const themes = data?.themes.themes ?? []
+  const replied = data ? SESSION_RESPONSES.reduce((n, r) => n + data.replies[r.value], 0) : 0
+
+  // We asked and could not find out. Said in the open, with a way to ask again:
+  // a closed row reading "None yet" would be a claim about data we do not have.
+  if (error) {
+    return (
+      <section aria-label="Coaching insights" style={{ minWidth: 0, borderTop: '1px solid var(--border)', padding: '10px 0' }}>
+        <div role="alert" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+          <p style={{ ...BODY, color: 'var(--text)', flex: '1 1 200px', minWidth: 0, overflowWrap: 'anywhere' }}>⚠ {error}</p>
+          <button onClick={() => void load()} className="btn btn-ghost" style={{ ...CAST, fontSize: 'var(--t-furniture)', minHeight: 44 }}>
+            Retry
+          </button>
+        </div>
+      </section>
+    )
+  }
 
   return (
-    <section aria-label="Coaching insights" style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-      {/* ── What you repeat ── */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', minHeight: 44, marginBottom: 2 }}>
-          <h2 style={EYEBROW}>What you repeat</h2>
-        </div>
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-          {loading && !data ? (
-            <p style={BODY} aria-live="polite">Reading your sessions with {name}…</p>
-          ) : error ? (
-            <div role="alert" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
-              <p style={{ ...BODY, color: 'var(--text)', flex: '1 1 200px', minWidth: 0 }}>⚠ {error}</p>
-              <button onClick={() => void load()} className="btn btn-ghost" style={{ ...CAST, fontSize: 'var(--t-furniture)', minHeight: 44 }}>
-                Retry
-              </button>
-            </div>
-          ) : data && data.themes.themes.length === 0 ? (
-            <p style={BODY}>
-              {data.themes.window_sessions < 3
-                ? `${data.themes.window_sessions === 0 ? 'No' : `Only ${data.themes.window_sessions}`} session${data.themes.window_sessions === 1 ? '' : 's'} with ${name} in the last 8 weeks. Themes show up here once something comes up in 3 or more.`
-                : `Nothing has come up in 3 or more of your last ${data.themes.window_sessions} sessions with ${name}.`}
+    <section aria-label="Coaching insights" style={{ minWidth: 0 }}>
+      {/* ── The nudge: always in the open ── */}
+      {data?.replies.flag && (
+        <div role="note" style={{ borderTop: '1px solid var(--border)', padding: '12px 0 4px' }}>
+          <div style={{ borderLeft: '2px solid var(--coach-on-light)', paddingLeft: 12 }}>
+            <p style={{ ...BODY, color: 'var(--text)', fontSize: 'var(--t-body)' }}>
+              {name} said &lsquo;not sure&rsquo; to {data.replies.recent_not_clear} of their last{' '}
+              {data.replies.recent_replied} takeaways. Maybe rephrase.
             </p>
-          ) : data ? (
-            <>
-              <p style={{ ...BODY, marginBottom: 10 }}>
-                Phrases you keep coming back to with {name} over the last 8 weeks. A repeat can mean it&rsquo;s the
-                priority — or that it might not be landing yet.
-              </p>
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {data.themes.themes.map((t) => {
-                  const isOpen = open === t.phrase
-                  const panelId = `theme-${t.phrase.replace(/\W+/g, '-')}`
-                  return (
-                    <li key={t.phrase} style={{ borderTop: '1px solid var(--border)' }}>
-                      <button
-                        onClick={() => setOpen(isOpen ? null : t.phrase)}
-                        aria-expanded={isOpen}
-                        aria-controls={panelId}
-                        style={{
-                          width: '100%', minHeight: 44, padding: '10px 0', background: 'none', border: 'none', cursor: 'pointer',
-                          display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'center',
-                          textAlign: 'left', color: 'inherit', font: 'inherit',
-                        }}
-                      >
-                        <span style={{ display: 'block', minWidth: 0 }}>
-                          <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: 19, lineHeight: 1.2, color: 'var(--text)', overflowWrap: 'anywhere' }}>
-                            &lsquo;{t.phrase}&rsquo;
-                          </span>
-                          <span style={{ display: 'block', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', marginTop: 3, lineHeight: 1.4 }}>
-                            You&rsquo;ve mentioned it in {t.count} of the last {data.themes.window_sessions} sessions
-                          </span>
-                        </span>
-                        <span aria-hidden style={{ ...CAST, fontSize: 'var(--t-furniture)', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
-                          {isOpen ? 'Hide' : 'See'} {t.count} {isOpen ? '▴' : '▾'}
-                        </span>
-                      </button>
-                      {isOpen && (
-                        <div id={panelId}>
-                          <SessionLinks sessions={t.sessions} />
-                        </div>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
-          ) : null}
+            <Disclosure
+              flush
+              label="Those sessions"
+              summary={`${data.replies.flagged_sessions.length}`}
+            >
+              <SessionLinks sessions={data.replies.flagged_sessions} />
+            </Disclosure>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ── What you repeat ── */}
+      <Disclosure
+        label="What you repeat"
+        summary={loading && !data ? 'Reading…' : themes.length === 0 ? 'Nothing yet' : `${themes.length} theme${themes.length === 1 ? '' : 's'}`}
+      >
+        {loading && !data ? (
+          <p style={BODY} aria-live="polite">Reading your sessions with {name}…</p>
+        ) : data && themes.length === 0 ? (
+          <p style={BODY}>
+            {data.themes.window_sessions < 3
+              ? `${data.themes.window_sessions === 0 ? 'No' : `Only ${data.themes.window_sessions}`} session${data.themes.window_sessions === 1 ? '' : 's'} with ${name} in the last 8 weeks. Themes show up here once something comes up in 3 or more.`
+              : `Nothing has come up in 3 or more of your last ${data.themes.window_sessions} sessions with ${name}.`}
+          </p>
+        ) : data ? (
+          <>
+            <p style={{ ...BODY, marginBottom: 6 }}>
+              Phrases you keep coming back to with {name} over the last 8 weeks. A repeat can mean it&rsquo;s the
+              priority, or that it might not be landing yet.
+            </p>
+            <div style={{ borderBottom: '1px solid var(--border)' }}>
+              {themes.map((t) => (
+                <Disclosure
+                  key={t.phrase}
+                  label={(
+                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 19, lineHeight: 1.2 }}>
+                      &lsquo;{t.phrase}&rsquo;
+                    </span>
+                  )}
+                  summary={`${t.count} of ${data.themes.window_sessions} sessions`}
+                >
+                  <SessionLinks sessions={t.sessions} />
+                </Disclosure>
+              ))}
+            </div>
+          </>
+        ) : null}
+      </Disclosure>
 
       {/* ── Replies ── */}
-      {data && !error && (
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', minHeight: 44, marginBottom: 2 }}>
-            <h2 style={EYEBROW}>How {name} replied</h2>
-          </div>
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {data.replies.flag && (
-              <div role="note" style={{ borderLeft: '2px solid var(--coach-on-light)', paddingLeft: 12 }}>
-                <p style={{ ...BODY, color: 'var(--text)', fontSize: 'var(--t-body)' }}>
-                  {name} said &lsquo;not sure&rsquo; to {data.replies.recent_not_clear} of their last{' '}
-                  {data.replies.recent_replied} takeaways — maybe rephrase.
-                </p>
-                <button
-                  onClick={() => setOpen(open === '__not_sure' ? null : '__not_sure')}
-                  aria-expanded={open === '__not_sure'}
-                  aria-controls="replies-not-sure"
-                  style={{ ...CAST, fontSize: 'var(--t-furniture)', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', minHeight: 44, padding: 0 }}
-                >
-                  {open === '__not_sure' ? 'Hide' : 'See'} those sessions {open === '__not_sure' ? '▴' : '▾'}
-                </button>
-                {open === '__not_sure' && (
-                  <div id="replies-not-sure"><SessionLinks sessions={data.replies.flagged_sessions} /></div>
-                )}
-              </div>
-            )}
-
+      {data && (
+        <Disclosure
+          label={`How ${name} replied`}
+          summary={data.replies.sessions_read === 0
+            ? 'No sessions yet'
+            : `${replied} ${replied === 1 ? 'reply' : 'replies'}${data.replies.unanswered > 0 ? ` · ${data.replies.unanswered} not answered` : ''}`}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {data.replies.sessions_read === 0 ? (
               <p style={BODY}>No sessions with {name} yet.</p>
             ) : (
@@ -207,7 +196,7 @@ export default function CoachInsights({ athleteId, athleteName }: { athleteId: s
               </>
             )}
           </div>
-        </div>
+        </Disclosure>
       )}
     </section>
   )

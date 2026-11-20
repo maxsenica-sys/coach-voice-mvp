@@ -17,12 +17,24 @@
  *
  * Every action here is decided by /api/staff and /api/staff/accept; this card
  * only asks. See lib/coach-scope.ts and migrations 034 and 035.
+ *
+ * 2026-11-20 (Max: "if there are things that are only going to be used
+ * periodically, then there's not much point" in giving them room). The team
+ * list is what the card shows. The explanation of what an assistant can see
+ * and the invite form, which carries a tick box for every athlete on the
+ * roster, are behind "Invite an assistant": with twenty athletes they were
+ * about a screen and a half of Settings on every visit, for something done
+ * once or twice a season. The form stays mounted while closed, so what was
+ * typed is kept, and the row opens itself while an invite is sending. What
+ * came of an invite (sent, failed, the link to send by hand) is shown outside
+ * the row, so it is seen whether the row is open or not.
  */
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { apiJson, apiMutate } from '@/lib/api-client'
 import { errorMessage } from '@/lib/errors'
 import { forgetTeam } from '@/lib/team-client'
+import Disclosure from '@/app/components/Disclosure'
 
 type StaffRow = { id: string; status: 'invited' | 'active'; email: string; name: string | null; invitedAt: string; acceptedAt: string | null; athleteIds: string[] }
 type StaffGet =
@@ -37,6 +49,8 @@ const HEAD: CSSProperties = {
   letterSpacing: '.26em', textTransform: 'uppercase', lineHeight: 1.15, color: 'var(--text-2)',
 }
 const SUB: CSSProperties = { margin: '8px 0 16px', fontSize: 'var(--fs-3)', lineHeight: 1.5, color: 'var(--text-2)', overflowWrap: 'anywhere' }
+/** 16px, or an iPhone zooms the page when the field is tapped. */
+const FIELD: CSSProperties = { minWidth: 0, minHeight: 44, fontSize: 16 }
 
 const fullName = (a: Athlete) => [a.first_name, a.last_name].map((s) => (s ?? '').trim()).filter(Boolean).join(' ') || 'Unnamed athlete'
 const countLabel = (n: number) => (n === 1 ? '1 athlete' : `${n} athletes`)
@@ -110,6 +124,8 @@ export default function CoachingStaff() {
   const [busyId, setBusyId] = useState<string | null>(null)
   // The assistant whose athletes are being changed, and the edit in progress.
   const [editing, setEditing] = useState<{ id: string; value: Set<string> } | null>(null)
+  // "Invite an assistant" has been opened by hand.
+  const [inviteOpen, setInviteOpen] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -149,6 +165,8 @@ export default function CoachingStaff() {
       }
       setForm({ name: '', email: '' })
       setChosen(new Set())
+      // The invite is now a row in the list above; the form it came from closes.
+      setInviteOpen(false)
       await load()
     } catch (e: unknown) {
       setNote({ tone: 'bad', text: errorMessage(e, 'Could not send the invite.') })
@@ -242,35 +260,23 @@ export default function CoachingStaff() {
 
   return (
     <section className="card" style={{ padding: 22 }} aria-label="Coaching staff">
-      <h2 style={HEAD}>Coaching staff</h2>
-      <p style={SUB}>
-        An assistant coach coaches the athletes you tick — nobody else, and never a new athlete unless you tick them. For those athletes
-        they see everything you see (sessions, messages and check-ins) and can record sessions, message them, and add notes, injuries
-        and videos. Parents and caretakers, squads and your roster stay with you. Each athlete is told in their messages when an
-        assistant is given access to them.
-      </p>
+      <h2 style={{ ...HEAD, marginBottom: 12 }}>Coaching staff</h2>
 
       {data.staff.length > 0 ? (
-        <ul style={{ listStyle: 'none', margin: '0 0 18px', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <ul style={{ listStyle: 'none', margin: '0 0 14px', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {data.staff.map((s) => {
             const theirs = s.athleteIds.map((id) => byId.get(id)).filter((a): a is Athlete => Boolean(a))
             const isEditing = editing?.id === s.id
             return (
               <li key={s.id} style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 12, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 12px', minWidth: 0 }}>
-                  <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 'var(--fs-3)', overflowWrap: 'anywhere' }}>{s.name ?? s.email}</div>
-                    <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
-                      {s.status === 'active' ? 'Assistant coach' : 'Invite sent — not accepted yet'}{s.name ? ` · ${s.email}` : ''}
-                    </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 'var(--fs-3)', overflowWrap: 'anywhere' }}>{s.name ?? s.email}</div>
+                  <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                    {s.status === 'active' ? 'Assistant coach' : 'Invite sent, not accepted yet'}{s.name ? ` · ${s.email}` : ''}
                   </div>
-                  <button type="button" className="btn btn-ghost" disabled={busyId !== null} onClick={() => void remove(s)}
-                    style={{ minHeight: 44, color: 'var(--danger)' }}>
-                    {busyId === s.id && !isEditing ? '…' : s.status === 'active' ? 'Remove' : 'Cancel invite'}
-                  </button>
                 </div>
 
-                <div style={{ marginTop: 8, fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                <div style={{ marginTop: 6, fontSize: 'var(--fs-2)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
                   {theirs.length === 0
                     ? 'Coaches no athletes yet.'
                     : `Coaches ${countLabel(theirs.length)}: ${theirs.map(fullName).join(', ')}.`}
@@ -288,43 +294,65 @@ export default function CoachingStaff() {
                     </div>
                   </div>
                 ) : (
-                  <button type="button" className="btn btn-ghost" disabled={busyId !== null || editing !== null}
-                    onClick={() => setEditing({ id: s.id, value: new Set(s.athleteIds) })} style={{ minHeight: 44, marginTop: 6 }}>
-                    Change athletes
-                  </button>
+                  /* The two things done to an assistant, side by side under
+                     who they are. Remove used to wrap onto a line of its own
+                     between the name and the athletes on a phone. */
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    <button type="button" className="btn btn-ghost" disabled={busyId !== null || editing !== null}
+                      onClick={() => setEditing({ id: s.id, value: new Set(s.athleteIds) })} style={{ minHeight: 44 }}>
+                      Change athletes
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busyId !== null || editing !== null} onClick={() => void remove(s)}
+                      style={{ minHeight: 44, color: 'var(--danger)' }}>
+                      {busyId === s.id ? '…' : s.status === 'active' ? 'Remove' : 'Cancel invite'}
+                    </button>
+                  </div>
                 )}
               </li>
             )
           })}
         </ul>
       ) : (
-        <p style={{ ...SUB, margin: '0 0 16px', color: 'var(--text)' }}>No assistant coaches yet.</p>
+        <p style={{ ...SUB, margin: '0 0 14px', color: 'var(--text)' }}>No assistant coaches yet.</p>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <label className="label" htmlFor="staff-name">Their name</label>
-          <input id="staff-name" className="input" value={form.name} autoComplete="off"
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={{ minWidth: 0, minHeight: 44 }} />
+      <Disclosure
+        label="Invite an assistant"
+        summary="By email, for the athletes you tick"
+        open={inviteOpen || sending}
+        onToggle={setInviteOpen}
+      >
+        <p style={{ ...SUB, margin: '0 0 14px' }}>
+          An assistant coach coaches the athletes you tick. Nobody else, and never a new athlete unless you tick them. For those athletes
+          they see everything you see (sessions, messages and check-ins) and can record sessions, message them, and add notes, injuries
+          and videos. Parents and caretakers, squads and your roster stay with you. Each athlete is told in their messages when an
+          assistant is given access to them.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <label className="label" htmlFor="staff-name">Their name</label>
+            <input id="staff-name" className="input" value={form.name} autoComplete="off"
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={FIELD} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <label className="label" htmlFor="staff-email">Their email</label>
+            <input id="staff-email" className="input" type="email" inputMode="email" autoComplete="off" value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} style={FIELD} />
+          </div>
+          <fieldset style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+            <legend className="label" style={{ padding: 0 }}>Athletes they will coach</legend>
+            <AthletePicker athletes={athletes} squads={squads} value={chosen} onChange={setChosen} idPrefix="invite" />
+          </fieldset>
+          <div>
+            <button type="button" className="btn btn-primary" onClick={() => void invite()} disabled={!canSend} style={{ minHeight: 44 }}>
+              {sending ? 'Sending…' : 'Send invite'}
+            </button>
+            {chosen.size === 0 && athletes.length > 0 && (
+              <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-2)', color: 'var(--text-2)' }}>Tick at least one athlete to send the invite.</p>
+            )}
+          </div>
         </div>
-        <div style={{ minWidth: 0 }}>
-          <label className="label" htmlFor="staff-email">Their email</label>
-          <input id="staff-email" className="input" type="email" inputMode="email" autoComplete="off" value={form.email}
-            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} style={{ minWidth: 0, minHeight: 44 }} />
-        </div>
-        <fieldset style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
-          <legend className="label" style={{ padding: 0 }}>Athletes they will coach</legend>
-          <AthletePicker athletes={athletes} squads={squads} value={chosen} onChange={setChosen} idPrefix="invite" />
-        </fieldset>
-        <div>
-          <button type="button" className="btn btn-primary" onClick={() => void invite()} disabled={!canSend} style={{ minHeight: 44 }}>
-            {sending ? 'Sending…' : 'Send invite'}
-          </button>
-          {chosen.size === 0 && athletes.length > 0 && (
-            <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-2)', color: 'var(--text-2)' }}>Tick at least one athlete to send the invite.</p>
-          )}
-        </div>
-      </div>
+      </Disclosure>
 
       {note && (
         <p role={note.tone === 'bad' ? 'alert' : 'status'} style={{ margin: '12px 0 0', fontSize: 'var(--fs-3)', lineHeight: 1.45, color: note.tone === 'bad' ? 'var(--danger)' : 'var(--success)', overflowWrap: 'anywhere' }}>
@@ -335,7 +363,7 @@ export default function CoachingStaff() {
         <div style={{ marginTop: 10, minWidth: 0 }}>
           <label className="label" htmlFor="staff-link">Invite link — send it to them yourself</label>
           <textarea id="staff-link" className="input" readOnly rows={3} value={manualLink}
-            style={{ width: '100%', minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-2)', wordBreak: 'break-all', resize: 'none' }} />
+            style={{ width: '100%', minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 16, wordBreak: 'break-all', resize: 'none' }} />
           <button type="button" className="btn btn-ghost" onClick={() => void navigator.clipboard.writeText(manualLink)} style={{ minHeight: 44, marginTop: 6 }}>Copy link</button>
         </div>
       )}
