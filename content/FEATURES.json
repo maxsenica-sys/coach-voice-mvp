@@ -57,7 +57,7 @@
         "/dashboard?tab=settings",
         "/staff/join"
       ],
-      "demo_state": "Invite card with an athlete picker and a 'Send invite' button",
+      "demo_state": "Settings, 'Invite an assistant' opened: an athlete picker and a 'Send invite' button",
       "competitor_gap": true,
       "competitor_gap_why": "Assistants see only the athletes they are given, not the whole roster."
     },
@@ -824,7 +824,7 @@
       "id": "coverage-insight",
       "name": "Least attention this month",
       "user_type": "coach",
-      "what_it_does": "Groups every athlete by how many sessions they had in the last 30 days (none, 1, 2, 3–4, 5+), least attention first, with each name linking to the profile.",
+      "what_it_does": "A closed row on Home says how many athletes are in the lowest group ('2 with no sessions'). Opening it groups every athlete by how many sessions they had in the last 30 days (none, 1, 2, 3–4, 5+), least attention first, with each name linking to the profile.",
       "pain_removed": "Coaches can see how their time is spread and who is getting left out.",
       "status": "shipped",
       "status_evidence": "app/components/CoverageInsight.tsx calls /api/coach/insights?scope=coverage, which uses lib/insights.ts coverageRows and coverageGroups. Shown only to head coaches with 2 or more athletes. Name tooltips show sessions and word count.",
@@ -856,14 +856,14 @@
       "id": "onboarding-steps",
       "name": "First-run setup checklist",
       "user_type": "coach",
-      "what_it_does": "With an empty roster, Home shows 3 steps: set an invite code (inline), add the first athlete, and record the first session, plus a share-code card with Copy and QR.",
+      "what_it_does": "Until the first session is recorded, Home shows 3 steps above the scoreboard: set an invite code (inline; once saved, the step shows the code with Copy and Show QR code), add the first athlete, and record the first session.",
       "pain_removed": "New coaches get started without needing a guide.",
       "status": "shipped",
       "status_evidence": "dashboard/page.tsx shows it when athletes.length===0 and the user is not an assistant. Only the code step ever ticks (stepNum(false,2/3) is hardcoded), so progress shows at most '1 of 3'. The card disappears once an athlete exists. Partial: steps two and three never tick, so it reads 1 of 3 for ever. Shipped 14 Nov 2026: steps tick from real state (lib/onboarding.ts) and the card stays until the first session.",
       "surfaces": [
         "/dashboard (Home, empty roster)"
       ],
-      "demo_state": "'You're all set up. 1 of 3 complete' with the code saved and a share card",
+      "demo_state": "'Three steps to start. 1 of 3 done' with the code saved, Copy and Show QR code",
       "competitor_gap": false,
       "competitor_gap_why": "Onboarding checklists are common.",
       "content_exclusion": "Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts."
@@ -872,7 +872,7 @@
       "id": "roster-status",
       "name": "Active and Pending roster split",
       "user_type": "coach",
-      "what_it_does": "Splits the roster into Active (has opened the app) and Pending (invited, not arrived) sections with counts, invite date and 'Waiting to arrive'.",
+      "what_it_does": "Splits the roster into Active (has opened the app) and Pending (invited, not arrived) sections; a pending row shows its invite date. The counts are on the filter cells above the list.",
       "pain_removed": "Coaches know who still needs chasing to join.",
       "status": "shipped",
       "status_evidence": "app/api/athletes/route.ts status comes from athleteStatus(first_login_at) in lib/athlete-status.ts. dashboard/page.tsx renders the activeList and pendingList sections.",
@@ -881,7 +881,7 @@
         "/athlete (silent)",
         "coach roster"
       ],
-      "demo_state": "'ACTIVE · 9' section above 'PENDING · 3 , Invited, not yet arrived'",
+      "demo_state": "'ACTIVE' section above 'PENDING · Invited, not yet arrived'",
       "competitor_gap": false,
       "competitor_gap_why": "Invite status is common.",
       "content_exclusion": "Roster housekeeping."
@@ -938,14 +938,14 @@
       "id": "roster-wellness-driver",
       "name": "Per-athlete wellness and driver",
       "user_type": "coach",
-      "what_it_does": "Each roster row shows the latest wellness score (14 days) as a coloured dot. Below 3.5 it names what pulled the score down, e.g. a sore area.",
+      "what_it_does": "Each roster row shows the latest wellness score (14 days) as a coloured dot and number under the initials. Below 3.5 the row also gets a tinted 'Low check-in' line naming what pulled the score down, e.g. a sore area.",
       "pain_removed": "Coaches spot struggling athletes from the roster and know why.",
       "status": "shipped",
       "status_evidence": "dashboard/page.tsx wellnessByAthlete from /api/wellness?days=14, with overallWellnessScore and wellnessDriver from lib/wellness-config.ts using regionLabel.",
       "surfaces": [
         "/dashboard?tab=athletes"
       ],
-      "demo_state": "Row 'Wellness 2.6/5 · Sore left hamstring' in a low colour",
+      "demo_state": "Row with 2.6 under the initials and a tinted line 'Low check-in · Sore: Left hamstring'",
       "competitor_gap": false,
       "competitor_gap_why": "Wellness monitoring tools show scores; an inline plain-language reason is a minor differentiator."
     },
@@ -953,14 +953,14 @@
       "id": "roster-last-session",
       "name": "Last session, count, days since",
       "user_type": "coach",
-      "what_it_does": "Each row shows the last session date, total session count, days since the last session, and a QUIET tag past 14 days.",
+      "what_it_does": "Each row has one line with the last session date, days since it, a QUIET tag past 14 days, and the total session count.",
       "pain_removed": "Every athlete's coaching history is visible at a glance and accurate beyond 50 sessions.",
       "status": "shipped",
       "status_evidence": "dashboard/page.tsx coverageByAthlete from /api/athletes/coverage (counts all sessions server-side, with no cap). Until coverage loads it falls back to the 50 newest sessions.",
       "surfaces": [
         "/dashboard?tab=athletes"
       ],
-      "demo_state": "'Last session 2 Nov · 18 sessions' with '12d' on the right; another row '24d QUIET'",
+      "demo_state": "'Last session 2 Nov · 12d ago · 18 sessions'; another row '24d ago · QUIET' in ember",
       "competitor_gap": false,
       "competitor_gap_why": "Last-activity columns are common.",
       "content_exclusion": "Covered by the quiet-athletes-row posts: a facet of that feature rather than a post of its own."
@@ -969,14 +969,14 @@
       "id": "roster-quick-actions",
       "name": "Roster row quick actions",
       "user_type": "coach",
-      "what_it_does": "Each row has buttons to record for that athlete, message them (with an unread dot), open their calendar, or remove them (head only).",
+      "what_it_does": "Each row has a Record button for that athlete and a More button. More shows their email and buttons to message them (with the unread count), open their calendar, or remove them (head only). An unread message is a dot on the name and on More.",
       "pain_removed": "Common per-athlete jobs happen straight from the list.",
       "status": "shipped",
       "status_evidence": "dashboard/page.tsx row buttons call openRecorder(a.id), setMsgPreselectedId+setTab('messages'), and showCalendarFor('athlete'). Delete opens a confirmation.",
       "surfaces": [
         "/dashboard?tab=athletes"
       ],
-      "demo_state": "Row with mic, chat (with an ember dot), calendar and trash buttons",
+      "demo_state": "Row with mic and More; More open showing the email, Message · 2 unread, Calendar and Remove",
       "competitor_gap": false,
       "competitor_gap_why": "Standard.",
       "content_exclusion": "Roster housekeeping."
@@ -1049,7 +1049,7 @@
       "id": "sessions-tab",
       "name": "All sessions list and search",
       "user_type": "coach",
-      "what_it_does": "Lists all sessions newest first, with summary, date, Online flag and Shared/Draft chip. Coaches can search titles, summaries and transcripts, filter by athlete, and load older pages.",
+      "what_it_does": "Lists all sessions newest first, with athlete, title, date, Online flag and Shared/Draft chip; the summary is on the session the row opens. Coaches can search titles, summaries and transcripts, filter by athlete, and load older pages.",
       "pain_removed": "Coaches can find a past session by what was said in it.",
       "status": "shipped",
       "status_evidence": "dashboard/page.tsx fetchAllSessions and loadOlderSessions call /api/sessions/all (limit/offset, ilike on session_name, title, summary and transcript; assistants cannot search transcripts).",
@@ -1090,7 +1090,7 @@
       "surfaces": [
         "/dashboard?tab=calendar"
       ],
-      "demo_state": "'Showing: U18 Sprint · Event is added for all 8 athletes in this group'",
+      "demo_state": "'Showing: U18 Sprint · Event is added for all 8 athletes in this squad'",
       "competitor_gap": false,
       "competitor_gap_why": "Team and individual calendars are common.",
       "content_exclusion": "Covered by the calendar-month posts: a facet of that feature rather than a post of its own."
