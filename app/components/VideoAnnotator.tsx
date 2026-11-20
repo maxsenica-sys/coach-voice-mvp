@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { previewSrc } from '@/lib/video-preview'
 
 export type AnnotationStroke = {
   id: string
@@ -384,7 +385,11 @@ export default function VideoAnnotator({ videoUrl, initialAnnotations = [], onAn
       }}>
         <video
           ref={videoRef}
-          src={videoUrl}
+          /* previewSrc: an iPhone paints nothing for a metadata-only video
+             until play, so every clip opened as a blank rectangle
+             (lib/video-preview.ts). A start time, when given, still wins: the
+             seek below runs once the metadata is in. */
+          src={previewSrc(videoUrl)}
           controls
           /* Metadata only until someone presses play.
            *

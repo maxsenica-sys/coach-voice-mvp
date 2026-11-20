@@ -196,6 +196,36 @@ assistant is given access to them.
   claimed with a conditional update; only the request that claims it sends the
   email and the push. A new share path must claim it the same way.
 
+## ⚠️ Simple screens: one tap away, never gone
+
+Max, 2026-11-20: *"there seems to be quite a cluster of information ... put
+them in categories ... allocating a lot less room so that the coach sees a lot
+simpler screen ... try and make every single slide across the entire app as
+simple as possible."* Standing instruction for every screen, coach and athlete.
+
+It lives beside "Never remove data", and the two do not conflict: simpler means
+a thing is said once, grouped, or one tap away. It never means the thing is
+gone.
+
+- **One way to tuck something away: `app/components/Disclosure.tsx`.** A closed
+  row always says what is inside and how much (`summary`). Its contents stay
+  mounted while closed. Do not write another collapse, and do not use a bare
+  `<details>`.
+- **Never tuck away what is waiting on the reader**: an open injury, a low
+  check-in, a wellness alert, an unread or unanswered thing, an unsaved
+  recording, an RSVP being asked for, a failed upload, an error. A row that can
+  hold an alert is opened by its page when the alert appears.
+- **A value is shown once per screen, and a screen has one primary action.**
+  The audits behind this found the session count printed six times on an
+  athlete's profile and four record buttons on a new coach's home.
+- **A form sits behind "+ Add …"** unless filling it in is the point of the
+  screen. Things done once, or a few times a year, go last or under "More".
+- **Videos are stills in `app/components/VideoGrid.tsx`, three across a
+  phone**, and open under their own row (Max: "across the phone, you should see
+  maybe 3 videos"). Never a column of full players. Any other `<video>` takes
+  its `src` through `previewSrc` in `lib/video-preview.ts`, or it is a blank
+  rectangle on an iPhone until played. `verify:video` holds both.
+
 ## Uploads from a phone: retry, and write it down first
 
 Max, 2026-11-20: *"Video load also failed"*. A clip was PUT to storage and the
