@@ -45,7 +45,12 @@ import {
   athleteClipPath, isAthleteClipPath, safeVideoExt,
   athleteMayViewVideo, athleteSeesAnnotations,
 } from '@/lib/video-clip'
-import { MAX_VIDEO_BYTES } from '@/lib/video-preflight'
+import { MAX_VIDEO_BYTES, preflightVideo } from '@/lib/video-preflight'
+import {
+  isNetworkError, isRetryableStatus, RETRY_DELAYS_MS,
+  parsePending, addPending, removePending, pendingFor, PENDING_MAX_AGE_MS,
+  planQueue, nextWaiting, isBusy, queueSummary, uploadFailureNote,
+} from '@/lib/video-queue'
 import {
   pickScreenMime, extensionFor, shouldStartNewPart, PART_LIMIT_BYTES, partFileName, canRecordScreen,
   VIDEO_BITS_PER_SECOND, AUDIO_BITS_PER_SECOND,
@@ -231,6 +236,120 @@ check('V9', 'A recorded call plays on an iPhone where it can, and never outgrows
   if (partFileName('14 Nov', 2, null, 'webm') !== 'Call recording 14 Nov — part 2.webm') p.push('parts are not numbered')
   if (canRecordScreen(undefined) || canRecordScreen({ mediaDevices: {} })) p.push('offered where the screen cannot be shared (phones)')
   if (!canRecordScreen({ mediaDevices: { getDisplayMedia: () => {} } })) p.push('not offered where it can be')
+  return p
+})
+
+// ── V10 ────────────────────────────────────────────────────────────────────
+// The failure of 2026-11-20: a clip reached storage and was never recorded,
+// because the request that records it died on the phone's network ("Load
+// failed") and nothing tried again.
+check('V10', 'A request that died on the network is tried again, and the coach is not shown the browser\'s words', () => {
+  const p = []
+  expect(p, isNetworkError(new TypeError('Load failed')), 'Safari\'s "Load failed" is not seen as a network failure')
+  expect(p, isNetworkError(new TypeError('Failed to fetch')), 'Chrome\'s "Failed to fetch" is not seen as a network failure')
+  expect(p, isNetworkError(new Error('The network connection was lost.')), 'iOS\'s "connection was lost" is not seen as a network failure')
+  expect(p, !isNetworkError(new Error('Session not found or access denied.')), 'a refusal from the server would be retried')
+  expect(p, !isNetworkError(new Error('Upload failed (413)')), 'a too-large answer would be retried')
+  expect(p, RETRY_DELAYS_MS.length >= 2, `only ${RETRY_DELAYS_MS.length + 1} attempt(s) at a request that died`)
+  expect(p, [502, 503, 504, 429].every(isRetryableStatus), 'a busy server is not retried')
+  expect(p, ![400, 401, 403, 404, 409, 413, 500].some(isRetryableStatus), 'an answer that will not change is retried')
+  const saved = uploadFailureNote(new TypeError('Load failed'), true)
+  const unsent = uploadFailureNote(new TypeError('Load failed'), false)
+  expect(p, !/load failed/i.test(saved) && !/load failed/i.test(unsent), 'the coach is shown "Load failed"')
+  expect(p, /without sending it again/i.test(saved), 'a clip already in storage does not say it will not be sent again')
+  expect(p, uploadFailureNote(new Error('Session not found or access denied.'), false) === 'Session not found or access denied.', 'the server\'s own reason is lost')
+  return p
+})
+
+// ── V11 ────────────────────────────────────────────────────────────────────
+check('V11', 'An upload is remembered until its row exists, and a stale or broken note is dropped', () => {
+  const p = []
+  const now = 1_800_000_000_000
+  const a = { sessionId: 's1', path: 'u/s1/1.mov', fileName: 'IMG_1.MOV', mimeType: 'video/quicktime', startedAt: now - 1000 }
+  const b = { sessionId: 's2', path: 'u/s2/2.mp4', fileName: 'two.mp4', mimeType: 'video/mp4', startedAt: now - 2000 }
+  let list = addPending(addPending([], a), b)
+  expect(p, list.length === 2, 'two uploads are not both remembered')
+  expect(p, addPending(list, a).length === 2, 'the same upload is remembered twice')
+  expect(p, pendingFor(list, 's1').length === 1 && pendingFor(list, 's1')[0].path === a.path, 'pending uploads leak across sessions')
+  expect(p, removePending(list, a.path).length === 1 && removePending(list, a.path)[0].path === b.path, 'recording one upload forgets another')
+  const round = parsePending(JSON.stringify(list), now)
+  expect(p, round.length === 2 && round[0].fileName === 'IMG_1.MOV', 'the list does not survive storage')
+  expect(p, parsePending('not json', now).length === 0 && parsePending(null, now).length === 0 && parsePending('{"a":1}', now).length === 0, 'a broken stored value is not treated as empty')
+  expect(p, parsePending(JSON.stringify([{ sessionId: 's1' }, a]), now).length === 1, 'a malformed entry is kept')
+  const old = { ...a, startedAt: now - PENDING_MAX_AGE_MS - 1 }
+  expect(p, parsePending(JSON.stringify([old, b]), now).length === 1, 'an upload from over a week ago is still chased')
+  return p
+})
+
+// ── V12 ────────────────────────────────────────────────────────────────────
+check('V12', 'Several clips: every one picked gets a line, in order, and one goes at a time', () => {
+  const p = []
+  const mb = 1024 * 1024
+  const files = [
+    { name: 'IMG_0001.MOV', size: 12 * mb, type: 'video/quicktime' },
+    { name: 'too-big.mp4', size: MAX_VIDEO_BYTES + 1, type: 'video/mp4' },
+    { name: 'notes.pdf', size: 1 * mb, type: 'application/pdf' },
+    { name: 'IMG_0002.MP4', size: 30 * mb, type: 'video/mp4' },
+    { name: 'empty.mp4', size: 0, type: 'video/mp4' },
+  ]
+  const items = planQueue(files, (f) => preflightVideo(f), (i) => `id${i}`)
+  expect(p, items.length === files.length, `${files.length} picked became ${items.length} lines: a clip was dropped`)
+  expect(p, items.map((i) => i.name).join() === files.map((f) => f.name).join(), 'the order picked is not kept')
+  expect(p, items.map((i) => i.status).join() === 'waiting,refused,refused,waiting,refused', `statuses are ${items.map((i) => i.status).join()}`)
+  expect(p, items.filter((i) => i.status === 'refused').every((i) => i.note.length > 10), 'a refused clip does not say why')
+  expect(p, nextWaiting(items)?.name === 'IMG_0001.MOV', 'the first clip picked is not the first sent')
+  expect(p, isBusy(items), 'waiting clips are not counted as in progress')
+  // one at a time: with the first uploading, the next to start is the second waiting one
+  const mid = items.map((i) => (i.id === 'id0' ? { ...i, status: 'uploading' } : i))
+  expect(p, nextWaiting(mid)?.name === 'IMG_0002.MP4', 'two clips would be sent at once, or the queue stalls')
+  expect(p, queueSummary(mid) === 'Uploading 4 of 5', `summary mid-queue reads "${queueSummary(mid)}"`)
+  const end = items.map((i) => (i.status === 'waiting' ? { ...i, status: 'done' } : i))
+  expect(p, !isBusy(end), 'a finished queue still reads as in progress, which would hold app updates back for ever')
+  expect(p, queueSummary(end) === '2 of 5 added · 3 need attention', `summary at the end reads "${queueSummary(end)}"`)
+  expect(p, queueSummary(planQueue([files[0]], () => ({ ok: true, warning: null }), () => 'x').map((i) => ({ ...i, status: 'done' }))) === '1 clip added', 'one clip is not singular')
+  expect(p, planQueue([{ name: '', size: 5 }], () => ({ ok: true, warning: null }), () => 'x')[0].name === 'Clip 1', 'a clip with no name has an empty line')
+  return p
+})
+
+// ── V13 ────────────────────────────────────────────────────────────────────
+// The joins between files, which tsc cannot see.
+check('V13', 'The pickers take several clips, the record step is safe to repeat, and an upload holds app updates back', () => {
+  const p = []
+  const src = (f) => readFileSync(join(ROOT, f), 'utf8')
+  const uploader = src('app/components/VideoUploader.tsx')
+  expect(p, /<input[\s\S]{0,200}accept="video\/\*"[\s\S]{0,40}multiple/.test(uploader), 'the video picker does not allow several clips')
+  // More can be picked while one uploads: the trigger is never disabled, and a
+  // clip added as the queue winds down still starts.
+  const trigger = (uploader.match(/<button[\s\S]{0,260}inputRef\.current\?\.click\(\)[\s\S]{0,400}<\/button>/) || [''])[0]
+  expect(p, trigger !== '' && !/disabled/.test(trigger), 'the picker is blocked while a clip uploads')
+  expect(p, /busy \? 'Add more'/.test(uploader), 'nothing says more clips can be added during an upload')
+  expect(p, /if \(nextWaiting\(itemsRef\.current\)\) void runRef\.current\(\)/.test(uploader), 'a clip picked as the queue finishes is left waiting')
+  expect(p, /resumePendingVideos/.test(uploader), 'an upload left in storage by an earlier visit is never finished')
+  expect(p, /finishSavedVideo/.test(uploader), 'Retry would send a clip again that is already in storage')
+  for (const page of ['app/sessions/[id]/page.tsx', 'app/athletes/[id]/page.tsx']) {
+    expect(p, /<VideoUploader/.test(src(page)), `${page} does not use the uploader`)
+    expect(p, !/accept="video\/\*"/.test(src(page)), `${page} still has its own single-clip picker`)
+  }
+  const lib = src('lib/video-upload.ts')
+  expect(p, /writePending\(addPending\([\s\S]{0,200}\)\)[\s\S]{0,400}putFile\(/.test(lib), 'the upload is not written down before the file is sent')
+  expect(p, /fetchWithRetry\(`\/api\/sessions\/\$\{sessionId\}\/videos`/.test(lib), 'the record step is not retried')
+  const route = src('app/api/sessions/[id]/videos/route.ts')
+  expect(p, /\.eq\('storage_path', storagePath\)[\s\S]{0,600}status: 200/.test(route), 'recording the same file twice would make two rows')
+  expect(p, /code: 'not_uploaded'[\s\S]{0,40}status: 409/.test(route), 'a file that is not in storage can be recorded')
+  expect(p, /startsWith\(`\$\{user\.id\}\/\$\{sessionId\}\/`\)/.test(route), 'the own-folder check on the path is gone')
+  // The athlete's own clip takes the same three steps and gets the same care.
+  const clipRoute = src('app/api/athlete/clips/route.ts')
+  expect(p, /\.eq\('storage_path', storagePath\)[\s\S]{0,400}status: 200/.test(clipRoute), 'an athlete clip recorded twice would make two rows and two messages to the coach')
+  expect(p, clipRoute.indexOf("status: 200") < clipRoute.indexOf('notifyNewMessage({'), 'a repeated record would message the coach again')
+  // Two requests arriving together both find no row. The database refuses the
+  // second (migration 039) and each route answers it with the first one's row.
+  expect(p, /create unique index[\s\S]{0,80}session_videos \(storage_path\)/.test(src('supabase/migrations/039_session_video_path_unique.sql')), 'nothing stops one file being recorded twice')
+  expect(p, /insertErr\?\.code === '23505'[\s\S]{0,300}status: 200/.test(route), 'a retry racing its own first attempt is told the clip failed')
+  expect(p, /insertErr\?\.code === '23505'[\s\S]{0,400}status: 200/.test(clipRoute), 'an athlete retry racing its own first attempt is told the clip failed')
+  expect(p, clipRoute.indexOf("insertErr?.code === '23505'") < clipRoute.indexOf('notifyNewMessage({'), 'the losing request of a race would message the coach as well')
+  const clipUi = src('app/components/AthleteClipUpload.tsx')
+  expect(p, /fetchWithRetry\('\/api\/athlete\/clips'/.test(clipUi), 'the athlete clip record step is not retried')
+  expect(p, /isNetworkError\(e\) \? 'The connection dropped/.test(clipUi), 'an athlete is shown the browser\'s "Load failed"')
   return p
 })
 

@@ -84,6 +84,7 @@ const anchors = [
   ['.recording-dot', 'app/athlete/page.tsx', /noteRecording \? <><span className="recording-dot"/, "the athlete's voice note shows it only while recording"],
   ['[aria-label="Stop recording"]', 'app/components/MessagingPanel.tsx', /aria-label=\{recordingAudio \? 'Stop recording'/, 'a voice message, while recording'],
   ['audio[src^="blob:"]', 'app/components/MessagingPanel.tsx', /<audio controls src=\{audioUrl!?\}/, 'an unsent voice message plays from a blob: URL'],
+  ['[data-uploading]', 'app/components/VideoUploader.tsx', /busy \? \{ 'data-uploading': '' \}/, 'videos uploading to a session, only while they are'],
 ]
 for (const [sel, file, re, why] of anchors) {
   check(`U8  ${sel} is in the busy test — ${why}`, BUSY_SELECTOR.includes(sel) && re.test(src(file)),

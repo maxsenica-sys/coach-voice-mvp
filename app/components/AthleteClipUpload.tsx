@@ -17,6 +17,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import { apiJson } from '@/lib/api-client'
+import { fetchWithRetry } from '@/lib/video-upload'
+import { isNetworkError } from '@/lib/video-queue'
 import { errorMessage } from '@/lib/errors'
 import { athleteClipVerdict, formatClipTime, MAX_ATHLETE_CLIP_SECONDS } from '@/lib/video-clip'
 
@@ -145,10 +147,22 @@ export default function AthleteClipUpload({ athleteId, sessionId = null, listSco
       if (sessionId) qs.set('session_id', sessionId)
       const { signedUrl, path } = await apiJson<{ signedUrl: string; path: string }>(`/api/athlete/clips/upload-url?${qs}`)
 
-      const put = await fetch(signedUrl, { method: 'PUT', headers: { 'content-type': file.type || 'video/mp4' }, body: file })
-      if (!put.ok) throw new Error('The clip could not be uploaded. Check your signal and try again.')
+      /* The same three steps as a coach's upload, and the same weak point
+       * (lib/video-queue.ts): the request that records the clip is made on a
+       * connection that sat idle for the whole upload, and a phone on mobile
+       * data may find it dead. So that request is retried, and the server
+       * answers a repeat with the clip it already has. A PUT whose answer was
+       * lost may still have landed, so the record step is tried either way. */
+      let putFailed: unknown = null
+      try {
+        const put = await fetch(signedUrl, { method: 'PUT', headers: { 'content-type': file.type || 'video/mp4' }, body: file })
+        if (!put.ok) throw new Error('The clip could not be uploaded. Check your signal and try again.')
+      } catch (e: unknown) {
+        if (!isNetworkError(e)) throw e
+        putFailed = e
+      }
 
-      await apiJson<{ clip: Clip }>('/api/athlete/clips', {
+      const res = await fetchWithRetry('/api/athlete/clips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -157,11 +171,14 @@ export default function AthleteClipUpload({ athleteId, sessionId = null, listSco
           duration_s: duration, note: note.trim() || null,
         }),
       })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw putFailed ?? new Error(json?.error ?? 'The clip could not be sent. Try again.')
       reset()
       setSent(true)
       void load()
     } catch (e: unknown) {
-      setError(errorMessage(e, 'The clip could not be sent. Try again.'))
+      // Never the browser's own words ("Load failed") for a dead connection.
+      setError(isNetworkError(e) ? 'The connection dropped. Check your signal and send it again.' : errorMessage(e, 'The clip could not be sent. Try again.'))
     } finally {
       setSending(false)
     }

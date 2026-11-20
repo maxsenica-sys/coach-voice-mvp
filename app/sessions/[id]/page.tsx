@@ -20,8 +20,7 @@ import SessionAudioPlayer from '@/app/components/SessionAudioPlayer'
 import FocusCard from '@/app/components/FocusCard'
 import { SessionSeen } from '@/app/components/AccessLog'
 import { errorMessage } from '@/lib/errors'
-import { preflightVideo } from '@/lib/video-preflight'
-import { uploadSessionVideo } from '@/lib/video-upload'
+import VideoUploader from '@/app/components/VideoUploader'
 import { DELIVERY_LABEL } from '@/lib/session-delivery'
 import { canRecordScreen } from '@/lib/screen-recording'
 import ScreenRecorder from '@/app/components/ScreenRecorder'
@@ -704,32 +703,19 @@ export default function SessionDetailPage() {
     if (!ok) setData((d) => (d ? { ...d, session: { ...d.session, shared_with_athlete: !next } } : d))
   }
 
-  /* Add video, right on the session (Max, 2026-11-14). It used to exist only
-   * as a button on each session in the athlete's profile. Same checks and the
-   * same upload path: lib/video-preflight.ts, then lib/video-upload.ts. */
-  const videoFileRef = useRef<HTMLInputElement | null>(null)
+  /* Add video, right on the session (Max, 2026-11-14), and several at once
+   * from a phone (2026-11-20): app/components/VideoUploader.tsx. */
   /* Record screen: only where the browser can share a screen at all — a
    * computer. Asked after mount, so the server HTML and the first client render
    * agree. */
   const [screenOK, setScreenOK] = useState(false)
   const [screenOpen, setScreenOpen] = useState(false)
   useEffect(() => { setScreenOK(canRecordScreen(typeof navigator === 'undefined' ? undefined : navigator)) }, [])
-  const [videoUpload, setVideoUpload] = useState<{ pct: number; eta: string } | null>(null)
-  const [videoUploadNote, setVideoUploadNote] = useState('')
-  const uploadVideo = async (file: File) => {
-    const verdict = preflightVideo(file)
-    if (!verdict.ok) { setVideoUploadNote(verdict.reason); return }
-    setVideoUploadNote(verdict.warning ?? '')
-    setVideoUpload({ pct: 0, eta: 'Preparing…' })
-    try {
-      await uploadSessionVideo(sessionId, file, (p) => setVideoUpload(p))
-      if (data) await loadVideoFeatures(data.viewerRole, data.athlete?.id ?? null)
-      flash('Video added')
-    } catch (e: unknown) {
-      setVideoUploadNote(errorMessage(e, 'That clip did not upload. Try again.'))
-    } finally {
-      setVideoUpload(null)
-    }
+  /* One reload of the video list per saved clip is enough; several clips
+   * finishing close together share it. */
+  const videoSaved = () => {
+    if (data) void loadVideoFeatures(data.viewerRole, data.athlete?.id ?? null)
+    flash('Video added')
   }
 
   const uploadImage = async (file: File) => {
@@ -1570,18 +1556,13 @@ export default function SessionDetailPage() {
               meta={vids.length || undefined}
               action={isCoach ? (
                 <>
-                  <input
-                    ref={videoFileRef}
-                    type="file"
-                    accept="video/*"
-                    style={{ display: 'none' }}
-                    onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadVideo(f) }}
+                  <VideoUploader
+                    sessionId={sessionId}
+                    onSaved={videoSaved}
+                    label="Add videos"
+                    icon={<Icon name="plus" size={12} />}
+                    buttonStyle={toolButton}
                   />
-                  <button disabled={videoUpload !== null}
-                    onClick={() => videoFileRef.current?.click()}
-                    style={{ ...toolButton, cursor: videoUpload ? 'progress' : 'pointer' }}>
-                    <Icon name="plus" size={12} /> {videoUpload ? `Uploading ${videoUpload.pct}%` : 'Add video'}
-                  </button>
                   {screenOK && (
                     <button onClick={() => setScreenOpen(true)} style={{ ...toolButton, cursor: 'pointer' }}>
                       <span aria-hidden style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--danger)', display: 'inline-block' }} /> Record screen
@@ -1593,12 +1574,7 @@ export default function SessionDetailPage() {
               {videoNote && (
                 <div style={{ ...panel, padding: 12, marginBottom: 10, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>{videoNote}</div>
               )}
-              {(videoUpload || videoUploadNote) && (
-                <div role="status" style={{ ...panel, padding: 12, marginBottom: 10, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
-                  {videoUpload ? `Uploading… ${videoUpload.pct}% · ${videoUpload.eta}` : videoUploadNote}
-                </div>
-              )}
-              {isCoach && vids.length === 0 && !videoUpload && (
+              {isCoach && vids.length === 0 && (
                 <div style={{ ...panel, padding: 14, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
                   Add a clip from your phone or computer, or film one now.
                   {screenOK ? ' Coaching online? Record screen records the call into this session.' : ''}

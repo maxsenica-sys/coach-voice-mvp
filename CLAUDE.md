@@ -196,6 +196,25 @@ assistant is given access to them.
   claimed with a conditional update; only the request that claims it sends the
   email and the push. A new share path must claim it the same way.
 
+## Uploads from a phone: retry, and write it down first
+
+Max, 2026-11-20: *"Video load also failed"*. A clip was PUT to storage and the
+request that records its row never reached the server: a phone drops an idle
+connection during a long upload, Safari reuses the dead one and reports
+"Load failed", and nothing tried again.
+
+- **The request after a long upload is retried** (`fetchWithRetry`,
+  `lib/video-upload.ts`), so **the route it calls must be safe to repeat**:
+  answer a path already recorded with its existing row, 200 rather than 201,
+  and send no second message. Migration 039 makes the database refuse a
+  second row for one file.
+- **The upload is written down before the file is sent** (the pending list in
+  `lib/video-queue.ts`) and finished on the next visit without resending.
+- **Never show a person the browser's own words** for a dead connection.
+- **Every picked file keeps its row** until it is saved or dismissed: refused,
+  failed or waiting. Use `app/components/VideoUploader.tsx` for a coach's
+  video; do not write another picker.
+
 ## General rules
 
 - Never modify `app/api/` files when working on UI features
@@ -302,6 +321,9 @@ are `lib/app-update.ts`; `npm run verify:update` holds them.
 - **A new recorder, sheet or unsaved-media preview must be visible to
   `BUSY_SELECTOR`** — use `role="dialog"`, or add its marker there and an anchor
   in `tools/update-rig.mjs`. Otherwise an update can reload over it.
+- **A long upload counts as in progress too.** `VideoUploader` carries
+  `data-uploading` while clips are queued or sending, and `BUSY_SELECTOR` names
+  it (2026-11-20). A new uploader that takes more than a moment needs the same.
 - **`NEXT_PUBLIC_APP_VERSION` is the commit** (`next.config.ts`). Never a
   timestamp: a redeploy of the same code would reload every open app for
   nothing.
@@ -429,6 +451,7 @@ March in London, and every string type-checks.
 | `npm run verify:staff` | `lib/coach-scope.ts` and `lib/staff-invite.ts`: whose team a coach is on, and who may accept an invite | A revoked or merely invited assistant resolving onto a team; an invite accepted by the wrong address or an athlete account; a token stored as itself |
 | `npm run verify:wellness` | `wellnessDriver` in `lib/wellness-config.ts`: what pulled a check-in's score down | A two-tap check-in described by derived numbers the athlete was never asked ("Mood 2/5"); an OK answer called low; a roster tile's label too long to fit |
 | `npm run verify:session` | `lib/session-edit.ts` and the date rule in `lib/session-date.ts`, plus the share, delete and notes wiring | A session shared later telling the athlete nothing, or twice; a date in the future; a five-point cap cutting a coach's words; a delete taking another athlete's recording or the athlete's own clip |
+| `npm run verify:video` | `lib/video-preflight.ts` and `lib/video-queue.ts`: what a clip is refused for, which failures are retried, the list of uploads not yet recorded, the queue for several clips, and the wiring of both uploaders and their routes | A clip that reached storage and never appeared, because the request recording it died on a phone's stale connection and nothing tried again (Max, 2026-11-20: "Video load also failed"); a retry recording one file twice; a picked clip dropped from the list without a word |
 | `npm run verify:update` | `lib/app-update.ts`: when an installed app reloads itself onto a new deploy, and the markers its "something is in progress" test relies on | A deploy never reaching an iPhone until the app is deleted (Max, 2026-10-09: "we have to keep constantly deleting the app"); or the fix reloading over a recording, a sheet or typed text |
 | `npm run verify:email` | Every real email builder in `lib/notify.ts`, fed hostile text against a stub network; every HTML literal in `app/api/` | An athlete's message, a check-in note or a name arriving as live markup — a working link — in someone's inbox; a name that rewrites the From header. New email HTML: `escapeHtml` every typed value, `renderBrandedEmail` escapes only its text fields |
 | `npm run verify:rls` | Production's schema (`supabase/tests/baseline-033.sql`) plus every later migration, in a throwaway Postgres, then `supabase/tests/*.test.sql` acting as real users | A policy that lets one coach, an assistant, or an athlete read or write another's rows — decided inside Postgres, where every other tool sees only strings. Needs a Postgres (CI runs a service); set `PGHOST`/`PGUSER` locally |

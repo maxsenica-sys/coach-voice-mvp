@@ -453,14 +453,14 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 - **Competitor gap:** no. Common
 - **No posts of its own:** Covered by the take-into-next-session posts: a facet of that feature rather than a post of its own.
 
-### Add video to session `add-video`
+### Add videos to a session `add-video`
 
-**shipped**. Upload a clip (500MB limit with preflight warnings) with percentage and time-left progress, directly on the session page.
+**shipped**. Pick one clip or several at once from the phone's library (500MB each, with preflight warnings). They upload one after another, each with its own percentage and time left, and more can be added while one is still uploading. A clip whose connection drops is retried, and one that reached storage is finished on Retry or the next visit without being sent again.
 
-- **Pain removed:** Video feedback is attached to the right session.
-- **Evidence:** page.tsx uploadVideo: lib/video-preflight.ts MAX_VIDEO_BYTES, then lib/video-upload.ts → /api/sessions/[id]/videos(upload-url)
-- **Surfaces:** /sessions/[id] Video section
-- **Demo state:** 'Uploading 42% · 1 min left'
+- **Pain removed:** Video feedback is attached to the right session, a whole practice of clips in one go, and a dropped signal does not lose one.
+- **Evidence:** app/components/VideoUploader.tsx (input multiple, sequential queue, 'Add more' while busy, Retry and Dismiss per clip) on app/sessions/[id]/page.tsx and app/athletes/[id]/page.tsx; lib/video-queue.ts (retry rules, pending list, queue summary); lib/video-upload.ts → /api/sessions/[id]/videos(upload-url), whose POST answers a repeat with the existing row (migration 039). tools/video-rig.mjs V10–V13.
+- **Surfaces:** /sessions/[id] Video section, /athletes/[id] session card
+- **Demo state:** 'Uploading 2 of 5' with one clip at 42% · ~1min left, two waiting, and 'Add more'
 - **Competitor gap:** no. Common
 - **No posts of its own:** Covered by the video-annotator posts: a facet of that feature rather than a post of its own.
 
