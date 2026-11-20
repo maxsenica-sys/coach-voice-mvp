@@ -15,6 +15,14 @@
 // part-time coach with twenty athletes will always have a tail, and a scold is
 // not a gift.
 //
+// 2026-11-20 (Max: "if there are things that are only going to be used
+// periodically, then there's not much point" in giving them room): it is one
+// closed row on the coach's home, and the row says the headline while closed:
+// how many athletes are in the lowest group ("2 with no sessions"). Opening it
+// shows every group and every name, as before. It still loads on mount, so
+// the closed row is never a guess, and a failed load opens it so the reason
+// and the Retry are on screen.
+//
 // Self-contained: it fetches its own data. Mount it with no props.
 //
 // Coach-only, always. This is a ranking of a coach's attention across a squad
@@ -27,11 +35,13 @@ import { apiJson } from '@/lib/api-client'
 import { errorMessage } from '@/lib/errors'
 import { todayISODate } from '@/lib/session-date'
 import { coverageGroups } from '@/lib/insights'
+import Disclosure from '@/app/components/Disclosure'
 import type { CoverageInsightResponse, CoverageInsight as Coverage } from '@/lib/insights'
 
 const CAST: React.CSSProperties = {
   fontFamily: 'var(--font-cast)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.16em',
 }
+const plural = (n: number) => `${n} athlete${n === 1 ? '' : 's'}`
 const BODY: React.CSSProperties = { fontSize: 'var(--t-body-tight)', lineHeight: 1.55, color: 'var(--text-2)', margin: 0 }
 const nf = new Intl.NumberFormat()
 
@@ -60,15 +70,17 @@ export default function CoverageInsight({ athleteHref = (id: string) => `/athlet
 
   useEffect(() => { void load() }, [load])
 
-  return (
-    <section aria-labelledby="coverage-insight-h" style={{ minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', minHeight: 44, marginBottom: 2 }}>
-        <h2 id="coverage-insight-h" style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.22em', color: 'var(--text-2)', margin: 0 }}>
-          Least attention this month
-        </h2>
-      </div>
+  const groups = data ? coverageGroups(data.rows) : []
+  // What the closed row says: the lowest group, which is the one the card is for.
+  const summary = loading && !data ? 'Adding up…'
+    : error ? 'Could not load'
+    : groups.length > 0 ? `${groups[0].rows.length} with ${groups[0].label.toLowerCase()}`
+    : data ? 'No athletes yet'
+    : undefined
 
-      <div>
+  return (
+    <section aria-label="Least attention this month" style={{ minWidth: 0 }}>
+      <Disclosure label="Least attention this month" summary={summary} open={error ? true : undefined}>
         {loading && !data ? (
           <p style={BODY} aria-live="polite">Adding up the last 30 days…</p>
         ) : error ? (
@@ -86,7 +98,7 @@ export default function CoverageInsight({ athleteHref = (id: string) => `/athlet
                 2026-11-14): the explanation paragraph, the bars and the median
                 line made this the busiest thing on the home screen. Least
                 attention first inside each group, as before. */}
-            {coverageGroups(data.rows).map((g) => (
+            {groups.map((g) => (
               <div key={g.label} style={{
                 display: 'grid', gridTemplateColumns: 'minmax(84px, 96px) minmax(0, 1fr)', gap: 10,
                 alignItems: 'start', padding: '10px 0', borderTop: '1px solid var(--border)',
@@ -94,7 +106,7 @@ export default function CoverageInsight({ athleteHref = (id: string) => `/athlet
                 <div style={{ minWidth: 0, paddingTop: 10 }}>
                   <div style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.25 }}>{g.label}</div>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)' }}>
-                    {g.rows.length} athlete{g.rows.length === 1 ? '' : 's'}
+                    {plural(g.rows.length)}
                   </div>
                 </div>
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 6, minWidth: 0 }}>
@@ -122,7 +134,7 @@ export default function CoverageInsight({ athleteHref = (id: string) => `/athlet
             ))}
           </div>
         ) : null}
-      </div>
+      </Disclosure>
     </section>
   )
 }

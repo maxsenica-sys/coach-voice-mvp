@@ -99,7 +99,7 @@ async function runZone(zone, year) {
     await import(pathToFileURL(path.join(ROOT, 'lib/date-utils.ts')).href)
   // The pre-session brief's window: "twenty minutes before a calendar event"
   // is a date, a wall-clock time and no timezone, turned into an instant.
-  const { eventStart, briefPhase, upcomingBrief, startLabel, BRIEF_LEAD_MINUTES, BRIEF_GRACE_MINUTES } =
+  const { eventStart, briefPhase, upcomingBrief, startLabel, oneRowPerEvent, BRIEF_LEAD_MINUTES, BRIEF_GRACE_MINUTES } =
     await import(pathToFileURL(path.join(ROOT, 'lib/pre-session.ts')).href)
 
   const failures = []
@@ -335,6 +335,26 @@ async function runZone(zone, year) {
       const tomorrow = { ...ev, event_date: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)) }
       check(upcomingBrief([tomorrow], at(-15)) === null, 'P11c the same time tomorrow is not due', `${label} ${time}`)
     }
+  }
+  // P11e · a squad event is one line on Home, not one per athlete. It is
+  // stored as a row per member, with nothing linking them but title, date and
+  // time (Max, 2026-11-20: "quite a cluster of information").
+  {
+    const row = (id, athlete_id, over = {}) => ({ id, athlete_id, title: 'Squad training', event_date: '2026-11-20', event_time: '16:30:00', event_type: 'session', ...over })
+    const day = [
+      row('e3', 'a3'), row('e1', 'a1'), row('e2', 'a2', { event_time: '16:30' }), row('e9', 'a1'),
+      row('e4', 'a4', { title: 'Jonah rehab' }),
+      row('e5', null, { title: 'Order nets', event_type: 'reminder', event_time: null }),
+      row('e6', 'a1', { event_type: 'reminder' }),
+      row('e7', 'a2', { event_time: '18:00:00' }),
+    ]
+    const rows = oneRowPerEvent(day)
+    check(rows.length === 5, 'P11e a squad event is one row', `${rows.length} rows from 8 events`)
+    check(rows[0].event.id === 'e1' && rows[0].athleteIds.join() === 'a3,a1,a2', 'P11e the squad row names everyone once', `${rows[0]?.event.id} for ${rows[0]?.athleteIds.join()}`)
+    check(rows.map((r) => r.event.title).join('|') === 'Squad training|Jonah rehab|Order nets|Squad training|Squad training', 'P11e the order of the day is kept', rows.map((r) => r.event.title).join('|'))
+    check(rows[2].athleteIds.length === 0, "P11e the coach's own reminder is for nobody", String(rows[2]?.athleteIds))
+    check(rows[3].event.id === 'e6' && rows[4].event.id === 'e7', 'P11e a different type or time is a different event', `${rows[3]?.event.id}, ${rows[4]?.event.id}`)
+    check(oneRowPerEvent([]).length === 0, 'P11e an empty day', 'not empty')
   }
   // P11d · labels are the wall time the coach typed, in every zone.
   for (const [t, want] of [['16:30:00', '4:30pm'], ['00:05', '12:05am'], ['12:00', '12:00pm'], ['09:07:00', '9:07am']]) {

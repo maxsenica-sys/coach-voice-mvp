@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { apiJson } from '@/lib/api-client'
+import { previewSrc } from '@/lib/video-preview'
 import { getTeam } from '@/lib/team-client'
 import { SUPPORTED_RECORDING_TYPES } from '@/lib/audio-mime'
 import { fmtDateDivider } from '@/lib/date-utils'
@@ -661,7 +662,11 @@ export default function MessagingPanel({ athletes, unreadCounts, preselectedAthl
 
                       {msg.msg_type === 'video' && msg.media_url && (
                         <video
-                          src={msg.media_url}
+                          /* A still before play, and no download until then:
+                             without these an iPhone shows a blank bubble. */
+                          src={previewSrc(msg.media_url)}
+                          preload="metadata"
+                          playsInline
                           controls
                           style={{ maxWidth: 'min(300px, 100%)', maxHeight: 200, borderRadius: 10, display: 'block' }}
                         />

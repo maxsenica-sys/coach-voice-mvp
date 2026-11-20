@@ -18,7 +18,7 @@ import ListState from '@/app/components/ListState'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile } from '@/lib/profile-cache'
 import {
-  WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint, wellnessDriver,
+  overallWellnessScore, overallScoreColor, wellnessDriver,
   type WellnessCheckin, type WellnessAlert,
 } from '@/lib/wellness-config'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
@@ -34,6 +34,8 @@ import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 import { escapeHtml } from '@/lib/escape-html'
 import { regionLabel } from '@/lib/body-map'
 import VideoUploader from '@/app/components/VideoUploader'
+import VideoGrid from '@/app/components/VideoGrid'
+import Disclosure from '@/app/components/Disclosure'
 import { wellnessAlertRecipients } from '@/lib/caretaker-prefs'
 
 interface Athlete {
@@ -82,7 +84,6 @@ function Icon({ name, size = 18, strokeWidth = 2 }: { name: string; size?: numbe
     case 'mic':        return <svg {...p}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
     case 'messages':   return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     case 'report':     return <svg {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-    case 'users':      return <svg {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     case 'share':      return <svg {...p}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
     case 'pdf':        return <svg {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
     case 'video':      return <svg {...p}><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
@@ -278,8 +279,7 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
   const [confirmTestTo, setConfirmTestTo] = useState<string | null>(null)
 
   return (
-    <div className="card" style={{ padding: 18 }}>
-      <h3 style={{ ...EYEBROW, marginBottom: 14 }}>Caretakers</h3>
+    <div style={{ minWidth: 0 }}>
       {caretakers.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
           {caretakers.map(c => {
@@ -294,7 +294,9 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
                 background: fresh ? 'color-mix(in srgb, var(--success) 12%, transparent)' : 'transparent',
               }}
             >
-              <div style={{ flex: 1, minWidth: 0 }}>
+              {/* A basis, so on a narrow phone the two buttons drop under the
+                  name instead of squeezing the email into a 90px column. */}
+              <div style={{ flex: '1 1 170px', minWidth: 0 }}>
                 {fresh && (
                   <div style={{ marginBottom: 6 }}>
                     <Chip color="var(--success)">{justSavedWasUpdate ? '✓ Updated' : '✓ Just added'}</Chip>
@@ -362,9 +364,9 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
       )}
       {emailMsg && <div style={{ fontSize: 'var(--t-min)', color: emailMsg.startsWith('Test sent') ? 'var(--success)' : 'var(--danger)', marginBottom: 10, fontWeight: 600 }}>{emailMsg}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <input className="input" style={{ fontSize: 13 }} placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-        <input className="input" style={{ fontSize: 13 }} type="email" placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-        <select className="input" style={{ fontSize: 13 }} value={form.relationship} onChange={e => setForm({ ...form, relationship: e.target.value })}>
+        <input className="input" placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+        <input className="input" type="email" placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+        <select className="input" value={form.relationship} onChange={e => setForm({ ...form, relationship: e.target.value })}>
           {['parent','guardian','family','manager','other'].map(r => <option key={r}>{r}</option>)}
         </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', cursor: 'pointer', lineHeight: 1.45 }}>
@@ -432,7 +434,7 @@ export default function AthleteDetailPage() {
   const [coachSport, setCoachSport] = useState(() => readCachedProfile()?.sport ?? '')
 
   const [autoMonthlyReport, setAutoMonthlyReport] = useState(false)
-  const [showCaretakers, setShowCaretakers] = useState(false)
+  const [caretakersOpen, setCaretakersOpen] = useState(false)
   const [caretakers, setCaretakers] = useState<Caretaker[]>([])
   /* Head coach, or an assistant on the head's team (lib/team-client.ts). An
    * assistant sees this athlete but not the head-only parts: the profile and
@@ -458,6 +460,17 @@ export default function AthleteDetailPage() {
 
   const [openSessionId, setOpenSessionId] = useState<string | null>(null)
   const [sessionVideos, setSessionVideos] = useState<Record<string, SessionVideo[]>>({})
+  /* Whether a session's video list has been read. Kept apart from the list
+   * itself: a clip saved by the uploader can land before the list is read, and
+   * "one clip on screen" must not then be taken for "the whole list". */
+  const [videoState, setVideoState] = useState<Record<string, 'loading' | 'ready' | 'error'>>({})
+  const videosAsked = useRef(new Set<string>())
+  /** The one video open in a session's grid (app/components/VideoGrid.tsx). */
+  const [openVideoId, setOpenVideoId] = useState<string | null>(null)
+  /* Sessions whose uploader has something to show: a clip waiting, sending,
+   * failed, or a notice. Their card is held open, so none of that is ever
+   * behind a closed row. */
+  const [uploaderActive, setUploaderActive] = useState<Record<string, boolean>>({})
 
   // Profile editing. The tab reads as the saved profile; the form appears only
   // while editing, and a save closes it — the new values on screen are the
@@ -476,7 +489,11 @@ export default function AthleteDetailPage() {
   const [customVal, setCustomVal] = useState('')
 
   // ── Tab navigation + Quick Session ───────────────────────────
-  type AthleteTab = 'overview' | 'sessions' | 'wellness' | 'calendar' | 'profile' | 'notes'
+  /* Four doors on the bar: Overview, Sessions, Wellness, More. Calendar,
+   * Notes, Profile and Activity are views behind More, and each keeps its own
+   * key, so `?tab=calendar` (and every link already out there) still lands
+   * directly on its view. */
+  type AthleteTab = 'overview' | 'sessions' | 'wellness' | 'more' | 'calendar' | 'profile' | 'notes' | 'activity'
   const [activeTab, setActiveTabState] = useState<AthleteTab>('overview')
   /* The tab lives in the URL as `?tab=` so it survives a switch to another
    * athlete (a coach going down the squad's wellness tabs stays on Wellness)
@@ -494,7 +511,7 @@ export default function AthleteDetailPage() {
   }
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('tab')
-    const valid: AthleteTab[] = ['overview', 'sessions', 'wellness', 'calendar', 'profile', 'notes']
+    const valid: AthleteTab[] = ['overview', 'sessions', 'wellness', 'more', 'calendar', 'profile', 'notes', 'activity']
     const match = valid.find((v) => v === t)
     if (match) setActiveTabState(match)
   }, [])
@@ -505,7 +522,6 @@ export default function AthleteDetailPage() {
     router.replace(`/athletes/${encodeURIComponent(id)}${q}`)
   }
   const [showQuickSession, setShowQuickSession] = useState(false)
-  const [sessionsShowAll, setSessionsShowAll] = useState(false)
 
   // ── Notes ─────────────────────────────────────────────────────
   const [notes, setNotes] = useState<CoachNote[]>([])
@@ -513,6 +529,8 @@ export default function AthleteDetailPage() {
   const [noteShared, setNoteShared] = useState(false)
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteMsg, setNoteMsg] = useState('')
+  /** The list is the tab; the form is behind "+ Add note". */
+  const [noteFormOpen, setNoteFormOpen] = useState(false)
   /* 'error' is its own state: a failed read used to leave `notes` at [] and
    * the tab said "No notes yet" to a coach who had written dozens. */
   const [notesState, setNotesState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
@@ -588,8 +606,9 @@ export default function AthleteDetailPage() {
     if (loadedFor.current !== athleteId) {
       loadedFor.current = athleteId
       setAthlete(null); setSessions([]); setOpenSessionId(null); setSessionVideos({})
+      setVideoState({}); videosAsked.current = new Set(); setOpenVideoId(null); setUploaderActive({})
       setNotes([]); setNotesState('idle'); setNotesError(''); notesSeq.current++
-      setNoteText(''); setNoteMsg(''); setSessionsShowAll(false)
+      setNoteText(''); setNoteMsg(''); setNoteFormOpen(false)
       setEditingProfile(false); setProfileMsg(''); setProfileJustSaved(false)
     }
     void load()
@@ -880,15 +899,20 @@ export default function AthleteDetailPage() {
     // disappeared and the coach was left typing an address by hand — during a
     // wellness alert, about a child.
     setCaretakersUnavailable(false)
+    setCaretakersRead(false)
+    let live = true
     fetch(`/api/caretakers?athlete_id=${encodeURIComponent(athleteId)}`)
       .then(res => {
         if (!res.ok) throw new Error('caretakers unavailable')
         return res.json()
       })
-      .then(json => setAlertCaretakers(json.caretakers ?? []))
-      .catch(() => { setAlertCaretakers([]); setCaretakersUnavailable(true) })
+      .then(json => { if (live) { setAlertCaretakers(json.caretakers ?? []); setCaretakersRead(true) } })
+      .catch(() => { if (live) { setAlertCaretakers([]); setCaretakersUnavailable(true) } })
+    return () => { live = false }
   }, [athleteId])
   const [caretakersUnavailable, setCaretakersUnavailable] = useState(false)
+  /** The count on the closed Caretakers row is only said once it is known. */
+  const [caretakersRead, setCaretakersRead] = useState(false)
   const [alertSendTo, setAlertSendTo] = useState('')
   const [alertSending, setAlertSending] = useState(false)
   const [alertMsg, setAlertMsg] = useState('')
@@ -916,11 +940,6 @@ export default function AthleteDetailPage() {
     setAlertSending(false)
   }
   const wellnessColor = overallScoreColor(wellnessScore)
-  // Paired light token rather than a hex-alpha suffix concatenated onto the
-  // colour — that trick only worked while these were 6-digit hex literals, and
-  // it left the score sitting on a tint of itself.
-  const wellnessTint = overallScoreTint(wellnessScore)
-
   const toggleShare = async (sessionId: string, current: boolean) => {
     try {
       await apiMutate(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shared_with_athlete: !current }) })
@@ -932,7 +951,9 @@ export default function AthleteDetailPage() {
   }
 
   const loadVideos = async (sessionId: string) => {
-    if (sessionVideos[sessionId]) return
+    if (videosAsked.current.has(sessionId)) return
+    videosAsked.current.add(sessionId)
+    setVideoState(prev => ({ ...prev, [sessionId]: 'loading' }))
     // Checklist item 1. This had no res.ok check and no catch: a non-2xx
     // silently rendered "no videos" for a session that has them, and a network
     // error threw out of an un-awaited handler.
@@ -940,20 +961,31 @@ export default function AthleteDetailPage() {
       const json = await apiJson<{ videos?: SessionVideo[] }>(
         `/api/sessions/${sessionId}/videos`, { cache: 'no-store' },
       )
-      setSessionVideos(prev => ({ ...prev, [sessionId]: json.videos ?? [] }))
+      const got = json.videos ?? []
+      /* Merged, not replaced. A clip an earlier visit left in storage is
+       * recorded by the uploader as soon as its card mounts, which can be
+       * before this list is read. The old test for "already loaded" was
+       * "there is a list", so that one clip stood in for the whole session
+       * and the others were never fetched. */
+      setSessionVideos(prev => ({
+        ...prev,
+        [sessionId]: [...got, ...(prev[sessionId] ?? []).filter(v => !got.some(g => g.id === v.id))],
+      }))
+      setVideoState(prev => ({ ...prev, [sessionId]: 'ready' }))
     } catch (e: unknown) {
+      videosAsked.current.delete(sessionId)   // so "Try again" and a reopen ask again
+      setVideoState(prev => ({ ...prev, [sessionId]: 'error' }))
       setActionError(errorMessage(e, 'Could not load the videos for that session'))
     }
   }
 
   const openSession = (id: string) => {
     if (openSessionId === id) { setOpenSessionId(null); return }
-    setOpenSessionId(id); loadVideos(id)
+    setOpenSessionId(id); void loadVideos(id)
   }
 
   /* A clip saved by the uploader (one or several: app/components/VideoUploader.tsx).
-   * Opening the session's row is what loads its list, so a clip added to a
-   * closed row appears as soon as the row is opened. */
+   * Added to whatever is on screen; loadVideos merges it with the full list. */
   const videoSaved = (sessionId: string, video: SessionVideo) => {
     setSessionVideos(prev => {
       const have = prev[sessionId] ?? []
@@ -980,6 +1012,7 @@ export default function AthleteDetailPage() {
       return
     }
     setSessionVideos(prev => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).filter(v => v.id !== videoId) }))
+    setOpenVideoId(cur => (cur === videoId ? null : cur))
   }
 
   const toggleVideoShare = async (sessionId: string, videoId: string, current: boolean) => {
@@ -1080,7 +1113,9 @@ export default function AthleteDetailPage() {
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Save failed')
       const json = await res.json()
       setNotes(prev => [json.note, ...prev])
-      setNoteText(''); setNoteMsg('Note saved!')
+      // The form closes and the note is at the top of the list: that is the
+      // proof it saved.
+      setNoteText(''); setNoteMsg('Note saved'); setNoteFormOpen(false)
       setTimeout(() => setNoteMsg(''), 3000)
     } catch (e: unknown) { setNoteMsg(errorMessage(e, 'Failed')) }
     finally { setNoteSaving(false) }
@@ -1137,18 +1172,40 @@ export default function AthleteDetailPage() {
   const p = isMobile ? '16px' : '20px'
   const maxW = 860
 
-  // Session list shown in Sessions tab
-  const visibleSessions = sessionsShowAll ? sessions : sessions.slice(0, 3)
+  /* What is on screen. An assistant has no Profile and no Activity (the
+   * routes refuse them too), so those two keys show them the More list
+   * instead of an empty page. */
+  const view: AthleteTab = isAssistant && (activeTab === 'profile' || activeTab === 'activity') ? 'more' : activeTab
+  const inMore = view === 'more' || view === 'calendar' || view === 'profile' || view === 'notes' || view === 'activity'
 
-  // Tab definitions
-  const TABS: { key: AthleteTab; label: string }[] = ([
-    { key: 'overview',  label: 'Overview' },
-    { key: 'sessions',  label: `Sessions${sessions.length > 0 ? ` (${sessions.length})` : ''}` },
-    { key: 'wellness',  label: 'Wellness' },
-    { key: 'calendar',  label: 'Calendar' },
-    { key: 'profile',   label: 'Profile' },
-    { key: 'notes',     label: 'Notes' },
-  ] as { key: AthleteTab; label: string }[]).filter((t) => !(isAssistant && t.key === 'profile'))
+  // The bar. Sessions carries no count: the scoreboard and the tab say it.
+  const TABS: { key: AthleteTab; label: string; on: boolean }[] = [
+    { key: 'overview', label: 'Overview', on: view === 'overview' },
+    { key: 'sessions', label: 'Sessions', on: view === 'sessions' },
+    { key: 'wellness', label: 'Wellness', on: view === 'wellness' },
+    { key: 'more',     label: 'More',     on: inMore },
+  ]
+
+  /* The alert, in one sentence. Said on the overview, where the alert email
+   * lands (lib/notify.ts links to this page with no tab), and again on the
+   * Wellness tab above the notify-parent card. */
+  const alertOn = wellnessAlert?.active === true
+  const alertSentence = !wellnessAlert || !alertOn ? ''
+    : wellnessAlert.reason === 'today' ? `Today's overall score is ${wellnessAlert.todayScore}/5.`
+    : wellnessAlert.reason === 'average' ? `${athlete?.first_name ?? 'Their'}${athlete ? "'s" : ''} 7-day average score is ${wellnessAlert.avgScore}/5.`
+    : wellnessAlert.reason === 'both' ? `Today's score (${wellnessAlert.todayScore}/5) and 7-day average (${wellnessAlert.avgScore}/5) are both low.`
+    : ''
+
+  /* The way back from a view behind More. */
+  const backToMore = (
+    <button
+      type="button"
+      onClick={() => setActiveTab('more')}
+      style={{ ...SEC_LINK, padding: 0, display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 6 }}
+    >
+      <Icon name="arrow-left" size={14} /> More
+    </button>
+  )
 
   // The coach's spine, drawn inside the scoreboard. The arithmetic is
   // lib/training-spine.ts — the same function the athlete's own spine uses.
@@ -1219,7 +1276,10 @@ export default function AthleteDetailPage() {
         backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
         borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100,
       }}>
-        <div style={{ maxWidth: maxW, margin: '0 auto', padding: `8px ${p}`, minHeight: 60, display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 12, rowGap: 8 }}>
+        {/* One row on a phone: back, who, record. The status and wellness
+            chips that made a second row are in the page now (the meta line and
+            the scoreboard), where they are said once. */}
+        <div style={{ maxWidth: maxW, margin: '0 auto', padding: `8px ${p}`, minHeight: 60, display: 'flex', alignItems: 'center', columnGap: 12 }}>
           <Link href="/dashboard?tab=athletes" aria-label="Back to your athletes" style={{
             ...CAST, fontSize: 'var(--t-furniture)', ...HIT,
             color: 'var(--text-2)', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -1232,11 +1292,14 @@ export default function AthleteDetailPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
                 {athlete.photo_signed_url ? (
                   <img src={athlete.photo_signed_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--border)' }} />
-                ) : (
+                ) : !isMobile ? (
+                  /* On a phone the stand-in initial is left out: it is the
+                     first letter of the name beside it, and its 42px are what
+                     lets a long surname wrap between words, not inside one. */
                   <div style={{ ...CAST, letterSpacing: '0.04em', fontWeight: 800, width: 32, height: 32, borderRadius: '50%', background: 'var(--primary)', color: 'var(--on-primary)', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     {(athlete.first_name?.[0] ?? '?').toUpperCase()}
                   </div>
-                )}
+                ) : null}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Wraps rather than ellipsising: a truncated name is the one
                       thing on this bar that must never happen. */}
@@ -1244,6 +1307,7 @@ export default function AthleteDetailPage() {
                       down a squad after training switches here instead of
                       going back to the roster each time. Still reads as the
                       name — same face, same size — plus a chevron. */}
+                  <h1 style={{ margin: 0, font: 'inherit', display: 'flex', minWidth: 0 }}>
                   <button
                     type="button"
                     onClick={() => setSwitcherOpen(true)}
@@ -1259,82 +1323,69 @@ export default function AthleteDetailPage() {
                     <span style={{ ...CAST, minWidth: 0, fontSize: 18, letterSpacing: '0.05em', lineHeight: 1.1, overflowWrap: 'break-word' }}>{athlete.first_name} {athlete.last_name}</span>
                     <span aria-hidden style={{ color: 'var(--text-2)', display: 'inline-flex' }}><Icon name="chevron-down" size={16} strokeWidth={2.4} /></span>
                   </button>
+                  </h1>
                   {!isMobile && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-muted)', marginTop: 3, overflowWrap: 'anywhere' }}>{athlete.email}</div>}
                 </div>
               </div>
 
-              <div style={isMobile
-                ? { flexBasis: '100%', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }
-                : { display: 'contents' }}>
-                {athlete.status && <StatusChip status={athlete.status} />}
-                {wellnessScore !== null && (
-                  <button
-                    onClick={() => setActiveTab('wellness')}
-                    title={`Latest wellness score: ${wellnessScore}/5`}
-                    aria-label={`Latest wellness score ${wellnessScore} out of 5 — open wellness`}
-                    style={{ ...HIT, display: 'flex', alignItems: 'center', flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                  >
-                    <span style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      background: wellnessTint, border: `1px solid ${wellnessColor}`,
-                      borderRadius: 99, padding: '3px 9px 3px 7px',
-                    }}>
-                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: wellnessColor, flexShrink: 0 }} />
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', fontWeight: 700, color: wellnessColor }}>{wellnessScore}</span>
-                    </span>
-                  </button>
-                )}
-                {/* Record Session CTA — outlined here, solid on the overview:
-                    the same action, never two floodlit slabs on one screen. */}
-                <button
-                  onClick={() => setShowQuickSession(true)}
-                  style={{
-                    ...CAST, fontSize: 14, letterSpacing: '0.1em', minHeight: 44,
-                    display: 'inline-flex', alignItems: 'center', gap: 7, flexShrink: 0, marginLeft: 'auto',
-                    padding: '0 14px', borderRadius: 12, cursor: 'pointer',
-                    border: '1.5px solid var(--flood)', color: 'var(--flood)',
-                    background: 'color-mix(in srgb, var(--flood) 10%, transparent)',
-                  }}
-                >
-                  <Icon name="mic" size={15} /> Record Session
-                </button>
-              </div>
+              {/* Record, from every tab. Outlined here and solid on the
+                  overview: the same action, never two floodlit slabs on one
+                  screen. A 44px mic on a phone; the words where there is room. */}
+              <button
+                onClick={() => setShowQuickSession(true)}
+                aria-label={`Record a session with ${athlete.first_name}`}
+                style={{
+                  ...CAST, fontSize: 14, letterSpacing: '0.1em', minHeight: 44, minWidth: 44,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, flexShrink: 0,
+                  padding: isMobile ? 0 : '0 14px', borderRadius: 12, cursor: 'pointer',
+                  border: '1.5px solid var(--flood)', color: 'var(--flood)',
+                  background: 'color-mix(in srgb, var(--flood) 10%, transparent)',
+                }}
+              >
+                <Icon name="mic" size={isMobile ? 18 : 15} /> {!isMobile && 'Record session'}
+              </button>
             </>
           )}
         </div>
 
-        {/* Tab bar. Three-by-two on a phone rather than a strip that scrolls
-            sideways: every section is visible without a swipe nobody finds. */}
+        {/* Tab bar. Four across, one row, nothing to swipe: Calendar, Notes,
+            Profile and Activity are behind More, which stays lit while you
+            are in any of them. */}
         {athlete && (
           <nav
             aria-label="Athlete sections"
             style={{
               maxWidth: maxW, margin: '0 auto', padding: `0 ${p}`, borderTop: '1px solid var(--border)',
               ...(isMobile
-                ? { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }
+                // Sized to their words and spread across the row: equal
+                // quarters gave "Overview" 72px at 320, which it does not fit.
+                ? { display: 'flex', justifyContent: 'space-between' }
                 : { display: 'flex', flexWrap: 'wrap' }),
             }}
           >
             {TABS.map(tab => {
-              const on = activeTab === tab.key
+              // An active alert is marked on the bar itself, so it is in view
+              // from every tab, not only the one that explains it.
+              const flagged = tab.key === 'wellness' && alertOn
               return (
                 <button
                   key={tab.key}
-                  aria-current={on ? 'page' : undefined}
-                  onClick={() => {
-                    setActiveTab(tab.key)
-                    if (tab.key === 'notes') void loadNotes()
-                  }}
+                  aria-current={tab.on ? 'page' : undefined}
+                  aria-label={flagged ? 'Wellness, needs attention' : undefined}
+                  onClick={() => setActiveTab(tab.key)}
                   style={{
-                    ...CAST, fontSize: 14, letterSpacing: '0.1em', lineHeight: 1.15,
-                    background: 'none', border: 'none', cursor: 'pointer', minWidth: 0, minHeight: 44,
-                    padding: isMobile ? '6px 4px' : '6px 14px', textAlign: 'center',
-                    color: on ? 'var(--text)' : 'var(--text-muted)',
-                    borderBottom: on ? '2px solid var(--flood)' : '2px solid transparent',
+                    ...CAST, fontSize: isMobile ? 'clamp(13px, 3.7vw, 14px)' : 14, letterSpacing: isMobile ? '0.04em' : '0.1em', lineHeight: 1.15,
+                    background: 'none', border: 'none', cursor: 'pointer', minWidth: 44, minHeight: 44,
+                    padding: isMobile ? '6px 4px' : '6px 14px', textAlign: 'center', position: 'relative',
+                    color: tab.on ? 'var(--text)' : 'var(--text-muted)',
+                    borderBottom: tab.on ? '2px solid var(--flood)' : '2px solid transparent',
                     transition: 'color 0.12s',
                   }}
                 >
                   {tab.label}
+                  {/* Above the word, not beside it: four labels share 288px on
+                      the narrowest phone and there is no room in the row. */}
+                  {flagged && <span aria-hidden style={{ position: 'absolute', top: 5, left: '50%', marginLeft: -4, width: 8, height: 8, borderRadius: '50%', background: 'var(--danger)' }} />}
                 </button>
               )
             })}
@@ -1343,7 +1394,7 @@ export default function AthleteDetailPage() {
       </header>
 
       <main style={{ maxWidth: maxW, margin: '0 auto', padding: `20px ${p}` }}>
-        {pageError && pageError !== 'no-athlete-record' && (
+        {pageError && (
           <div role="alert" style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', borderRadius: 12, padding: 14, color: 'var(--text)', fontWeight: 600, marginBottom: 20 }}>
             {pageError}
           </div>
@@ -1352,53 +1403,59 @@ export default function AthleteDetailPage() {
         {/* ══════════════════════════════════════
             TAB: OVERVIEW
         ══════════════════════════════════════ */}
-        {activeTab === 'overview' && athlete && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+        {view === 'overview' && athlete && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-            {/* ── Identity ── */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
-                  {athlete.photo_signed_url
-                    ? <img src={athlete.photo_signed_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <div style={{ ...CAST, letterSpacing: '0.04em', fontWeight: 800, fontSize: 20, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--primary)', color: 'var(--on-primary)' }}>
-                        {`${athlete.first_name?.[0] ?? '?'}${athlete.last_name?.[0] ?? ''}`.toUpperCase()}
-                      </div>}
-                </div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h1 style={{ ...CAST, margin: 0, fontSize: 'clamp(24px, 7vw, 32px)', letterSpacing: '0.03em', lineHeight: 1.02, color: 'var(--text)', overflowWrap: 'break-word' }}>
-                    {athlete.first_name} {athlete.last_name}
-                  </h1>
-                  {[athlete.sport, athlete.position, athlete.height].some(Boolean) && (
-                    <div style={{ ...CAST, fontSize: 'var(--t-furniture)', fontWeight: 600, letterSpacing: '0.15em', color: 'var(--text-2)', marginTop: 7, overflowWrap: 'break-word' }}>
-                      {[athlete.sport, athlete.position, athlete.height].filter(Boolean).join(' · ')}
-                    </div>
-                  )}
-                  {athlete.status && <div style={{ display: 'flex', marginTop: 9 }}><StatusChip status={athlete.status} /></div>}
-                </div>
+            {/* ── A wellness alert, first and loud ──
+                The alert email opens this page on this tab. One tap from here
+                to the notify-parent card. */}
+            {alertOn && (
+              <div role="alert">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('wellness')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 56, textAlign: 'left',
+                    padding: '12px 14px', borderRadius: 14, cursor: 'pointer', font: 'inherit', color: 'var(--text)',
+                    border: '1.5px solid var(--danger)', background: 'var(--danger-light)',
+                  }}
+                >
+                  <span aria-hidden style={{ fontSize: 20, flexShrink: 0 }}>⚠️</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', ...CAST, fontSize: 15, color: 'var(--danger)' }}>Wellness alert</span>
+                    <span style={{ display: 'block', fontSize: 'var(--t-body-tight)', lineHeight: 1.5, marginTop: 3, overflowWrap: 'anywhere' }}>
+                      {alertSentence} {isAssistant ? 'Tap to see the check-in.' : 'Tap to see it and notify a parent.'}
+                    </span>
+                  </span>
+                  <span aria-hidden style={{ flexShrink: 0, color: 'var(--danger)' }}><Icon name="arrow-right" size={18} /></span>
+                </button>
               </div>
+            )}
 
-              {/* The ticker: what used to be the Shared and Last tiles. */}
-              {sessions.length > 0 && (
-                <div style={{
-                  ...CAST, fontSize: 'var(--t-furniture)', fontWeight: 600, color: 'var(--text-2)',
-                  display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4,
-                  marginTop: 16, padding: '8px 0', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)',
-                }}>
-                  <span>Last <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, letterSpacing: '0.02em', color: 'var(--text)' }}>{formatSessionDate(sessions[0], { month: 'short', day: 'numeric' })}</span></span>
-                  <span aria-hidden style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--text-muted)' }} />
-                  <span>{sharedCount} shared</span>
-                  <span aria-hidden style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--text-muted)' }} />
-                  <span>{sessions.length - sharedCount} private</span>
-                </div>
-              )}
-            </div>
+            {/* ── Who, in one line. The name and photo are in the bar above. ── */}
+            {(athlete.status || [athlete.sport, athlete.position, athlete.height].some(Boolean)) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 6 }}>
+                {athlete.status && <StatusChip status={athlete.status} />}
+                {[athlete.sport, athlete.position, athlete.height].some(Boolean) && (
+                  <span style={{ ...CAST, fontSize: 'var(--t-furniture)', fontWeight: 600, letterSpacing: '0.15em', color: 'var(--text-2)', minWidth: 0, overflowWrap: 'anywhere' }}>
+                    {[athlete.sport, athlete.position, athlete.height].filter(Boolean).join(' · ')}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* ── Availability ──
+                First, and above wellness on purpose: soreness is a number that
+                varies by the day, an injury is a decision that governs the
+                session the coach is about to plan. One line when nothing is
+                logged; full size the moment something is. */}
+            <InjuryPanel athleteId={athleteId} athleteName={athlete.first_name} />
 
             {/* ── The scoreboard ──
                 One enormous number, and it is a count of turning up — the
                 sessions this coach and this athlete have done together — not a
                 score. Beside it, the one figure that governs today. */}
+            <div>
             <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0, 1.32fr) minmax(0, 1fr)', gap: 9 }}>
               <div aria-hidden style={{
                 position: 'absolute', inset: '-10px 8px -10px 12px', pointerEvents: 'none', zIndex: 0,
@@ -1443,7 +1500,7 @@ export default function AthleteDetailPage() {
                 )}
               </button>
 
-              <button onClick={() => setActiveTab('wellness')} style={{ ...CELL, cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <button onClick={() => setActiveTab('wellness')} style={{ ...CELL, ...(alertOn ? { border: '1.5px solid var(--danger)' } : {}), cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <span style={{ display: 'block' }}>
                   <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 36, lineHeight: 1, letterSpacing: '-0.045em', color: wellnessScore !== null ? wellnessColor : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>
                     {wellnessScore ?? '—'}
@@ -1481,75 +1538,25 @@ export default function AthleteDetailPage() {
               </button>
             </div>
 
-            {/* ── Availability ──
-                Above wellness on purpose: soreness is a number that varies by
-                the day, an injury is a decision that governs the session the
-                coach is about to plan. */}
-            <InjuryPanel athleteId={athleteId} athleteName={athlete.first_name} />
-
-            {/* ── Wellness, metric by metric ── */}
-            <div>
-              <SecHead title="Wellness">
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, marginLeft: 'auto' }}>
-                  {wellnessLatest && (
-                    <span style={{ whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: wellnessAlert?.active ? 'var(--danger)' : 'var(--text-2)', fontWeight: wellnessAlert?.active ? 700 : 500 }}>
-                      {wellnessAlert?.active ? 'Needs attention' : `Checked in ${fmtShortDate(wellnessLatest.check_date)}`}
-                    </span>
-                  )}
-                  <button onClick={() => setActiveTab('wellness')} style={SEC_LINK}>Details →</button>
-                </span>
-              </SecHead>
-
-              <div
-                style={{
-                  cursor: 'pointer', paddingTop: 12, borderTop: '1px solid var(--border)',
-                  ...(wellnessAlert?.active ? { borderLeft: '2px solid var(--danger)', paddingLeft: 12 } : {}),
-                }}
-                onClick={() => setActiveTab('wellness')}
-              >
-                {wellnessLatest ? (
-                  /* One small bar per metric — comparable at a glance, which
-                     a row of coloured dots and numbers never was. */
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(74px, 1fr))', gap: 10 }}>
-                    {WELLNESS_METRICS.map(({ key, label }) => {
-                      const score = wellnessLatest[key]
-                      const pct = score ? (score / 5) * 100 : 0
-                      return (
-                        <div key={key} style={{ minWidth: 0 }}>
-                          <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
-                            <div style={{ width: `${pct}%`, height: '100%', background: metricColor(key, score), borderRadius: 2 }} />
-                          </div>
-                          <div style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.06em', color: 'var(--text-2)', marginTop: 8 }}>
-                            {label}
-                          </div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-body)', fontWeight: 500, color: 'var(--text)', marginTop: 3 }}>{score ?? '—'}</div>
-                        </div>
-                      )
-                    })}
-                    {(() => {
-                      // In words, what the bars above say is low. A two-tap
-                      // check-in derives three of these bars from one answer,
-                      // so for it this names what the athlete actually said.
-                      const driver = wellnessDriver(wellnessLatest, regionLabel)
-                      return driver ? (
-                        <div style={{ gridColumn: '1 / -1', fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
-                          <span style={{ color: 'var(--text)', fontWeight: 600 }}>Low:</span> {driver.full}
-                        </div>
-                      ) : null
-                    })()}
+              {/* Under the figure, in words: when they last checked in and what
+                  pulled the score down. The five bars this used to sit under
+                  are on the Wellness tab, one tap on the figure above; they
+                  were the third copy of the score on this screen. */}
+              {wellnessLatest ? (() => {
+                const driver = wellnessDriver(wellnessLatest, regionLabel)
+                return (
+                  <div style={{ marginTop: 10, fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                    Checked in {fmtShortDate(wellnessLatest.check_date)}
+                    {driver && <> · <span style={{ color: 'var(--text)', fontWeight: 600 }}>Low:</span> {driver.full}</>}
                   </div>
-                ) : wellnessUnavailable ? (
-                  <div role="alert" style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text)', lineHeight: 1.55 }}>
-                    ⚠ Could not read {athlete.first_name}&rsquo;s check-ins just now. This is a
-                    connection problem, <strong>not</strong> a sign they have stopped checking in.
-                    Refresh to try again.
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', lineHeight: 1.55 }}>
-                    No check-ins yet — {athlete.first_name} hasn&rsquo;t submitted one from their portal.
-                  </div>
-                )}
-              </div>
+                )
+              })() : wellnessUnavailable ? (
+                <div role="alert" style={{ marginTop: 10, fontSize: 'var(--t-body-tight)', color: 'var(--text)', lineHeight: 1.55 }}>
+                  ⚠ Could not read {athlete.first_name}&rsquo;s check-ins just now. This is a
+                  connection problem, <strong>not</strong> a sign they have stopped checking in.
+                  Refresh to try again.
+                </div>
+              ) : null}
             </div>
 
             {/* ── The one thing you came here to do, aimed at them by name ── */}
@@ -1584,13 +1591,19 @@ export default function AthleteDetailPage() {
             </button>
 
             {/* ── Sessions: the reason to open an athlete at all, each one
-                   carrying what the athlete said back. ── */}
+                   carrying what the athlete said back. The summary is one tap
+                   in, whole, rather than three clipped lines of it here. ── */}
             <div>
               <SecHead title="Sessions">
-                {sessions.length > 3 && (
-                  <button onClick={() => setActiveTab('sessions')} style={SEC_LINK}>
-                    All {sessions.length} →
-                  </button>
+                {sessions.length > 0 && (
+                  <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 4, marginLeft: 'auto', minWidth: 0 }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)' }}>
+                      {sharedCount} shared · {sessions.length - sharedCount} private
+                    </span>
+                    {sessions.length > 3 && (
+                      <button onClick={() => setActiveTab('sessions')} style={SEC_LINK}>All →</button>
+                    )}
+                  </span>
                 )}
               </SecHead>
 
@@ -1605,7 +1618,7 @@ export default function AthleteDetailPage() {
                     return (
                       <Link key={s.id} href={`/sessions/${s.id}`} style={{
                         display: 'grid', gridTemplateColumns: '42px minmax(0, 1fr)', gap: 12, alignItems: 'start',
-                        padding: '13px 0', borderTop: '1px solid var(--border)', textDecoration: 'none', color: 'inherit',
+                        padding: '12px 0', borderTop: '1px solid var(--border)', textDecoration: 'none', color: 'inherit',
                       }}>
                         <span style={{ display: 'block' }}>
                           <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 24, lineHeight: 0.95, letterSpacing: '-0.04em', color: 'var(--text)' }}>
@@ -1619,16 +1632,11 @@ export default function AthleteDetailPage() {
                           <span style={{ display: 'block', ...CAST, fontSize: 17, letterSpacing: '0.04em', lineHeight: 1.1, color: 'var(--text)', overflowWrap: 'anywhere' }}>
                             {s.session_name ?? 'Coaching session'}
                           </span>
-                          {s.summary && (
-                            <span style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 'var(--t-body)', color: 'var(--text-2)', marginTop: 6, lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-                              {s.summary}
-                            </span>
-                          )}
                           {(reply || !s.shared_with_athlete) && (
-                            <span style={{ display: 'flex', marginTop: 9 }}>
+                            <span style={{ display: 'flex', marginTop: 8 }}>
                               {reply
                                 ? <Chip color={reply.color} tint={reply.tint} label={`${athlete.first_name} replied: ${reply.coachLabel}`}>{reply.coachLabel}</Chip>
-                                : <Chip color="var(--text-2)" label={`Private — not shared with ${athlete.first_name}`}>Private</Chip>}
+                                : <Chip color="var(--text-2)" label={`Private, not shared with ${athlete.first_name}`}>Private</Chip>}
                             </span>
                           )}
                         </span>
@@ -1639,35 +1647,35 @@ export default function AthleteDetailPage() {
               )}
             </div>
 
-            {/* ── Coach-only mirrors: what you keep repeating to them, and how
-                   they have been replying. Computed in lib/insights.ts. ── */}
-            {!isAssistant && <CoachInsights athleteId={athleteId} athleteName={athlete.first_name ?? ''} />}
-
-            {/* ── Activity: when this athlete opened what you shared
-                   (lib/access-log.ts). Coach-only; your own views are not
-                   recorded. ── */}
-            {!isAssistant && <AccessLog athleteId={athleteId} firstName={athlete.first_name ?? ''} />}
-
-            {/* ── Goals ── */}
-            {athlete.goals && (
-              <div>
-                <SecHead title="Goals" />
-                <div style={{ borderLeft: '2px solid var(--coach-on-light)', paddingLeft: 14, fontSize: 'var(--t-body)', lineHeight: 1.65, color: 'var(--text)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'var(--font-display)' }}>
-                  {athlete.goals}
-                </div>
+            {/* ── Read now and then, so one line each until asked for ──
+                The coach-only mirrors (what you keep repeating to them, how
+                they have been replying: lib/insights.ts) and their goals.
+                Goals stay here and not only under Profile: an assistant has
+                no Profile. */}
+            {(!isAssistant || athlete.goals) && (
+              <div style={{ borderBottom: '1px solid var(--border)' }}>
+                {!isAssistant && <CoachInsights athleteId={athleteId} athleteName={athlete.first_name ?? ''} />}
+                {athlete.goals && (() => {
+                  const lines = athlete.goals.split('\n').filter(l => l.trim()).length
+                  return (
+                    <Disclosure label="Goals" summary={`${lines} line${lines === 1 ? '' : 's'}`}>
+                      <div style={{ borderLeft: '2px solid var(--coach-on-light)', paddingLeft: 14, fontSize: 'var(--t-body)', lineHeight: 1.65, color: 'var(--text)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'var(--font-display)' }}>
+                        {athlete.goals}
+                      </div>
+                    </Disclosure>
+                  )
+                })()}
               </div>
             )}
 
-            {/* ── Secondary actions ── */}
+            {/* ── Secondary actions. Notes, Calendar, Profile and Activity
+                   are under More. ── */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 2 }}>
               <Link href={`/dashboard?tab=messages&athlete=${athleteId}`} className="btn btn-ghost" style={{ ...CAST, gap: 7, fontSize: 'var(--t-furniture)', minHeight: 44 }}>
                 <Icon name="messages" size={14} /> Message
               </Link>
               <button className="btn btn-ghost" style={{ ...CAST, gap: 7, fontSize: 'var(--t-furniture)', minHeight: 44 }} onClick={() => window.open(`/pdf/monthly/${athleteId}`, '_blank')}>
                 <Icon name="report" size={14} /> Monthly report
-              </button>
-              <button className="btn btn-ghost" style={{ ...CAST, gap: 7, fontSize: 'var(--t-furniture)', minHeight: 44 }} onClick={() => { setActiveTab('notes'); void loadNotes() }}>
-                <Icon name="report" size={14} /> Notes
               </button>
             </div>
           </div>
@@ -1676,16 +1684,12 @@ export default function AthleteDetailPage() {
         {/* ══════════════════════════════════════
             TAB: SESSIONS
         ══════════════════════════════════════ */}
-        {activeTab === 'sessions' && (
+        {view === 'sessions' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+            {/* Record is in the bar above, on every tab. */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, minHeight: 44, marginBottom: 8 }}>
               <h2 style={{ ...EYEBROW, fontSize: 17, letterSpacing: '0.14em', color: 'var(--text)' }}>Session History</h2>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)' }}>{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
-                <button className="btn" style={{ ...RECORD_SOLID, fontSize: 14, minHeight: 44, padding: '0 16px', gap: 6 }} onClick={() => setShowQuickSession(true)}>
-                  <Icon name="mic" size={14} /> Record
-                </button>
-              </div>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)' }}>{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
             </div>
 
             {sessions.length === 0 ? (
@@ -1697,62 +1701,63 @@ export default function AthleteDetailPage() {
                 </button>
               </div>
             ) : (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {visibleSessions.map(s => {
-                    const isOpen = openSessionId === s.id
-                    const sVideos = sessionVideos[s.id] ?? []
+              /* Every session, one line each. It used to be the newest three
+                 (the same three as the overview) behind a "Show all" button,
+                 each with four buttons under it. A closed card is now a name,
+                 a date and whether it is shared; everything else is inside. */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {sessions.map(s => {
+                  // Held open while its uploader has a clip waiting, sending
+                  // or failed: that must never be behind a closed row.
+                  const isOpen = openSessionId === s.id || uploaderActive[s.id] === true
+                  const sVideos = sessionVideos[s.id] ?? []
+                  const vState = videoState[s.id]
+                  const words = s.transcript ? s.transcript.trim().split(/\s+/).filter(Boolean).length : 0
 
-                    return (
-                      <div key={s.id} className="card" style={{ overflow: 'hidden' }}>
-                        <button
-                          onClick={() => openSession(s.id)}
-                          aria-expanded={isOpen}
-                          style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, color: 'inherit', font: 'inherit' }}
-                        >
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            {/* Wraps: a session's name is never cut to fit. */}
-                            <div style={{ ...CAST, fontSize: 17, letterSpacing: '0.04em', lineHeight: 1.15, color: 'var(--text)', overflowWrap: 'anywhere' }}>
-                              {s.session_name ?? 'Session'}
-                            </div>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', marginTop: 4 }}>
-                              {formatSessionDate(s, { year: 'numeric', month: 'short', day: '2-digit' })}
-                              {sVideos.length > 0 && ` · ${sVideos.length} video${sVideos.length > 1 ? 's' : ''}`}
-                            </div>
+                  return (
+                    <div key={s.id} className="card" style={{ overflow: 'hidden' }}>
+                      <button
+                        onClick={() => openSession(s.id)}
+                        aria-expanded={isOpen}
+                        style={{ width: '100%', minHeight: 56, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, color: 'inherit', font: 'inherit' }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {/* Wraps: a session's name is never cut to fit. */}
+                          <div style={{ ...CAST, fontSize: 17, letterSpacing: '0.04em', lineHeight: 1.15, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+                            {s.session_name ?? 'Session'}
                           </div>
-                          {s.shared_with_athlete
-                            ? <Chip color="var(--primary)">Shared</Chip>
-                            : <Chip color="var(--text-2)">Private</Chip>}
-                          <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
-                            <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} />
-                          </span>
-                        </button>
-
-                        <div style={{ display: 'flex', gap: 6, padding: '0 12px 12px', flexWrap: 'wrap' }}>
-                          <button className="btn btn-ghost" onClick={() => toggleShare(s.id, s.shared_with_athlete)} style={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44 }}>
-                            <Icon name="share" size={13} /> {s.shared_with_athlete ? 'Unshare' : 'Share'}
-                          </button>
-                          <Link href={`/sessions/${s.id}`} className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44, textDecoration: 'none' }}>
-                            <Icon name="arrow-right" size={13} /> Open
-                          </Link>
-                          <button className="btn btn-ghost" onClick={() => window.open(`/pdf/session/${s.id}`, '_blank')} style={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44 }}>
-                            <Icon name="pdf" size={13} /> PDF
-                          </button>
-                          {/* One clip or several. The list of what was picked sits
-                              under these buttons, on its own line of this row. */}
-                          <VideoUploader<SessionVideo>
-                            sessionId={s.id}
-                            onSaved={(video) => videoSaved(s.id, video)}
-                            onOpen={() => { if (!isOpen) openSession(s.id) }}
-                            label="Videos"
-                            icon={<Icon name="video" size={13} />}
-                            buttonClassName="btn btn-ghost"
-                            buttonStyle={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44 }}
-                          />
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text-2)', marginTop: 4 }}>
+                            {formatSessionDate(s, { year: 'numeric', month: 'short', day: '2-digit' })}
+                            {sVideos.length > 0 && ` · ${sVideos.length} video${sVideos.length > 1 ? 's' : ''}`}
+                          </div>
                         </div>
+                        {s.shared_with_athlete
+                          ? <Chip color="var(--primary)">Shared</Chip>
+                          : <Chip color="var(--text-2)">Private</Chip>}
+                        <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
+                          <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} />
+                        </span>
+                      </button>
 
+                      {/* Always mounted, only hidden while the card is closed:
+                          the uploader inside finishes interrupted uploads when
+                          it mounts and holds its own queue, so it cannot live
+                          and die with the card. No `display` on this element:
+                          an inline one would beat `hidden`. */}
+                      <div hidden={!isOpen} style={{ padding: '0 14px 16px', borderTop: '1px solid var(--border)' }}>
                         {isOpen && (
-                          <div style={{ padding: '0 16px 18px', borderTop: '1px solid var(--border)' }}>
+                          <>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
+                              <button className="btn btn-ghost" onClick={() => toggleShare(s.id, s.shared_with_athlete)} style={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44 }}>
+                                <Icon name="share" size={13} /> {s.shared_with_athlete ? 'Unshare' : 'Share'}
+                              </button>
+                              <Link href={`/sessions/${s.id}`} className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44, textDecoration: 'none' }}>
+                                <Icon name="arrow-right" size={13} /> Open
+                              </Link>
+                              <button className="btn btn-ghost" onClick={() => window.open(`/pdf/session/${s.id}`, '_blank')} style={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44 }}>
+                                <Icon name="pdf" size={13} /> PDF
+                              </button>
+                            </div>
                             {s.audio_path && (
                               <div style={{ marginTop: 14 }}>
                                 <div style={{ ...EYEBROW, marginBottom: 6 }}>Recording</div>
@@ -1771,54 +1776,87 @@ export default function AthleteDetailPage() {
                               </p>
                             )}
                             {s.transcript && (
-                              <details style={{ marginTop: 12 }}>
-                                <summary style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.16em', color: 'var(--primary)', cursor: 'pointer', padding: '12px 0', minHeight: 44 }}>Full transcript</summary>
-                                <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.7, color: 'var(--text-2)', marginTop: 8, padding: '12px 14px', background: 'var(--surface-2)', borderRadius: 10, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{s.transcript}</div>
-                              </details>
-                            )}
-                            {sVideos.length > 0 && (
-                              <div style={{ marginTop: 16 }}>
-                                <div style={{ ...EYEBROW, marginBottom: 10 }}>Videos & Annotations ({sVideos.length})</div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                                  {sVideos.map(v => v.signedUrl && (
-                                    <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 6 }}>
-                                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text)', minWidth: 0, overflowWrap: 'anywhere' }}>{v.file_name ?? 'Video'}</span>
-                                        <div style={{ display: 'flex', gap: 6 }}>
-                                          <button className="btn btn-ghost" onClick={() => toggleVideoShare(s.id, v.id, v.shared_with_athlete)} style={{ padding: '4px 12px', fontSize: 'var(--t-furniture)', gap: 5, minHeight: 44 }}>
-                                            <Icon name="share" size={12} /> {v.shared_with_athlete ? 'Shared' : 'Share'}
-                                          </button>
-                                          <button className="btn btn-danger" onClick={() => deleteVideo(s.id, v.id)} style={{ padding: '4px 12px', fontSize: 'var(--t-furniture)', gap: 5, minHeight: 44 }}>
-                                            <Icon name="trash" size={12} /> Delete
-                                          </button>
-                                        </div>
-                                      </div>
-                                      <div style={{ padding: 14 }}>
-                                        <VideoAnnotator videoUrl={v.signedUrl} initialAnnotations={v.annotations ?? []} onAnnotationsChange={strokes => saveAnnotations(s.id, v.id, strokes)} sessionId={s.id} videoId={v.id} />
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
+                              <div style={{ marginTop: 12, borderBottom: '1px solid var(--border)' }}>
+                                <Disclosure label="Full transcript" summary={`${words} word${words === 1 ? '' : 's'}`}>
+                                  <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.7, color: 'var(--text-2)', padding: '12px 14px', background: 'var(--surface-2)', borderRadius: 10, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{s.transcript}</div>
+                                </Disclosure>
                               </div>
                             )}
-                          </div>
+                          </>
                         )}
-                      </div>
-                    )
-                  })}
-                </div>
 
-                {sessions.length > 3 && (
-                  <button
-                    className="btn btn-ghost"
-                    style={{ ...CAST, fontSize: 'var(--t-furniture)', width: '100%', marginTop: 10, justifyContent: 'center', gap: 6, minHeight: 44 }}
-                    onClick={() => setSessionsShowAll(v => !v)}
-                  >
-                    <Icon name={sessionsShowAll ? 'chevron-up' : 'chevron-down'} size={14} />
-                    {sessionsShowAll ? 'Show less' : `Show all ${sessions.length} sessions`}
-                  </button>
-                )}
-              </>
+                        {/* ── Videos: small stills, three across; one opens
+                               full width under its row (VideoGrid). ── */}
+                        <div style={{ marginTop: 14 }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 10, marginBottom: 8 }}>
+                            <div style={EYEBROW}>Videos{vState === 'ready' ? ` (${sVideos.length})` : ''}</div>
+                            {/* One clip or several. What was picked is listed
+                                under this heading, on its own line of this row. */}
+                            <VideoUploader<SessionVideo>
+                              sessionId={s.id}
+                              onSaved={(video) => videoSaved(s.id, video)}
+                              onOpen={() => { if (openSessionId !== s.id) openSession(s.id) }}
+                              onActivity={(active) => {
+                                setUploaderActive(prev => ((prev[s.id] === true) === active ? prev : { ...prev, [s.id]: active }))
+                                // Held open by the uploader rather than by a tap: read its videos too.
+                                if (active) void loadVideos(s.id)
+                              }}
+                              label="Add videos"
+                              icon={<Icon name="video" size={13} />}
+                              buttonClassName="btn btn-ghost"
+                              buttonStyle={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44 }}
+                            />
+                          </div>
+                          {isOpen && (
+                            vState === 'error' ? (
+                              <div role="alert" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text)' }}>
+                                <span style={{ flex: '1 1 180px', minWidth: 0 }}>Could not load this session&rsquo;s videos. They are not gone.</span>
+                                <button className="btn btn-ghost" onClick={() => void loadVideos(s.id)} style={{ fontSize: 'var(--t-furniture)', minHeight: 44 }}>Try again</button>
+                              </div>
+                            ) : vState !== 'ready' && sVideos.length === 0 ? (
+                              <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>Loading videos…</div>
+                            ) : sVideos.length === 0 ? (
+                              <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text-2)' }}>No videos on this session yet.</div>
+                            ) : (
+                              <VideoGrid
+                                videos={sVideos}
+                                openId={sVideos.some(v => v.id === openVideoId) ? openVideoId : null}
+                                onOpen={setOpenVideoId}
+                                marks={(v) => (v.shared_with_athlete ? [{ text: 'Shared', tone: 'on' }] : [])}
+                                renderOpen={(v) => (
+                                  <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', minWidth: 0 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 6 }}>
+                                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', color: 'var(--text)', flex: '1 1 140px', minWidth: 0, overflowWrap: 'anywhere' }}>{v.file_name ?? 'Video'}</span>
+                                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                        <button className="btn btn-ghost" aria-pressed={v.shared_with_athlete} onClick={() => toggleVideoShare(s.id, v.id, v.shared_with_athlete)} style={{ padding: '4px 12px', fontSize: 'var(--t-furniture)', gap: 5, minHeight: 44 }}>
+                                          <Icon name="share" size={12} /> {v.shared_with_athlete ? 'Shared' : 'Share'}
+                                        </button>
+                                        <button className="btn btn-danger" onClick={() => deleteVideo(s.id, v.id)} style={{ padding: '4px 12px', fontSize: 'var(--t-furniture)', gap: 5, minHeight: 44 }}>
+                                          <Icon name="trash" size={12} /> Delete
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div style={{ padding: 12 }}>
+                                      {v.signedUrl ? (
+                                        <VideoAnnotator videoUrl={v.signedUrl} initialAnnotations={v.annotations ?? []} onAnnotationsChange={strokes => saveAnnotations(s.id, v.id, strokes)} sessionId={s.id} videoId={v.id} />
+                                      ) : (
+                                        // It used to be left off the list with no word. It is on file; only its link failed.
+                                        <div role="alert" style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text)' }}>
+                                          This video could not be opened just now. It is still saved. Refresh to try again.
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              />
+                            )
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
         )}
@@ -1826,18 +1864,16 @@ export default function AthleteDetailPage() {
         {/* ══════════════════════════════════════
             TAB: WELLNESS
         ══════════════════════════════════════ */}
-        {activeTab === 'wellness' && athlete && (
+        {view === 'wellness' && athlete && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {wellnessAlert?.active && (
+            {alertOn && wellnessAlert && (
               <div className="card" role="alert" style={{ padding: 16, border: '1.5px solid var(--danger)', background: 'var(--danger-light)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span aria-hidden style={{ fontSize: 18 }}>⚠️</span>
                   <h2 style={{ ...EYEBROW, fontSize: 15, letterSpacing: '0.16em', color: 'var(--danger)' }}>Wellness alert</h2>
                 </div>
                 <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text)', marginBottom: 12 }}>
-                  {wellnessAlert.reason === 'today' && `Today's overall score is ${wellnessAlert.todayScore}/5.`}
-                  {wellnessAlert.reason === 'average' && `${athlete.first_name}'s 7-day average score is ${wellnessAlert.avgScore}/5.`}
-                  {wellnessAlert.reason === 'both' && `Today's score (${wellnessAlert.todayScore}/5) and 7-day average (${wellnessAlert.avgScore}/5) are both low.`}
+                  {alertSentence}
                   {isAssistant ? '' : ' You can loop in a parent or caretaker below.'}
                 </div>
                 {isAssistant ? (
@@ -1860,7 +1896,7 @@ export default function AthleteDetailPage() {
                   {wellnessAlertRecipients(alertCaretakers).length > 0 && (
                     <select
                       className="input"
-                      style={{ fontSize: 'var(--t-body-tight)', width: 'auto', maxWidth: '100%', minWidth: 0, minHeight: 44 }}
+                      style={{ width: 'auto', maxWidth: '100%', minWidth: 0, minHeight: 44 }}
                       value={alertSendTo}
                       onChange={e => setAlertSendTo(e.target.value)}
                     >
@@ -1871,7 +1907,7 @@ export default function AthleteDetailPage() {
                     </select>
                   )}
                   <input
-                    className="input" type="email" style={{ fontSize: 'var(--t-body-tight)', width: 'auto', flex: '1 1 240px', maxWidth: '100%', minWidth: 0, minHeight: 44 }}
+                    className="input" type="email" style={{ width: 'auto', flex: '1 1 240px', maxWidth: '100%', minWidth: 0, minHeight: 44 }}
                     placeholder="or type a parent's email"
                     value={alertSendTo}
                     onChange={e => setAlertSendTo(e.target.value)}
@@ -1920,7 +1956,9 @@ export default function AthleteDetailPage() {
         {/* ══════════════════════════════════════
             TAB: CALENDAR
         ══════════════════════════════════════ */}
-        {activeTab === 'calendar' && athlete && (
+        {view === 'calendar' && athlete && (
+          <div>
+          {backToMore}
           <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
             <h2 style={{ ...EYEBROW, fontSize: 17, letterSpacing: '0.14em', color: 'var(--text)', marginBottom: 6 }}>
               {athlete.first_name}&rsquo;s calendar
@@ -2044,7 +2082,7 @@ export default function AthleteDetailPage() {
                     value={upcomingForm.title}
                     onChange={(e) => setUpcomingForm({ ...upcomingForm, title: e.target.value })}
                   />
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', cursor: 'pointer', lineHeight: 1.45 }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minHeight: 44, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', cursor: 'pointer', lineHeight: 1.45 }}>
                     <input
                       type="checkbox" checked={upcomingForm.requestCheckin}
                       onChange={(e) => setUpcomingForm({ ...upcomingForm, requestCheckin: e.target.checked })}
@@ -2075,12 +2113,15 @@ export default function AthleteDetailPage() {
               onMonthChange={setCalMonth}
             />
           </div>
+          </div>
         )}
 
         {/* ══════════════════════════════════════
             TAB: PROFILE
         ══════════════════════════════════════ */}
-        {activeTab === 'profile' && athlete && !isAssistant && (
+        {view === 'profile' && athlete && !isAssistant && (
+          <div>
+          {backToMore}
           <div className="card" style={{ padding: isMobile ? 16 : 24 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 16 }}>
               <h2 style={{ ...EYEBROW, fontSize: 17, letterSpacing: '0.14em', color: 'var(--text)' }}>
@@ -2153,17 +2194,16 @@ export default function AthleteDetailPage() {
                       {Object.entries(profileForm.sport_metrics).map(([k, v]) => (
                         <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           <span style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.1em', color: 'var(--text-2)', flex: '0 1 auto', minWidth: 0, maxWidth: '40%', padding: '6px 10px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', overflowWrap: 'anywhere' }}>{k}</span>
-                          <input className="input" style={{ flex: 1, minWidth: 0, fontSize: 13 }} value={v} onChange={e => setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [k]: e.target.value } }))} />
+                          <input className="input" style={{ flex: 1, minWidth: 0 }} value={v} onChange={e => setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [k]: e.target.value } }))} />
                           <button aria-label={`Remove ${k}`} onClick={() => setProfileForm(f => { const m = { ...f.sport_metrics }; delete m[k]; return { ...f, sport_metrics: m } })} style={{ ...HIT, background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 20, padding: 0, flexShrink: 0 }}>×</button>
                         </div>
                       ))}
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      <input className="input" style={{ flex: '1 1 210px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Metric (e.g. 40m Sprint)" value={metricKey} onChange={e => setMetricKey(e.target.value)} />
-                      <input className="input" style={{ flex: '1 1 160px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. 5.2s)" value={metricVal} onChange={e => setMetricVal(e.target.value)} />
+                      <input className="input" style={{ flex: '1 1 210px', minWidth: 0 }} placeholder="Metric (e.g. 40m Sprint)" value={metricKey} onChange={e => setMetricKey(e.target.value)} />
+                      <input className="input" style={{ flex: '1 1 160px', minWidth: 0 }} placeholder="Value (e.g. 5.2s)" value={metricVal} onChange={e => setMetricVal(e.target.value)} />
                       <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', flexShrink: 0, minHeight: 44 }} onClick={() => { if (!metricKey.trim()) return; setProfileForm(f => ({ ...f, sport_metrics: { ...f.sport_metrics, [metricKey.trim()]: metricVal.trim() } })); setMetricKey(''); setMetricVal('') }}>+ Add</button>
                     </div>
-                    <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.45 }}>Added rows are saved when you tap Save profile.</div>
                   </div>
 
                   {/* Custom fields */}
@@ -2172,21 +2212,21 @@ export default function AthleteDetailPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                       {profileForm.custom_fields.map((cf, i) => (
                         <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                          <input className="input" style={{ flex: '1 1 110px', minWidth: 0, fontSize: 'var(--t-body-tight)', fontWeight: 700 }} value={cf.label} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} />
-                          <input className="input" style={{ flex: '2 1 160px', minWidth: 0, fontSize: 13 }} value={cf.value} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, value: e.target.value } : x) }))} />
+                          <input className="input" style={{ flex: '1 1 110px', minWidth: 0, fontWeight: 700 }} value={cf.label} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} />
+                          <input className="input" style={{ flex: '2 1 160px', minWidth: 0 }} value={cf.value} onChange={e => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.map((x, j) => j === i ? { ...x, value: e.target.value } : x) }))} />
                           <button aria-label={`Remove ${cf.label || 'this field'}`} onClick={() => setProfileForm(f => ({ ...f, custom_fields: f.custom_fields.filter((_, j) => j !== i) }))} style={{ ...HIT, background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 20, padding: 0, flexShrink: 0 }}>×</button>
                         </div>
                       ))}
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      <input className="input" style={{ flex: '1 1 150px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Label (e.g. Club)" value={customLabel} onChange={e => setCustomLabel(e.target.value)} />
-                      <input className="input" style={{ flex: '2 1 190px', minWidth: 0, fontSize: 'var(--t-body-tight)' }} placeholder="Value (e.g. City FC)" value={customVal} onChange={e => setCustomVal(e.target.value)} />
+                      <input className="input" style={{ flex: '1 1 150px', minWidth: 0 }} placeholder="Label (e.g. Club)" value={customLabel} onChange={e => setCustomLabel(e.target.value)} />
+                      <input className="input" style={{ flex: '2 1 190px', minWidth: 0 }} placeholder="Value (e.g. City FC)" value={customVal} onChange={e => setCustomVal(e.target.value)} />
                       <button className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', flexShrink: 0, minHeight: 44 }} onClick={() => { if (!customLabel.trim()) return; setProfileForm(f => ({ ...f, custom_fields: [...f.custom_fields, { label: customLabel.trim(), value: customVal.trim() }] })); setCustomLabel(''); setCustomVal('') }}>+ Add</button>
                     </div>
-                    <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.45 }}>Added rows are saved when you tap Save profile.</div>
                   </div>
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                  <div style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)', lineHeight: 1.45 }}>Added rows are saved when you tap Save profile.</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
                     <button className="btn btn-primary" style={{ minHeight: 44 }} onClick={saveProfile} disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save profile'}</button>
                     <button className="btn btn-ghost" style={{ minHeight: 44 }} onClick={cancelProfileEdit} disabled={profileSaving}>Cancel</button>
                   </div>
@@ -2229,6 +2269,9 @@ export default function AthleteDetailPage() {
                     return (<>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 14 }}>
                         {field('Name', `${athlete.first_name ?? ''} ${athlete.last_name ?? ''}`.trim())}
+                        {/* The bar shows it on a wide screen only; on a phone
+                            this is the one place it is written. */}
+                        {field('Email', athlete.email)}
                         {field('Sport', athlete.sport)}
                         {field('Position / Role', athlete.position)}
                         {field('Height', athleteHeight(athlete))}
@@ -2247,71 +2290,93 @@ export default function AthleteDetailPage() {
                 </div>
                 )}
 
-                {/* Caretakers toggle */}
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 4 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <h3 style={EYEBROW}>Caretakers</h3>
-                    <button className="btn btn-ghost" aria-expanded={showCaretakers} style={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', minHeight: 44 }} onClick={() => setShowCaretakers(v => !v)}>
-                      {showCaretakers ? 'Hide' : 'Manage'}
-                    </button>
-                  </div>
-                  {showCaretakers && (
+                {/* Caretakers: set up once, so one row until asked for. The
+                    row says how many are saved, and opens itself if a save,
+                    a removal or a test email fails inside it. */}
+                <div style={{ borderBottom: '1px solid var(--border)', marginTop: 4 }}>
+                  <Disclosure
+                    label="Caretakers"
+                    summary={caretakersUnavailable ? 'Could not load'
+                      : !caretakersRead ? 'Checking…'
+                      : alertCaretakers.length === 0 ? 'None saved'
+                      : `${alertCaretakers.length} saved`}
+                    open={caretakersOpen
+                      || (caretakerMsg !== '' && !caretakerMsg.startsWith('Saved'))
+                      || (emailMsg !== '' && !emailMsg.startsWith('Test sent'))}
+                    onToggle={setCaretakersOpen}
+                  >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <div className="card" style={{ padding: 14 }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minHeight: 44 }}>
-                          <input type="checkbox" style={{ accentColor: 'var(--primary)', flexShrink: 0 }} checked={autoMonthlyReport} onChange={async e => {
-                            const next = e.target.checked; setAutoMonthlyReport(next)
-                            try {
-                              await apiMutate(`/api/athletes/${athleteId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_monthly_report: next }) })
-                            } catch (err: unknown) {
-                              setAutoMonthlyReport(!next)   // put the switch back — the change didn't save
-                              setActionError(errorMessage(err, 'Could not save that setting'))
-                            }
-                          }} />
-                          <div>
-                            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Auto Monthly Report</div>
-                            <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>Send monthly progress report to caretakers</div>
-                          </div>
-                        </label>
-                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minHeight: 44 }}>
+                        <input type="checkbox" style={{ accentColor: 'var(--primary)', flexShrink: 0 }} checked={autoMonthlyReport} onChange={async e => {
+                          const next = e.target.checked; setAutoMonthlyReport(next)
+                          try {
+                            await apiMutate(`/api/athletes/${athleteId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_monthly_report: next }) })
+                          } catch (err: unknown) {
+                            setAutoMonthlyReport(!next)   // put the switch back — the change didn't save
+                            setActionError(errorMessage(err, 'Could not save that setting'))
+                          }
+                        }} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Auto Monthly Report</div>
+                          <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>Send monthly progress report to caretakers</div>
+                        </div>
+                      </label>
                       <CaretakerPanel athleteId={athleteId} athleteName={`${athlete.first_name} ${athlete.last_name}`} caretakers={caretakers} setCaretakers={setCaretakersEverywhere} form={caretakerForm} setForm={setCaretakerForm} saving={caretakerSaving} setSaving={setCaretakerSaving} msg={caretakerMsg} setMsg={setCaretakerMsg} emailSending={emailSending} setEmailSending={setEmailSending} emailMsg={emailMsg} setEmailMsg={setEmailMsg} />
                     </div>
-                  )}
+                  </Disclosure>
                 </div>
               </div>
             </div>
+          </div>
           </div>
         )}
 
         {/* ══════════════════════════════════════
             TAB: NOTES
         ══════════════════════════════════════ */}
-        {activeTab === 'notes' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* New note form */}
-            <div className="card" style={{ padding: isMobile ? 16 : 20 }}>
-              <h2 style={{ ...EYEBROW, marginBottom: 12 }}>Add Coach Note</h2>
-              <textarea
-                className="input"
-                rows={4}
-                placeholder="Private coaching notes — observations, plans, reminders…"
-                value={noteText}
-                onChange={e => setNoteText(e.target.value)}
-                style={{ marginBottom: 10 }}
-              />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        {view === 'notes' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* The list is what a coach comes here to read, so it is first.
+                The form is one tap, behind "+ Add note". */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              {athlete ? backToMore : <span />}
+              {!noteFormOpen && (
+                <button className="btn btn-coach" style={{ minHeight: 44 }} onClick={() => { setNoteMsg(''); setNoteFormOpen(true) }}>
+                  + Add note
+                </button>
+              )}
+            </div>
+            {noteMsg && !noteFormOpen && (
+              <div role="status" style={{ fontSize: 'var(--t-body-tight)', fontWeight: 600, color: noteMsg.includes('saved') ? 'var(--success)' : 'var(--danger)' }}>{noteMsg}</div>
+            )}
+
+            {noteFormOpen && (
+              <div className="card" style={{ padding: isMobile ? 16 : 20 }}>
+                <h2 style={{ ...EYEBROW, marginBottom: 12 }}>Add Coach Note</h2>
+                <textarea
+                  className="input"
+                  rows={4}
+                  placeholder="Private coaching notes: observations, plans, reminders…"
+                  value={noteText}
+                  onChange={e => setNoteText(e.target.value)}
+                  style={{ marginBottom: 10 }}
+                />
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', cursor: 'pointer', minHeight: 44 }}>
                   <input type="checkbox" checked={noteShared} onChange={e => setNoteShared(e.target.checked)} style={{ accentColor: 'var(--primary)' }} />
                   Share with athlete
                 </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {noteMsg && <span style={{ fontSize: 13, fontWeight: 600, color: noteMsg.includes('saved') ? 'var(--success)' : 'var(--danger)' }}>{noteMsg}</span>}
+                {noteMsg && <div role="alert" style={{ fontSize: 'var(--t-body-tight)', fontWeight: 600, color: 'var(--danger)', marginBottom: 8, overflowWrap: 'anywhere' }}>{noteMsg}</div>}
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                   <button className="btn btn-coach" style={{ minHeight: 44 }} onClick={saveNote} disabled={noteSaving || !noteText.trim()}>
                     {noteSaving ? 'Saving…' : 'Save Note'}
                   </button>
+                  {/* What was typed is kept, so Cancel loses nothing. */}
+                  <button className="btn btn-ghost" style={{ minHeight: 44 }} onClick={() => { setNoteMsg(''); setNoteFormOpen(false) }} disabled={noteSaving}>
+                    Cancel
+                  </button>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Notes list */}
             {/* Error outranks the list: a note saved after a failed read is
@@ -2322,7 +2387,7 @@ export default function AthleteDetailPage() {
                 error={notesState === 'error' ? notesError : null}
                 isEmpty={notes.length === 0}
                 emptyTitle="No notes yet."
-                emptyHint="Add your first coaching note above."
+                emptyHint="Tap Add note to write the first one."
                 loadingLabel="Loading notes…"
                 onRetry={() => void loadNotes(true)}
               />
@@ -2344,6 +2409,57 @@ export default function AthleteDetailPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════
+            TAB: MORE
+            The things a coach opens now and then, one row each. Every row
+            leads to a view that already existed; nothing here is new, and
+            nothing was dropped to make the bar shorter.
+        ══════════════════════════════════════ */}
+        {view === 'more' && athlete && (
+          <div style={{ borderBottom: '1px solid var(--border)' }}>
+            {([
+              { key: 'calendar', label: 'Calendar', hint: `Upcoming sessions with ${athlete.first_name}, and the check-in before them` },
+              { key: 'notes', label: 'Notes', hint: notesState === 'ready' ? `${notes.length} note${notes.length === 1 ? '' : 's'} on ${athlete.first_name}` : `Your notes on ${athlete.first_name}` },
+              // Head coach only, as before: the routes refuse an assistant too.
+              ...(isAssistant ? [] : [
+                { key: 'profile', label: 'Profile and caretakers', hint: 'Photo, sport, goals, metrics, parents and reports to them' },
+                { key: 'activity', label: 'Activity', hint: `When ${athlete.first_name} opened what you shared` },
+              ]),
+            ] as { key: AthleteTab; label: string; hint: string }[]).map((row, idx) => (
+              <button
+                key={row.key}
+                type="button"
+                onClick={() => setActiveTab(row.key)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 60, minWidth: 0,
+                  padding: '10px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  color: 'var(--text)', font: 'inherit',
+                  borderTop: idx === 0 ? 'none' : '1px solid var(--border)',
+                }}
+              >
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', ...CAST, fontSize: 17, letterSpacing: '0.06em', lineHeight: 1.15, overflowWrap: 'anywhere' }}>{row.label}</span>
+                  <span style={{ display: 'block', fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-2)', marginTop: 3, overflowWrap: 'anywhere' }}>{row.hint}</span>
+                </span>
+                <span aria-hidden style={{ flexShrink: 0, color: 'var(--text-2)' }}><Icon name="arrow-right" size={18} /></span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════
+            TAB: ACTIVITY
+            When this athlete opened what you shared (lib/access-log.ts).
+            Head coach only; your own views are not recorded. It was twenty
+            rows at the foot of the overview, read on every visit or not.
+        ══════════════════════════════════════ */}
+        {view === 'activity' && athlete && !isAssistant && (
+          <div>
+            {backToMore}
+            <AccessLog athleteId={athleteId} firstName={athlete.first_name ?? ''} />
           </div>
         )}
 

@@ -2,11 +2,10 @@
 
 import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import Calendar, { type CalendarEvent } from '@/app/components/Calendar'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
-import AthleteClipUpload from '@/app/components/AthleteClipUpload'
+import AthleteClipUpload, { type ClipStatus } from '@/app/components/AthleteClipUpload'
 import CheckIn from '@/app/components/CheckIn'
 import { currentMonth, toMonthStr } from '@/lib/calendar-month'
 import { markAppReady } from '@/lib/boot-shell'
@@ -38,6 +37,9 @@ import { buildDigest, isDigestDay, trainingToday, formatEventTime, takeawayPlace
 import TakeawayReminder from '@/app/components/TakeawayReminder'
 import AthleteDigest, { DigestLink } from '@/app/components/AthleteDigest'
 import ReinstallNudge from '@/app/components/ReinstallNudge'
+import Disclosure from '@/app/components/Disclosure'
+import VideoGrid from '@/app/components/VideoGrid'
+import { previewSrc } from '@/lib/video-preview'
 
 type Tab = 'home' | 'sessions' | 'calendar' | 'notes' | 'messages' | 'wellness'
 
@@ -206,7 +208,7 @@ const SN_CSS = `
 
 /* Home */
 .ah-home{display:flex;flex-direction:column;gap:20px;max-width:620px}
-.ah-hello h1{margin:0;font-family:var(--font-display);font-weight:400;font-size:var(--fs-6);line-height:1.06;letter-spacing:-.6px;color:var(--text)}
+.ah-hello h1{margin:0;font-family:var(--font-display);font-weight:400;font-size:24px;line-height:1.15;letter-spacing:-.3px;color:var(--text);overflow-wrap:anywhere}
 .ah-hello h1 em{font-style:italic;font-weight:500}
 .ah-hello p{margin:8px 0 0;font-size:var(--fs-2);line-height:1.5;color:var(--text-2)}
 
@@ -219,7 +221,10 @@ const SN_CSS = `
 
 /* The check-in card: today's readiness over the twelve-week spine */
 .ah-ci{padding:14px 16px 15px}
-.ah-ci-beam{position:absolute;top:-40px;right:-58px;width:150px;height:150px;pointer-events:none;
+/* The beam is a pseudo-element, not a child: it hangs past the card's edge on
+   purpose (the card clips it), and a real element out there reads as content
+   wider than the screen to anything that measures the page. */
+.ah-ci::before{content:'';position:absolute;top:-40px;right:-58px;width:150px;height:150px;pointer-events:none;
   background:linear-gradient(180deg,rgba(168,203,160,0.13),rgba(168,203,160,0));transform:skewX(-20deg)}
 .ah-ci-top{position:relative;display:flex;align-items:center;gap:8px}
 /* Hero and metrics sit side by side where the metrics keep 180px, and stack
@@ -231,7 +236,6 @@ const SN_CSS = `
   color:var(--text);font-variant-numeric:tabular-nums;margin-left:-3px}
 .ah-score .of{font-size:17px;letter-spacing:0;color:var(--text-2);margin-left:2px}
 .ah-score-lbl{font-family:var(--font-cast);font-weight:700;font-size:13px;letter-spacing:.2em;color:var(--text-2);margin-top:10px;text-transform:uppercase}
-.ah-score-say{font-family:var(--font-cast);font-weight:700;font-size:15px;letter-spacing:.12em;color:var(--primary);margin-top:4px;text-transform:uppercase}
 /* One grid, not five rows: the label column is as wide as the longest label
    (SORENESS, in full) and every track shares the one remaining column, so an
    equal score draws an equal bar. minmax(0,1fr), never a bare 1fr. */
@@ -246,7 +250,7 @@ const SN_CSS = `
 .ah-ci-go{position:relative;width:100%;min-height:46px;margin-top:14px}
 .ah-ci-note{position:relative;margin-top:10px;font-size:13px;line-height:1.5;color:var(--text-2);text-align:center}
 
-.ah-spine{position:relative;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.ah-spine{position:relative;margin:0 0 12px}
 .ah-bars{display:flex;align-items:flex-end;gap:4px;height:26px}
 .ah-bars i{flex:1;border-radius:2px;background:var(--primary);opacity:.62}
 .ah-bars i.zero{background:var(--line-2);opacity:1}
@@ -298,14 +302,14 @@ const SN_CSS = `
   font-family:var(--font-cast);font-weight:700;font-size:13px;letter-spacing:.14em;color:var(--primary);text-transform:uppercase}
 .ah-audio{display:inline-flex;align-items:center;gap:5px;color:var(--ember);font-family:var(--font-cast);font-weight:800;font-size:13px;letter-spacing:.14em;text-transform:uppercase}
 
-/* The two sessions before it: hairline rows, the record rather than the news */
-.ah-row{display:block;padding:14px 2px;border-bottom:1px solid var(--line);text-decoration:none;color:inherit}
-.ah-row-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.ah-row-title{margin-top:5px;font-family:var(--font-cast);font-weight:700;font-size:18px;line-height:1.12;letter-spacing:.03em;
+/* The two sessions before it: one row each, date and title. The full nod is
+   one tap away; a clamped excerpt here was an ellipsis on the coach's words. */
+.ah-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:10px 2px;border-bottom:1px solid var(--line);text-decoration:none;color:inherit}
+.ah-row-main{flex:1 1 auto;min-width:0}
+.ah-row-top{display:flex;align-items:center;gap:4px 10px;flex-wrap:wrap;margin-top:4px}
+.ah-row-title{font-family:var(--font-cast);font-weight:700;font-size:17px;line-height:1.15;letter-spacing:.03em;
   color:var(--text);text-transform:uppercase;overflow-wrap:anywhere}
-.ah-row-sum{margin-top:6px;font-family:var(--font-display);font-size:var(--t-body);line-height:1.5;color:var(--text-2);
-  overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
-.ah-row-go{margin-top:8px;font-family:var(--font-cast);font-weight:700;font-size:13px;letter-spacing:.14em;color:var(--primary);text-transform:uppercase}
+.ah-row-go{flex:none;font-size:16px;line-height:1;color:var(--primary)}
 
 .ah-note{width:100%;min-height:52px;padding:12px 14px;border-radius:14px;border:1px dashed var(--line-2);background:transparent;cursor:pointer;
   display:flex;align-items:center;gap:10px;color:var(--text-2);font-family:var(--font-sans);font-size:var(--fs-2);font-weight:600;text-align:left}
@@ -538,7 +542,6 @@ export default function AthletePage() {
     const t = new URLSearchParams(window.location.search).get('tab')
     return t === 'sessions' || t === 'calendar' || t === 'notes' || t === 'messages' || t === 'wellness' ? t : 'home'
   })
-  const mainRef = useRef<HTMLElement>(null)
 
   // Scroll to top whenever tab changes.
   //
@@ -571,10 +574,20 @@ export default function AthletePage() {
   // Sessions
   const [sessions, setSessions] = useState<SessionRow[]>([])
   const [openSession, setOpenSession] = useState<string | null>(null)
+  // The coach's video that is open in a session's grid (VideoGrid shows one).
+  const [openVideo, setOpenVideo] = useState<string | null>(null)
+  // "Clips for your coach" is a closed row on the Sessions tab. It opens when
+  // tapped, and by itself while the uploader has something to show (a picked
+  // clip, a send in progress, an error, "Sent").
+  const [clipsOpen, setClipsOpen] = useState(false)
+  const [clipStatus, setClipStatus] = useState<ClipStatus>({ count: null, replied: 0, active: false })
+  // The private-notes row inside the open session.
+  const [sessionNotesOpen, setSessionNotesOpen] = useState<string | null>(null)
+  // Home's newest nod: the three reply chips fold to one line once answered.
+  const [replyChanging, setReplyChanging] = useState(false)
 
   // Notes
   const [notes, setNotes] = useState<AthleteNote[]>([])
-  const [notesLoading, setNotesLoading] = useState(false)
   const [noteFilter, setNoteFilter] = useState<string | null>(null) // session_id or null for all
   const [noteText, setNoteText] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
@@ -1562,7 +1575,7 @@ export default function AthletePage() {
       {/* 20px gutter. The bottom pad clears the floating nav — 64px tall,
           10px up from the edge or the safe area — plus room for the last row
           to sit above the veil rather than under it. */}
-      <main ref={mainRef} style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '14px 20px' : '24px 20px', paddingBottom: isMobile ? 'calc(112px + env(safe-area-inset-bottom))' : 40 }}>
+      <main style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '14px 20px' : '24px 20px', paddingBottom: isMobile ? 'calc(112px + env(safe-area-inset-bottom))' : 40 }}>
         <div className="ah-ticker">
           <span className="num">
             {new Date().toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '')}
@@ -1576,6 +1589,23 @@ export default function AthletePage() {
             </>
           )}
         </div>
+
+        {/* The page itself did not load. `error` was set for this and read by
+            nothing: the athlete got an empty home that said "Nothing from your
+            coach yet". Fixed words, never the browser's own. */}
+        {error && error !== 'no-athlete-record' && (
+          <div role="alert" style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', borderRadius: 14, padding: '14px 16px', marginBottom: 20 }}>
+            <div style={{ fontSize: 'var(--fs-4)', fontWeight: 700, color: 'var(--text)', lineHeight: 1.35 }}>
+              Pindar could not load your page.
+            </div>
+            <p style={{ margin: '4px 0 12px', fontSize: 'var(--fs-3)', lineHeight: 1.5, color: 'var(--text)' }}>
+              Check your connection and try again. Nothing you have sent is lost.
+            </p>
+            <button className="btn btn-primary" onClick={() => { void loadPortal() }} style={{ minHeight: 44 }}>
+              Try again
+            </button>
+          </div>
+        )}
 
         {/* No athlete record — show join form */}
         {error === 'no-athlete-record' && !joinedCoach && (
@@ -1647,19 +1677,19 @@ export default function AthletePage() {
             {/* iPhones installed as CoachVoice: once, how to get the new icon. */}
             <ReinstallNudge />
 
-            {/* ── Greeting ── */}
+            {/* ── Greeting ──
+                One line. The second line is only for the two things nothing
+                else on this tab says: the sessions did not load, or there are
+                none yet. The count of sessions is on "All N" below. */}
             <div className="ah-hello">
               <h1>
-                Welcome back,<br/>
-                <em>{athleteName.split(' ')[0] || 'Athlete'}.</em>
+                Welcome back, <em>{athleteName.split(' ')[0] || 'Athlete'}.</em>
               </h1>
-              <p>
-                {sessionsError
-                  ? 'Your sessions did not load.'
-                  : sessions.length === 0
-                  ? 'Nothing from your coach yet.'
-                  : `${sessions.length} session${sessions.length !== 1 ? 's' : ''} from your coach`}
-              </p>
+              {(sessionsError || sessions.length === 0) && !(error && error !== 'no-athlete-record') && (
+                <p>
+                  {sessionsError ? 'Your sessions did not load.' : 'Nothing from your coach yet.'}
+                </p>
+              )}
             </div>
 
             {/* ── Today: remember — ──
@@ -1684,7 +1714,6 @@ export default function AthletePage() {
                 anyone else's. */}
             {athleteId && (
               <section className="ah-panel ah-ci" aria-label="Today’s check-in">
-                <div className="ah-ci-beam" aria-hidden />
                 {todayWellness ? (() => {
                   // What she answered on the two-tap form, in its own words.
                   // Absent on rows from the old five-slider form.
@@ -1794,40 +1823,6 @@ export default function AthletePage() {
                   </>
                 )}
 
-                {/* ── Training rhythm ──
-                    Twelve weeks of work, so the athlete can see it
-                    accumulating. The arithmetic is lib/training-spine.ts — the
-                    same buildSpine the coach's profile draws — and the
-                    same rules: nothing under three sessions, no streak, no
-                    average, and the athlete is never told the gap since the
-                    last session. The only lit bar is this week, because it is
-                    now, not because it is big. */}
-                {spine.total >= SPINE_MIN_SESSIONS && (() => {
-                  const peak = Math.max(...spine.weeks, 1)
-                  const sentence =
-                    `${spine.total} session${spine.total === 1 ? '' : 's'} over ${SPINE_WEEKS} weeks` +
-                    (spine.thisWeek > 0 ? ` · ${spine.thisWeek} this week` : '')
-                  return (
-                    <div className="ah-spine">
-                      <div className="ah-bars" role="img" aria-label={`Training rhythm. ${sentence}.`}>
-                        {spine.weeks.map((n, i) => (
-                          <i
-                            key={i}
-                            className={i === spine.weeks.length - 1 ? 'now' : n > 0 ? undefined : 'zero'}
-                            style={{ height: Math.max(3, Math.round((n / peak) * 26)) }}
-                          />
-                        ))}
-                      </div>
-                      {/* Numerals in mono: Big Shoulders' 1 is a bare stem, and
-                          "12 weeks" set in it reads as "I2 weeks". */}
-                      <div className="ah-spine-cap" aria-hidden>
-                        Training rhythm · <span className="num">{spine.total}</span> session{spine.total === 1 ? '' : 's'} over{' '}
-                        <span className="num">{SPINE_WEEKS}</span> weeks
-                        {spine.thisWeek > 0 && <> · <span className="num">{spine.thisWeek}</span> this week</>}
-                      </div>
-                    </div>
-                  )
-                })()}
               </section>
             )}
 
@@ -1884,19 +1879,17 @@ export default function AthletePage() {
 
             {/* ── The week, looked back on ──
                 Shows by itself Sunday to Tuesday (lib/digest.ts) until hidden
-                for the week; every other day, and after hiding, it is one tap
-                away on the "Last week" row. A recap, so it sits under today's
-                check-in and availability and above the coach's latest words. */}
-            {athleteId && (digestAuto || digestOpen ? (
+                for the week, here, under today's check-in and availability.
+                Every other day, and after hiding, it is the "Last week" row at
+                the bottom of the tab and opens in place there. */}
+            {athleteId && digestAuto && !digestOpen && (
               <AthleteDigest
                 digest={digest}
-                mode={digestOpen ? 'opened' : 'auto'}
+                mode="auto"
                 onDismiss={hideDigest}
                 onClose={() => setDigestOpen(false)}
               />
-            ) : (
-              <DigestLink digest={digest} onOpen={() => setDigestOpen(true)} />
-            ))}
+            )}
 
             {/* ── From your coach ──
                 This is the reason the app exists. The newest session is set as
@@ -1972,39 +1965,64 @@ export default function AthletePage() {
                           session. Only on the newest session — a list of old
                           sessions each asking to be rated is homework, and the
                           point of this is that it costs ten seconds once. */}
-                      {takeawayWhere !== 'top' && (
+                      {takeawayWhere !== 'top' && (() => {
+                        // Once answered, one line and a way to change it, the
+                        // same shape as TakeawayReminder: three 46px chips that
+                        // have already been used were a quarter of a screen.
+                        const said = responseOption(s.athlete_response)
+                        const showChips = !said || replyChanging
+                        return (
                       <div className="ah-reply" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
-                        <div className="ah-eyebrow">
-                          {s.athlete_response ? 'You told your coach' : 'Tell your coach'}
-                        </div>
-                        <div className="ah-chips">
-                          {SESSION_RESPONSES.map((opt) => {
-                            const on = s.athlete_response === opt.value
-                            return (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                className="ah-chip"
-                                aria-pressed={on}
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); void respondToSession(s.id, opt.value) }}
-                              >
-                                <i aria-hidden>
-                                  {on && (
-                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="5 12.5 10 17.5 19 7" /></svg>
-                                  )}
-                                </i>
-                                {opt.label}
-                              </button>
-                            )
-                          })}
-                        </div>
-                        <p>
-                          {s.athlete_response
-                            ? 'Your coach can see this. Tap again to undo.'
-                            : 'One tap. Your coach sees which one you picked, and nothing else.'}
-                        </p>
+                        {said && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0 12px' }}>
+                            <span style={{ flex: '1 1 160px', minWidth: 0, fontSize: 'var(--fs-3)', color: 'var(--text)', overflowWrap: 'anywhere' }}>
+                              You told your coach: <strong>{said.label}</strong>
+                            </span>
+                            <button
+                              type="button"
+                              className="ah-link lit"
+                              aria-expanded={replyChanging}
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setReplyChanging((v) => !v) }}
+                              style={{ minHeight: 44, minWidth: 44, padding: '0 4px' }}
+                            >
+                              {replyChanging ? 'Done' : 'Change'}
+                            </button>
+                          </div>
+                        )}
+                        {showChips && (
+                          <>
+                            {!said && <div className="ah-eyebrow">Tell your coach</div>}
+                            <div className="ah-chips">
+                              {SESSION_RESPONSES.map((opt) => {
+                                const on = s.athlete_response === opt.value
+                                return (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    className="ah-chip"
+                                    aria-pressed={on}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setReplyChanging(false); void respondToSession(s.id, opt.value) }}
+                                  >
+                                    <i aria-hidden>
+                                      {on && (
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="5 12.5 10 17.5 19 7" /></svg>
+                                      )}
+                                    </i>
+                                    {opt.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <p>
+                              {said
+                                ? 'Your coach can see this. Tap it again to undo.'
+                                : 'One tap. Your coach sees which one you picked, and nothing else.'}
+                            </p>
+                          </>
+                        )}
                       </div>
-                      )}
+                        )
+                      })()}
 
                       <div className="ah-d-foot">
                         {s.audio_path && (
@@ -2023,20 +2041,19 @@ export default function AthletePage() {
                   <div style={{ marginTop: 6 }}>
                     {sessions.slice(1, 3).map((s) => (
                       <a key={s.id} href={`/sessions/${s.id}`} className="ah-row">
-                        <div className="ah-row-top">
-                          <span className="ah-when">{formatSessionDate(s)}</span>
-                          {s.audio_path && (
-                            <span className="ah-audio" style={{ marginLeft: 'auto' }}>
-                              <AthleteIcon name="mic" size={14} strokeWidth={2.4} />
-                              Audio
-                            </span>
-                          )}
-                        </div>
-                        <div className="ah-row-title">{s.session_name ?? s.title ?? 'Coaching session'}</div>
-                        {s.summary && (
-                          <div className="ah-row-sum">{s.summary.replace(/^[•\s]+/, '')}</div>
-                        )}
-                        <div className="ah-row-go">Read session →</div>
+                        <span className="ah-row-main">
+                          <span className="ah-row-title" style={{ display: 'block' }}>{s.session_name ?? s.title ?? 'Coaching session'}</span>
+                          <span className="ah-row-top">
+                            <span className="ah-when">{formatSessionDate(s)}</span>
+                            {s.audio_path && (
+                              <span className="ah-audio">
+                                <AthleteIcon name="mic" size={14} strokeWidth={2.4} />
+                                Audio
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                        <span className="ah-row-go" aria-hidden>→</span>
                       </a>
                     ))}
                   </div>
@@ -2044,19 +2061,37 @@ export default function AthletePage() {
               </section>
             )}
 
-            {/* ── Private notes ── */}
-            <button className="ah-note" onClick={() => setTab('notes')}>
-              <span style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', flexShrink: 0 }}>
-                <AthleteIcon name="pencil" size={14} strokeWidth={2} />
-              </span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                Add a private note
-                {notes.length > 0 && <span style={{ color: 'var(--text-2)', fontWeight: 500 }}> · {notes.length} saved</span>}
-              </span>
-              <span className="ah-audio" style={{ flexShrink: 0 }}>
-                <AthleteIcon name="mic" size={14} strokeWidth={2.4} /> Voice
-              </span>
-            </button>
+            {/* ── The quiet rows: last week, and notes ──
+                Both are looked at now and then, so each is one row. The notes
+                row is the only way to the Notes tab on a phone, and that tab
+                also holds what the coach shared, so it says so. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+              {athleteId && !digestAuto && !digestOpen && (
+                <DigestLink digest={digest} onOpen={() => setDigestOpen(true)} />
+              )}
+              {athleteId && digestOpen && (
+                <AthleteDigest
+                  digest={digest}
+                  mode="opened"
+                  onDismiss={hideDigest}
+                  onClose={() => setDigestOpen(false)}
+                />
+              )}
+              <button className="ah-note" onClick={() => setTab('notes')}>
+                <span style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', flexShrink: 0 }}>
+                  <AthleteIcon name="pencil" size={14} strokeWidth={2} />
+                </span>
+                <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+                  Notes
+                  <span style={{ display: 'block', color: 'var(--text-2)', fontWeight: 500 }}>
+                    From your coach, and your own{notes.length > 0 ? ` (${notes.length} saved)` : ''}
+                  </span>
+                </span>
+                <span className="ah-audio" style={{ flexShrink: 0 }}>
+                  <AthleteIcon name="mic" size={14} strokeWidth={2.4} /> Voice
+                </span>
+              </button>
+            </div>
 
           </div>
         )}
@@ -2064,33 +2099,95 @@ export default function AthletePage() {
         {/* ─── Tab: Sessions ─── */}
         {tab === 'sessions' && (
           <div>
-            {/* Clips for the coach — the athlete's one way to send video the
-                other way. A general clip here; a clip about one session is
-                sent from inside that session below. */}
-            {athleteId && (
-              <div className="ah-panel" style={{ padding: '14px 16px', marginBottom: 16, minWidth: 0 }}>
-                <div className="ah-sec" style={{ margin: '0 0 10px' }}><h2>Clips for your coach</h2></div>
-                <AthleteClipUpload athleteId={athleteId} />
-              </div>
-            )}
             {/* The newest session used to be repeated in a hero card directly
                 above the list that starts with it. Home surfaces what's new;
                 this tab is the full record, so it's just the record. */}
             {sessions.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 12, gap: '4px 10px' }}>
                 <div className="ah-sec" style={{ margin: 0 }}><h2>Nods from your coach</h2></div>
-                <div className="ah-eyebrow" style={{ letterSpacing: '0.14em' }}>
-                  <span className="num">{sessions.length}</span> session{sessions.length !== 1 ? 's' : ''}
-                </div>
+                {/* The count, unless the training-rhythm line right below is
+                    about to say the same number (every session is inside its
+                    twelve weeks). When they differ, both are shown. */}
+                {(spine.total < SPINE_MIN_SESSIONS || spine.total !== sessions.length) && (
+                  <div className="ah-eyebrow" style={{ letterSpacing: '0.14em' }}>
+                    <span className="num">{sessions.length}</span> session{sessions.length !== 1 ? 's' : ''}
+                  </div>
+                )}
               </div>
             )}
+
+            {/* ── Training rhythm ──
+                Twelve weeks of work, so the athlete can see it accumulating.
+                It sat inside the check-in card on Today; it is about sessions,
+                so it heads the list of them. The arithmetic is
+                lib/training-spine.ts — the same buildSpine the coach's profile
+                draws — and the same rules: nothing under three sessions, no
+                streak, no average, and the athlete is never told the gap since
+                the last session. The only lit bar is this week, because it is
+                now, not because it is big. */}
+            {spine.total >= SPINE_MIN_SESSIONS && (() => {
+              const peak = Math.max(...spine.weeks, 1)
+              const sentence =
+                `${spine.total} session${spine.total === 1 ? '' : 's'} over ${SPINE_WEEKS} weeks` +
+                (spine.thisWeek > 0 ? ` · ${spine.thisWeek} this week` : '')
+              return (
+                <div className="ah-spine">
+                  <div className="ah-bars" role="img" aria-label={`Training rhythm. ${sentence}.`}>
+                    {spine.weeks.map((n, i) => (
+                      <i
+                        key={i}
+                        className={i === spine.weeks.length - 1 ? 'now' : n > 0 ? undefined : 'zero'}
+                        style={{ height: Math.max(3, Math.round((n / peak) * 26)) }}
+                      />
+                    ))}
+                  </div>
+                  {/* Numerals in mono: Big Shoulders' 1 is a bare stem, and
+                      "12 weeks" set in it reads as "I2 weeks". */}
+                  <div className="ah-spine-cap" aria-hidden>
+                    Training rhythm · <span className="num">{spine.total}</span> session{spine.total === 1 ? '' : 's'} over{' '}
+                    <span className="num">{SPINE_WEEKS}</span> weeks
+                    {spine.thisWeek > 0 && <> · <span className="num">{spine.thisWeek}</span> this week</>}
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Said plainly, because it is true: opening a session is logged
                 for the coach (lib/access-log.ts). A young athlete should not
-                find that out later. */}
+                find that out later. Never folded away. */}
             {sessions.length > 0 && (
               <p style={{ margin: '0 0 12px', fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--text-2)' }}>
                 Your coach can see when you&apos;ve opened a session, so they know it reached you.
               </p>
+            )}
+
+            {/* Clips for the coach — the athlete's one way to send video the
+                other way. A general clip here; a clip about one session is
+                sent from inside that session below.
+
+                One closed row: it is used now and then, and it used to sit
+                open above every session with its whole list. The label and
+                the tab stay exactly as they are, because the message the
+                coach's reply writes into the thread names both
+                (app/api/athletes/[id]/videos/route.ts). The uploader stays
+                mounted while closed, and the row opens itself while there is
+                a picked clip, a send in progress, an error or "Sent". */}
+            {athleteId && (
+              <div className="ah-panel" style={{ padding: '0 16px', marginBottom: 16, minWidth: 0 }}>
+                <Disclosure
+                  flush
+                  label="Clips for your coach"
+                  summary={
+                    clipStatus.count === null ? 'Send a clip'
+                    : clipStatus.count === 0 ? 'None sent yet'
+                    : `${clipStatus.count} sent${clipStatus.replied > 0 ? ` · ${clipStatus.replied} marked up` : ''}`
+                  }
+                  open={clipsOpen || clipStatus.active}
+                  onToggle={setClipsOpen}
+                >
+                  <AthleteClipUpload athleteId={athleteId} onStatus={setClipStatus} />
+                </Disclosure>
+              </div>
             )}
 
             {sessionsError ? (
@@ -2119,6 +2216,7 @@ export default function AthletePage() {
                   const isOpen = openSession === s.id
                   const sNotes = notes.filter((n) => n.session_id === s.id)
                   const sVideos = sessionVideos[s.id] ?? []
+                  const coachVideos = sVideos.filter((v) => v.uploaded_by_role !== 'athlete')
 
                   return (
                     <div key={s.id} className="ah-panel">
@@ -2194,17 +2292,6 @@ export default function AthletePage() {
                             </svg>
                           </a>
 
-                          {/* Recording from the session */}
-                          {s.audio_path && (
-                            <div style={{ marginTop: 16 }}>
-                              <div className="ah-eyebrow" style={{ color: 'var(--coach-on-light)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--coach-on-light)', display: 'inline-block' }} />
-                                Recording
-                              </div>
-                              <SessionAudioPlayer sessionId={s.id} mime={s.audio_mime ?? null} />
-                            </div>
-                          )}
-
                           {/* Coach summary */}
                           {s.summary && (
                             <div style={{ marginTop: 16 }}>
@@ -2215,6 +2302,17 @@ export default function AthletePage() {
                               <div className="coach-summary" style={{ whiteSpace: 'pre-wrap' }}>
                                 {s.summary}
                               </div>
+                            </div>
+                          )}
+
+                          {/* Recording from the session */}
+                          {s.audio_path && (
+                            <div style={{ marginTop: 16 }}>
+                              <div className="ah-eyebrow" style={{ color: 'var(--coach-on-light)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--coach-on-light)', display: 'inline-block' }} />
+                                Recording
+                              </div>
+                              <SessionAudioPlayer sessionId={s.id} mime={s.audio_mime ?? null} />
                             </div>
                           )}
 
@@ -2230,30 +2328,44 @@ export default function AthletePage() {
                               with them.
                             </div>
                           ) : (
-                            <details style={{ marginTop: 12 }} onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) void loadTranscript(s.id) }}>
-                              <summary style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text-2)', cursor: 'pointer', padding: '12px 0', minHeight: 44 }}>
-                                View full transcript
-                              </summary>
-                              <div style={{ fontSize: 'var(--fs-3)', lineHeight: 1.7, color: 'var(--text-2)', marginTop: 8, padding: '12px 14px', background: 'var(--border-soft)', borderRadius: 8, whiteSpace: 'pre-wrap' }}>
-                                {transcriptBusy === s.id
-                                  ? 'Loading…'
-                                  : transcripts[s.id] ?? 'No transcript was saved for this session.'}
-                              </div>
-                            </details>
+                            <div style={{ marginTop: 14 }}>
+                              {/* Fetched the first time the row is opened. A
+                                  failed load says so in the banner above the
+                                  nav, which is on screen wherever this is. */}
+                              <Disclosure
+                                label="Full transcript"
+                                summary="Word for word"
+                                onToggle={(isOpening) => { if (isOpening) void loadTranscript(s.id) }}
+                              >
+                                <div style={{ fontSize: 'var(--fs-3)', lineHeight: 1.7, color: 'var(--text-2)', padding: '12px 14px', background: 'var(--border-soft)', borderRadius: 8, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                  {transcriptBusy === s.id
+                                    ? 'Loading…'
+                                    : transcripts[s.id] ?? 'No transcript was saved for this session.'}
+                                </div>
+                              </Disclosure>
+                            </div>
                           )}
 
-                          {/* Videos */}
-                          {sVideos.some((v) => v.uploaded_by_role !== 'athlete') && (
-                            <div style={{ marginTop: 16 }}>
+                          {/* Videos from the coach: stills, three across, and
+                              the tapped one opens under its row. They were
+                              full-width players one under another, a screen
+                              each, and blank on an iPhone until played. */}
+                          {coachVideos.length > 0 && (
+                            <div style={{ marginTop: 16, minWidth: 0 }}>
                               <div className="ah-eyebrow" style={{ marginBottom: 10 }}>
-                                Videos from your coach ({sVideos.filter((v) => v.uploaded_by_role !== 'athlete').length})
+                                Videos from your coach ({coachVideos.length})
                               </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                {/* The athlete's own clips are listed under "Show
-                                    your coach" below, with their status, and
-                                    refresh there after a send — not twice. */}
-                                {sVideos.filter((v) => v.uploaded_by_role !== 'athlete').map((v) => v.signedUrl && (
-                                  <div key={v.id} style={{ minWidth: 0 }}>
+                              {/* The athlete's own clips are listed under "Show
+                                  your coach" below, with their status, and
+                                  refresh there after a send — not twice. */}
+                              <VideoGrid
+                                videos={coachVideos}
+                                openId={openVideo}
+                                onOpen={setOpenVideo}
+                                /* Numbered, not the coach's file name: the
+                                   athlete has never been shown that. */
+                                nameFor={(_, i) => `video ${i + 1} from your coach`}
+                                renderOpen={(v) => v.signedUrl ? (
                                   <VideoAnnotator
                                     videoUrl={v.signedUrl}
                                     initialAnnotations={v.annotations ?? []}
@@ -2280,9 +2392,12 @@ export default function AthletePage() {
                                      * feature for the athlete anyway. */
                                     readOnly
                                   />
+                                ) : (
+                                  <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.5, color: 'var(--text-2)', padding: '4px 0 8px' }}>
+                                    This video could not be opened. Close the session and open it again in a moment.
                                   </div>
-                                ))}
-                              </div>
+                                )}
+                              />
                             </div>
                           )}
 
@@ -2296,18 +2411,18 @@ export default function AthletePage() {
                             </div>
                           )}
 
-                          {/* My private notes for this session */}
-                          <div style={{ marginTop: 20 }}>
-                            {/* Wraps rather than squeezing: at 13/14px the two
-                                together measure more than a 320px card, and
-                                neither of them is droppable. */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                              <div className="ah-eyebrow">
-                                My Private Notes
-                              </div>
-                              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--text-2)' }}>Only you can see these</span>
-                            </div>
-
+                          {/* My private notes for this session: one row. It
+                              opens when tapped, and stays open while there is
+                              typed text or a note being edited, so nothing
+                              typed is ever folded out of sight. */}
+                          <div style={{ marginTop: 16 }}>
+                            <Disclosure
+                              label="My private notes"
+                              summary={sNotes.length > 0 ? `${sNotes.length} saved` : 'None yet'}
+                              open={sessionNotesOpen === s.id || noteText.trim() !== '' || sNotes.some((n) => n.id === noteEditId)}
+                              onToggle={(isOpening) => setSessionNotesOpen(isOpening ? s.id : null)}
+                            >
+                              <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-2)', marginBottom: 10 }}>Only you can see these.</div>
                             {sNotes.map((n) => (
                               <NoteCard
                                 key={n.id}
@@ -2337,12 +2452,13 @@ export default function AthletePage() {
                                   className="btn btn-athlete"
                                   onClick={() => saveNote(s.id)}
                                   disabled={noteSaving || !noteText.trim()}
-                                  style={{ padding: '8px 12px', fontSize: 'var(--fs-3)' }}
+                                  style={{ padding: '8px 12px', minHeight: 44, fontSize: 'var(--fs-3)' }}
                                 >
                                   {noteSaving ? '…' : 'Save'}
                                 </button>
                               </div>
                             </div>
+                            </Disclosure>
                           </div>
                         </div>
                       )}
@@ -2389,8 +2505,10 @@ export default function AthletePage() {
               <h2 className="nm">Your coach</h2>
               <div className="sub">All messages between you and your coach stay private here.</div>
             </div>
-            {/* Renders nothing until push keys are configured. */}
-            <div style={{ margin: '12px 0' }}><PushOptIn audience="athlete" /></div>
+            {/* Renders nothing until push keys are configured. Once they are
+                on it is one row ("on for this device", Turn off); every state
+                that asks for something keeps the full card. */}
+            <div style={{ margin: '12px 0' }}><PushOptIn audience="athlete" compact /></div>
 
             {/* Message list */}
             <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 14, minHeight: 120 }}>
@@ -2424,7 +2542,7 @@ export default function AthletePage() {
                     <div className={msg.msg_type === 'text' ? 'ah-bub' : 'ah-bub media'}>
                       {msg.msg_type === 'text' && <span>{msg.content}</span>}
                       {msg.msg_type === 'image' && msg.media_url && <img src={msg.media_url} alt="image" style={{ maxWidth: 'min(240px, 100%)', maxHeight: 200, borderRadius: 10, display: 'block', cursor: 'pointer' }} onClick={() => { if (mediaUrl) window.open(mediaUrl, '_blank') }} />}
-                      {msg.msg_type === 'video' && msg.media_url && <video src={msg.media_url} controls style={{ maxWidth: 'min(280px, 100%)', maxHeight: 180, borderRadius: 10, display: 'block' }} />}
+                      {msg.msg_type === 'video' && msg.media_url && <video src={previewSrc(msg.media_url)} controls playsInline preload="metadata" style={{ maxWidth: 'min(280px, 100%)', maxHeight: 180, borderRadius: 10, display: 'block' }} />}
                       {msg.msg_type === 'audio' && msg.media_url && (
                         <div style={{ padding: '6px 4px' }}>
                           <div className="ah-vlabel">Voice message</div>
@@ -2541,6 +2659,10 @@ export default function AthletePage() {
               sessionLabel={sessionToday?.title ?? null}
               openInjuries={openInjuries(injuries).map((i) => ({ id: i.id, body_area: i.body_area, status: i.status }))}
               initial={todayWellness}
+              // Already checked in when this tab was opened: say so, with
+              // the form one tap away. Read once, when the card mounts, so
+              // a save made here never folds the card that confirms it.
+              startCollapsed={todayWellness !== null}
               // Was `() => {}`. Because nothing re-read the data after a save,
               // an athlete could check in and then find the home card still
               // asking them to check in — the app refusing to acknowledge, in
@@ -2552,61 +2674,14 @@ export default function AthletePage() {
         )}
 
         {/* ─── Tab: Calendar ─── */}
-        {tab === 'calendar' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* Daily quote */}
-            <p className="quote-strip">&quot;{getDailyQuote('athlete')}&quot;</p>
-
-          <div className="ah-panel" style={{ padding: 18, overflow: 'visible' }}>
-            <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ minWidth: 0 }}>
-                <div className="section-title">My Calendar</div>
-                <div className="section-sub">
-                  Coach-scheduled events (in blue/coloured) plus your own personal entries. Coaches only see what they&apos;ve added.
-                </div>
-              </div>
-              {calSaveMsg && (
-                <div style={{
-                  fontSize: 'var(--fs-3)', fontWeight: 700,
-                  color: calSaveMsg.includes('Failed') ? 'var(--danger)' : 'var(--success)',
-                  background: calSaveMsg.includes('Failed') ? 'var(--danger-light)' : 'var(--success-light)',
-                  border: `1px solid ${calSaveMsg.includes('Failed') ? 'var(--danger)' : 'var(--success)'}`,
-                  borderRadius: 8, padding: '6px 12px',
-                }}>
-                  {calSaveMsg.includes('Failed') ? '' : '✓ '}{calSaveMsg}
-                </div>
-              )}
-            </div>
-            {/* The `!athleteId` branch is a real empty state and stays. The
-                `calLoading` branch that used to sit in front of it did not:
-                it unmounted the calendar on every month change and threw away
-                the month just chosen. See lib/calendar-month.ts. */}
-            {calError && (
-              <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 12 }}>
-                {calError}
-              </div>
-            )}
-            {!athleteId ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-2)', padding: 32 }}>Connect to a coach first to see your calendar.</div>
-            ) : (
-              <Calendar
-                events={calEvents}
-                role="athlete"
-                month={calMonth}
-                loading={calLoading}
-                onAddEvent={(date) => setAddEventModal(date)}
-                onDeleteEvent={deleteCalEvent}
-                onRsvp={(id, answer) => { void sendRsvp(id, answer) }}
-                onMonthChange={setCalMonth}
-              />
-            )}
-
-            {/* RSVP Section */}
-            {rsvpEvents.length > 0 && (
-              <div style={{ marginTop: 20 }}>
-                <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Events needing your response</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {rsvpEvents.map((evt) => {
+        {tab === 'calendar' && (() => {
+          // Split on the answer the server had when this month was loaded,
+          // not on the live one: an event answered a moment ago stays where
+          // it was tapped, showing "You said: Going", instead of vanishing
+          // into the row below the grid under the athlete's thumb.
+          const rsvpWaiting = rsvpEvents.filter((e) => !e.rsvp_status)
+          const rsvpAnswered = rsvpEvents.filter((e) => Boolean(e.rsvp_status))
+          const rsvpRow = (evt: RsvpEvent) => {
                     const status = rsvpMap[evt.id]
                     return (
                       // The three answers drop onto their own line rather than
@@ -2648,22 +2723,100 @@ export default function AthletePage() {
                         </div>
                       </div>
                     )
-                  })}
+          }
+          return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="ah-panel" style={{ padding: 18, overflow: 'visible' }}>
+            <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0 }}>
+                <div className="section-title">My Calendar</div>
+                <div className="section-sub">
+                  Your coach&apos;s events and your own. Your coach can&apos;t see yours.
+                </div>
+              </div>
+              {calSaveMsg && (
+                <div style={{
+                  fontSize: 'var(--fs-3)', fontWeight: 700,
+                  color: calSaveMsg.includes('Failed') ? 'var(--danger)' : 'var(--success)',
+                  background: calSaveMsg.includes('Failed') ? 'var(--danger-light)' : 'var(--success-light)',
+                  border: `1px solid ${calSaveMsg.includes('Failed') ? 'var(--danger)' : 'var(--success)'}`,
+                  borderRadius: 8, padding: '6px 12px',
+                }}>
+                  {calSaveMsg.includes('Failed') ? '' : '✓ '}{calSaveMsg}
+                </div>
+              )}
+            </div>
+            {/* The `!athleteId` branch is a real empty state and stays. The
+                `calLoading` branch that used to sit in front of it did not:
+                it unmounted the calendar on every month change and threw away
+                the month just chosen. See lib/calendar-month.ts. */}
+            {calError && (
+              <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-2)', fontWeight: 600, marginBottom: 12 }}>
+                {calError}
+              </div>
+            )}
+            {/* Events the coach is waiting on an answer for. First, above the
+                month: it is the one thing on this tab that needs the reader,
+                and it used to sit under the whole grid. Never folded away. */}
+            {rsvpWaiting.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Events needing your response</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {rsvpWaiting.map(rsvpRow)}
                 </div>
               </div>
             )}
+            {!athleteId ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-2)', padding: 32 }}>Connect to a coach first to see your calendar.</div>
+            ) : (
+              <Calendar
+                events={calEvents}
+                role="athlete"
+                month={calMonth}
+                loading={calLoading}
+                onAddEvent={(date) => setAddEventModal(date)}
+                onDeleteEvent={deleteCalEvent}
+                onRsvp={(id, answer) => { void sendRsvp(id, answer) }}
+                onMonthChange={setCalMonth}
+              />
+            )}
+
+            {/* The ones already answered: one closed row under the month.
+                Each can still be changed there, and the answer is also on
+                the event itself in the calendar above. */}
+            {rsvpAnswered.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <Disclosure
+                  label="Your replies"
+                  summary={`${rsvpAnswered.length} answered`}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {rsvpAnswered.map(rsvpRow)}
+                  </div>
+                </Disclosure>
+              </div>
+            )}
+
           </div>
+            {/* Daily quote. Last: it is something to read, not something to do. */}
+            <p className="quote-strip">&quot;{getDailyQuote('athlete')}&quot;</p>
           </div>
-        )}
+          )
+        })()}
 
         {/* ─── Tab: All Notes ─── */}
-        {tab === 'notes' && (
-          <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: isMobile ? 'column' : undefined, gridTemplateColumns: isMobile ? undefined : '220px 1fr', gap: isMobile ? 12 : 20 }}>
-            {/* Filter sidebar */}
-            <div className="card" style={{ padding: 16, height: 'fit-content' }}>
-              {!isMobile && <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }}>Filter by session</div>}
-              {isMobile && <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Filter by session</div>}
-              <div style={isMobile ? { display: 'flex', flexWrap: 'wrap', gap: 6 } : undefined}>
+        {tab === 'notes' && (() => {
+          // The session filter. On a wide screen it is the sidebar it always
+          // was. On a phone it sits directly above the list it filters, and
+          // only when there is something to filter by: with no note tied to a
+          // session it was a card holding one button, above everything else.
+          const anySessionNotes = notes.some((n) => n.session_id !== null && sessions.some((x) => x.id === n.session_id))
+          // A chosen filter keeps the buttons on screen even when its last
+          // note has just been deleted, or there would be no way back to
+          // "All notes".
+          const showFilter = anySessionNotes || noteFilter !== null
+          const filterButtons = (
+            <div style={isMobile ? { display: 'flex', flexWrap: 'wrap', gap: 6 } : undefined}>
                 <button
                   onClick={() => setNoteFilter(null)}
                   style={{
@@ -2718,11 +2871,20 @@ export default function AthletePage() {
                     </button>
                   )
                 })}
-              </div>
             </div>
+          )
+          return (
+          <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: isMobile ? 'column' : undefined, gridTemplateColumns: isMobile ? undefined : '220px minmax(0, 1fr)', gap: isMobile ? 12 : 20, minWidth: 0 }}>
+            {/* Filter sidebar (wide screens) */}
+            {!isMobile && (
+              <div className="card" style={{ padding: 16, height: 'fit-content' }}>
+                <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }}>Filter by session</div>
+                {filterButtons}
+              </div>
+            )}
 
             {/* Notes list */}
-            <div>
+            <div style={{ minWidth: 0 }}>
               {/* From your coach: notes shared from the athlete's profile.
                   Above the athlete's own notes and visibly separate from them,
                   because those are private and these are not theirs. */}
@@ -2777,12 +2939,14 @@ export default function AthletePage() {
                   rows={3}
                   style={{ marginBottom: 10 }}
                 />
-                <div style={{ display: 'flex', gap: 8 }}>
+                {/* Wraps: at 320px the two buttons side by side ran 24px past
+                    the edge of the screen, where the clip hides them. */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   <button
                     className="btn btn-athlete btn-lg"
                     onClick={() => saveNote(noteFilter)}
                     disabled={noteSaving || !noteText.trim()}
-                    style={{ flex: 1 }}
+                    style={{ flex: '1 1 140px', minWidth: 0 }}
                   >
                     {noteSaving ? 'Saving…' : '✍️ Save note'}
                   </button>
@@ -2790,7 +2954,7 @@ export default function AthletePage() {
                     className={`btn ${noteRecording ? 'btn-danger' : 'btn-ghost'}`}
                     onClick={noteRecording ? stopNoteRecording : startNoteRecording}
                     disabled={noteTranscribing}
-                    style={{ gap: 6 }}
+                    style={{ gap: 6, flex: '1 1 auto', minHeight: 44 }}
                   >
                     {noteTranscribing ? '…transcribing' : noteRecording ? <><span className="recording-dot" /> Stop recording</> : '🎙️ Voice note'}
                   </button>
@@ -2816,6 +2980,16 @@ export default function AthletePage() {
                   </div>
                 )}
               </div>
+
+              {/* My notes: the heading, and on a phone the filter. */}
+              {isMobile && !notesError && (notes.length > 0 || noteFilter !== null) && (
+                <div style={{ marginBottom: 10, minWidth: 0 }}>
+                  <div className="ah-sec" style={{ marginBottom: showFilter ? 8 : 0 }}>
+                    <h2>{showFilter ? 'My notes, by session' : `My notes (${notes.length})`}</h2>
+                  </div>
+                  {showFilter && filterButtons}
+                </div>
+              )}
 
               {notesError ? (
                 <ListState
@@ -2854,13 +3028,16 @@ export default function AthletePage() {
               )}
             </div>
           </div>
-        )}
+          )
+        })()}
       </main>
 
       {/* Add Calendar Event Modal */}
       {addEventModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(21,25,22,0.78)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
-          <div className="card-lg" style={{ width: '100%', maxWidth: 420, padding: 28 }}>
+          {/* role="dialog": the app-update check (BUSY_SELECTOR, lib/app-update.ts)
+              looks for it, so a new deploy never reloads over this sheet. */}
+          <div role="dialog" aria-modal="true" aria-label="Add personal event" className="card-lg" style={{ width: '100%', maxWidth: 420, padding: 28 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
               <div>
                 <div className="section-title" style={{ fontSize: 17 }}>Add Personal Event</div>

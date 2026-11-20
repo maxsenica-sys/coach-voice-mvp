@@ -46,10 +46,21 @@
  * athlete page. If it can no longer be sent for the day it was made, the card
  * says that too instead of letting the server file it under another day. With
  * no IndexedDB (a private window) it shows the error it always showed.
+ *
+ * ── Already checked in ────────────────────────────────────────────────────
+ *
+ * Opened again after today's check-in is saved, this used to show the whole
+ * form a second time, filled in. With `startCollapsed` it says "Checked in
+ * today." and keeps the form one tap away in a row that names the saved answer
+ * (Max, 2026-11-20: detail one tap away). Decided once, when the card mounts:
+ * it never folds a form someone is looking at. The lines about check-ins
+ * waiting on this phone, or lost, sit outside the row and are always shown,
+ * and a check-in the server refused opens the row itself.
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import BodyMap from '@/app/components/BodyMap'
+import Disclosure from '@/app/components/Disclosure'
 import { regionLabel } from '@/lib/body-map'
 import { READINESS_OPTIONS, type Readiness } from '@/lib/readiness'
 import { apiMutate } from '@/lib/api-client'
@@ -90,6 +101,9 @@ interface Props {
     injury_update?: string | null
   } | null
   onSaved?: () => void
+  /** Today's check-in is already saved: show that, with the form one tap
+   *  away. Read once, on mount. */
+  startCollapsed?: boolean
 }
 
 export default function CheckIn({
@@ -99,7 +113,11 @@ export default function CheckIn({
   openInjuries = [],
   initial,
   onSaved,
+  startCollapsed = false,
 }: Props) {
+  // Fixed for the life of the card: see "Already checked in" above.
+  const [tucked] = useState(startCollapsed)
+  const [formOpen, setFormOpen] = useState(false)
   const [soreAreas, setSoreAreas] = useState<string[]>(initial?.sore_areas ?? [])
   // Which of the two answers is pressed. Derived once from today's row, so a
   // re-check-in opens on what they said last time.
@@ -146,6 +164,7 @@ export default function CheckIn({
         // Sent and refused, or out of time. Bring the form back; the note
         // above it says what happened.
         setDone(false)
+        setFormOpen(true)
       }
     }
   }, [athleteId])
@@ -323,6 +342,209 @@ export default function CheckIn({
     )
   }
 
+  /* The two questions, the injury follow-up and Done. One block, so it can sit
+   * straight in the card or inside the "change today's answer" row. */
+  const form = (
+    <>
+        {/* ── 1 · readiness, first, so it is on screen without a scroll ───── */}
+        {/* One track, three stops. A low answer is drawn exactly like a high
+            one — same fill, same weight — because the control records where you
+            are and must not react to it. */}
+        <div style={{ marginTop: 16 }}>
+          <div style={EYEBROW}>How are you feeling?</div>
+          <div
+            role="group"
+            aria-label="How are you feeling"
+            style={{
+              display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 4, marginTop: 10,
+              padding: 4, borderRadius: 18, border: '1px solid var(--border)', background: 'var(--bg)',
+            }}
+          >
+            {READINESS_OPTIONS.map((opt) => {
+              const on = readiness === opt.value
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => { setReadiness(opt.value); setError(null) }}
+                  style={{
+                    // The padding is what stops the hint touching the border.
+                    // Measured on a 320px phone: the tallest hint now runs to
+                    // four lines and, with no padding, its last line sat 1px off
+                    // the bottom edge of the button. The button grows instead —
+                    // minHeight is a floor, so nothing is clipped either way.
+                    minWidth: 0, minHeight: 64, padding: '9px 4px',
+                    borderRadius: 14, cursor: 'pointer',
+                    border: 'none',
+                    background: on ? 'var(--primary)' : 'transparent',
+                    // Ink on the lifted sage — white on it is 1.6:1.
+                    color: on ? 'var(--on-primary)' : 'var(--text)',
+                    fontFamily: 'inherit', fontWeight: on ? 800 : 600,
+                    fontSize: 'var(--fs-4)', display: 'flex',
+                    flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                  }}
+                >
+                  {opt.label}
+                  {/* No break-word and no ellipsis here on purpose: these hints
+                      are a fixed, known list, and the longest word in them
+                      ("Normal") measures 45px against the 68px column this gets
+                      on a 320px phone. They wrap between whole words or not at
+                      all. A hint that would not fit is a hint to rewrite, not to
+                      hyphenate. lineHeight 1.3 rather than 1.2 because at 13px
+                      over four lines the tighter setting closed the lines up.
+                      Colour, not opacity: an 0.85 fade took the unselected hint
+                      toward the floor on the dark track. */}
+                  <span style={{ fontSize: 'var(--fs-1)', fontWeight: 500, lineHeight: 1.3, textAlign: 'center', color: on ? 'var(--on-primary)' : 'var(--text-2)' }}>
+                    {opt.hint}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ── 2 · the body, behind one question ────────────────────────────── */}
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+          <div style={EYEBROW} id={`${noteId}-sore`}>Anything sore?</div>
+          <div
+            role="group"
+            aria-labelledby={`${noteId}-sore`}
+            style={{
+              display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, marginTop: 10,
+              padding: 4, borderRadius: 18, border: '1px solid var(--border)', background: 'var(--bg)',
+            }}
+          >
+            {([
+              { value: false, label: 'Nothing sore' },
+              { value: true, label: 'Something’s sore' },
+            ]).map((opt) => {
+              const on = somethingSore === opt.value
+              return (
+                <button
+                  key={opt.label}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => { setSomethingSore(opt.value); setError(null) }}
+                  style={{
+                    minWidth: 0, minHeight: 48, padding: '8px 6px',
+                    borderRadius: 14, cursor: 'pointer', border: 'none',
+                    background: on ? 'var(--primary)' : 'transparent',
+                    color: on ? 'var(--on-primary)' : 'var(--text)',
+                    fontFamily: 'inherit', fontWeight: on ? 800 : 600,
+                    fontSize: 'var(--fs-4)', lineHeight: 1.25, textAlign: 'center',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+          {somethingSore && (
+            <>
+              <div style={{ marginTop: 14, fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.5 }}>
+                Tap each place that is sore or bothering you.
+              </div>
+              <div style={{ marginTop: 12 }}>
+                {/* showSelection off: the line below is the one list of what is
+                    marked. BodyMap's own "Selected: …" said the same thing in
+                    different words, and disagreed with it when empty. */}
+                <BodyMap selected={soreAreas} onChange={(next) => { setSoreAreas(next); setError(null) }} perspective="self" showSelection={false} />
+              </div>
+              <div aria-live="polite" style={{ marginTop: 8, fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+                {soreAreas.length === 0
+                  ? 'Nothing marked yet — tap where it is sore.'
+                  : <><strong>Marked: </strong>{soreAreas.map(regionLabel).join(', ')}</>}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── 3 · only if something is already on file ──────────────────────── */}
+        {openInjuries.length > 0 && (
+          <div style={{ marginTop: 20, padding: 14, borderRadius: 14, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <label htmlFor={noteId} style={{ display: 'block', fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5 }}>
+              How is your {openInjuries.map((i) => regionLabel(i.body_area)).join(' and ')} today?
+              Anything changed?
+            </label>
+            <textarea
+              id={noteId}
+              aria-describedby={`${noteId}-who`}
+              className="input"
+              rows={2}
+              style={{ resize: 'none', marginTop: 10, background: 'var(--bg)' }}
+              placeholder="Still tight, but better than Monday…"
+              value={injuryUpdate}
+              onChange={(e) => setInjuryUpdate(e.target.value)}
+              autoCapitalize="sentences"
+              autoCorrect="on"
+              spellCheck
+              maxLength={500}
+            />
+            {/* Rendered with the box, not after Done, so it is read before
+                anything is typed. Same tier as the helper text around it: it is
+                a plain fact, not a warning. */}
+            <div id={`${noteId}-who`} style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 6, lineHeight: 1.5 }}>
+              Optional — skip it if nothing has changed. {coachSees}
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div role="alert" style={{ marginTop: 14, padding: '10px 12px', borderRadius: 10, background: 'var(--danger-light)', color: 'var(--text)', fontSize: 'var(--fs-3)', lineHeight: 1.45, overflowWrap: 'anywhere' }}>
+            {error}
+          </div>
+        )}
+
+        {/* Sage, not floodlight: submitting a form is an action, not a state. */}
+        <button
+          className="btn btn-primary"
+          onClick={() => void save()}
+          disabled={saving}
+          style={{
+            width: '100%', justifyContent: 'center', marginTop: 18, minHeight: 52, borderRadius: 16,
+            fontFamily: 'var(--font-cast)', fontSize: 20, letterSpacing: '0.16em', textTransform: 'uppercase',
+          }}
+        >
+          {saving ? 'Saving…' : 'Done'}
+        </button>
+    </>
+  )
+
+  if (tucked) {
+    // The answer the coach has, not what is being edited in the form.
+    const saidLabel = READINESS_OPTIONS.find((o) => o.value === initial?.readiness)?.label ?? null
+    const savedSore = initial?.sore_areas ?? []
+    const saved = saidLabel
+      ? `${saidLabel} · ${savedSore.length ? `Sore: ${savedSore.map(regionLabel).join(', ')}` : 'Nothing sore'}`
+      : 'Saved'
+    return (
+      <div className="card" style={{ padding: '18px 18px 4px', borderRadius: 'var(--radius-lg)' }}>
+        <h2 style={{
+          margin: 0, fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 400,
+          lineHeight: 1.1, color: 'var(--text)', overflowWrap: 'anywhere',
+        }}>
+          Checked in today.
+        </h2>
+
+        {/* Outside the row on purpose: a check-in that is waiting on this
+            phone, or that could not be sent, is never folded away. */}
+        {notesBlock}
+
+        <div style={{ marginTop: 14 }}>
+          <Disclosure
+            label="Change today’s answer"
+            summary={saved}
+            open={formOpen || error !== null}
+            onToggle={setFormOpen}
+          >
+            {form}
+          </Disclosure>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="card" style={{ padding: 18, borderRadius: 'var(--radius-lg)' }}>
       <h2 style={{
@@ -334,168 +556,7 @@ export default function CheckIn({
 
       {notesBlock}
 
-      {/* ── 1 · readiness, first, so it is on screen without a scroll ───── */}
-      {/* One track, three stops. A low answer is drawn exactly like a high
-          one — same fill, same weight — because the control records where you
-          are and must not react to it. */}
-      <div style={{ marginTop: 16 }}>
-        <div style={EYEBROW}>How are you feeling?</div>
-        <div
-          role="group"
-          aria-label="How are you feeling"
-          style={{
-            display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 4, marginTop: 10,
-            padding: 4, borderRadius: 18, border: '1px solid var(--border)', background: 'var(--bg)',
-          }}
-        >
-          {READINESS_OPTIONS.map((opt) => {
-            const on = readiness === opt.value
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                aria-pressed={on}
-                onClick={() => { setReadiness(opt.value); setError(null) }}
-                style={{
-                  // The padding is what stops the hint touching the border.
-                  // Measured on a 320px phone: the tallest hint now runs to
-                  // four lines and, with no padding, its last line sat 1px off
-                  // the bottom edge of the button. The button grows instead —
-                  // minHeight is a floor, so nothing is clipped either way.
-                  minWidth: 0, minHeight: 64, padding: '9px 4px',
-                  borderRadius: 14, cursor: 'pointer',
-                  border: 'none',
-                  background: on ? 'var(--primary)' : 'transparent',
-                  // Ink on the lifted sage — white on it is 1.6:1.
-                  color: on ? 'var(--on-primary)' : 'var(--text)',
-                  fontFamily: 'inherit', fontWeight: on ? 800 : 600,
-                  fontSize: 'var(--fs-4)', display: 'flex',
-                  flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
-                }}
-              >
-                {opt.label}
-                {/* No break-word and no ellipsis here on purpose: these hints
-                    are a fixed, known list, and the longest word in them
-                    ("Normal") measures 45px against the 68px column this gets
-                    on a 320px phone. They wrap between whole words or not at
-                    all. A hint that would not fit is a hint to rewrite, not to
-                    hyphenate. lineHeight 1.3 rather than 1.2 because at 13px
-                    over four lines the tighter setting closed the lines up.
-                    Colour, not opacity: an 0.85 fade took the unselected hint
-                    toward the floor on the dark track. */}
-                <span style={{ fontSize: 'var(--fs-1)', fontWeight: 500, lineHeight: 1.3, textAlign: 'center', color: on ? 'var(--on-primary)' : 'var(--text-2)' }}>
-                  {opt.hint}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* ── 2 · the body, behind one question ────────────────────────────── */}
-      <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-        <div style={EYEBROW} id={`${noteId}-sore`}>Anything sore?</div>
-        <div
-          role="group"
-          aria-labelledby={`${noteId}-sore`}
-          style={{
-            display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, marginTop: 10,
-            padding: 4, borderRadius: 18, border: '1px solid var(--border)', background: 'var(--bg)',
-          }}
-        >
-          {([
-            { value: false, label: 'Nothing sore' },
-            { value: true, label: 'Something’s sore' },
-          ]).map((opt) => {
-            const on = somethingSore === opt.value
-            return (
-              <button
-                key={opt.label}
-                type="button"
-                aria-pressed={on}
-                onClick={() => { setSomethingSore(opt.value); setError(null) }}
-                style={{
-                  minWidth: 0, minHeight: 48, padding: '8px 6px',
-                  borderRadius: 14, cursor: 'pointer', border: 'none',
-                  background: on ? 'var(--primary)' : 'transparent',
-                  color: on ? 'var(--on-primary)' : 'var(--text)',
-                  fontFamily: 'inherit', fontWeight: on ? 800 : 600,
-                  fontSize: 'var(--fs-4)', lineHeight: 1.25, textAlign: 'center',
-                }}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
-        {somethingSore && (
-          <>
-            <div style={{ marginTop: 14, fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.5 }}>
-              Tap each place that is sore or bothering you.
-            </div>
-            <div style={{ marginTop: 12 }}>
-              {/* showSelection off: the line below is the one list of what is
-                  marked. BodyMap's own "Selected: …" said the same thing in
-                  different words, and disagreed with it when empty. */}
-              <BodyMap selected={soreAreas} onChange={(next) => { setSoreAreas(next); setError(null) }} perspective="self" showSelection={false} />
-            </div>
-            <div aria-live="polite" style={{ marginTop: 8, fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
-              {soreAreas.length === 0
-                ? 'Nothing marked yet — tap where it is sore.'
-                : <><strong>Marked: </strong>{soreAreas.map(regionLabel).join(', ')}</>}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ── 3 · only if something is already on file ──────────────────────── */}
-      {openInjuries.length > 0 && (
-        <div style={{ marginTop: 20, padding: 14, borderRadius: 14, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-          <label htmlFor={noteId} style={{ display: 'block', fontSize: 'var(--fs-3)', color: 'var(--text)', lineHeight: 1.5 }}>
-            How is your {openInjuries.map((i) => regionLabel(i.body_area)).join(' and ')} today?
-            Anything changed?
-          </label>
-          <textarea
-            id={noteId}
-            aria-describedby={`${noteId}-who`}
-            className="input"
-            rows={2}
-            style={{ resize: 'none', marginTop: 10, background: 'var(--bg)' }}
-            placeholder="Still tight, but better than Monday…"
-            value={injuryUpdate}
-            onChange={(e) => setInjuryUpdate(e.target.value)}
-            autoCapitalize="sentences"
-            autoCorrect="on"
-            spellCheck
-            maxLength={500}
-          />
-          {/* Rendered with the box, not after Done, so it is read before
-              anything is typed. Same tier as the helper text around it: it is
-              a plain fact, not a warning. */}
-          <div id={`${noteId}-who`} style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 6, lineHeight: 1.5 }}>
-            Optional — skip it if nothing has changed. {coachSees}
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div role="alert" style={{ marginTop: 14, padding: '10px 12px', borderRadius: 10, background: 'var(--danger-light)', color: 'var(--text)', fontSize: 'var(--fs-3)', lineHeight: 1.45, overflowWrap: 'anywhere' }}>
-          {error}
-        </div>
-      )}
-
-      {/* Sage, not floodlight: submitting a form is an action, not a state. */}
-      <button
-        className="btn btn-primary"
-        onClick={() => void save()}
-        disabled={saving}
-        style={{
-          width: '100%', justifyContent: 'center', marginTop: 18, minHeight: 52, borderRadius: 16,
-          fontFamily: 'var(--font-cast)', fontSize: 20, letterSpacing: '0.16em', textTransform: 'uppercase',
-        }}
-      >
-        {saving ? 'Saving…' : 'Done'}
-      </button>
+      {form}
     </div>
   )
 }

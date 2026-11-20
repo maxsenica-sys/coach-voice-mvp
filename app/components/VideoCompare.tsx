@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   clampOffset, compareTimeForB, formatClipTime, needsResync, offsetFromPositions,
 } from '@/lib/video-clip'
+import { previewSrc } from '@/lib/video-preview'
 
 export type CompareVideo = {
   id: string
@@ -198,7 +199,10 @@ export default function VideoCompare({ videos, initialA, initialB }: Props) {
               <video
                 key={v.id}
                 ref={ref}
-                src={v.signedUrl}
+                /* A still before play: an iPhone paints nothing from metadata
+                   alone, and two blank rectangles cannot be told apart
+                   (lib/video-preview.ts). */
+                src={previewSrc(v.signedUrl)}
                 preload="metadata"
                 playsInline
                 /* B is muted: two soundtracks a second apart are noise. */

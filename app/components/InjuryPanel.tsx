@@ -24,6 +24,7 @@ import { errorMessage } from '@/lib/errors'
 import { parseISODate } from '@/lib/session-date'
 import { regionLabel } from '@/lib/body-map'
 import BodyMap from '@/app/components/BodyMap'
+import Disclosure from '@/app/components/Disclosure'
 import {
   INJURY_STATUSES,
   injuryStatusOption,
@@ -174,27 +175,53 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
   const cleared = injuries
     .filter((i) => i.status === 'cleared')
     .sort((a, b) => b.started_on.localeCompare(a.started_on))
-  const [showCleared, setShowCleared] = useState(false)
   const [confirmClear, setConfirmClear] = useState<string | null>(null)
+
+  /* Nothing open, nothing being logged, and the read worked (or is still
+   * running): the whole panel is one line. No injuries is the normal state, and
+   * a heading, a button and a card around the sentence "is available" cost the
+   * coach a third of a screen on every athlete, every visit.
+   *
+   * An open injury, the form, or a read that failed is never quiet: those keep
+   * the heading and the card, at full size. */
+  const quiet = !loadError && !adding && open.length === 0
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 9 }}>
-        <div style={EYEBROW}>
-          Availability
-        </div>
-        {!adding && (
+      {quiet ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', columnGap: 12, flexWrap: 'wrap', minHeight: 44 }}>
+          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.5, minWidth: 0, overflowWrap: 'anywhere' }}>
+            {/* Never "available" before the list has been read. */}
+            {loaded ? `${athleteName} is available` : 'Checking availability…'}
+          </div>
           <button
-            className="btn btn-ghost"
             onClick={() => setAdding(true)}
-            style={{ padding: '0 16px', fontSize: 'var(--fs-3)', minHeight: 44, borderRadius: 999, color: 'var(--text)' }}
+            style={{
+              ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.16em', color: 'var(--primary)',
+              background: 'none', border: 'none', cursor: 'pointer', minHeight: 44, padding: 0,
+            }}
           >
             Log an injury
           </button>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 9 }}>
+          <div style={EYEBROW}>
+            Availability
+          </div>
+          {!adding && (
+            <button
+              className="btn btn-ghost"
+              onClick={() => setAdding(true)}
+              style={{ padding: '0 16px', fontSize: 'var(--fs-3)', minHeight: 44, borderRadius: 999, color: 'var(--text)' }}
+            >
+              Log an injury
+            </button>
+          )}
+        </div>
+      )}
 
-      <div className="card" style={{ padding: 16, borderRadius: 'var(--radius-lg)' }}>
+      <div className={quiet ? undefined : 'card'} style={quiet ? undefined : { padding: 16, borderRadius: 'var(--radius-lg)' }}>
         {loadError ? (
           // We could not find out. Never say "available" on no information,
           // and if an older list is still on screen, say it may be out of date.
@@ -212,14 +239,6 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
             >
               {loading ? 'Trying…' : 'Try again'}
             </button>
-          </div>
-        ) : loading && !loaded ? (
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Loading…</div>
-        ) : open.length === 0 && !adding ? (
-          // No injuries is the normal state and gets one quiet line, not a
-          // celebration and not an empty panel asking to be filled in.
-          <div style={{ fontSize: 'var(--fs-3)', color: 'var(--text-2)', lineHeight: 1.5 }}>
-            {athleteName} is available. Nothing logged.
           </div>
         ) : null}
 
@@ -272,11 +291,13 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
                   }}
                   title={o.meaning}
                   style={{
-                    ...CAST, minWidth: 0, padding: '6px 4px', minHeight: 44, borderRadius: 14,
+                    ...CAST, minWidth: 0, padding: '6px 2px', minHeight: 44, borderRadius: 14,
                     border: `1px solid ${on ? o.color : 'var(--border)'}`,
                     background: on ? o.tint : 'transparent',
                     color: on ? o.color : 'var(--text-2)',
-                    fontSize: 17, letterSpacing: '0.1em', cursor: 'pointer',
+                    // Sized to the screen with a tighter track: at a fixed 17
+                    // "Modified" broke after its seventh letter on every phone.
+                    fontSize: 'clamp(13px, 4vw, 15px)', letterSpacing: '0.03em', cursor: 'pointer',
                     overflowWrap: 'anywhere',
                   }}
                 >
@@ -409,22 +430,9 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
         )}
 
         {cleared.length > 0 && (
-          <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <button
-              onClick={() => setShowCleared((v) => !v)}
-              aria-expanded={showCleared}
-              style={{
-                ...CAST, background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 8, minHeight: 44,
-                fontSize: 15, letterSpacing: '0.14em', color: 'var(--text-2)',
-              }}
-            >
-              <span aria-hidden="true" style={{ display: 'inline-block', transform: showCleared ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>›</span>
-              Cleared <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: 0 }}>({cleared.length})</span>
-            </button>
-
-            {showCleared && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+          <div style={quiet ? undefined : { marginTop: 14 }}>
+            <Disclosure label="Cleared" summary={`${cleared.length} ${cleared.length === 1 ? 'injury' : 'injuries'}`}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {cleared.map((i) => (
                   <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between' }}>
                     <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', minWidth: 0, overflowWrap: 'anywhere' }}>
@@ -440,7 +448,7 @@ export default function InjuryPanel({ athleteId, athleteName }: { athleteId: str
                   </div>
                 ))}
               </div>
-            )}
+            </Disclosure>
           </div>
         )}
 

@@ -39,13 +39,20 @@ interface Props<V> {
   icon?: React.ReactNode
   /** Called when the coach taps the trigger, before the picker opens. */
   onOpen?: () => void
+  /**
+   * Called when this starts or stops having something to show: a clip
+   * uploading, one that needs attention, or a notice. A page that tucks the
+   * uploader inside a row that closes uses it to keep that row open, so a
+   * failed clip is never out of sight.
+   */
+  onActivity?: (active: boolean) => void
 }
 
 const LINE = 'color-mix(in srgb, var(--text) 13%, transparent)'
 
 let seq = 0
 
-export default function VideoUploader<V = unknown>({ sessionId, onSaved, label = 'Add video', buttonStyle, buttonClassName, icon, onOpen }: Props<V>) {
+export default function VideoUploader<V = unknown>({ sessionId, onSaved, label = 'Add video', buttonStyle, buttonClassName, icon, onOpen, onActivity }: Props<V>) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [items, setItems] = useState<QueueItem[]>([])
   const [notice, setNotice] = useState('')
@@ -174,6 +181,10 @@ export default function VideoUploader<V = unknown>({ sessionId, onSaved, label =
   }, [sessionId])
 
   const busy = isBusy(items)
+  const active = items.length > 0 || notice !== ''
+  const onActivityRef = useRef(onActivity)
+  useEffect(() => { onActivityRef.current = onActivity }, [onActivity])
+  useEffect(() => { onActivityRef.current?.(active) }, [active])
   const finished = items.filter((i) => i.status === 'done').length
 
   return (
@@ -200,7 +211,7 @@ export default function VideoUploader<V = unknown>({ sessionId, onSaved, label =
         {icon}{busy ? 'Add more' : label}
       </button>
 
-      {(items.length > 0 || notice) && (
+      {active && (
         <div style={{ flexBasis: '100%', width: '100%', minWidth: 0, display: 'grid', gap: 8, marginTop: 8 }}>
           {notice && (
             <div role="status" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 12px', borderRadius: 10, background: 'var(--wellness-ok-tint)', fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text)' }}>

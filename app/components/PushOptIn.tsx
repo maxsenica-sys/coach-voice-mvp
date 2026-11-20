@@ -11,6 +11,11 @@
 // flashes in and changes its mind. Every other state says one thing plainly:
 // this browser cannot, this iPhone needs the app on the Home Screen first,
 // notifications are blocked in settings, or here is the switch.
+//
+// `compact` (the athlete's Messages tab, 2026-11-20): once notifications are
+// on there is nothing left to decide, so the card becomes one row that says
+// so and keeps the way to turn them off. Every other state is the full card,
+// because each of those is asking the person to do something.
 
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -42,7 +47,7 @@ const NOTE: Partial<Record<View, string>> = {
   denied: 'Notifications are blocked for Pindar on this device. Allow them in your browser or phone settings, then come back here.',
 }
 
-export default function PushOptIn({ audience }: { audience: 'athlete' | 'coach' }) {
+export default function PushOptIn({ audience, compact = false }: { audience: 'athlete' | 'coach'; compact?: boolean }) {
   const [view, setView] = useState<View>('checking')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -101,6 +106,32 @@ export default function PushOptIn({ audience }: { audience: 'athlete' | 'coach' 
 
   const copy = COPY[audience]
   const note = NOTE[view]
+
+  if (compact && view === 'on') {
+    return (
+      <section
+        aria-label="Notifications"
+        style={{
+          minWidth: 0, padding: '4px 6px 4px 14px', borderRadius: 14,
+          background: 'var(--panel)', border: '1px solid var(--line)',
+        }}
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0 12px' }}>
+          <span role="status" style={{ flex: '1 1 160px', minWidth: 0, padding: '8px 0', fontSize: 'var(--fs-2)', lineHeight: 1.4, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+            Notifications are on for this device.
+          </span>
+          <button type="button" className="btn btn-ghost" onClick={turnOff} disabled={busy} style={{ minHeight: 44, minWidth: 44 }}>
+            {busy ? 'Turning off…' : 'Turn off'}
+          </button>
+        </div>
+        {error && (
+          <p role="alert" style={{ margin: '4px 0 8px', fontSize: 'var(--fs-3)', lineHeight: 1.45, color: 'var(--danger)', overflowWrap: 'anywhere' }}>
+            {error}
+          </p>
+        )}
+      </section>
+    )
+  }
 
   return (
     <section

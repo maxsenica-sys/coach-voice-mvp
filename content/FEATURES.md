@@ -88,7 +88,7 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 - **Pain removed:** Club staff can share the load without every coach seeing every child.
 - **Evidence:** app/components/CoachingStaff.tsx (on the dashboard). app/api/staff/route.ts handles GET, POST, PUT and DELETE, stores a hashed token and offers a copy-link fallback. app/api/staff/accept/route.ts and lib/staff-invite.ts acceptBlock (wrong-email, expired, own-roster, ...). app/staff/join/page.tsx. Migrations 034 and 035.
 - **Surfaces:** /dashboard Coaching staff card, /staff/join?token=, /dashboard (Home), /dashboard?tab=settings, /staff/join
-- **Demo state:** Invite card with an athlete picker and a 'Send invite' button
+- **Demo state:** Settings, 'Invite an assistant' opened: an athlete picker and a 'Send invite' button
 - **Competitor gap:** yes. Assistants see only the athletes they are given, not the whole roster.
 
 ### Parent/caretaker contacts per athlete `caretaker-contacts`
@@ -455,12 +455,12 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 
 ### Add videos to a session `add-video`
 
-**shipped**. Pick one clip or several at once from the phone's library (500MB each, with preflight warnings). They upload one after another, each with its own percentage and time left, and more can be added while one is still uploading. A clip whose connection drops is retried, and one that reached storage is finished on Retry or the next visit without being sent again.
+**shipped**. Pick one clip or several at once from the phone's library (500MB each, with preflight warnings). They upload one after another, each with its own percentage and time left, and more can be added while one is still uploading. A clip whose connection drops is retried, and one that reached storage is finished on Retry or the next visit without being sent again. Saved videos show as stills, three across the phone; tapping one opens it with its tools.
 
 - **Pain removed:** Video feedback is attached to the right session, a whole practice of clips in one go, and a dropped signal does not lose one.
-- **Evidence:** app/components/VideoUploader.tsx (input multiple, sequential queue, 'Add more' while busy, Retry and Dismiss per clip) on app/sessions/[id]/page.tsx and app/athletes/[id]/page.tsx; lib/video-queue.ts (retry rules, pending list, queue summary); lib/video-upload.ts → /api/sessions/[id]/videos(upload-url), whose POST answers a repeat with the existing row (migration 039). tools/video-rig.mjs V10–V13.
+- **Evidence:** app/components/VideoUploader.tsx (input multiple, sequential queue, 'Add more' while busy, Retry and Dismiss per clip) on app/sessions/[id]/page.tsx and app/athletes/[id]/page.tsx; lib/video-queue.ts (retry rules, pending list, queue summary); lib/video-upload.ts → /api/sessions/[id]/videos(upload-url), whose POST answers a repeat with the existing row (migration 039). tools/video-rig.mjs V10–V13. Stills: app/components/VideoGrid.tsx and lib/video-preview.ts (tools/video-rig.mjs V14, V15).
 - **Surfaces:** /sessions/[id] Video section, /athletes/[id] session card
-- **Demo state:** 'Uploading 2 of 5' with one clip at 42% · ~1min left, two waiting, and 'Add more'
+- **Demo state:** Five video stills three across with their lengths, one opened under its row; or 'Uploading 2 of 5' with 'Add more'
 - **Competitor gap:** no. Common
 - **No posts of its own:** Covered by the video-annotator posts: a facet of that feature rather than a post of its own.
 
@@ -595,7 +595,7 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 
 ### Least attention this month `coverage-insight`
 
-**shipped**. Groups every athlete by how many sessions they had in the last 30 days (none, 1, 2, 3–4, 5+), least attention first, with each name linking to the profile.
+**shipped**. A closed row on Home says how many athletes are in the lowest group ('2 with no sessions'). Opening it groups every athlete by how many sessions they had in the last 30 days (none, 1, 2, 3–4, 5+), least attention first, with each name linking to the profile.
 
 - **Pain removed:** Coaches can see how their time is spread and who is getting left out.
 - **Evidence:** app/components/CoverageInsight.tsx calls /api/coach/insights?scope=coverage, which uses lib/insights.ts coverageRows and coverageGroups. Shown only to head coaches with 2 or more athletes. Name tooltips show sessions and word count.
@@ -616,23 +616,23 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 
 ### First-run setup checklist `onboarding-steps`
 
-**shipped**. With an empty roster, Home shows 3 steps: set an invite code (inline), add the first athlete, and record the first session, plus a share-code card with Copy and QR.
+**shipped**. Until the first session is recorded, Home shows 3 steps above the scoreboard: set an invite code (inline; once saved, the step shows the code with Copy and Show QR code), add the first athlete, and record the first session.
 
 - **Pain removed:** New coaches get started without needing a guide.
 - **Evidence:** dashboard/page.tsx shows it when athletes.length===0 and the user is not an assistant. Only the code step ever ticks (stepNum(false,2/3) is hardcoded), so progress shows at most '1 of 3'. The card disappears once an athlete exists. Partial: steps two and three never tick, so it reads 1 of 3 for ever. Shipped 14 Nov 2026: steps tick from real state (lib/onboarding.ts) and the card stays until the first session.
 - **Surfaces:** /dashboard (Home, empty roster)
-- **Demo state:** 'You're all set up. 1 of 3 complete' with the code saved and a share card
+- **Demo state:** 'Three steps to start. 1 of 3 done' with the code saved, Copy and Show QR code
 - **Competitor gap:** no. Onboarding checklists are common.
 - **No posts of its own:** Shipped 14 Nov 2026, after the queue was written. Candidate for month-two posts.
 
 ### Active and Pending roster split `roster-status`
 
-**shipped**. Splits the roster into Active (has opened the app) and Pending (invited, not arrived) sections with counts, invite date and 'Waiting to arrive'.
+**shipped**. Splits the roster into Active (has opened the app) and Pending (invited, not arrived) sections; a pending row shows its invite date. The counts are on the filter cells above the list.
 
 - **Pain removed:** Coaches know who still needs chasing to join.
 - **Evidence:** app/api/athletes/route.ts status comes from athleteStatus(first_login_at) in lib/athlete-status.ts. dashboard/page.tsx renders the activeList and pendingList sections.
 - **Surfaces:** /dashboard?tab=athletes, /athlete (silent), coach roster
-- **Demo state:** 'ACTIVE · 9' section above 'PENDING · 3 , Invited, not yet arrived'
+- **Demo state:** 'ACTIVE' section above 'PENDING · Invited, not yet arrived'
 - **Competitor gap:** no. Invite status is common.
 - **No posts of its own:** Roster housekeeping.
 
@@ -671,33 +671,33 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 
 ### Per-athlete wellness and driver `roster-wellness-driver`
 
-**shipped**. Each roster row shows the latest wellness score (14 days) as a coloured dot. Below 3.5 it names what pulled the score down, e.g. a sore area.
+**shipped**. Each roster row shows the latest wellness score (14 days) as a coloured dot and number under the initials. Below 3.5 the row also gets a tinted 'Low check-in' line naming what pulled the score down, e.g. a sore area.
 
 - **Pain removed:** Coaches spot struggling athletes from the roster and know why.
 - **Evidence:** dashboard/page.tsx wellnessByAthlete from /api/wellness?days=14, with overallWellnessScore and wellnessDriver from lib/wellness-config.ts using regionLabel.
 - **Surfaces:** /dashboard?tab=athletes
-- **Demo state:** Row 'Wellness 2.6/5 · Sore left hamstring' in a low colour
+- **Demo state:** Row with 2.6 under the initials and a tinted line 'Low check-in · Sore: Left hamstring'
 - **Competitor gap:** no. Wellness monitoring tools show scores; an inline plain-language reason is a minor differentiator.
 
 ### Last session, count, days since `roster-last-session`
 
-**shipped**. Each row shows the last session date, total session count, days since the last session, and a QUIET tag past 14 days.
+**shipped**. Each row has one line with the last session date, days since it, a QUIET tag past 14 days, and the total session count.
 
 - **Pain removed:** Every athlete's coaching history is visible at a glance and accurate beyond 50 sessions.
 - **Evidence:** dashboard/page.tsx coverageByAthlete from /api/athletes/coverage (counts all sessions server-side, with no cap). Until coverage loads it falls back to the 50 newest sessions.
 - **Surfaces:** /dashboard?tab=athletes
-- **Demo state:** 'Last session 2 Nov · 18 sessions' with '12d' on the right; another row '24d QUIET'
+- **Demo state:** 'Last session 2 Nov · 12d ago · 18 sessions'; another row '24d ago · QUIET' in ember
 - **Competitor gap:** no. Last-activity columns are common.
 - **No posts of its own:** Covered by the quiet-athletes-row posts: a facet of that feature rather than a post of its own.
 
 ### Roster row quick actions `roster-quick-actions`
 
-**shipped**. Each row has buttons to record for that athlete, message them (with an unread dot), open their calendar, or remove them (head only).
+**shipped**. Each row has a Record button for that athlete and a More button. More shows their email and buttons to message them (with the unread count), open their calendar, or remove them (head only). An unread message is a dot on the name and on More.
 
 - **Pain removed:** Common per-athlete jobs happen straight from the list.
 - **Evidence:** dashboard/page.tsx row buttons call openRecorder(a.id), setMsgPreselectedId+setTab('messages'), and showCalendarFor('athlete'). Delete opens a confirmation.
 - **Surfaces:** /dashboard?tab=athletes
-- **Demo state:** Row with mic, chat (with an ember dot), calendar and trash buttons
+- **Demo state:** Row with mic and More; More open showing the email, Message · 2 unread, Calendar and Remove
 - **Competitor gap:** no. Standard.
 - **No posts of its own:** Roster housekeeping.
 
@@ -747,7 +747,7 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 
 ### All sessions list and search `sessions-tab`
 
-**shipped**. Lists all sessions newest first, with summary, date, Online flag and Shared/Draft chip. Coaches can search titles, summaries and transcripts, filter by athlete, and load older pages.
+**shipped**. Lists all sessions newest first, with athlete, title, date, Online flag and Shared/Draft chip; the summary is on the session the row opens. Coaches can search titles, summaries and transcripts, filter by athlete, and load older pages.
 
 - **Pain removed:** Coaches can find a past session by what was said in it.
 - **Evidence:** dashboard/page.tsx fetchAllSessions and loadOlderSessions call /api/sessions/all (limit/offset, ilike on session_name, title, summary and transcript; assistants cannot search transcripts).
@@ -773,7 +773,7 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 - **Pain removed:** One place to schedule for yourself, one athlete or a whole squad.
 - **Evidence:** dashboard/page.tsx showCalendarFor and pickCalendar (an AthletePicker on mobile). app/api/calendar/route.ts GET has mode=personal, group_id and athlete_id branches. POST for a group inserts one row per member.
 - **Surfaces:** /dashboard?tab=calendar
-- **Demo state:** 'Showing: U18 Sprint · Event is added for all 8 athletes in this group'
+- **Demo state:** 'Showing: U18 Sprint · Event is added for all 8 athletes in this squad'
 - **Competitor gap:** no. Team and individual calendars are common.
 - **No posts of its own:** Covered by the calendar-month posts: a facet of that feature rather than a post of its own.
 
@@ -1227,7 +1227,7 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 - **Pain removed:** A small daily touch of motivation.
 - **Evidence:** app/athlete/page.tsx getDailyQuote('athlete') from lib/quotes.ts.
 - **Surfaces:** /athlete Calendar tab
-- **Demo state:** Quote strip above the calendar
+- **Demo state:** Quote strip under the calendar
 - **Competitor gap:** no. Cosmetic.
 - **No posts of its own:** Decoration; a post about it would undersell the product.
 
@@ -1575,7 +1575,7 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 - **Pain removed:** The athlete can ask 'is my elbow dropping?' with video and get a visual answer.
 - **Evidence:** app/components/AthleteClipUpload.tsx (duration checked in the browser, signed PUT) → app/api/athlete/clips/upload-url and POST app/api/athlete/clips/route.ts (verifies athlete_user_id and the 60s limit, inserts session_videos with uploaded_by_role 'athlete', posts a thread message 'Mia sent you a clip…' plus email). The coach marks it up on app/sessions/[id]/page.tsx ('Send back to …'). The athlete GET returns annotations only when shared_with_athlete is true (athleteSeesAnnotations).
 - **Surfaces:** /sessions/[id], /athlete Sessions tab ('Clips for your coach', and 'Show your coach' inside each session)
-- **Demo state:** 'My clips (2)' with one row showing 'Coach marked it up', expanded with drawings
+- **Demo state:** 'My clips (2)' as two stills, one marked 'Coach marked it up', opened to show the drawings
 - **Competitor gap:** yes. A two-way video question-and-answer loop for youth athletes, inside the coach's feedback tool.
 
 

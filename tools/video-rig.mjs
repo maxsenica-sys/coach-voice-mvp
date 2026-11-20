@@ -35,7 +35,7 @@
  *   V7  athleteMayViewVideo own-upload branch without the athlete-row check
  */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -56,6 +56,7 @@ import {
   VIDEO_BITS_PER_SECOND, AUDIO_BITS_PER_SECOND,
 } from '@/lib/screen-recording'
 
+import { PREVIEW_AT_S, GRID_COLUMNS, previewSrc, clipLength, openPanelAfter } from '@/lib/video-preview'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', OFF = '\x1b[0m'
 
@@ -350,6 +351,62 @@ check('V13', 'The pickers take several clips, the record step is safe to repeat,
   const clipUi = src('app/components/AthleteClipUpload.tsx')
   expect(p, /fetchWithRetry\('\/api\/athlete\/clips'/.test(clipUi), 'the athlete clip record step is not retried')
   expect(p, /isNetworkError\(e\) \? 'The connection dropped/.test(clipUi), 'an athlete is shown the browser\'s "Load failed"')
+  return p
+})
+
+// ── V14 ────────────────────────────────────────────────────────────────────
+// Max, 2026-11-20: "there is no preview. So the videos just look blank."
+check('V14', 'A video shows a still before play, its length reads right, and it opens under its own row', () => {
+  const p = []
+  const url = 'https://x.supabase.co/storage/v1/object/sign/session-videos/u/s/1.mov?token=abc'
+  expect(p, previewSrc(url) === `${url}#t=${PREVIEW_AT_S}`, 'a signed URL is not asked for a still')
+  expect(p, PREVIEW_AT_S > 0 && PREVIEW_AT_S <= 0.5, 'the still is taken from the black first frame, or from too far in')
+  expect(p, previewSrc(`${url}#t=12`) === `${url}#t=12`, 'a link to a moment loses its own time')
+  expect(p, previewSrc('') === '', 'an empty URL becomes "#t=…", which a <video> would try to load')
+  const lengths = [[7, '0:07'], [65, '1:05'], [760, '12:40'], [3723, '1:02:03'], [59.6, '1:00'], [0.4, '0:00']]
+  for (const [secs, want] of lengths) expect(p, clipLength(secs) === want, `${secs}s reads "${clipLength(secs)}", not "${want}"`)
+  for (const bad of [0, -3, NaN, Infinity, null, undefined]) expect(p, clipLength(bad) === '', `a length of ${bad} is printed as "${clipLength(bad)}"`)
+  expect(p, GRID_COLUMNS === 3, 'Max asked for three videos across a phone')
+  // seven videos, three across: rows are 0-2, 3-5, 6
+  const want = [2, 2, 2, 5, 5, 5, 6]
+  for (let i = 0; i < 7; i++) expect(p, openPanelAfter(7, i) === want[i], `video ${i + 1} of 7 opens after tile ${openPanelAfter(7, i) + 1}, not ${want[i] + 1}`)
+  expect(p, openPanelAfter(2, 0) === 1 && openPanelAfter(1, 0) === 0, 'a short last row puts the opened video past the end of the list')
+  expect(p, openPanelAfter(7, -1) === -1 && openPanelAfter(7, 7) === -1 && openPanelAfter(0, 0) === -1, 'nothing open still opens a panel')
+  return p
+})
+
+// ── V15 ────────────────────────────────────────────────────────────────────
+// The wiring behind V14, and Max's "the videos are stacked one on top of each
+// other ... across the phone, you should see maybe 3 videos".
+check('V15', 'Every video is a still, lists of videos are a grid, and nothing is tucked away in a bare <details>', () => {
+  const p = []
+  const src = (f) => readFileSync(join(ROOT, f), 'utf8')
+  const walk = (dir) => readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(join(dir, e.name)) : e.name.endsWith('.tsx') ? [join(dir, e.name)] : [])
+  const files = walk('app')
+  let tags = 0
+  for (const f of files) {
+    const text = src(f)
+    // an opening <video …> tag in JSX: the name, then whitespace, then attributes
+    for (const m of text.matchAll(/<video\s[\s\S]{0,1400}?\/>/g)) {
+      tags++
+      expect(p, /src=\{previewSrc\(/.test(m[0]), `${f}: a <video> without previewSrc is a blank rectangle on an iPhone until played`)
+    }
+    expect(p, !/<details[\s>]/.test(text), `${f}: a bare <details>; use app/components/Disclosure.tsx`)
+  }
+  expect(p, tags >= 4, `only ${tags} <video> tags found: the scan has stopped seeing them`)
+  for (const f of ['app/athletes/[id]/page.tsx', 'app/sessions/[id]/page.tsx', 'app/athlete/page.tsx', 'app/components/AthleteClipUpload.tsx']) {
+    expect(p, /<VideoGrid/.test(src(f)), `${f} lists videos without the grid`)
+  }
+  const grid = src('app/components/VideoGrid.tsx')
+  expect(p, /gridTemplateColumns: `repeat\(\$\{GRID_COLUMNS\}, minmax\(0, 1fr\)\)`/.test(grid), 'the grid is not three equal columns that cannot widen the page')
+  const still = (grid.match(/<video\s[\s\S]{0,1400}?\/>/) || [''])[0]
+  expect(p, /preload="metadata"/.test(still) && /muted/.test(still) && /playsInline/.test(still), 'a still would download the whole clip, play sound or go full screen')
+  expect(p, !/opacity/.test(still), 'the still is hidden until an event an iPhone may never send')
+  expect(p, /onError=\{\(\) => setFailed\(true\)\}/.test(still) && /\{src \? name : 'Could not be opened'\}/.test(grid), 'a clip that cannot be drawn is an unexplained blank tile')
+  const disclosure = src('app/components/Disclosure.tsx')
+  expect(p, /hidden=\{!isOpen\}/.test(disclosure) && !/\{isOpen && /.test(disclosure), 'a closed row unmounts what is inside it: a half-typed form or an upload would be lost')
+  expect(p, /aria-expanded=\{isOpen\}/.test(disclosure), 'a screen reader is not told whether the row is open')
   return p
 })
 
