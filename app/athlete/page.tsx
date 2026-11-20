@@ -2939,12 +2939,14 @@ export default function AthletePage() {
                   rows={3}
                   style={{ marginBottom: 10 }}
                 />
-                <div style={{ display: 'flex', gap: 8 }}>
+                {/* Wraps: at 320px the two buttons side by side ran 24px past
+                    the edge of the screen, where the clip hides them. */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   <button
                     className="btn btn-athlete btn-lg"
                     onClick={() => saveNote(noteFilter)}
                     disabled={noteSaving || !noteText.trim()}
-                    style={{ flex: 1 }}
+                    style={{ flex: '1 1 140px', minWidth: 0 }}
                   >
                     {noteSaving ? 'Saving…' : '✍️ Save note'}
                   </button>
@@ -2952,7 +2954,7 @@ export default function AthletePage() {
                     className={`btn ${noteRecording ? 'btn-danger' : 'btn-ghost'}`}
                     onClick={noteRecording ? stopNoteRecording : startNoteRecording}
                     disabled={noteTranscribing}
-                    style={{ gap: 6 }}
+                    style={{ gap: 6, flex: '1 1 auto', minHeight: 44 }}
                   >
                     {noteTranscribing ? '…transcribing' : noteRecording ? <><span className="recording-dot" /> Stop recording</> : '🎙️ Voice note'}
                   </button>
