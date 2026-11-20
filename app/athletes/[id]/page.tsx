@@ -294,7 +294,9 @@ function CaretakerPanel({ athleteId, athleteName, caretakers, setCaretakers, for
                 background: fresh ? 'color-mix(in srgb, var(--success) 12%, transparent)' : 'transparent',
               }}
             >
-              <div style={{ flex: 1, minWidth: 0 }}>
+              {/* A basis, so on a narrow phone the two buttons drop under the
+                  name instead of squeezing the email into a 90px column. */}
+              <div style={{ flex: '1 1 170px', minWidth: 0 }}>
                 {fresh && (
                   <div style={{ marginBottom: 6 }}>
                     <Chip color="var(--success)">{justSavedWasUpdate ? '✓ Updated' : '✓ Just added'}</Chip>

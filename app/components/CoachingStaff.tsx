@@ -318,7 +318,7 @@ export default function CoachingStaff() {
 
       <Disclosure
         label="Invite an assistant"
-        summary="By email, for the athletes you tick"
+        summary="By email"
         open={inviteOpen || sending}
         onToggle={setInviteOpen}
       >

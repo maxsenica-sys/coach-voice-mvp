@@ -768,7 +768,7 @@ function SettingsTab({ coachName, coachSport, coachEmail, inviteCode, codeEditin
         )}
         {codeMsg && <p style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: codeMsg.includes('Copied') || codeMsg.includes('updated') ? 'var(--success)' : 'var(--danger)' }}>{codeMsg}</p>}
         <div style={{ marginTop: 14 }}>
-          <Disclosure label="How athletes join" summary="By email or by code">
+          <Disclosure label="How athletes join" summary="Email or code">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 'var(--fs-3)', color: 'var(--text-2)' }}>
               {[['Invite by email.', 'Use the + on the Athletes tab.'], ['Share your code.', 'Athletes enter it at sign-up to join your roster.']].map(([t, d], i) => (
                 <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -2401,13 +2401,13 @@ function DashboardPageInner() {
                   const meta: React.ReactNode[] = []
                   if (pending && invited) meta.push(`Invited ${invited.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`)
                   meta.push(lastDate
-                    ? `Last ${formatSessionDate({ session_date: lastDate }, { day: 'numeric', month: 'short' })}`
+                    ? `Last session ${formatSessionDate({ session_date: lastDate }, { day: 'numeric', month: 'short' })}`
                     : 'No sessions yet')
                   if (cov && cov.days_since !== null) meta.push(<span style={{ color: quiet ? ember : undefined }}>{cov.days_since === 0 ? 'Today' : `${cov.days_since}d ago`}</span>)
                   if (quiet) meta.push(<strong style={{ fontWeight: 700, color: ember }}>Quiet</strong>)
                   if (count > 0) meta.push(`${count} session${count === 1 ? '' : 's'}`)
                   return (
-                    <div key={a.id} style={{ display: 'grid', gridTemplateColumns: '44px minmax(0, 1fr) auto', columnGap: 12, rowGap: 6, alignItems: 'center', padding: '10px 0', borderTop: i === 0 ? HAIR_2 : HAIR }}>
+                    <div key={a.id} style={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', columnGap: 10, rowGap: 6, alignItems: 'center', padding: '10px 0', borderTop: i === 0 ? HAIR_2 : HAIR }}>
                       <div style={{ gridColumn: 1, gridRow: '1 / span 2', alignSelf: 'start', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, paddingTop: 4 }}>
                         <Link href={`/athletes/${a.id}`} tabIndex={-1} aria-hidden style={{ display: 'flex', textDecoration: 'none' }}>
                           <Mono initials={initialsOf(a.first_name, a.last_name)} pending={pending} />
@@ -2424,7 +2424,7 @@ function DashboardPageInner() {
                         <Link href={`/athletes/${a.id}`} style={{ ...cast(18, 700, '.04em'), lineHeight: 1.1, color: 'var(--text)', textDecoration: 'none', overflowWrap: 'anywhere' }}>{name}</Link>
                         {unread > 0 && <span role="img" aria-label={`${unread} unread`} style={{ width: 7, height: 7, borderRadius: '50%', background: ember, display: 'inline-block', marginLeft: 8, verticalAlign: 2 }} />}
                       </div>
-                      <div style={{ gridColumn: 3, gridRow: 1, display: 'flex', gap: 8 }}>
+                      <div style={{ gridColumn: 3, gridRow: 1, display: 'flex', gap: 6 }}>
                         <button onClick={() => openRecorder(a.id)} style={{ ...ICON_BTN, color: 'var(--primary)', borderColor: tint('var(--primary)', 45), background: tint('var(--primary)', 9) }} title="Record session" aria-label={`Record a session for ${name}`}>
                           <Icon name="mic" size={16} />
                         </button>
@@ -2521,16 +2521,16 @@ function DashboardPageInner() {
                   {/* Four equal cells on one line at any width, the count under
                       its label. As a wrapping row the fourth chip dropped to a
                       line of its own on every phone. */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6, marginTop: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 5, marginTop: 8 }}>
                     {FILTERS.map(({ key, label, count }) => {
                       const on = athleteFilter === key
                       return (
                         <button key={key} onClick={() => setAthleteFilter(key)} aria-pressed={on} aria-label={count !== null ? `${label}, ${count}` : label} style={{
-                          minWidth: 0, minHeight: 44, padding: '5px 2px', borderRadius: 14, cursor: 'pointer',
+                          minWidth: 0, minHeight: 44, padding: '5px 0', borderRadius: 14, cursor: 'pointer',
                           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                           border: '1px solid', borderColor: on ? tint('var(--text)', 40) : 'var(--border-soft)',
                           background: on ? tint('var(--text)', 10) : 'transparent',
-                          color: on ? 'var(--text)' : 'var(--text-2)', ...cast(13, 700, '.06em'),
+                          color: on ? 'var(--text)' : 'var(--text-2)', ...cast(13, 700, '.08em'),
                         }}>
                           <span style={{ maxWidth: '100%', overflowWrap: 'anywhere' }}>{label}</span>
                           {count !== null && <span style={{ ...MONO, fontSize: 13, fontWeight: 700, lineHeight: 1, color: on ? 'var(--text)' : 'var(--text-2)' }}>{count}</span>}
@@ -2771,7 +2771,7 @@ function DashboardPageInner() {
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <input className="input" type="search" enterKeyHint="search" placeholder="Search sessions…" aria-label="Search sessions" value={sessionsSearch} onChange={e => setSessionsSearch(e.target.value)} style={{ flex: '1 1 110px', minWidth: 0, maxWidth: isMobile ? 'none' : 260, minHeight: 44, fontSize: 16 }} onKeyDown={e => e.key === 'Enter' && fetchAllSessions(sessionsSearch, sessionsAthleteFilter)} />
+                <input className="input" type="search" enterKeyHint="search" placeholder={isMobile ? 'Search…' : 'Search sessions…'} aria-label="Search sessions" value={sessionsSearch} onChange={e => setSessionsSearch(e.target.value)} style={{ flex: '1 1 110px', minWidth: 0, maxWidth: isMobile ? 'none' : 260, minHeight: 44, fontSize: 16 }} onKeyDown={e => e.key === 'Enter' && fetchAllSessions(sessionsSearch, sessionsAthleteFilter)} />
                 <select className="input" aria-label="Filter by athlete" value={sessionsAthleteFilter} onChange={e => { setSessionsAthleteFilter(e.target.value); fetchAllSessions(sessionsSearch, e.target.value) }} style={{ flex: '1 1 110px', minWidth: 0, maxWidth: isMobile ? 'none' : 200, minHeight: 44, fontSize: 16 }}>
                   <option value="">All athletes</option>
                   {athletes.map(a => <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>)}

@@ -174,11 +174,11 @@ export default function CoachInsights({ athleteId, athleteName }: { athleteId: s
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
                   {SESSION_RESPONSES.map((r) => (
-                    <div key={r.value} style={{ minWidth: 0, padding: '10px 10px 9px', borderRadius: 12, background: r.tint, border: `1px solid color-mix(in srgb, ${r.color} 42%, transparent)` }}>
+                    <div key={r.value} style={{ minWidth: 0, padding: '10px 8px 9px', borderRadius: 12, background: r.tint, border: `1px solid color-mix(in srgb, ${r.color} 42%, transparent)` }}>
                       <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, lineHeight: 1, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
                         {data.replies[r.value]}
                       </div>
-                      <div style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.08em', lineHeight: 1.25, color: r.color, marginTop: 6, overflowWrap: 'anywhere' }}>
+                      <div style={{ ...CAST, fontSize: 'var(--t-furniture)', letterSpacing: '0.02em', lineHeight: 1.25, color: r.color, marginTop: 6, overflowWrap: 'anywhere' }}>
                         {r.coachLabel}
                       </div>
                     </div>

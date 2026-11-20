@@ -151,9 +151,10 @@ function ScoreBar({ metricKey, label, score, inverted }: { metricKey: MetricKey;
   const bucket = metricColor(metricKey, score)
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '92px minmax(0, 1fr) 22px', alignItems: 'center', gap: 10 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '100px minmax(0, 1fr) 22px', alignItems: 'center', gap: 10 }}>
       <span style={{
-        fontFamily: 'var(--font-cast)', fontSize: 15, fontWeight: 700, letterSpacing: '0.1em',
+        // 100px and a tighter track: at 92px "Soreness" broke before its last letter.
+        fontFamily: 'var(--font-cast)', fontSize: 15, fontWeight: 700, letterSpacing: '0.06em',
         textTransform: 'uppercase', color: 'var(--text-2)', overflowWrap: 'anywhere',
       }}>{label}</span>
       <div style={{ height: 6, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
