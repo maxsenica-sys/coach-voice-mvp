@@ -30,6 +30,8 @@ import { SESSION_RESPONSES, responseOption, type SessionResponse } from '@/lib/s
 import { formatSessionDate, parseISODate, sessionDate, sessionISODate } from '@/lib/session-date'
 import VideoAnnotator, { type AnnotationStroke } from '@/app/components/VideoAnnotator'
 import VideoCompare, { type CompareVideo } from '@/app/components/VideoCompare'
+import Disclosure from '@/app/components/Disclosure'
+import VideoGrid, { type TileMark } from '@/app/components/VideoGrid'
 import { formatClipTime, momentAround, validateClipRange, DEFAULT_MOMENT_PAD } from '@/lib/video-clip'
 
 type FocusPoint = string
@@ -82,6 +84,8 @@ type SessionDetail = {
   transcript: string | null
   /** Set for an assistant coach when the recording is about athletes not given to them (migration 035). */
   transcript_withheld?: boolean
+  /** A squad session: the recording and transcript stay with the coach, and the page says so. */
+  is_group_session?: boolean
   coach_notes: string | null
   focus_points: FocusPoint[]
   shared_with_athlete: boolean
@@ -197,14 +201,8 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
   }
   switch (name) {
     case 'back':   return <svg {...p}><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
-    case 'mic':    return <svg {...p}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /></svg>
-    case 'spark':  return <svg {...p}><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" /></svg>
     case 'target': return <svg {...p}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /></svg>
-    case 'note':   return <svg {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
-    case 'image':  return <svg {...p}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
     case 'video':  return <svg {...p}><polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
-    case 'text':   return <svg {...p}><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></svg>
-    case 'pulse':  return <svg {...p}><polyline points="2 12 6 12 9 4 15 20 18 12 22 12" /></svg>
     case 'plus':   return <svg {...p}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
     case 'x':      return <svg {...p}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
     case 'check':  return <svg {...p}><polyline points="20 6 9 17 4 12" /></svg>
@@ -343,11 +341,21 @@ function SummaryFeature({ text }: { text: string }) {
 
 /* ── Video: moments, marking, compare ───────────────────────────────────── */
 
-const VIDEO_BTN: React.CSSProperties = {
+/**
+ * The one secondary control on this page, in the same furniture voice as the
+ * section heads. Its words wrap: "Send back to Alexandria-Rose" and "Watch the
+ * moment 0:02-0:05" are both wider than a 320px phone gives them, and with
+ * nowrap they were cut at the screen edge, not scrolled to.
+ */
+const TOOL_BTN: React.CSSProperties = {
   ...CAST, letterSpacing: '0.14em', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  gap: 6, minHeight: 44, padding: '0 14px', borderRadius: 11, border: `1px solid ${LINE_2}`,
-  background: PANEL, color: 'var(--text-2)', cursor: 'pointer', whiteSpace: 'nowrap',
+  flexWrap: 'wrap', gap: '2px 6px', minHeight: 44, minWidth: 0, maxWidth: '100%', padding: '6px 14px',
+  borderRadius: 11, border: `1px solid ${LINE_2}`, background: PANEL, color: 'var(--text-2)', cursor: 'pointer',
+  textAlign: 'center', overflowWrap: 'anywhere',
 }
+
+/** The add row's buttons, set tighter so three of them share one line on an iPhone. */
+const ADD_BTN: React.CSSProperties = { ...TOOL_BTN, letterSpacing: '0.06em', padding: '6px 8px' }
 
 function momentRange(c: ClipRow): string {
   return `${formatClipTime(c.start_s)}–${formatClipTime(c.end_s)}`
@@ -380,7 +388,7 @@ function MomentPlayer({ clip, video, onClose }: { clip: ClipRow; video: ClipVide
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)' }}>{momentRange(clip)}</span>
           {clip.label ? ` · ${clip.label}` : ''} · press play to watch it again
         </span>
-        <button onClick={onClose} style={VIDEO_BTN}>Close</button>
+        <button onClick={onClose} style={TOOL_BTN}>Close</button>
       </div>
     </div>
   )
@@ -413,7 +421,7 @@ function ClipMarker({ getVideo, focusPoints, onSave }: {
 
   if (!open) {
     return (
-      <button onClick={() => { setOpen(true); setFocus((f) => f || focusPoints[0] || '') }} style={VIDEO_BTN}>
+      <button onClick={() => { setOpen(true); setFocus((f) => f || focusPoints[0] || '') }} style={TOOL_BTN}>
         <Icon name="target" size={13} /> Mark a moment
       </button>
     )
@@ -434,17 +442,17 @@ function ClipMarker({ getVideo, focusPoints, onSave }: {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: 14, border: `1px solid ${LINE_2}`, minWidth: 0 }}>
+    <div style={{ flex: '1 1 100%', display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: 14, border: `1px solid ${LINE_2}`, minWidth: 0 }}>
       <div style={{ ...CAST, letterSpacing: '0.18em', color: 'var(--text-2)' }}>Mark a moment</div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button onClick={() => { setStart(now()); setProblem('') }} style={VIDEO_BTN}>Start here</button>
-        <button onClick={() => { setEnd(now()); setProblem('') }} style={VIDEO_BTN}>End here</button>
+        <button onClick={() => { setStart(now()); setProblem('') }} style={TOOL_BTN}>Start here</button>
+        <button onClick={() => { setEnd(now()); setProblem('') }} style={TOOL_BTN}>End here</button>
         <button
           onClick={() => {
             const r = momentAround(now(), duration() ?? Number.NaN, DEFAULT_MOMENT_PAD)
             setStart(r.start_s); setEnd(r.end_s); setProblem('')
           }}
-          style={VIDEO_BTN}
+          style={TOOL_BTN}
         >
           ±{DEFAULT_MOMENT_PAD}s around now
         </button>
@@ -477,10 +485,10 @@ function ClipMarker({ getVideo, focusPoints, onSave }: {
       {problem && <div role="alert" style={{ fontSize: 'var(--t-body-tight)', color: 'var(--danger)' }}>{problem}</div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button onClick={() => void save()} disabled={saving}
-          style={{ ...VIDEO_BTN, background: EMBER, color: 'var(--on-primary)', border: 'none', cursor: saving ? 'progress' : 'pointer' }}>
+          style={{ ...TOOL_BTN, background: EMBER, color: 'var(--on-primary)', border: 'none', cursor: saving ? 'progress' : 'pointer' }}>
           {saving ? 'Saving…' : 'Save moment'}
         </button>
-        <button onClick={() => { setOpen(false); setProblem('') }} style={VIDEO_BTN}>Cancel</button>
+        <button onClick={() => { setOpen(false); setProblem('') }} style={TOOL_BTN}>Cancel</button>
       </div>
     </div>
   )
@@ -557,6 +565,20 @@ export default function SessionDetailPage() {
   const [openMoment, setOpenMoment] = useState<string | null>(null)
   const [athleteVideos, setAthleteVideos] = useState<AthleteVideo[] | null>(null)
   const [compareOpen, setCompareOpen] = useState(false)
+  /** The video Compare opens with as A, when it was opened from that video. */
+  const [compareA, setCompareA] = useState<string | null>(null)
+  const compareRef = useRef<HTMLDivElement | null>(null)
+  /** The opened tile in the session's video grid, and in the clip inbox. */
+  const [openVideo, setOpenVideo] = useState<string | null>(null)
+  const [openInboxClip, setOpenInboxClip] = useState<string | null>(null)
+  /* The inbox row. Opened by the page, once, when a clip in it is still
+     waiting for the coach; its stills are not asked for until it has been
+     open. */
+  const [inboxOpen, setInboxOpen] = useState(false)
+  const [inboxShown, setInboxShown] = useState(false)
+  const inboxDecided = useRef(false)
+  /** The uploader has clips in hand: it takes the full row so its list has room. */
+  const [uploaderActive, setUploaderActive] = useState(false)
   const [videoNote, setVideoNote] = useState('')
   const videoEls = useRef<Record<string, HTMLVideoElement | null>>({})
 
@@ -580,7 +602,22 @@ export default function SessionDetailPage() {
     if (v.status === 'fulfilled') setVideoList(v.value.videos ?? [])
     else failed.push('drawings')
     if (c.status === 'rejected') failed.push('moments')
-    if (a.status === 'fulfilled') { if (a.value) setAthleteVideos(a.value.videos ?? []) }
+    if (a.status === 'fulfilled') {
+      if (a.value) {
+        const list = a.value.videos ?? []
+        setAthleteVideos(list)
+        // A clip sent with no session that has not been sent back is waiting
+        // on the coach, so its row starts open. Decided once: closing it is
+        // the coach's call from then on.
+        if (!inboxDecided.current) {
+          inboxDecided.current = true
+          if (list.some((v) => v.session_id === null && v.uploaded_by_role === 'athlete' && !v.shared_with_athlete)) {
+            setInboxOpen(true)
+            setInboxShown(true)
+          }
+        }
+      }
+    }
     else failed.push('other videos')
     setVideoNote(failed.length ? `Some video details did not load (${failed.join(', ')}). Reload to try again.` : '')
   }, [sessionId, loadClips])
@@ -694,6 +731,19 @@ export default function SessionDetailPage() {
   }
 
   const canGoBack = useSyncExternalStore(noSubscribe, previousPageIsInApp, () => false)
+
+  const openCompare = (videoId: string | null) => {
+    setCompareA(videoId)
+    setCompareOpen(true)
+  }
+  // Compare opens under the add row, which may be above the video it was
+  // asked from.
+  useEffect(() => {
+    if (!compareOpen) return
+    const el = compareRef.current
+    if (!el || typeof el.scrollIntoView !== 'function') return
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [compareOpen, compareA])
 
   const toggleShare = async () => {
     if (!session) return
@@ -887,12 +937,57 @@ export default function SessionDetailPage() {
   const panel: React.CSSProperties = {
     background: PANEL, border: `1px solid ${LINE}`, borderRadius: 16,
   }
-  /** A secondary control in the same furniture voice as the section heads. */
-  const toolButton: React.CSSProperties = {
-    ...CAST, letterSpacing: '0.14em', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    gap: 6, minHeight: 44, padding: '0 14px', borderRadius: 11, border: `1px solid ${LINE_2}`,
-    background: PANEL, color: 'var(--text-2)', cursor: 'pointer', whiteSpace: 'nowrap',
+  /* ── What the page lists, worked out once ─────────────────────────────── */
+  const vids: VideoRow[] = videoList ?? data?.videos ?? []
+  const images = data?.attachments ?? []
+  /** Two videos of this athlete that can be played: what Compare needs. */
+  const comparable = (athleteVideos ?? []).filter((v) => v.signedUrl)
+  const canCompare = isCoach && comparable.length >= 2
+  /* Clips the athlete sent with no session. They live on the athlete, not on
+     a session, so they are offered on each of the athlete's session pages,
+     where the coach already marks up video. */
+  const inbox = isCoach
+    ? (athleteVideos ?? []).filter((v) => v.session_id === null && v.uploaded_by_role === 'athlete')
+    : []
+  const waiting = inbox.filter((v) => !v.shared_with_athlete).length
+  const isLiveTakeaway = (c: ClipRow) => Boolean(c.focus_point && session.focus_points.includes(c.focus_point))
+
+  /** What a tile says under its still. The rest is on the opened video. */
+  const videoMarks = (v: VideoRow): TileMark[] => {
+    const marks: TileMark[] = []
+    const fromAthlete = v.uploaded_by_role === 'athlete'
+    if (fromAthlete) marks.push({ text: isCoach ? `From ${athleteFirst || 'athlete'}` : 'Your clip' })
+    if (isCoach && v.shared_with_athlete) marks.push({ text: fromAthlete ? 'Sent back' : 'Shared', tone: 'on' })
+    // A clip the athlete is still waiting to hear about says so on its tile.
+    if (isCoach && fromAthlete && !v.shared_with_athlete) marks.push({ text: 'Not sent back' })
+    const n = clips.filter((c) => c.video_id === v.id).length
+    if (n > 0) marks.push({ text: `${n} moment${n === 1 ? '' : 's'}` })
+    return marks
   }
+
+  /* ── Recording ──
+     A band with an ember hairline across its top: the coach's own voice.
+     The coach gets it above the summary; the athlete after their takeaways,
+     because what they open the page for is what to do next. */
+  const recordingBlock = session.audio_url ? (
+    <section aria-label="Recording" style={{
+      ...panel, position: 'relative', overflow: 'hidden', borderRadius: 18, padding: '4px 14px 10px',
+      marginTop: isCoach ? 8 : 26,
+    }}>
+      <div aria-hidden style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+        background: `linear-gradient(90deg, ${EMBER} 0%, color-mix(in srgb, var(--coach-on-light) 15%, transparent) 62%, transparent 100%)`,
+      }} />
+      <SessionAudioPlayer
+        sessionId={session.id}
+        initialUrl={session.audio_url}
+        mime={session.audio_mime}
+      />
+      <p style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.4, color: 'var(--text-2)', margin: '6px 0 0' }}>
+        Streams when you press play.
+      </p>
+    </section>
+  ) : null
 
   return (
     <div style={{
@@ -962,31 +1057,11 @@ export default function SessionDetailPage() {
           </div>
         </div>
 
-        {/* ── Ticker ──
-            What this record is and who can see it. Wraps rather than clipping:
-            a sport name is free text, and a ticker that cuts it off is dropping
-            data to make a line fit. */}
-        <div style={{
-          ...CAST, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--text-2)',
-          marginTop: 14, padding: '9px 0', borderTop: `1px solid ${LINE}`, borderBottom: `1px solid ${LINE}`,
-          display: 'flex', alignItems: 'center', gap: '6px 12px', flexWrap: 'wrap',
-        }}>
-          {session.sport_context && (
-            <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{session.sport_context}</span>
-          )}
-          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, color: isCoach && !session.shared_with_athlete ? EMBER : SAGE }}>
-            {isCoach && !session.shared_with_athlete
-              ? <i aria-hidden style={{ width: 7, height: 7, background: EMBER, transform: 'skewX(-14deg)', flexShrink: 0 }} />
-              : <i aria-hidden style={{ width: 6, height: 6, borderRadius: '50%', background: SAGE, flexShrink: 0 }} />}
-            {isCoach ? (session.shared_with_athlete ? 'Shared' : 'Private') : 'A nod from your coach'}
-          </span>
-        </div>
-
         {/* ── Masthead ──
             The dateline band deliberately breaks the gutter: a skewed beam with
             an ember hairline, clipped by its own wrapper so it can never push
             the page sideways. */}
-        <header style={{ position: 'relative', margin: '0 -20px', padding: '18px 20px 16px' }}>
+        <header style={{ position: 'relative', margin: '8px -20px 0', padding: '18px 20px 16px' }}>
           {/* The beam is a clip-path parallelogram rather than a skew
               transform: a skewed box pokes its corners out past its own
               bounds, and at the page edge that is a sideways scroll. The ember
@@ -1022,13 +1097,21 @@ export default function SessionDetailPage() {
             </time>
 
             <div style={{ minWidth: 0 }}>
-              <div style={{ ...CAST, letterSpacing: '0.26em', color: EMBER, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <i aria-hidden style={{ width: 7, height: 7, background: EMBER, transform: 'skewX(-14deg)', flexShrink: 0 }} />
-                {recorded ? 'Recorded session' : 'Session'}
+              {/* What this record is: recorded or not, in person or online, and
+                  the sport. Each piece wraps whole; a sport name is free text
+                  and is never cut to fit. */}
+              <div style={{ ...CAST, letterSpacing: '0.2em', color: EMBER, display: 'flex', alignItems: 'center', gap: '2px 8px', flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <i aria-hidden style={{ width: 7, height: 7, background: EMBER, transform: 'skewX(-14deg)', flexShrink: 0 }} />
+                  {recorded ? 'Recorded session' : 'Session'}
+                </span>
                 {session.delivery && (
                   <span style={{ color: session.delivery === 'online' ? 'var(--text)' : 'var(--primary)' }}>
                     · {DELIVERY_LABEL[session.delivery]}
                   </span>
+                )}
+                {session.sport_context && (
+                  <span style={{ color: 'var(--text-2)', minWidth: 0, overflowWrap: 'anywhere' }}>· {session.sport_context}</span>
                 )}
               </div>
               <h1 style={{
@@ -1045,6 +1128,13 @@ export default function SessionDetailPage() {
               }}>
                 {heading}
               </h1>
+
+              {!isCoach && (
+                <div style={{ ...CAST, letterSpacing: '0.16em', color: SAGE, display: 'flex', alignItems: 'center', gap: 7, marginTop: 8 }}>
+                  <i aria-hidden style={{ width: 6, height: 6, borderRadius: '50%', background: SAGE, flexShrink: 0 }} />
+                  <span style={{ minWidth: 0 }}>A nod from your coach</span>
+                </div>
+              )}
 
               {isCoach && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '2px 10px', flexWrap: 'wrap', marginTop: 6 }}>
@@ -1092,44 +1182,54 @@ export default function SessionDetailPage() {
                   </button>
 
                   {session.can_edit && (
-                    <button onClick={() => setEditOpen(true)} style={toolButton}>
+                    <button onClick={() => setEditOpen(true)} style={TOOL_BTN}>
                       Edit
                     </button>
                   )}
                 </div>
               )}
 
-              {/* Audit log: has the athlete opened it? Coach only, shared only. */}
-              {isCoach && session.shared_with_athlete && (
-                <SessionSeen sessionId={session.id} firstName={athleteFirst} />
-              )}
             </div>
           </div>
+
+          {/* What has come back from the athlete, said once and up here:
+              whether they opened it (the audit log; shared sessions only) and
+              the one answer they can give. Read-only for the coach, because a
+              coach editing an athlete's answer would make the signal
+              worthless. "Not sure what you mean" asks something of the coach,
+              so its nudge is never tucked away. */}
+          {isCoach && (session.shared_with_athlete || reply) && (
+            <div style={{ position: 'relative', minWidth: 0, marginTop: 6 }}>
+              {session.shared_with_athlete && (
+                <SessionSeen sessionId={session.id} firstName={athleteFirst} />
+              )}
+              {reply && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px 10px', flexWrap: 'wrap', marginTop: 8, minWidth: 0 }}>
+                  <span style={{
+                    ...CAST, fontSize: 'var(--fs-3)', letterSpacing: '0.1em', textTransform: 'none',
+                    padding: '6px 13px', borderRadius: 999, minWidth: 0, overflowWrap: 'anywhere',
+                    background: reply.tint, color: reply.color,
+                    border: `1px solid color-mix(in srgb, ${reply.color} 40%, transparent)`,
+                  }}>
+                    {reply.coachLabel}
+                  </span>
+                  <span style={{ flex: '1 1 160px', fontSize: 'var(--fs-2)', lineHeight: 1.45, color: 'var(--text-2)', minWidth: 0, overflowWrap: 'anywhere' }}>
+                    {athleteFirst || 'They'} answered
+                    {data!.session.athlete_responded_at
+                      ? ` ${new Date(data!.session.athlete_responded_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
+                      : ''}
+                    {data!.session.athlete_response === 'not_clear'
+                      ? '. Worth a word before the next session.'
+                      : '.'}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </header>
 
-        {/* ── Recording ──
-            A band with an ember hairline across its top — the coach's own voice. */}
-        {session.audio_url && (
-          <section aria-label="Recording" style={{
-            ...panel, position: 'relative', overflow: 'hidden', borderRadius: 18, padding: '6px 14px 12px',
-          }}>
-            <div aria-hidden style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: 2,
-              background: `linear-gradient(90deg, ${EMBER} 0%, color-mix(in srgb, var(--coach-on-light) 15%, transparent) 62%, transparent 100%)`,
-            }} />
-            <SessionAudioPlayer
-              sessionId={session.id}
-              initialUrl={session.audio_url}
-              mime={session.audio_mime}
-            />
-            <p style={{
-              fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', margin: '10px 0 0', paddingTop: 9,
-              borderTop: `1px solid ${LINE}`,
-            }}>
-              Streams on demand — nothing downloads until you press play.
-            </p>
-          </section>
-        )}
+        {/* The coach's recording, above the summary (see recordingBlock). */}
+        {isCoach && recordingBlock}
 
         {/* ── Summary: the reason to open the page ── */}
         <Section label="Session summary">
@@ -1141,75 +1241,6 @@ export default function SessionDetailPage() {
             </div>
           )}
         </Section>
-
-        {/* ── The athlete's answer ──
-            The only thing in this product that travels from the athlete back
-            to the coach. Placed directly under the focus points, because what
-            it answers is the focus point: the coach said do this, and this is
-            whether it landed.
-
-            Two renders of one field. The athlete gets buttons; the coach gets
-            a read-only badge, because a coach editing an athlete's answer
-            would make the signal worthless. */}
-        {!isCoach && (
-          <Section label="Tell your coach">
-            <div style={{ ...panel, padding: 14 }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {SESSION_RESPONSES.map((opt) => {
-                  const on = response === opt.value
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => void answer(opt.value)}
-                      style={{
-                        padding: '9px 15px', minHeight: 44, borderRadius: 999, maxWidth: '100%',
-                        border: `1px solid ${on ? opt.color : LINE_2}`,
-                        background: on ? opt.tint : PANEL,
-                        color: on ? opt.color : 'var(--text-2)',
-                        fontFamily: 'inherit',
-                        fontSize: 'var(--fs-3)', fontWeight: on ? 800 : 600,
-                        cursor: 'pointer', lineHeight: 1.2,
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  )
-                })}
-              </div>
-              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 10, lineHeight: 1.5 }}>
-                {response
-                  ? 'Your coach can see this. Tap again to undo.'
-                  : 'One tap. Your coach sees which one you picked, and nothing else.'}
-              </div>
-            </div>
-          </Section>
-        )}
-
-        {reply && (
-          <Section label="What they said back">
-            <div style={{ ...panel, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px 12px', flexWrap: 'wrap' }}>
-              <span style={{
-                ...CAST, fontSize: 'var(--fs-3)', letterSpacing: '0.1em', textTransform: 'none',
-                padding: '6px 13px', borderRadius: 999,
-                background: reply.tint, color: reply.color,
-                border: `1px solid color-mix(in srgb, ${reply.color} 40%, transparent)`,
-              }}>
-                {reply.coachLabel}
-              </span>
-              <span style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', minWidth: 0 }}>
-                {athleteFirst || 'They'} answered
-                {data!.session.athlete_responded_at
-                  ? ` ${new Date(data!.session.athlete_responded_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
-                  : ''}
-                {data!.session.athlete_response === 'not_clear'
-                  ? ' — worth a word before the next session.'
-                  : '.'}
-              </span>
-            </div>
-          </Section>
-        )}
 
         {/* ── How they came in ──
             The athlete's own check-in from the morning of this session, shown
@@ -1284,10 +1315,6 @@ export default function SessionDetailPage() {
             meta={session.focus_points.length > 0 ? session.focus_points.length : undefined}
           >
             <div>
-              {session.focus_points.length === 0 && !isCoach && (
-                <div style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>Nothing noted yet.</div>
-              )}
-
               {session.focus_points.map((point, i) => {
                 /* "Watch the moment": the coach's clip of the video, beside the
                    sentence it illustrates. Matched on the takeaway's text — see
@@ -1315,9 +1342,11 @@ export default function SessionDetailPage() {
                         {moments.map((c, mi) => (
                           <button key={c.id} onClick={() => setOpenMoment(openMoment === `focus:${c.id}` ? null : `focus:${c.id}`)}
                             aria-expanded={openMoment === `focus:${c.id}`}
-                            style={{ ...VIDEO_BTN, color: AMBER, borderColor: `color-mix(in srgb, ${AMBER} 45%, transparent)` }}>
-                            <Icon name="video" size={13} />
-                            {moments.length > 1 ? `Watch moment ${mi + 1}` : 'Watch the moment'}
+                            style={{ ...TOOL_BTN, color: AMBER, borderColor: `color-mix(in srgb, ${AMBER} 45%, transparent)` }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                              <Icon name="video" size={13} />
+                              <span style={{ minWidth: 0 }}>{moments.length > 1 ? `Watch moment ${mi + 1}` : 'Watch the moment'}</span>
+                            </span>
                             <span style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.02em', textTransform: 'none', fontWeight: 500 }}>{momentRange(c)}</span>
                           </button>
                         ))}
@@ -1371,7 +1400,7 @@ export default function SessionDetailPage() {
                     }}
                   />
                   <button onClick={() => void addFocus()} disabled={!newFocus.trim() || addingFocus}
-                    style={{ ...toolButton, flexShrink: 0, opacity: newFocus.trim() && !addingFocus ? 1 : 0.5, cursor: newFocus.trim() && !addingFocus ? 'pointer' : 'not-allowed' }}>
+                    style={{ ...TOOL_BTN, flexShrink: 0, opacity: newFocus.trim() && !addingFocus ? 1 : 0.5, cursor: newFocus.trim() && !addingFocus ? 'pointer' : 'not-allowed' }}>
                     <Icon name="plus" size={13} /> {addingFocus ? 'Adding…' : 'Add'}
                   </button>
                 </div>
@@ -1380,12 +1409,64 @@ export default function SessionDetailPage() {
           </Section>
         )}
 
+        {/* ── The athlete's answer ──
+            The only thing in this product that travels from the athlete back
+            to the coach. Directly under the takeaways, because what it answers
+            is the takeaway: the coach said do this, and this is whether it
+            landed. The coach reads the same field as a badge in the masthead. */}
+        {!isCoach && (
+          <Section label="Tell your coach">
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {SESSION_RESPONSES.map((opt) => {
+                  const on = response === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => void answer(opt.value)}
+                      style={{
+                        padding: '9px 15px', minHeight: 44, borderRadius: 999, maxWidth: '100%',
+                        border: `1px solid ${on ? opt.color : LINE_2}`,
+                        background: on ? opt.tint : PANEL,
+                        color: on ? opt.color : 'var(--text-2)',
+                        fontFamily: 'inherit',
+                        fontSize: 'var(--fs-3)', fontWeight: on ? 800 : 600,
+                        cursor: 'pointer', lineHeight: 1.2,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-2)', marginTop: 10, lineHeight: 1.5 }}>
+                {response
+                  ? 'Your coach can see this. Tap again to undo.'
+                  : 'One tap. Your coach sees only which one you picked.'}
+              </div>
+            </div>
+          </Section>
+        )}
+
+        {/* The athlete's recording, after what to do next. A squad session has
+            none to give: the recording is the coach talking to the whole
+            group, the server never sends it, and the page says why instead of
+            showing nothing (the athlete's home says the same). */}
+        {!isCoach && recordingBlock}
+        {!isCoach && session.is_group_session && (
+          <p style={{ marginTop: 26, marginBottom: 0, fontSize: 'var(--t-body-tight)', lineHeight: 1.6, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+            This was a squad session. Your summary above is yours. The full recording is your coach talking to the whole group, so it stays with them.
+          </p>
+        )}
+
         {/* ── Coach notes ── */}
         {(isCoach || session.coach_notes) && (
           <Section
             label={isCoach ? (athleteFirst ? `Notes for ${athleteFirst}` : 'Notes for the athlete') : 'Notes from your coach'}
             action={isCoach && !notesEditing && session.coach_notes?.trim() ? (
-              <button onClick={openNotes} style={toolButton}>Edit notes</button>
+              <button onClick={openNotes} style={TOOL_BTN}>Edit notes</button>
             ) : undefined}
           >
             {/* These notes are shown to the athlete on a shared session (they
@@ -1441,14 +1522,14 @@ export default function SessionDetailPage() {
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={cancelNotes}
                     disabled={notesSaving}
-                    style={{ ...toolButton, opacity: notesSaving ? 0.5 : 1, cursor: notesSaving ? 'not-allowed' : 'pointer' }}
+                    style={{ ...TOOL_BTN, opacity: notesSaving ? 0.5 : 1, cursor: notesSaving ? 'not-allowed' : 'pointer' }}
                   >
                     Cancel
                   </button>
                 </div>
               </>
             ) : isCoach && !session.coach_notes?.trim() ? (
-              <button onClick={openNotes} style={toolButton}>
+              <button onClick={openNotes} style={TOOL_BTN}>
                 <Icon name="plus" size={13} /> Add notes
               </button>
             ) : (
@@ -1462,344 +1543,380 @@ export default function SessionDetailPage() {
           </Section>
         )}
 
-        {/* ── Images ── */}
-        {(isCoach || (data?.attachments.length ?? 0) > 0) && (
-          <Section
-            label="Images"
-            meta={(data?.attachments.length ?? 0) > 0 ? data!.attachments.length : undefined}
-            action={isCoach ? (
-              <>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f) }}
+        {/* ── Add to this session ──
+            One row for the things a coach adds now and then, in place of an
+            empty Images section, an empty Video section and a standing Compare
+            section. The uploader is always mounted, here and nowhere else: it
+            holds the queue and finishes an upload an earlier visit left. */}
+        {isCoach && (
+          <section aria-label="Add to this session" style={{ marginTop: 26, minWidth: 0 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', minWidth: 0, flex: uploaderActive ? '1 1 100%' : '0 1 auto' }}>
+                <VideoUploader
+                  sessionId={sessionId}
+                  onSaved={videoSaved}
+                  onActivity={setUploaderActive}
+                  label="Add videos"
+                  icon={<Icon name="plus" size={12} />}
+                  buttonStyle={ADD_BTN}
                 />
-                <button disabled={uploading}
-                  onClick={() => fileRef.current?.click()}
-                  style={{ ...toolButton, cursor: uploading ? 'progress' : 'pointer' }}>
-                  <Icon name="plus" size={12} /> {uploading ? 'Uploading…' : 'Add'}
-                </button>
-              </>
-            ) : undefined}
-          >
-            {(data?.attachments.length ?? 0) === 0 ? (
-              <div style={{ ...panel, padding: 14, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
-                {isCoach
-                  ? 'Add a whiteboard shot, a still from video, or a drill diagram.'
-                  : 'No images for this session.'}
               </div>
-            ) : (
-              <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 10,
-              }}>
-                {data!.attachments.map((a) => (
-                  <figure key={a.id} style={{ ...panel, margin: 0, padding: 0, overflow: 'hidden', position: 'relative', minWidth: 0 }}>
-                    {a.signedUrl && (
-                      <a href={a.signedUrl} target="_blank" rel="noreferrer">
-                        <img
-                          src={a.signedUrl}
-                          alt={a.caption ?? a.file_name ?? 'Session image'}
-                          loading="lazy"
-                          style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover', display: 'block' }}
-                        />
-                      </a>
-                    )}
-                    {a.caption && (
-                      <figcaption style={{ fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', padding: '8px 10px', overflowWrap: 'anywhere' }}>
-                        {a.caption}
-                      </figcaption>
-                    )}
-                    {isCoach && (
-                      /* 44px target around a 28px disc. The disc is ink over
-                         whatever the photo is, so the cross reads on a white
-                         whiteboard shot and a dark gym alike. */
-                      <button
-                        onClick={() => deleteAttachment(a.id)}
-                        aria-label="Remove image"
-                        style={{
-                          position: 'absolute', top: 0, right: 0, width: 44, height: 44, padding: 0,
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}
-                      >
-                        <span style={{
-                          width: 28, height: 28, borderRadius: '50%', color: 'var(--text)',
-                          background: 'color-mix(in srgb, var(--bg) 78%, transparent)',
-                          border: `1px solid ${LINE_2}`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <Icon name="x" size={12} />
-                        </span>
-                      </button>
-                    )}
-                  </figure>
-                ))}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f) }}
+              />
+              <button disabled={uploading}
+                onClick={() => fileRef.current?.click()}
+                style={{ ...ADD_BTN, cursor: uploading ? 'progress' : 'pointer' }}>
+                <Icon name="plus" size={12} /> {uploading ? 'Uploading…' : 'Add image'}
+              </button>
+              {screenOK && (
+                <button onClick={() => setScreenOpen(true)} style={ADD_BTN}>
+                  <span aria-hidden style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--danger)', display: 'inline-block' }} /> Record screen
+                </button>
+              )}
+              {canCompare && (
+                <button
+                  onClick={() => (compareOpen ? setCompareOpen(false) : openCompare(null))}
+                  aria-expanded={compareOpen}
+                  style={ADD_BTN}
+                >
+                  Compare
+                </button>
+              )}
+            </div>
+            {vids.length === 0 && images.length === 0 && (
+              <p style={{ margin: '8px 0 0', fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                Nothing added yet. A clip, a whiteboard shot or a drill diagram goes here.
+                {screenOK ? ' Coaching online? Record screen records the call into this session.' : ''}
+              </p>
+            )}
+            {screenOpen && (
+              <ScreenRecorder
+                sessionId={sessionId}
+                onClose={() => setScreenOpen(false)}
+                onUploaded={() => { if (data) void loadVideoFeatures(data.viewerRole, data.athlete?.id ?? null) }}
+              />
+            )}
+
+            {/* Compare: two videos of this athlete, one clock. Opened from the
+                row above, or from a video, which then starts as A. */}
+            {compareOpen && canCompare && (
+              <div ref={compareRef} style={{ minWidth: 0, scrollMarginTop: 72, scrollMarginBottom: 96 }}>
+                <Section label="Compare" meta={comparable.length}
+                  action={<button onClick={() => setCompareOpen(false)} style={TOOL_BTN}>Close</button>}
+                >
+                  <p style={{ margin: '0 0 10px', fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                    Any two of {athleteFirst ? `${athleteFirst}’s` : 'this athlete’s'} videos side by side, such as the same drill a month apart.
+                  </p>
+                  <VideoCompare
+                    key={compareA ?? 'first'}
+                    videos={(athleteVideos ?? []).map((v): CompareVideo => ({
+                      id: v.id,
+                      signedUrl: v.signedUrl,
+                      label: v.session_name ?? (v.uploaded_by_role === 'athlete' ? `Sent by ${athleteFirst || 'athlete'}` : v.file_name ?? 'Video'),
+                      sublabel: (() => {
+                        const iso = v.session_date ?? v.created_at
+                        const d = iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso) : null
+                        return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
+                      })(),
+                    }))}
+                    initialA={compareA ?? vids[0]?.id}
+                  />
+                </Section>
               </div>
             )}
-          </Section>
+          </section>
         )}
 
-        {/* ── Videos ──
-            The coach draws on each video, shares it or sends an athlete's clip
-            back, and marks moments to put beside a takeaway. The athlete sees
-            the videos they were sent, with the drawings, and their own clips.
-            Every list here is served by a route that has already applied
-            lib/video-clip.ts athleteMayViewVideo. */}
-        {(() => {
-          const vids = videoList ?? data?.videos ?? []
-          if (vids.length === 0 && !videoNote && !isCoach) return null
-          return (
-            <Section
-              label="Video"
-              meta={vids.length || undefined}
-              action={isCoach ? (
-                <>
-                  <VideoUploader
-                    sessionId={sessionId}
-                    onSaved={videoSaved}
-                    label="Add videos"
-                    icon={<Icon name="plus" size={12} />}
-                    buttonStyle={toolButton}
-                  />
-                  {screenOK && (
-                    <button onClick={() => setScreenOpen(true)} style={{ ...toolButton, cursor: 'pointer' }}>
-                      <span aria-hidden style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--danger)', display: 'inline-block' }} /> Record screen
-                    </button>
-                  )}
-                </>
-              ) : undefined}
-            >
-              {videoNote && (
-                <div style={{ ...panel, padding: 12, marginBottom: 10, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>{videoNote}</div>
-              )}
-              {isCoach && vids.length === 0 && (
-                <div style={{ ...panel, padding: 14, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
-                  Add a clip from your phone or computer, or film one now.
-                  {screenOK ? ' Coaching online? Record screen records the call into this session.' : ''}
-                </div>
-              )}
-              {screenOpen && (
-                <ScreenRecorder
-                  sessionId={sessionId}
-                  onClose={() => setScreenOpen(false)}
-                  onUploaded={() => { if (data) void loadVideoFeatures(data.viewerRole, data.athlete?.id ?? null) }}
-                />
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {vids.map((v) => {
-                  const fromAthlete = v.uploaded_by_role === 'athlete'
-                  const moments = clips.filter((c) => c.video_id === v.id)
-                  const chipColour = v.shared_with_athlete ? SAGE : AMBER
-                  return (
-                    <div key={v.id} style={{ ...panel, padding: 10, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-                      {v.signedUrl ? (
-                        <VideoAnnotator
-                          /* Remounted when the full list replaces /detail's:
-                             the annotator seeds its strokes once, and a coach
-                             drawing on the seed-less copy would save over the
-                             drawings already there. Editable only on the full
-                             list, which is the one that carries them. */
-                          key={`${v.id}-${videoList ? 'full' : 'detail'}`}
-                          videoUrl={v.signedUrl}
-                          initialAnnotations={v.annotations ?? []}
-                          readOnly={!isCoach || !videoList}
-                          onAnnotationsChange={isCoach ? (strokes) => saveVideoAnnotations(v.id, strokes) : undefined}
-                          onVideoElement={(el) => { videoEls.current[v.id] = el }}
-                          sessionId={sessionId}
-                          videoId={v.id}
-                        />
-                      ) : (
-                        <div style={{ padding: 12, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>This video could not be opened.</div>
-                      )}
+        {/* ── Video ──
+            Stills, three across; tapping one opens it under its row with
+            everything that belongs to it. The coach draws on it, shares it or
+            sends an athlete's clip back, and marks moments to put beside a
+            takeaway. The athlete sees the videos they were sent, with the
+            drawings, and their own clips. Every list here is served by a route
+            that has already applied lib/video-clip.ts athleteMayViewVideo.
+            The heading is only here when there is a video, or a failure to
+            say out loud. */}
+        {(vids.length > 0 || videoNote) && (
+          <Section label="Video" meta={vids.length || undefined}>
+            {videoNote && (
+              <div style={{ ...panel, padding: 12, marginBottom: 10, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>{videoNote}</div>
+            )}
+            <VideoGrid
+              videos={vids}
+              openId={openVideo}
+              onOpen={setOpenVideo}
+              marks={videoMarks}
+              nameFor={(v, i) => v.file_name || `Video ${i + 1}`}
+              renderOpen={(v) => {
+                const fromAthlete = v.uploaded_by_role === 'athlete'
+                const moments = clips.filter((c) => c.video_id === v.id)
+                const chipColour = v.shared_with_athlete ? SAGE : AMBER
+                return (
+                  /* Keyed by the video: a moment half-marked on one clip must
+                     not carry over to the next one opened in the same row. */
+                  <div key={v.id} style={{ ...panel, padding: 10, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+                    {v.signedUrl ? (
+                      <VideoAnnotator
+                        /* Remounted when the full list replaces /detail's:
+                           the annotator seeds its strokes once, and a coach
+                           drawing on the seed-less copy would save over the
+                           drawings already there. Editable only on the full
+                           list, which is the one that carries them. */
+                        key={`${v.id}-${videoList ? 'full' : 'detail'}`}
+                        videoUrl={v.signedUrl}
+                        initialAnnotations={v.annotations ?? []}
+                        readOnly={!isCoach || !videoList}
+                        onAnnotationsChange={isCoach ? (strokes) => saveVideoAnnotations(v.id, strokes) : undefined}
+                        onVideoElement={(el) => { videoEls.current[v.id] = el }}
+                        sessionId={sessionId}
+                        videoId={v.id}
+                      />
+                    ) : (
+                      <div style={{ padding: 12, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>This video could not be opened.</div>
+                    )}
 
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
-                        <span style={{ flex: '1 1 140px', minWidth: 0, overflowWrap: 'anywhere' }}>
-                          {v.file_name ?? 'Video'}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', minWidth: 0 }}>
+                      <span style={{ flex: '1 1 140px', minWidth: 0, overflowWrap: 'anywhere' }}>
+                        {v.file_name ?? 'Video'}
+                      </span>
+                      {fromAthlete && (
+                        <span style={{
+                          ...CAST, letterSpacing: '0.16em', padding: '4px 10px', borderRadius: 999, minWidth: 0, overflowWrap: 'anywhere',
+                          color: 'var(--text)', border: `1px solid ${LINE_2}`,
+                        }}>
+                          {isCoach ? `From ${athleteFirst || 'athlete'}` : 'Your clip'}
                         </span>
-                        {fromAthlete && (
-                          <span style={{
-                            ...CAST, letterSpacing: '0.16em', padding: '4px 10px', borderRadius: 999, flexShrink: 0,
-                            color: 'var(--text)', border: `1px solid ${LINE_2}`,
+                      )}
+                      {isCoach && (
+                        <button onClick={() => void toggleVideoShare(v)} aria-pressed={v.shared_with_athlete}
+                          style={{
+                            ...TOOL_BTN, color: chipColour,
+                            border: `1px solid color-mix(in srgb, ${chipColour} 42%, transparent)`,
+                            background: `color-mix(in srgb, ${chipColour} 9%, transparent)`,
                           }}>
-                            {isCoach ? `From ${athleteFirst || 'athlete'}` : 'Your clip'}
-                          </span>
-                        )}
-                        {isCoach && (
-                          <button onClick={() => void toggleVideoShare(v)} aria-pressed={v.shared_with_athlete}
-                            style={{
-                              ...VIDEO_BTN, color: chipColour,
-                              border: `1px solid color-mix(in srgb, ${chipColour} 42%, transparent)`,
-                              background: `color-mix(in srgb, ${chipColour} 9%, transparent)`,
-                            }}>
-                            {fromAthlete
-                              ? (v.shared_with_athlete ? 'Sent back' : `Send back to ${athleteFirst || 'athlete'}`)
-                              : (v.shared_with_athlete ? 'Shared' : 'Private — share')}
-                          </button>
-                        )}
+                          {fromAthlete
+                            ? (v.shared_with_athlete ? 'Sent back' : `Send back to ${athleteFirst || 'athlete'}`)
+                            : (v.shared_with_athlete ? 'Shared' : 'Private. Tap to share')}
+                        </button>
+                      )}
+                    </div>
+
+                    {fromAthlete && v.note && (
+                      <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+                        &ldquo;{v.note}&rdquo;
                       </div>
+                    )}
 
-                      {fromAthlete && v.note && (
-                        <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>
-                          &ldquo;{v.note}&rdquo;
-                        </div>
-                      )}
-
-                      {/* Every moment of this video, including ones whose takeaway
-                          has since been edited away — never dropped. */}
-                      {moments.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, borderTop: `1px solid ${LINE}`, paddingTop: 8 }}>
-                          <div style={{ ...CAST, letterSpacing: '0.18em', color: 'var(--text-2)' }}>Moments ({moments.length})</div>
-                          {moments.map((c) => {
-                            const attached = c.focus_point && session.focus_points.includes(c.focus_point)
-                            return (
-                              <div key={c.id} style={{ minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <button onClick={() => setOpenMoment(openMoment === `video:${c.id}` ? null : `video:${c.id}`)} aria-expanded={openMoment === `video:${c.id}`}
-                                    style={{ ...VIDEO_BTN, color: 'var(--text)' }}>
-                                    <Icon name="video" size={13} />
-                                    <span style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.02em', textTransform: 'none', fontWeight: 500 }}>{momentRange(c)}</span>
-                                  </button>
-                                  <span style={{ flex: 1 }} />
-                                  {isCoach && (
-                                    <button onClick={() => void deleteMoment(c.id)} aria-label="Remove moment"
-                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-2)', width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                      <Icon name="x" size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                                <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--text-2)', overflowWrap: 'anywhere', padding: '2px 0 6px' }}>
-                                  {c.label ?? ''}{c.label ? ' · ' : ''}
-                                  {attached ? `beside “${c.focus_point}”` : c.focus_point ? `was beside “${c.focus_point}”` : 'not attached to a takeaway'}
-                                </div>
-                                {openMoment === `video:${c.id}` && (
-                                  <MomentPlayer clip={c} video={clipVideos[c.video_id]} onClose={() => setOpenMoment(null)} />
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-
-                      {isCoach && v.signedUrl && (
+                    {/* The coach's tools for this video. Mark a moment reads
+                        the playhead of the annotator mounted just above. */}
+                    {isCoach && v.signedUrl && (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start', minWidth: 0 }}>
                         <ClipMarker
                           getVideo={() => videoEls.current[v.id] ?? null}
                           focusPoints={session.focus_points}
                           onSave={(body) => saveMoment(v.id, body)}
                         />
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </Section>
-          )
-        })()}
+                        {canCompare && (
+                          <button onClick={() => openCompare(v.id)} style={TOOL_BTN}>Compare with another</button>
+                        )}
+                      </div>
+                    )}
 
-        {/* ── Compare ── the coach, two videos of this athlete, one clock. */}
-        {isCoach && athleteVideos && athleteVideos.length > 0 && (
-          <Section label="Compare" meta={athleteVideos.filter((v) => v.signedUrl).length}
-            action={!compareOpen ? (
-              <button onClick={() => setCompareOpen(true)} style={VIDEO_BTN}>Compare two videos</button>
-            ) : (
-              <button onClick={() => setCompareOpen(false)} style={VIDEO_BTN}>Close</button>
-            )}
-          >
-            {compareOpen ? (
-              <VideoCompare
-                videos={athleteVideos.map((v): CompareVideo => ({
-                  id: v.id,
-                  signedUrl: v.signedUrl,
-                  label: v.session_name ?? (v.uploaded_by_role === 'athlete' ? `Sent by ${athleteFirst || 'athlete'}` : v.file_name ?? 'Video'),
-                  sublabel: (() => {
-                    const iso = v.session_date ?? v.created_at
-                    const d = iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso) : null
-                    return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
-                  })(),
-                }))}
-                initialA={(videoList ?? data?.videos ?? [])[0]?.id}
-              />
-            ) : (
-              <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.5, color: 'var(--text-2)' }}>
-                Play any two of {athleteFirst ? `${athleteFirst}’s` : 'this athlete’s'} videos side by side — the same drill a month apart — and line up the moment that matters.
-              </div>
-            )}
+                    {/* Every moment of this video, including ones whose takeaway
+                        has since been edited away: never dropped. A moment
+                        beside a live takeaway is also played from that
+                        takeaway, so the row starts closed; one that is not
+                        can only be reached here, so the row starts open. */}
+                    {moments.length > 0 && (
+                      <Disclosure
+                        label="Moments"
+                        summary={`${moments.length}`}
+                        defaultOpen={moments.some((c) => !isLiveTakeaway(c))}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                          {moments.map((c) => (
+                            <div key={c.id} style={{ minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <button onClick={() => setOpenMoment(openMoment === `video:${c.id}` ? null : `video:${c.id}`)} aria-expanded={openMoment === `video:${c.id}`}
+                                  style={{ ...TOOL_BTN, color: 'var(--text)' }}>
+                                  <Icon name="video" size={13} />
+                                  <span style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.02em', textTransform: 'none', fontWeight: 500 }}>{momentRange(c)}</span>
+                                </button>
+                                <span style={{ flex: 1 }} />
+                                {isCoach && (
+                                  <button onClick={() => void deleteMoment(c.id)} aria-label="Remove moment"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-2)', width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Icon name="x" size={14} />
+                                  </button>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 'var(--t-body-tight)', lineHeight: 1.45, color: 'var(--text-2)', overflowWrap: 'anywhere', padding: '2px 0 6px' }}>
+                                {c.label ?? ''}{c.label ? ' · ' : ''}
+                                {isLiveTakeaway(c) ? `beside “${c.focus_point}”` : c.focus_point ? `was beside “${c.focus_point}”` : 'not attached to a takeaway'}
+                              </div>
+                              {openMoment === `video:${c.id}` && (
+                                <MomentPlayer clip={c} video={clipVideos[c.video_id]} onClose={() => setOpenMoment(null)} />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </Disclosure>
+                    )}
+                  </div>
+                )
+              }}
+            />
           </Section>
         )}
 
-        {/* ── Clips the athlete sent with no session ──
-            Their "for my coach" clips live on the athlete, not on a session, so
-            they are shown on each of the athlete's session pages, where the
-            coach already marks up video. Nothing is attached to THIS session. */}
-        {isCoach && (() => {
-          const inbox = (athleteVideos ?? []).filter((v) => v.session_id === null && v.uploaded_by_role === 'athlete')
-          if (inbox.length === 0) return null
-          const waiting = inbox.filter((v) => !v.shared_with_athlete).length
-          return (
-            <Section label={`Clips ${athleteFirst || 'your athlete'} sent you`} meta={waiting ? `${waiting} waiting` : inbox.length}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {inbox.map((v) => (
-                  <div key={v.id} style={{ ...panel, padding: 10, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-                    {v.note && (
-                      <div style={{ fontSize: 'var(--t-body)', lineHeight: 1.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>&ldquo;{v.note}&rdquo;</div>
-                    )}
-                    {v.signedUrl ? (
-                      <VideoAnnotator
-                        videoUrl={v.signedUrl}
-                        initialAnnotations={v.annotations ?? []}
-                        onAnnotationsChange={async (strokes) => { await patchGeneralClip(v.id, { annotations: strokes }) }}
+        {/* ── Images ──
+            Three across, like the videos; a caption wraps under its image and
+            tapping one opens it whole. The coach adds one from the row above,
+            so the heading is only here when there is an image. */}
+        {images.length > 0 && (
+          <Section label="Images" meta={images.length}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, minWidth: 0 }}>
+              {images.map((a) => (
+                <figure key={a.id} style={{ ...panel, borderRadius: 12, margin: 0, padding: 0, overflow: 'hidden', position: 'relative', minWidth: 0 }}>
+                  {a.signedUrl && (
+                    <a href={a.signedUrl} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+                      <img
+                        src={a.signedUrl}
+                        alt={a.caption ?? a.file_name ?? 'Session image'}
+                        loading="lazy"
+                        style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
                       />
-                    ) : (
-                      <div style={{ padding: 12, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>This clip could not be opened.</div>
-                    )}
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>
-                      <span style={{ flex: '1 1 140px', minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)' }}>
-                        {new Date(v.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
-                        {v.duration_s ? ` · ${formatClipTime(v.duration_s)}` : ''}
+                    </a>
+                  )}
+                  {a.caption && (
+                    <figcaption style={{ fontSize: 'var(--t-furniture)', lineHeight: 1.35, color: 'var(--text-2)', padding: '6px 7px', overflowWrap: 'anywhere' }}>
+                      {a.caption}
+                    </figcaption>
+                  )}
+                  {isCoach && (
+                    /* 44px target around a 28px disc. The disc is ink over
+                       whatever the photo is, so the cross reads on a white
+                       whiteboard shot and a dark gym alike. */
+                    <button
+                      onClick={() => deleteAttachment(a.id)}
+                      aria-label="Remove image"
+                      style={{
+                        position: 'absolute', top: 0, right: 0, width: 44, height: 44, padding: 0,
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <span style={{
+                        width: 28, height: 28, borderRadius: '50%', color: 'var(--text)',
+                        background: 'color-mix(in srgb, var(--bg) 78%, transparent)',
+                        border: `1px solid ${LINE_2}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Icon name="x" size={12} />
                       </span>
-                      <button onClick={() => void patchGeneralClip(v.id, { shared_with_athlete: !v.shared_with_athlete })}
-                        aria-pressed={v.shared_with_athlete}
-                        style={{ ...VIDEO_BTN, color: v.shared_with_athlete ? SAGE : AMBER, border: `1px solid color-mix(in srgb, ${v.shared_with_athlete ? SAGE : AMBER} 42%, transparent)` }}>
-                        {v.shared_with_athlete ? 'Sent back' : `Send back to ${athleteFirst || 'athlete'}`}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Section>
-          )
-        })()}
-
-        {session.transcript_withheld && (
-          <p style={{ marginTop: 26, fontSize: 'var(--t-body-tight)', lineHeight: 1.6, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
-            The full transcript and recording are not shown: this recording is about athletes who have not been given to you.
-          </p>
+                    </button>
+                  )}
+                </figure>
+              ))}
+            </div>
+          </Section>
         )}
 
-        {/* ── Transcript, last: reference material, not the headline ──
-            One hairline row, the way the mockup ends the page; it opens in place. */}
-        {session.transcript && (
-          <details style={{ marginTop: 26, borderTop: `1px solid ${LINE}`, borderBottom: `1px solid ${LINE}` }}>
-            <summary style={{
-              ...CAST, letterSpacing: '0.2em', color: 'var(--text-2)', cursor: 'pointer',
-              listStyle: 'none', display: 'flex', alignItems: 'center', gap: '4px 10px', flexWrap: 'wrap',
-              minHeight: 48, padding: '6px 0',
-            }}>
-              <span style={{ flex: '1 1 auto' }}>Full transcript</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)', letterSpacing: '0.06em', fontWeight: 500, textTransform: 'uppercase' }}>
-                {wordCount} words
-              </span>
-              <span aria-hidden style={{ display: 'inline-flex', transform: 'rotate(180deg)' }}><Icon name="back" size={14} /></span>
-            </summary>
-            <div style={{
-              padding: '4px 0 16px',
-              fontSize: 'var(--t-body-tight)', lineHeight: 1.75, color: 'var(--text-2)', whiteSpace: 'pre-wrap',
-              overflowWrap: 'anywhere',
-            }}>
-              {session.transcript}
-            </div>
-          </details>
+        {/* ── The rest: rows that open ──
+            Reference material and the things used now and then, one tap away
+            and each saying what is inside. */}
+        {(inbox.length > 0 || session.transcript_withheld || session.transcript) && (
+          <div style={{ marginTop: 26, borderBottom: '1px solid var(--border)', minWidth: 0 }}>
+
+            {/* Clips the athlete sent with no session. Nothing here is attached
+                to THIS session. The row is opened by the page while one is
+                still waiting to be sent back (see loadVideoFeatures). */}
+            {inbox.length > 0 && (
+              <Disclosure
+                /* The count sits under the label, not beside it: a long name
+                   and a count sharing one line squeezed the count until
+                   "waiting" broke mid-word on a 320px phone. */
+                label={
+                  <>
+                    <span style={{ display: 'block' }}>Clips {athleteFirst || 'your athlete'} sent you</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 4, color: waiting > 0 ? AMBER : 'var(--text-2)' }}>
+                      {waiting > 0 && <i aria-hidden style={{ width: 7, height: 7, background: AMBER, transform: 'skewX(-14deg)', flexShrink: 0 }} />}
+                      <span style={{ minWidth: 0 }}>
+                        {waiting > 0 ? `${waiting} waiting` : ''}
+                        {waiting > 0 && inbox.length > waiting ? ' · ' : ''}
+                        {inbox.length > waiting ? `${inbox.length - waiting} sent back` : ''}
+                      </span>
+                    </span>
+                  </>
+                }
+                open={inboxOpen}
+                onToggle={(next) => { setInboxOpen(next); if (next) setInboxShown(true) }}
+              >
+                {inboxShown && (
+                  <VideoGrid
+                    videos={inbox}
+                    openId={openInboxClip}
+                    onOpen={setOpenInboxClip}
+                    nameFor={(v, i) => v.note || v.file_name || `Clip ${i + 1}`}
+                    marks={(v) => [v.shared_with_athlete ? { text: 'Sent back', tone: 'on' } : { text: 'Not sent back' }]}
+                    renderOpen={(v) => (
+                      <div key={v.id} style={{ ...panel, padding: 10, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+                        {v.note && (
+                          <div style={{ fontSize: 'var(--t-body)', lineHeight: 1.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>&ldquo;{v.note}&rdquo;</div>
+                        )}
+                        {v.signedUrl ? (
+                          <VideoAnnotator
+                            videoUrl={v.signedUrl}
+                            initialAnnotations={v.annotations ?? []}
+                            onAnnotationsChange={async (strokes) => { await patchGeneralClip(v.id, { annotations: strokes }) }}
+                          />
+                        ) : (
+                          <div style={{ padding: 12, fontSize: 'var(--t-body-tight)', color: 'var(--text-2)' }}>This clip could not be opened.</div>
+                        )}
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--t-body-tight)', color: 'var(--text-2)', minWidth: 0 }}>
+                          <span style={{ flex: '1 1 140px', minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--t-data)' }}>
+                            {new Date(v.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                            {v.duration_s ? ` · ${formatClipTime(v.duration_s)}` : ''}
+                          </span>
+                          <button onClick={() => void patchGeneralClip(v.id, { shared_with_athlete: !v.shared_with_athlete })}
+                            aria-pressed={v.shared_with_athlete}
+                            style={{ ...TOOL_BTN, color: v.shared_with_athlete ? SAGE : AMBER, border: `1px solid color-mix(in srgb, ${v.shared_with_athlete ? SAGE : AMBER} 42%, transparent)` }}>
+                            {v.shared_with_athlete ? 'Sent back' : `Send back to ${athleteFirst || 'athlete'}`}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  />
+                )}
+              </Disclosure>
+            )}
+
+            {/* Said in the transcript's place, and never tucked away: an
+                assistant must be told why it is not there. */}
+            {session.transcript_withheld && (
+              <p style={{ margin: 0, padding: '12px 0', borderTop: '1px solid var(--border)', fontSize: 'var(--t-body-tight)', lineHeight: 1.6, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+                The full transcript and recording are not shown: this recording is about athletes who have not been given to you.
+              </p>
+            )}
+
+            {/* Transcript, last: reference material, not the headline. */}
+            {session.transcript && (
+              <Disclosure label="Full transcript" summary={`${wordCount} words`}>
+                <div style={{
+                  padding: '4px 0 2px',
+                  fontSize: 'var(--t-body-tight)', lineHeight: 1.75, color: 'var(--text-2)', whiteSpace: 'pre-wrap',
+                  overflowWrap: 'anywhere',
+                }}>
+                  {session.transcript}
+                </div>
+              </Disclosure>
+            )}
+          </div>
         )}
 
         {/* ── Delete, last and apart: the one action on this page that cannot be undone. ── */}
@@ -1807,7 +1924,7 @@ export default function SessionDetailPage() {
           <div style={{ marginTop: 40, paddingTop: 16, borderTop: `1px solid ${LINE}` }}>
             <button
               onClick={() => setDeleteOpen(true)}
-              style={{ ...toolButton, color: 'var(--danger)', border: '1px solid color-mix(in srgb, var(--danger) 45%, transparent)' }}
+              style={{ ...TOOL_BTN, color: 'var(--danger)', border: '1px solid color-mix(in srgb, var(--danger) 45%, transparent)' }}
             >
               Delete session
             </button>

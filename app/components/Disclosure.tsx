@@ -54,14 +54,16 @@ export default function Disclosure({
         }}
       >
         <span style={{
-          flex: '1 1 auto', minWidth: 0, overflowWrap: 'anywhere',
+          flex: '1 1 0', minWidth: 0, overflowWrap: 'break-word',
           fontFamily: 'var(--font-cast)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.16em',
           fontSize: 'var(--t-furniture)', lineHeight: 1.3,
         }}>
           {label}
         </span>
         {summary != null && summary !== '' && (
-          <span style={{ flex: '0 1 auto', minWidth: 0, overflowWrap: 'anywhere', textAlign: 'right', fontSize: 'var(--t-furniture)', lineHeight: 1.3, color: 'var(--text-2)' }}>
+          // Up to half the row is the summary's own: a long label wraps beside
+          // it instead of squeezing a short count until it breaks mid-word.
+          <span style={{ flex: '0 0 auto', maxWidth: '50%', minWidth: 0, overflowWrap: 'break-word', textAlign: 'right', fontSize: 'var(--t-furniture)', lineHeight: 1.3, color: 'var(--text-2)' }}>
             {summary}
           </span>
         )}
