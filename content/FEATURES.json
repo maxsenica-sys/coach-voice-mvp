@@ -618,15 +618,15 @@
       "id": "add-video",
       "name": "Add videos to a session",
       "user_type": "coach",
-      "what_it_does": "Pick one clip or several at once from the phone's library (500MB each, with preflight warnings). They upload one after another, each with its own percentage and time left, and more can be added while one is still uploading. A clip whose connection drops is retried, and one that reached storage is finished on Retry or the next visit without being sent again.",
+      "what_it_does": "Pick one clip or several at once from the phone's library (500MB each, with preflight warnings). They upload one after another, each with its own percentage and time left, and more can be added while one is still uploading. A clip whose connection drops is retried, and one that reached storage is finished on Retry or the next visit without being sent again. Saved videos show as stills, three across the phone; tapping one opens it with its tools.",
       "pain_removed": "Video feedback is attached to the right session, a whole practice of clips in one go, and a dropped signal does not lose one.",
       "status": "shipped",
-      "status_evidence": "app/components/VideoUploader.tsx (input multiple, sequential queue, 'Add more' while busy, Retry and Dismiss per clip) on app/sessions/[id]/page.tsx and app/athletes/[id]/page.tsx; lib/video-queue.ts (retry rules, pending list, queue summary); lib/video-upload.ts → /api/sessions/[id]/videos(upload-url), whose POST answers a repeat with the existing row (migration 039). tools/video-rig.mjs V10–V13.",
+      "status_evidence": "app/components/VideoUploader.tsx (input multiple, sequential queue, 'Add more' while busy, Retry and Dismiss per clip) on app/sessions/[id]/page.tsx and app/athletes/[id]/page.tsx; lib/video-queue.ts (retry rules, pending list, queue summary); lib/video-upload.ts → /api/sessions/[id]/videos(upload-url), whose POST answers a repeat with the existing row (migration 039). tools/video-rig.mjs V10–V13. Stills: app/components/VideoGrid.tsx and lib/video-preview.ts (tools/video-rig.mjs V14, V15).",
       "surfaces": [
         "/sessions/[id] Video section",
         "/athletes/[id] session card"
       ],
-      "demo_state": "'Uploading 2 of 5' with one clip at 42% · ~1min left, two waiting, and 'Add more'",
+      "demo_state": "Five video stills three across with their lengths, one opened under its row; or 'Uploading 2 of 5' with 'Add more'",
       "competitor_gap": false,
       "competitor_gap_why": "Common",
       "content_exclusion": "Covered by the video-annotator posts: a facet of that feature rather than a post of its own."
@@ -1758,7 +1758,7 @@
       "surfaces": [
         "/athlete Calendar tab"
       ],
-      "demo_state": "Quote strip above the calendar",
+      "demo_state": "Quote strip under the calendar",
       "competitor_gap": false,
       "competitor_gap_why": "Cosmetic.",
       "content_exclusion": "Decoration; a post about it would undersell the product."
@@ -2316,7 +2316,7 @@
         "/sessions/[id]",
         "/athlete Sessions tab ('Clips for your coach', and 'Show your coach' inside each session)"
       ],
-      "demo_state": "'My clips (2)' with one row showing 'Coach marked it up', expanded with drawings",
+      "demo_state": "'My clips (2)' as two stills, one marked 'Coach marked it up', opened to show the drawings",
       "competitor_gap": true,
       "competitor_gap_why": "A two-way video question-and-answer loop for youth athletes, inside the coach's feedback tool."
     },

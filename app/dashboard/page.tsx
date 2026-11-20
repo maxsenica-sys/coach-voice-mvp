@@ -2407,7 +2407,7 @@ function DashboardPageInner() {
                   if (quiet) meta.push(<strong style={{ fontWeight: 700, color: ember }}>Quiet</strong>)
                   if (count > 0) meta.push(`${count} session${count === 1 ? '' : 's'}`)
                   return (
-                    <div key={a.id} style={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', columnGap: 10, rowGap: 6, alignItems: 'center', padding: '10px 0', borderTop: i === 0 ? HAIR_2 : HAIR }}>
+                    <div key={a.id} style={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', columnGap: 10, rowGap: 6, alignItems: 'center', alignContent: 'start', padding: '10px 0', borderTop: i === 0 ? HAIR_2 : HAIR }}>
                       <div style={{ gridColumn: 1, gridRow: '1 / span 2', alignSelf: 'start', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, paddingTop: 4 }}>
                         <Link href={`/athletes/${a.id}`} tabIndex={-1} aria-hidden style={{ display: 'flex', textDecoration: 'none' }}>
                           <Mono initials={initialsOf(a.first_name, a.last_name)} pending={pending} />

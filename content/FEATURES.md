@@ -455,12 +455,12 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 
 ### Add videos to a session `add-video`
 
-**shipped**. Pick one clip or several at once from the phone's library (500MB each, with preflight warnings). They upload one after another, each with its own percentage and time left, and more can be added while one is still uploading. A clip whose connection drops is retried, and one that reached storage is finished on Retry or the next visit without being sent again.
+**shipped**. Pick one clip or several at once from the phone's library (500MB each, with preflight warnings). They upload one after another, each with its own percentage and time left, and more can be added while one is still uploading. A clip whose connection drops is retried, and one that reached storage is finished on Retry or the next visit without being sent again. Saved videos show as stills, three across the phone; tapping one opens it with its tools.
 
 - **Pain removed:** Video feedback is attached to the right session, a whole practice of clips in one go, and a dropped signal does not lose one.
-- **Evidence:** app/components/VideoUploader.tsx (input multiple, sequential queue, 'Add more' while busy, Retry and Dismiss per clip) on app/sessions/[id]/page.tsx and app/athletes/[id]/page.tsx; lib/video-queue.ts (retry rules, pending list, queue summary); lib/video-upload.ts → /api/sessions/[id]/videos(upload-url), whose POST answers a repeat with the existing row (migration 039). tools/video-rig.mjs V10–V13.
+- **Evidence:** app/components/VideoUploader.tsx (input multiple, sequential queue, 'Add more' while busy, Retry and Dismiss per clip) on app/sessions/[id]/page.tsx and app/athletes/[id]/page.tsx; lib/video-queue.ts (retry rules, pending list, queue summary); lib/video-upload.ts → /api/sessions/[id]/videos(upload-url), whose POST answers a repeat with the existing row (migration 039). tools/video-rig.mjs V10–V13. Stills: app/components/VideoGrid.tsx and lib/video-preview.ts (tools/video-rig.mjs V14, V15).
 - **Surfaces:** /sessions/[id] Video section, /athletes/[id] session card
-- **Demo state:** 'Uploading 2 of 5' with one clip at 42% · ~1min left, two waiting, and 'Add more'
+- **Demo state:** Five video stills three across with their lengths, one opened under its row; or 'Uploading 2 of 5' with 'Add more'
 - **Competitor gap:** no. Common
 - **No posts of its own:** Covered by the video-annotator posts: a facet of that feature rather than a post of its own.
 
@@ -1227,7 +1227,7 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 - **Pain removed:** A small daily touch of motivation.
 - **Evidence:** app/athlete/page.tsx getDailyQuote('athlete') from lib/quotes.ts.
 - **Surfaces:** /athlete Calendar tab
-- **Demo state:** Quote strip above the calendar
+- **Demo state:** Quote strip under the calendar
 - **Competitor gap:** no. Cosmetic.
 - **No posts of its own:** Decoration; a post about it would undersell the product.
 
@@ -1575,7 +1575,7 @@ Status rules: shipped: a user can complete it end to end today. partial: it rend
 - **Pain removed:** The athlete can ask 'is my elbow dropping?' with video and get a visual answer.
 - **Evidence:** app/components/AthleteClipUpload.tsx (duration checked in the browser, signed PUT) → app/api/athlete/clips/upload-url and POST app/api/athlete/clips/route.ts (verifies athlete_user_id and the 60s limit, inserts session_videos with uploaded_by_role 'athlete', posts a thread message 'Mia sent you a clip…' plus email). The coach marks it up on app/sessions/[id]/page.tsx ('Send back to …'). The athlete GET returns annotations only when shared_with_athlete is true (athleteSeesAnnotations).
 - **Surfaces:** /sessions/[id], /athlete Sessions tab ('Clips for your coach', and 'Show your coach' inside each session)
-- **Demo state:** 'My clips (2)' with one row showing 'Coach marked it up', expanded with drawings
+- **Demo state:** 'My clips (2)' as two stills, one marked 'Coach marked it up', opened to show the drawings
 - **Competitor gap:** yes. A two-way video question-and-answer loop for youth athletes, inside the coach's feedback tool.
 
 
