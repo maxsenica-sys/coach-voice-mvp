@@ -67,6 +67,9 @@ export const ATTEMPT_KEY = 'pindar_update_attempt'
  *   [aria-label="Stop recording"]  — a voice message, while recording
  *   audio[src^="blob:"], video[src^="blob:"]
  *       — a recorded clip on this phone that has not been sent yet
+ *   [data-uploading]
+ *       — videos on their way to a session (VideoUploader). A reload here
+ *         loses the clips still waiting, and once lost a clip mid-save
  */
 export const BUSY_SELECTOR = [
   '[role="dialog"]',
@@ -76,6 +79,7 @@ export const BUSY_SELECTOR = [
   '[aria-label="Stop recording"]',
   'audio[src^="blob:"]',
   'video[src^="blob:"]',
+  '[data-uploading]',
 ].join(', ')
 
 /** Fields whose content would be lost — counted only once the person has

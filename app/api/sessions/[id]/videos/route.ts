@@ -216,23 +216,67 @@ export async function POST(
       return attach(NextResponse.json({ error: 'Forbidden' }, { status: 403 }), cookiesToSet)
     }
 
+    /* Safe to ask twice (2026-11-20).
+     *
+     * The phone retries this request when it dies on the network, and a retry
+     * may follow an attempt that did get through and only lost its answer. So
+     * a path already recorded answers 200 with the row it has, never a second
+     * row for the same file. The client reads 201 as "recorded just now". */
+    const ROW = 'id, session_id, storage_path, file_name, annotations, created_at'
+    const { data: existing, error: existingErr } = await admin
+      .from('session_videos')
+      .select(ROW)
+      .eq('storage_path', storagePath)
+      .eq('session_id', sessionId)
+      .limit(1)
+      .maybeSingle()
+    if (existingErr) {
+      return attach(NextResponse.json({ error: existingErr.message }, { status: 500 }), cookiesToSet)
+    }
+    if (existing) {
+      const { data: signed } = await admin.storage.from(BUCKET).createSignedUrl(storagePath, 60 * 60)
+      return attach(NextResponse.json({ video: { ...existing, signedUrl: signed?.signedUrl ?? null } }, { status: 200 }), cookiesToSet)
+    }
+
+    /* Never record a file that is not there. The phone asks this after an
+     * upload whose answer it never saw, to learn whether to send the file
+     * again; and a row with no file behind it is a video that never plays.
+     * 409 + code is the answer it acts on. */
+    const slash = storagePath.lastIndexOf('/')
+    const folder = storagePath.slice(0, slash)
+    const base = storagePath.slice(slash + 1)
+    const { data: listed, error: listErr } = await admin.storage.from(BUCKET).list(folder, { search: base, limit: 20 })
+    if (listErr) {
+      return attach(NextResponse.json({ error: listErr.message }, { status: 500 }), cookiesToSet)
+    }
+    if (!(listed ?? []).some((o) => o.name === base)) {
+      return attach(NextResponse.json({ error: 'That clip has not finished uploading.', code: 'not_uploaded' }, { status: 409 }), cookiesToSet)
+    }
+
     const { data: videoRow, error: insertErr } = await admin
       .from('session_videos')
       .insert({
         session_id: sessionId,
         storage_path: storagePath,
-        file_name: file_name ?? null,
-        mime_type: mime_type ?? 'video/mp4',
+        file_name: typeof file_name === 'string' && file_name.trim() ? file_name.slice(0, 200) : null,
+        mime_type: typeof mime_type === 'string' && mime_type.trim() ? mime_type.slice(0, 100) : 'video/mp4',
         uploaded_by: user.id,
       })
-      .select('id, session_id, storage_path, file_name, annotations, created_at')
+      .select(ROW)
       .single()
 
+    const { data: signed } = await admin.storage.from(BUCKET).createSignedUrl(storagePath, 60 * 60)
+
+    // 23505: a retry that arrived alongside the attempt it was retrying. The
+    // unique index (migration 039) refused the second insert, so answer with
+    // the row the first one made.
+    if (insertErr?.code === '23505') {
+      const { data: raced } = await admin.from('session_videos').select(ROW).eq('storage_path', storagePath).eq('session_id', sessionId).maybeSingle()
+      if (raced) return attach(NextResponse.json({ video: { ...raced, signedUrl: signed?.signedUrl ?? null } }, { status: 200 }), cookiesToSet)
+    }
     if (insertErr) {
       return attach(NextResponse.json({ error: insertErr.message }, { status: 500 }), cookiesToSet)
     }
-
-    const { data: signed } = await admin.storage.from(BUCKET).createSignedUrl(storagePath, 60 * 60)
 
     return attach(
       NextResponse.json({ video: { ...videoRow, signedUrl: signed?.signedUrl ?? null } }, { status: 201 }),

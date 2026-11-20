@@ -138,6 +138,20 @@ export async function POST(req: NextRequest) {
       sessionName = session.session_name ?? session.title ?? null
     }
 
+    // Safe to ask twice (2026-11-20). The phone retries this request when it
+    // dies on the network, and a retry may follow an attempt that got through
+    // and only lost its answer. A path already recorded answers with the row
+    // it has: never a second clip, and never a second message to the coach.
+    const { data: already, error: alreadyErr } = await admin
+      .from('session_videos')
+      .select('id, session_id, file_name, mime_type, note, duration_s, created_at')
+      .eq('storage_path', storagePath)
+      .eq('athlete_id', ath.id)
+      .limit(1)
+      .maybeSingle()
+    if (alreadyErr) return NextResponse.json({ error: errorMessage(alreadyErr, 'The clip could not be saved. Try again.') }, { status: 500 })
+    if (already) return NextResponse.json({ clip: already }, { status: 200 })
+
     // The object must actually be there: registering a path nothing was
     // uploaded to would give the coach a clip that never plays.
     const folder = storagePath.slice(0, storagePath.lastIndexOf('/'))
@@ -166,6 +180,18 @@ export async function POST(req: NextRequest) {
       })
       .select('id, session_id, file_name, mime_type, note, duration_s, created_at')
       .single()
+    // 23505: a retry that arrived alongside the attempt it was retrying. The
+    // unique index (migration 039) refused this insert; the other request
+    // owns the row and tells the coach, so this one only reports the clip.
+    if (insertErr?.code === '23505') {
+      const { data: raced } = await admin
+        .from('session_videos')
+        .select('id, session_id, file_name, mime_type, note, duration_s, created_at')
+        .eq('storage_path', storagePath)
+        .eq('athlete_id', ath.id)
+        .maybeSingle()
+      if (raced) return NextResponse.json({ clip: raced }, { status: 200 })
+    }
     if (insertErr || !row) {
       return NextResponse.json({ error: errorMessage(insertErr, 'The clip uploaded but did not save. Try again.') }, { status: 500 })
     }

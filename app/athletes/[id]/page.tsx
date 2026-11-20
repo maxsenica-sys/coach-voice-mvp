@@ -17,7 +17,6 @@ import AthleteSwitcher from '@/app/components/AthleteSwitcher'
 import ListState from '@/app/components/ListState'
 import { apiMutate, apiJson } from '@/lib/api-client'
 import { readCachedProfile } from '@/lib/profile-cache'
-import { preflightVideo } from '@/lib/video-preflight'
 import {
   WELLNESS_METRICS, metricColor, overallWellnessScore, overallScoreColor, overallScoreTint, wellnessDriver,
   type WellnessCheckin, type WellnessAlert,
@@ -34,7 +33,7 @@ import { getTeam, type Team } from '@/lib/team-client'
 import type { Caretaker, CaretakerForm, CoachNote } from '@/lib/api-types'
 import { escapeHtml } from '@/lib/escape-html'
 import { regionLabel } from '@/lib/body-map'
-import { uploadSessionVideo } from '@/lib/video-upload'
+import VideoUploader from '@/app/components/VideoUploader'
 import { wellnessAlertRecipients } from '@/lib/caretaker-prefs'
 
 interface Athlete {
@@ -409,21 +408,6 @@ function profileFormFrom(a: Athlete | null): ProfileForm {
   }
 }
 
-// ── Video upload progress bar ────────────────────────────────────
-function VideoUploadBar({ pct, eta }: { pct: number; eta: string }) {
-  return (
-    <div style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-        <span style={{ fontSize: 'var(--t-furniture)', fontWeight: 700, color: 'var(--primary-dark)' }}>Uploading… {pct}%</span>
-        <span style={{ fontSize: 'var(--t-furniture)', color: 'var(--text-muted)' }}>{eta}</span>
-      </div>
-      <div style={{ height: 8, background: 'var(--border)', borderRadius: 999, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: pct === 100 ? 'var(--success)' : 'var(--primary)', transition: 'width 0.3s ease' }} />
-      </div>
-    </div>
-  )
-}
-
 // ── Main page ────────────────────────────────────────────────────
 export default function AthleteDetailPage() {
   const router = useRouter()
@@ -474,12 +458,6 @@ export default function AthleteDetailPage() {
 
   const [openSessionId, setOpenSessionId] = useState<string | null>(null)
   const [sessionVideos, setSessionVideos] = useState<Record<string, SessionVideo[]>>({})
-  const [videoProgress, setVideoProgress] = useState<Record<string, number | null>>({})
-  const [videoEta, setVideoEta] = useState<Record<string, string>>({})
-  /* Per-session, because uploads are per-session and a failure on one clip must
-     not clear the message on another. Carries both a refusal and a warning: the
-     difference is whether the upload also started. */
-  const [videoError, setVideoError] = useState<Record<string, string>>({})
 
   // Profile editing. The tab reads as the saved profile; the form appears only
   // while editing, and a save closes it — the new values on screen are the
@@ -973,51 +951,14 @@ export default function AthleteDetailPage() {
     setOpenSessionId(id); loadVideos(id)
   }
 
-  const handleVideoUpload = (file: File, sessionId: string) => {
-    /* Decide before uploading, not after.
-     *
-     * There was no size limit anywhere on the path that actually runs — the
-     * 500MB guard lives in a FormData branch of the videos route that has no
-     * caller. An iPhone at 4K60 makes roughly 400MB a minute, so a coach could
-     * spend four minutes uploading on pitch-side data before anything objected,
-     * and nothing ever did.
-     *
-     * And an HEVC clip uploads perfectly and is then a black rectangle on the
-     * coach's own laptop, with no error raised anywhere, because nothing failed.
-     *
-     * See lib/video-preflight.ts. */
-    const verdict = preflightVideo(file)
-    if (!verdict.ok) {
-      setVideoError(prev => ({ ...prev, [sessionId]: verdict.reason }))
-      setVideoProgress(prev => { const n = { ...prev }; delete n[sessionId]; return n })
-      setVideoEta(prev => { const n = { ...prev }; delete n[sessionId]; return n })
-      return
-    }
-    setVideoError(prev => ({ ...prev, [sessionId]: verdict.warning ?? '' }))
-    setVideoProgress(prev => ({ ...prev, [sessionId]: 0 }))
-    setVideoEta(prev => ({ ...prev, [sessionId]: 'Preparing…' }))
-
-    const doUpload = async () => {
-      try {
-        // Signed URL, direct PUT to storage, register — lib/video-upload.ts,
-        // shared with the session page's own Add video button.
-        const video = await uploadSessionVideo<SessionVideo>(sessionId, file, ({ pct, eta }) => {
-          setVideoProgress(prev => ({ ...prev, [sessionId]: pct }))
-          setVideoEta(prev => ({ ...prev, [sessionId]: eta }))
-        })
-        setSessionVideos(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), video] }))
-      } catch (err: unknown) {
-        // Next to the clip that failed, not in a page-level banner at the top of
-        // a long scroll — the coach may be several sessions down by now, and the
-        // input has already been cleared so the retry is one tap.
-        setVideoError(prev => ({ ...prev, [sessionId]: errorMessage(err, 'That clip did not upload. Try again.') }))
-      } finally {
-        setVideoProgress(prev => ({ ...prev, [sessionId]: null }))
-        setVideoEta(prev => ({ ...prev, [sessionId]: '' }))
-      }
-    }
-
-    void doUpload()
+  /* A clip saved by the uploader (one or several: app/components/VideoUploader.tsx).
+   * Opening the session's row is what loads its list, so a clip added to a
+   * closed row appears as soon as the row is opened. */
+  const videoSaved = (sessionId: string, video: SessionVideo) => {
+    setSessionVideos(prev => {
+      const have = prev[sessionId] ?? []
+      return have.some(v => v.id === video.id) ? prev : { ...prev, [sessionId]: [...have, video] }
+    })
   }
 
   const saveAnnotations = async (sessionId: string, videoId: string, annotations: AnnotationStroke[]) => {
@@ -1761,8 +1702,6 @@ export default function AthleteDetailPage() {
                   {visibleSessions.map(s => {
                     const isOpen = openSessionId === s.id
                     const sVideos = sessionVideos[s.id] ?? []
-                    const uploading = videoProgress[s.id] != null
-                    const uploadPct = videoProgress[s.id] ?? 0
 
                     return (
                       <div key={s.id} className="card" style={{ overflow: 'hidden' }}>
@@ -1799,16 +1738,17 @@ export default function AthleteDetailPage() {
                           <button className="btn btn-ghost" onClick={() => window.open(`/pdf/session/${s.id}`, '_blank')} style={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44 }}>
                             <Icon name="pdf" size={13} /> PDF
                           </button>
-                          <label className="btn btn-ghost" style={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}>
-                            <Icon name="video" size={13} /> {uploading ? `${uploadPct}%` : 'Video'}
-                            {/* `e.target.value = ''` on EVERY change, not just success.
-                                Without it the input still holds the last file, so
-                                re-picking the same clip after a failed upload fires
-                                no onChange at all and nothing happens — the coach
-                                taps, sees nothing, and has to reload the page to
-                                retry the thing that just failed. */}
-                            <input type="file" accept="video/*" style={{ display: 'none' }} disabled={uploading} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { if (!isOpen) openSession(s.id); handleVideoUpload(f, s.id) } }} />
-                          </label>
+                          {/* One clip or several. The list of what was picked sits
+                              under these buttons, on its own line of this row. */}
+                          <VideoUploader<SessionVideo>
+                            sessionId={s.id}
+                            onSaved={(video) => videoSaved(s.id, video)}
+                            onOpen={() => { if (!isOpen) openSession(s.id) }}
+                            label="Videos"
+                            icon={<Icon name="video" size={13} />}
+                            buttonClassName="btn btn-ghost"
+                            buttonStyle={{ fontSize: 'var(--t-furniture)', padding: '5px 12px', gap: 6, minHeight: 44 }}
+                          />
                         </div>
 
                         {isOpen && (
@@ -1861,28 +1801,6 @@ export default function AthleteDetailPage() {
                                 </div>
                               </div>
                             )}
-                            {videoError[s.id] && (
-                              <div
-                                role={uploading ? 'status' : 'alert'}
-                                style={{
-                                  display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12,
-                                  padding: '10px 12px', borderRadius: 10,
-                                  // A refusal and a warning are different news: one
-                                  // stopped the upload, the other did not.
-                                  background: uploading ? 'var(--wellness-ok-tint)' : 'var(--danger-light)',
-                                  fontSize: 13, color: 'var(--text)', lineHeight: 1.5,
-                                }}
-                              >
-                                <span aria-hidden="true" style={{ flexShrink: 0 }}>⚠</span>
-                                <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{videoError[s.id]}</span>
-                                <button
-                                  onClick={() => setVideoError(prev => ({ ...prev, [s.id]: '' }))}
-                                  aria-label="Dismiss"
-                                  style={{ minWidth: 44, minHeight: 44, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--text-2)', flexShrink: 0 }}
-                                >×</button>
-                              </div>
-                            )}
-                            {uploading && <div style={{ marginTop: 12 }}><VideoUploadBar pct={uploadPct} eta={videoEta[s.id] ?? ''} /></div>}
                           </div>
                         )}
                       </div>
