@@ -125,6 +125,35 @@ export function sessionKey(ev: Pick<BriefableEvent, 'title' | 'event_date' | 'ev
   return `${ev.event_date}|${hhmm}|${ev.title.trim().toLowerCase()}`
 }
 
+export interface DayRow<T extends BriefableEvent> {
+  /** One row of the event, stable across renders: the lowest id. */
+  event: T
+  /** Everyone it is for, in the order their rows arrived. Empty for the coach's own event. */
+  athleteIds: string[]
+}
+
+/**
+ * A day's events as a coach means them: a squad event once, not once per
+ * athlete.
+ *
+ * Max, 2026-11-20: "there seems to be quite a cluster of information". A squad
+ * session for six athletes is six calendar rows, and Home's "Today" listed all
+ * six, identical and with no name on any of them. Rows that share a
+ * sessionKey and a type are one event. The order of the input is kept, by
+ * each event's first row.
+ */
+export function oneRowPerEvent<T extends BriefableEvent>(events: readonly T[]): DayRow<T>[] {
+  const rows = new Map<string, { event: T; athleteIds: string[] }>()
+  for (const ev of events) {
+    const k = `${sessionKey(ev)}|${ev.event_type ?? ''}`
+    const row = rows.get(k)
+    if (!row) { rows.set(k, { event: ev, athleteIds: ev.athlete_id ? [ev.athlete_id] : [] }); continue }
+    if (ev.id.localeCompare(row.event.id) < 0) row.event = ev
+    if (ev.athlete_id && !row.athleteIds.includes(ev.athlete_id)) row.athleteIds.push(ev.athlete_id)
+  }
+  return Array.from(rows.values())
+}
+
 /** A session is briefable when it is a timed session event with an athlete on it. */
 function briefable(ev: BriefableEvent): boolean {
   return ev.event_type === 'session' && !!ev.athlete_id && eventStart(ev.event_date, ev.event_time) !== null

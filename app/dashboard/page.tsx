@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useId, Suspense, Fragment } from 'react'
 import { byName, matchesName, sortRoster, ROSTER_SORT_LABELS, type RosterSort } from '@/lib/athlete-filter'
 import { onboardingSteps } from '@/lib/onboarding'
+import { oneRowPerEvent } from '@/lib/pre-session'
 import { newlyActive, parseSeenActive, seenActiveKey } from '@/lib/athlete-joined'
 import CoverageInsight from '@/app/components/CoverageInsight'
 import PushOptIn from '@/app/components/PushOptIn'
@@ -998,6 +999,7 @@ function DashboardPageInner() {
 
   // Today's events for home tab
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
+  const todayRows = oneRowPerEvent(todayEvents)
   const [homeWeekEvents, setHomeWeekEvents] = useState<CalendarEvent[]>([])
   const [homeSelectedDay, setHomeSelectedDay] = useState<string | null>(null)
   /* A tapped day drops down over the home column and must stop above the
@@ -2229,9 +2231,13 @@ function DashboardPageInner() {
               {/* Today's sessions — time-based list */}
               {todayEvents.length > 0 && (
                 <section>
-                  <SecHead title="Today" side={`${todayEvents.length} event${todayEvents.length !== 1 ? 's' : ''}`} />
+                  <SecHead title="Today" side={`${todayRows.length} event${todayRows.length !== 1 ? 's' : ''}`} />
                   <div style={{ marginTop: 8 }}>
-                    {todayEvents.map((ev, i) => {
+                    {/* A squad event once, with how many it is for: it is
+                        stored as a row per athlete, and used to be listed as
+                        that many identical lines (lib/pre-session.ts). */}
+                    {todayRows.map(({ event: ev, athleteIds }, i) => {
+                      const one = athleteIds.length === 1 ? athleteIds[0] : null
                       const m = ev.event_time?.match(/^(\d+):(\d+)/)
                       const hrs = m ? parseInt(m[1]) : null
                       const mins = m ? m[2] : null
@@ -2242,7 +2248,7 @@ function DashboardPageInner() {
                       const briefable = ev.event_type === 'session' && !!ev.athlete_id
                       return (
                         <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, borderTop: i === 0 ? HAIR_2 : HAIR, minWidth: 0 }}>
-                        <Link href={ev.athlete_id ? `/athletes/${ev.athlete_id}` : '#'} style={{ flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr) auto', alignItems: 'center', gap: 12, minHeight: 44, padding: '11px 0', textDecoration: 'none', color: 'inherit', cursor: ev.athlete_id ? 'pointer' : 'default' }}>
+                        <Link href={one ? `/athletes/${one}` : athleteIds.length > 1 ? '/dashboard?tab=calendar' : '#'} onClick={athleteIds.length > 1 ? (e) => { e.preventDefault(); setTab('calendar') } : undefined} style={{ flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr) auto', alignItems: 'center', gap: 12, minHeight: 44, padding: '11px 0', textDecoration: 'none', color: 'inherit', cursor: athleteIds.length > 0 ? 'pointer' : 'default' }}>
                           <div>
                             {dh !== null ? (
                               <>
@@ -2253,7 +2259,11 @@ function DashboardPageInner() {
                           </div>
                           <div style={{ minWidth: 0 }}>
                             <div style={{ ...cast(17, 700, '.04em'), color: 'var(--text)', overflowWrap: 'anywhere' }}>{ev.title}</div>
-                            {ev.event_type && <div style={{ ...cast(13, 600, '.14em'), color: 'var(--text-2)', marginTop: 3 }}>{ev.event_type}</div>}
+                            {(ev.event_type || athleteIds.length > 1) && (
+                              <div style={{ ...cast(13, 600, '.14em'), color: 'var(--text-2)', marginTop: 3, overflowWrap: 'anywhere' }}>
+                                {[ev.event_type, athleteIds.length > 1 ? `${athleteIds.length} athletes` : ''].filter(Boolean).join(' · ')}
+                              </div>
+                            )}
                           </div>
                           <span style={{ color: 'var(--text-2)' }}><Icon name="arrow" size={14} strokeWidth={1.8} /></span>
                         </Link>
